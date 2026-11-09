@@ -1,0 +1,22 @@
+[project]
+name = "ap-tracker"
+version = "0.1.0"
+description = "Live dashboard for an Archipelago multiworld session"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.10,<4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+ap-tracker = "tracker.app:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tracker*"]
+
+[tool.setuptools.package-data]
+tracker = ["static/*"]

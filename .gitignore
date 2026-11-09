@@ -1,0 +1,22 @@
+# Seed inputs / outputs — contain player info and spoilers
+players/*
+!players/.gitkeep
+custom_worlds/*
+!custom_worlds/.gitkeep
+output/*
+!output/.gitkeep
+data/*
+!data/.gitkeep
+roms/*
+!roms/.gitkeep
+tracker-state/
+
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# IDE
+/.idea/
+*.egg-info/

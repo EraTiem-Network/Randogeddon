@@ -1,0 +1,9 @@
+# Overlay for local testing / no reverse proxy: publish the ports directly.
+#   game server: localhost:38281    dashboard: http://localhost:8000
+services:
+  archipelago:
+    ports:
+      - "38281:38281"
+  tracker:
+    ports:
+      - "8000:8000"

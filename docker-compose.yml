@@ -1,0 +1,59 @@
+# Base stack. Combine with an overlay:
+#   server (Traefik):  COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml   (set in .env)
+#   local test:        COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
+name: archipelago
+
+x-ap-image: &ap-image
+  image: archipelago-server:${AP_VERSION:-0.6.8}
+  build:
+    context: ./archipelago
+    args:
+      AP_VERSION: ${AP_VERSION:-0.6.8}
+
+services:
+  archipelago:
+    <<: *ap-image
+    command: ["server"]
+    restart: unless-stopped
+    # Keeps the server console usable: `docker attach archipelago-archipelago-1` (detach: Ctrl-P Ctrl-Q)
+    stdin_open: true
+    tty: true
+    environment:
+      AP_PASSWORD: ${AP_PASSWORD:-}
+      AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
+      AP_HINT_COST: ${AP_HINT_COST:-10}
+      AP_LOCATION_CHECK_POINTS: ${AP_LOCATION_CHECK_POINTS:-1}
+      AP_RELEASE_MODE: ${AP_RELEASE_MODE:-auto}
+      AP_COLLECT_MODE: ${AP_COLLECT_MODE:-auto}
+      AP_REMAINING_MODE: ${AP_REMAINING_MODE:-goal}
+      AP_COUNTDOWN_MODE: ${AP_COUNTDOWN_MODE:-auto}
+    volumes:
+      - ./data:/data
+      - ./custom_worlds:/ap/custom_worlds:ro
+
+  tracker:
+    image: archipelago-tracker:latest
+    build: ./tracker
+    restart: unless-stopped
+    depends_on: [archipelago]
+    environment:
+      AP_SERVER: ws://archipelago:38281
+      AP_PASSWORD: ${AP_PASSWORD:-}
+      TRACKER_TITLE: ${TRACKER_TITLE:-Archipelago}
+    volumes:
+      - ./data:/data:ro              # reads room.json written by the server
+      - tracker-state:/state         # event history survives restarts
+
+  # One-shot seed generation (run locally):  ./scripts/generate.sh
+  generate:
+    <<: *ap-image
+    profiles: ["tools"]
+    command: ["generate"]
+    volumes:
+      - ./players:/players:ro
+      - ./output:/output
+      - ./custom_worlds:/ap/custom_worlds:ro
+      - ./roms:/roms:ro
+
+volumes:
+  tracker-state:

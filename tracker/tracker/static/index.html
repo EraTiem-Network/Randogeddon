@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archipelago Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23c0392b'/><circle cx='16' cy='16' r='6' fill='white'/></svg>">
+<style>
+:root {
+  --bg: #f4f2ee; --panel: #ffffff; --panel-2: #f8f7f4; --border: #e2ded6;
+  --text: #1d1b18; --muted: #6d675e; --accent: #b4432f;
+  --prog: #8e5bd8; --useful: #2f7fd1; --trap: #d1453b; --filler: #6d675e;
+  --ok: #2e8b57; --warn: #c98a12; --bar-bg: #ebe7df;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15161a; --panel: #1e2026; --panel-2: #24262d; --border: #30333b;
+    --text: #e9e7e3; --muted: #9a968f; --accent: #e0745d;
+    --prog: #b48cf2; --useful: #69a9ec; --trap: #ef6f64; --filler: #9a968f;
+    --ok: #4fbf82; --warn: #e3ac3e; --bar-bg: #2b2e36; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15161a; --panel: #1e2026; --panel-2: #24262d; --border: #30333b;
+  --text: #e9e7e3; --muted: #9a968f; --accent: #e0745d;
+  --prog: #b48cf2; --useful: #69a9ec; --trap: #ef6f64; --filler: #9a968f;
+  --ok: #4fbf82; --warn: #e3ac3e; --bar-bg: #2b2e36; --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, select, input { font: inherit; color: inherit; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 16px; }
+header h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+.meta { color: var(--muted); font-size: 12.5px; }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--panel); font-size: 12.5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--trap); }
+.iconbtn { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
+.stat .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.stat .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .s { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.bar { height: 8px; background: var(--bar-bg); border-radius: 999px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .6s ease; }
+.bar.done > i { background: var(--ok); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+section.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 16px; }
+section.panel > h2 { margin: 0; font-size: 14px; padding: 12px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+section.panel > h2 .spacer { flex: 1; }
+section.panel > h2 select, section.panel > h2 input { font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel-2); max-width: 100%; }
+
+.players { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; padding: 14px; }
+.card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--panel-2); cursor: pointer;
+  transition: border-color .15s, transform .15s; text-align: left; width: 100%; }
+.card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+.card .top { display: flex; align-items: center; gap: 8px; }
+.card .name { font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .game { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .nums { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.badge { margin-left: auto; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--bar-bg); color: var(--muted); white-space: nowrap; }
+.badge.goal, .badge.complete { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.badge.released { background: color-mix(in srgb, var(--prog) 18%, transparent); color: var(--prog); }
+.badge.playing { background: color-mix(in srgb, var(--useful) 16%, transparent); color: var(--useful); }
+
+.feed { list-style: none; margin: 0; padding: 4px 0; max-height: 70vh; overflow-y: auto; }
+.feed li { padding: 7px 14px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 44px 1fr; gap: 8px; }
+.feed li:last-child { border-bottom: 0; }
+.feed .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 1px; white-space: nowrap; }
+.feed .loc { color: var(--muted); font-size: 12px; }
+.feed li.new { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: color-mix(in srgb, var(--accent) 14%, transparent); } to { background: transparent; } }
+.pl { font-weight: 600; }
+.it { font-weight: 600; }
+.it.prog { color: var(--prog); } .it.useful { color: var(--useful); } .it.trap { color: var(--trap); } .it.filler { color: var(--filler); }
+.sys { color: var(--muted); font-style: italic; }
+.goaltxt { color: var(--ok); font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
+tr:last-child td { border-bottom: 0; }
+.tablewrap { max-height: 60vh; overflow: auto; }
+.found { color: var(--ok); font-weight: 600; }
+.notfound { color: var(--warn); font-weight: 600; }
+.empty { padding: 18px 14px; color: var(--muted); }
+
+dialog { border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--panel); color: var(--text);
+  width: min(900px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog .head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+dialog .head h3 { margin: 0; font-size: 17px; }
+dialog .body { padding: 14px 16px; overflow: auto; max-height: calc(100vh - 140px); }
+dialog .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 700px) { dialog .cols { grid-template-columns: 1fr; } }
+dialog h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+dialog ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+dialog li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.banner { background: color-mix(in srgb, var(--warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 16px; font-size: 13px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Archipelago</h1>
+    <span class="meta" id="seed"></span>
+    <span class="spacer"></span>
+    <span class="pill"><span class="dot" id="conn-dot"></span><span id="conn-text">connecting…</span></span>
+    <button class="iconbtn" id="theme" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <div class="banner hidden" id="error"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Overall</div><div class="v" id="st-pct">–</div>
+      <div class="bar" style="margin-top:6px"><i id="st-bar" style="width:0"></i></div>
+      <div class="s" id="st-checks"></div></div>
+    <div class="stat"><div class="k">Goals</div><div class="v" id="st-goals">–</div><div class="s">players finished</div></div>
+    <div class="stat"><div class="k">Online</div><div class="v" id="st-online">–</div><div class="s">game clients connected</div></div>
+    <div class="stat"><div class="k">Hints</div><div class="v" id="st-hints">–</div><div class="s" id="st-hints-s"></div></div>
+    <div class="stat"><div class="k">Session</div><div class="v" id="st-time">–</div><div class="s" id="st-time-s">since tracker start</div></div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <section class="panel">
+        <h2>Players <span class="spacer"></span>
+          <select id="sort" aria-label="Sort players">
+            <option value="slot">Sort: slot</option>
+            <option value="percent">Sort: progress</option>
+            <option value="activity">Sort: last activity</option>
+          </select>
+        </h2>
+        <div class="players" id="players"><div class="empty">Waiting for the server…</div></div>
+      </section>
+
+      <section class="panel">
+        <h2>Hints <span class="spacer"></span>
+          <select id="hint-player" aria-label="Filter hints by player"><option value="">All players</option></select>
+          <select id="hint-found" aria-label="Filter hints by status">
+            <option value="open">Not found</option><option value="">All</option><option value="found">Found</option>
+          </select>
+        </h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>For</th><th>Item</th><th>Location</th><th>In world of</th><th>Status</th></tr></thead>
+            <tbody id="hints"></tbody>
+          </table>
+          <div class="empty" id="hints-empty">No hints yet.</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Live feed <span class="spacer"></span>
+        <select id="feed-player" aria-label="Filter feed by player"><option value="">Everyone</option></select>
+        <select id="feed-kind" aria-label="Filter feed by kind">
+          <option value="">All events</option>
+          <option value="prog">Progression only</option>
+          <option value="item">Items</option>
+          <option value="hint">Hints</option>
+          <option value="other">Goals / chat / joins</option>
+        </select>
+      </h2>
+      <ul class="feed" id="feed"></ul>
+      <div class="empty" id="feed-empty">Nothing has happened yet.</div>
+    </section>
+  </div>
+</div>
+
+<dialog id="detail">
+  <div class="head"><h3 id="d-title"></h3><span class="meta" id="d-sub"></span><span class="spacer"></span>
+    <button class="iconbtn" id="d-close" aria-label="Close">✕</button></div>
+  <div class="body">
+    <div class="bar" style="margin-bottom:14px"><i id="d-bar"></i></div>
+    <div class="cols">
+      <div><h4 id="d-items-h">Received items</h4>
+        <input id="d-filter" placeholder="Filter…" style="width:100%;margin-bottom:8px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2)">
+        <ul id="d-items"></ul></div>
+      <div><h4 id="d-missing-h">Remaining locations</h4><ul id="d-missing"></ul></div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let state = null, lastEventId = 0, detailSlot = null;
+
+// ---- theme ------------------------------------------------------------
+function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+try { applyTheme(localStorage.getItem("ap-theme")); } catch (e) {}
+$("theme").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("ap-theme", next); } catch (e) {}
+};
+
+// ---- helpers ----------------------------------------------------------
+function itemClass(flags) {
+  if (flags & 1) return "prog";
+  if (flags & 4) return "trap";
+  if (flags & 2) return "useful";
+  return "filler";
+}
+function ago(ts) {
+  if (!ts) return "never";
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+function clock(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+}
+function duration(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+const pl = (name) => `<span class="pl">${esc(name)}</span>`;
+const it = (name, flags) => `<span class="it ${itemClass(flags)}">${esc(name)}</span>`;
+function fillSelect(sel, players, firstLabel) {
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${firstLabel}</option>` +
+    players.map(p => `<option value="${p.slot}">${esc(p.name)}</option>`).join("");
+  sel.value = cur;
+}
+
+// ---- render -----------------------------------------------------------
+function render() {
+  if (!state) return;
+  document.title = `${state.title} Tracker`;
+  $("title").textContent = state.title;
+  $("seed").textContent = [state.seed_name && `Seed ${state.seed_name}`, state.server_version && `AP ${state.server_version}`,
+    state.hint_cost != null && `hint cost ${state.hint_cost}%`].filter(Boolean).join(" · ");
+  $("conn-dot").className = "dot " + (state.connected ? "on" : "off");
+  $("conn-text").textContent = state.connected ? "live" : "server offline";
+  $("error").classList.toggle("hidden", !state.error || state.connected);
+  $("error").textContent = state.error || "";
+
+  const t = state.totals;
+  $("st-pct").textContent = t.percent.toFixed(1) + "%";
+  $("st-bar").style.width = t.percent + "%";
+  $("st-checks").textContent = `${t.checked.toLocaleString()} / ${t.total.toLocaleString()} checks`;
+  $("st-goals").textContent = `${t.goals} / ${t.players}`;
+  $("st-online").textContent = `${t.online} / ${t.players}`;
+  const open = state.hints.filter(h => !h.found).length;
+  $("st-hints").textContent = state.hints.length;
+  $("st-hints-s").textContent = `${open} not found yet`;
+  renderTime();
+
+  fillSelect($("hint-player"), state.players, "All players");
+  fillSelect($("feed-player"), state.players, "Everyone");
+  renderPlayers();
+  renderHints();
+  renderFeed();
+}
+
+function renderTime() {
+  if (!state) return;
+  $("st-time").textContent = duration(Date.now() / 1000 - state.started_at);
+}
+
+function renderPlayers() {
+  const sort = $("sort").value;
+  const ps = [...state.players];
+  if (sort === "percent") ps.sort((a, b) => b.percent - a.percent);
+  if (sort === "activity") ps.sort((a, b) => (b.last_activity || 0) - (a.last_activity || 0));
+  if (!ps.length) { $("players").innerHTML = `<div class="empty">Waiting for the server…</div>`; return; }
+  $("players").innerHTML = ps.map(p => `
+    <button class="card" data-slot="${p.slot}" aria-label="Details for ${esc(p.name)}">
+      <div class="top"><span class="dot ${p.online ? "on" : ""}" title="${p.online ? "online" : "offline"}"></span>
+        <span class="name">${esc(p.name)}</span><span class="badge ${p.status}">${p.status}</span></div>
+      <div class="game">${esc(p.game)}</div>
+      <div class="bar ${p.percent >= 100 ? "done" : ""}"><i style="width:${p.percent}%"></i></div>
+      <div class="nums"><span>${p.checked} / ${p.total} · ${p.percent.toFixed(1)}%</span><span>${ago(p.last_activity)}</span></div>
+      <div class="nums"><span>${p.items_received} items · ${p.progression_received} progression</span>
+        <span>${p.hint_points != null ? p.hint_points + " pts" : ""}</span></div>
+    </button>`).join("");
+}
+
+function renderHints() {
+  const who = $("hint-player").value, f = $("hint-found").value;
+  const hs = state.hints.filter(h =>
+    (!who || String(h.receiving_player) === who || String(h.finding_player) === who) &&
+    (!f || (f === "found") === h.found));
+  $("hints").innerHTML = hs.map(h => `<tr>
+      <td>${pl(h.receiver_name)}</td><td>${it(h.item_name, h.item_flags)}</td>
+      <td>${esc(h.location_name)}${h.entrance ? `<div class="meta">${esc(h.entrance)}</div>` : ""}</td>
+      <td>${pl(h.finder_name)}</td>
+      <td class="${h.found ? "found" : "notfound"}">${h.found ? "found" : "open"}</td></tr>`).join("");
+  $("hints-empty").classList.toggle("hidden", hs.length > 0);
+}
+
+function eventHtml(e) {
+  switch (e.type) {
+    case "item":
+      if (e.sender === e.receiver)
+        return `${pl(e.sender_name)} found their ${it(e.item_name, e.flags)}<div class="loc">${esc(e.location_name)}</div>`;
+      return `${pl(e.sender_name)} sent ${it(e.item_name, e.flags)} to ${pl(e.receiver_name)}<div class="loc">${esc(e.location_name)}</div>`;
+    case "hint":
+      return `<span class="sys">Hint:</span> ${pl(e.receiver_name)}'s ${it(e.item_name, e.flags)} is at ${esc(e.location_name)} in ${pl(e.finder_name)}'s world${e.found ? ' <span class="found">(found)</span>' : ""}`;
+    case "goal": return `<span class="goaltxt">🏁 ${esc(e.player_name)} completed their goal!</span>`;
+    case "release": return `${pl(e.player_name)} <span class="sys">released their remaining items</span>`;
+    case "collect": return `${pl(e.player_name)} <span class="sys">collected their items</span>`;
+    case "join": return `${pl(e.player_name)} <span class="sys">joined</span>`;
+    case "part": return `${pl(e.player_name)} <span class="sys">left</span>`;
+    case "chat": return `${pl(e.player_name)}: ${esc(e.message)}`;
+    case "countdown": return `<span class="goaltxt">${esc(e.message)}</span>`;
+    default: return esc(e.type);
+  }
+}
+function eventMatches(e, who, kind) {
+  if (who) {
+    const slots = [e.slot, e.sender, e.receiver, e.finder].filter(x => x != null).map(String);
+    if (!slots.includes(who)) return false;
+  }
+  if (!kind) return true;
+  if (kind === "prog") return e.type === "item" && (e.flags & 1);
+  if (kind === "item") return e.type === "item";
+  if (kind === "hint") return e.type === "hint";
+  return !["item", "hint"].includes(e.type);
+}
+function renderFeed() {
+  const who = $("feed-player").value, kind = $("feed-kind").value;
+  const evs = state.events.filter(e => eventMatches(e, who, kind)).reverse();
+  $("feed").innerHTML = evs.map(e =>
+    `<li class="${e.id > lastEventId && lastEventId ? "new" : ""}"><span class="t">${clock(e.ts)}</span><div>${eventHtml(e)}</div></li>`).join("");
+  $("feed-empty").classList.toggle("hidden", evs.length > 0);
+  if (state.events.length) lastEventId = Math.max(lastEventId, state.events[state.events.length - 1].id);
+}
+
+// ---- player detail ----------------------------------------------------
+async function openDetail(slot) {
+  detailSlot = slot;
+  $("d-filter").value = "";
+  await loadDetail();
+  if (!$("detail").open) $("detail").showModal();
+}
+let detailData = null;
+async function loadDetail() {
+  if (detailSlot == null) return;
+  const r = await fetch(`api/player/${detailSlot}`);
+  if (!r.ok) return;
+  detailData = await r.json();
+  renderDetail();
+}
+function renderDetail() {
+  const d = detailData; if (!d) return;
+  const pct = d.total ? (100 * d.checked / d.total) : 0;
+  $("d-title").textContent = d.name;
+  $("d-sub").textContent = `${d.game} · ${d.checked} / ${d.total} checks (${pct.toFixed(1)}%)`;
+  $("d-bar").style.width = pct + "%";
+  const q = $("d-filter").value.toLowerCase();
+  const items = [...d.items].reverse().filter(i => !q || (i.item + " " + i.from + " " + i.location).toLowerCase().includes(q));
+  $("d-items-h").textContent = `Received items (${d.items.length})`;
+  $("d-items").innerHTML = items.map(i =>
+    `<li>${it(i.item, i.flags)} <span class="meta">from ${esc(i.from)}${i.location ? " · " + esc(i.location) : ""}</span></li>`).join("")
+    || `<li class="meta">Nothing yet.</li>`;
+  $("d-missing-h").textContent = `Remaining locations (${d.missing.length})`;
+  $("d-missing").innerHTML = d.missing.map(l => `<li>${esc(l)}</li>`).join("") || `<li class="meta">All done!</li>`;
+}
+$("players").addEventListener("click", (ev) => {
+  const card = ev.target.closest(".card"); if (card) openDetail(Number(card.dataset.slot));
+});
+$("d-close").onclick = () => $("detail").close();
+$("detail").addEventListener("close", () => { detailSlot = null; detailData = null; });
+$("detail").addEventListener("click", (ev) => { if (ev.target === $("detail")) $("detail").close(); });
+$("d-filter").oninput = renderDetail;
+
+["sort"].forEach(id => $(id).onchange = renderPlayers);
+["hint-player", "hint-found"].forEach(id => $(id).onchange = renderHints);
+["feed-player", "feed-kind"].forEach(id => $(id).onchange = renderFeed);
+
+// ---- live updates -----------------------------------------------------
+let detailTimer = null;
+function onState(data) {
+  state = data;
+  render();
+  if (detailSlot != null && !detailTimer) detailTimer = setTimeout(() => { detailTimer = null; loadDetail(); }, 1000);
+}
+function connect() {
+  const es = new EventSource("api/stream");
+  es.addEventListener("state", (ev) => onState(JSON.parse(ev.data)));
+  es.onerror = () => { $("conn-dot").className = "dot off"; $("conn-text").textContent = "dashboard reconnecting…"; };
+}
+fetch("api/state").then(r => r.json()).then(onState).catch(() => {});
+connect();
+setInterval(() => { renderTime(); if (state) renderPlayers(); }, 30000);
+</script>
+</body>
+</html>
