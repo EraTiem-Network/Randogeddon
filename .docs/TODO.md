@@ -1,13 +1,13 @@
-# Archipelago To-Do List
+# Randogeddon To-Do List
 
 The target of this project, phase by phase. Items within a phase are roughly in implementation order.
 `Open:` marks decisions that are not made yet.
 
 ## Conventions
 
-- **Addresses:** the app runs at `randomizer.example.net`; each session's game server at
-  `<session-id>.randomizer.example.net:443` (TLS, `wss://`).
-    - Plain `ws://<session-id>.randomizer.example.net:2401` as the fallback for game clients that can't do TLS: one
+- **Addresses:** the app runs at `randogeddon.eratiem.net`; each session's game server at
+  `<session-id>.randogeddon.eratiem.net:443` (TLS, `wss://`).
+    - Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS: one
       port for all sessions, routed by host name like 443, but unencrypted (passwords included).
     - Current clients connect over TLS: Launcher-based clients retry with `wss://`, and Archipelago.MultiClient.Net
       (used by many modded games) tries `wss://` first since April 2023. Older or unmaintained mods may only speak
@@ -30,6 +30,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] World Locks apworld: worlds locked until their key is found, seeds stay completable
 - [x] Hint switches (point hints, automatic hints), hint points per world, hint filters
 - [x] Demo session with simulated players
+- [x] Renamed to Randogeddon; dashboard at `randogeddon.eratiem.net`, the session's game server at
+  `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN`, `SESSION_ID` in `.env`)
 
 ## Phase 2: User Login
 
@@ -107,14 +109,14 @@ The target of this project, phase by phase. Items within a phase are roughly in 
   Phase 2)
 - [ ] Admins see and control all sessions
 - [ ] Each session's server is reachable from outside
-    - One host name per session, `<session-id>.randomizer.example.net`, on 443 (TLS) and 2401 (plain fallback, see
+    - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS) and 2401 (plain fallback, see
       Conventions). Traefik routes the WebSocket by host name to that session's port inside the container.
     - Certificates through Traefik's HTTP challenge, one per session host name (Let's Encrypt has no wildcard
       certificates with the HTTP challenge). For that, the tracker writes a Traefik router per session into a watched
       file (file provider) and removes it when the session is deleted; the first connection to a new session waits
       a few seconds for its certificate.
-    - DNS: one wildcard record `*.randomizer.example.net` pointing to the server; no API access for Traefik needed.
-    - Not paths (`randomizer.example.net/<session-id>`): Launcher-based clients would accept them, but many modded
+    - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server; no API access for Traefik needed.
+    - Not paths (`randogeddon.eratiem.net/<session-id>`): Launcher-based clients would accept them, but many modded
       game clients only take host:port.
     - Open: the session ID format (random like `k7f3q9` or readable like `friday-chaos`), decided in this phase.
 
@@ -127,7 +129,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The link is single-use and expires.
     - No open sign-up: an account can only be created with the link from an invitation mail, for the address the
       admin entered.
-    - Mail via SMTP on `mail.example.net`, sender `randomizer@example.net`, credentials in `.env`. The host is
+    - Mail via SMTP on `mail.example.net`, sender `randogeddon@example.net`, credentials in `.env`. The host is
       configurable: if the TLS certificate is issued for `mail.example.org`, connect by that name.
 - [ ] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
 - [ ] Automatic account deletion, chosen when signing up
