@@ -27,7 +27,9 @@ case "$mode" in
     # Slot list for the tracker dashboard.
     python room_info.py "$seed" /data/room.json || echo "[ap] WARNING: could not write /data/room.json"
 
-    args=(MultiServer.py "$seed"
+    echo "[ap] Hints: points ${AP_POINT_HINTS:-true}, automatic ${AP_AUTO_HINTS:-true}"
+    # serve.py = MultiServer + the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS)
+    args=(serve.py "$seed"
       --host 0.0.0.0
       --port 38281
       --hint_cost "${AP_HINT_COST:-10}"

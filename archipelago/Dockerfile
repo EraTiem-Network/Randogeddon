@@ -25,7 +25,7 @@ RUN python ModuleUpdate.py -y
 ENV SKIP_REQUIREMENTS_UPDATE=true
 
 COPY entrypoint.sh /usr/local/bin/ap-entrypoint
-COPY room_info.py /ap/room_info.py
+COPY room_info.py serve.py /ap/
 RUN chmod +x /usr/local/bin/ap-entrypoint
 
 ENTRYPOINT ["ap-entrypoint"]
