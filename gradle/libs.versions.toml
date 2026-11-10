@@ -1,0 +1,99 @@
+[versions]
+# https://mvnrepository.com/artifact/org.jetbrains.kotlin/kotlin-stdlib
+kotlin = "2.4.21"
+# https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-core
+kotlinx-coroutines = "1.11.0"
+# https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-serialization-core
+kotlinx-serialization = "1.11.0"
+# https://mvnrepository.com/artifact/com.charleskorn.kaml/kaml
+# Pinned to the version ktor-server-config-yaml is built against (see its POM): newer kaml versions changed
+# YamlMap.get, and Ktor's YAML config then fails at startup with "reified type parameter ... called directly"
+kaml = "0.79.0"
+# https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-browser
+kotlinx-browser = "0.5.0"
+
+# https://mvnrepository.com/artifact/org.jetbrains.compose/compose-gradle-plugin
+# Material 3 is not used: its last stable release (1.9.0) is built against Compose 1.9.
+compose-multiplatform = "1.12.2"
+
+# https://mvnrepository.com/artifact/io.insert-koin/koin-core
+koin-core = "4.2.2"
+# https://mvnrepository.com/artifact/io.insert-koin/koin-annotations
+koin-annotations = "4.2.2"
+# https://mvnrepository.com/artifact/io.insert-koin.compiler.plugin/io.insert-koin.compiler.plugin.gradle.plugin
+koin-plugin = "1.2.1"
+
+# https://mvnrepository.com/artifact/io.ktor/ktor-client-core
+ktor = "3.6.0"
+
+# https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+slf4j-api = "2.0.20"
+# https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+logback-classic = "1.6.6"
+
+[bundles]
+
+kotlin-coroutines = ["kotlinx-coroutines"]
+
+logging-runtime = ["logback-classic"]
+
+koin = ["koin-core", "koin-annotations", "koin-logger"]
+
+ktor-client = ["ktor-client-core", "ktor-client-cio", "ktor-client-websockets"]
+ktor-server = [
+  "ktor-server-core",
+  "ktor-server-config-yaml",
+  "ktor-server-netty",
+  "ktor-server-sse",
+  "ktor-server-content-negotiation",
+  "ktor-server-conditional-headers",
+  "ktor-server-compression",
+  "ktor-serialization-kotlinx-json",
+]
+
+compose = ["compose-runtime", "compose-foundation", "compose-ui"]
+
+[libraries]
+
+kotlinx-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kaml = { group = "com.charleskorn.kaml", name = "kaml", version.ref = "kaml" }
+kotlinx-browser = { group = "org.jetbrains.kotlinx", name = "kotlinx-browser", version.ref = "kotlinx-browser" }
+
+compose-runtime = { group = "org.jetbrains.compose.runtime", name = "runtime", version.ref = "compose-multiplatform" }
+compose-foundation = { group = "org.jetbrains.compose.foundation", name = "foundation", version.ref = "compose-multiplatform" }
+compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose-multiplatform" }
+
+koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin-core" }
+koin-ktor = { group = "io.insert-koin", name = "koin-ktor", version.ref = "koin-core" }
+koin-logger = { group = "io.insert-koin", name = "koin-logger-slf4j", version.ref = "koin-core" }
+koin-annotations = { group = "io.insert-koin", name = "koin-annotations", version.ref = "koin-annotations" }
+
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
+ktor-server-config-yaml = { group = "io.ktor", name = "ktor-server-config-yaml", version.ref = "ktor" }
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
+ktor-server-sse = { group = "io.ktor", name = "ktor-server-sse", version.ref = "ktor" }
+ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-server-conditional-headers = { group = "io.ktor", name = "ktor-server-conditional-headers", version.ref = "ktor" }
+ktor-server-compression = { group = "io.ktor", name = "ktor-server-compression", version.ref = "ktor" }
+ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
+ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
+
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j-api" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback-classic" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+
+ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+koin = { id = "io.insert-koin.compiler.plugin", version.ref = "koin-plugin" }
