@@ -1,9 +1,9 @@
-archipelago:
+randogeddon:
   tracker:
     # HTTP port of the dashboard and its API
     port: "$PORT:8000"
     # Title shown in the dashboard
-    title: "$TRACKER_TITLE:Archipelago"
+    title: "$TRACKER_TITLE:Randogeddon"
     # The built web app (webApp's wasmJs distribution)
     webDir: "$WEB_DIR:webApp/build/dist/wasmJs/productionExecutable"
     # Who plays which worlds (and the dashboard's grouping); optional, re-read when it changes

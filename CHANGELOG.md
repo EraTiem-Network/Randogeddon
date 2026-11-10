@@ -4,6 +4,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Randogeddon
+- The project is now called Randogeddon: images `randogeddon-server` / `randogeddon-tracker`, compose project
+  `randogeddon-<session>`, Kotlin package `net.eratiem.randogeddon`, dashboard and PWA title.
+- Addresses from the roadmap: the dashboard at `randogeddon.eratiem.net` (`BASE_DOMAIN`), the game server at
+  `<session-id>.randogeddon.eratiem.net:443` (`SESSION_ID`). Replaces `AP_HOST` and `TRACKER_HOST`.
+- Migrating a running server: `docker compose -p archipelago down` before the first deploy with the new name. The
+  dashboard's history volume starts fresh under the new project.
+
 ### Tracker
 - Rewritten in Kotlin: a Ktor/Netty server (`:server`) follows the room over the Archipelago network protocol and
   serves the API (`/api/state`, `/api/player/{slot}`, `/api/stream` as Server-Sent Events, `/healthz`). Same behaviour

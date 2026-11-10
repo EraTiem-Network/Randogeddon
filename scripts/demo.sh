@@ -7,11 +7,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
-SIM=archipelago-demo-sim
+SIM=randogeddon-demo-sim
 docker rm -f "$SIM" >/dev/null 2>&1 || true
 [[ "${1:-}" == "stop" ]] && { echo "Simulated players stopped."; exit 0; }
 
-image="archipelago-server:${AP_VERSION:-0.6.8}"
+image="randogeddon-server:${AP_VERSION:-0.6.8}"
 docker image inspect "$image" >/dev/null 2>&1 || docker compose build archipelago
 
 ./scripts/build-apworlds.sh >/dev/null
@@ -28,6 +28,6 @@ for _ in $(seq 1 60); do
   docker compose logs archipelago --since 2m 2>&1 | grep -q "server listening" && break
   sleep 2
 done
-docker run -d --name "$SIM" --network archipelago_default -v "$PWD/demo:/demo:ro" --entrypoint python \
+docker run -d --name "$SIM" --network randogeddon_default -v "$PWD/demo:/demo:ro" --entrypoint python \
   "$image" /demo/simulate.py ws://archipelago:38281 >/dev/null
 echo "Demo running: http://localhost:8000  (stop the players with ./scripts/demo.sh stop)"
