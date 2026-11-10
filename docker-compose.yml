@@ -27,19 +27,27 @@ services:
       AP_COLLECT_MODE: ${AP_COLLECT_MODE:-auto}
       AP_REMAINING_MODE: ${AP_REMAINING_MODE:-goal}
       AP_COUNTDOWN_MODE: ${AP_COUNTDOWN_MODE:-auto}
+      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
+      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
     volumes:
       - ./data:/data
       - ./custom_worlds:/ap/custom_worlds:ro
 
   tracker:
     image: archipelago-tracker:latest
-    build: ./tracker
+    build:
+      context: .
+      dockerfile: tracker.Dockerfile
+      secrets: [gradle_init]
     restart: unless-stopped
     depends_on: [archipelago]
     environment:
       AP_SERVER: ws://archipelago:38281
       AP_PASSWORD: ${AP_PASSWORD:-}
       TRACKER_TITLE: ${TRACKER_TITLE:-Archipelago}
+      # The same hint switches, so the dashboard shows what is in play
+      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
+      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
     volumes:
       - ./data:/data:ro              # reads room.json written by the server
       - tracker-state:/state         # event history survives restarts
@@ -57,3 +65,8 @@ services:
 
 volumes:
   tracker-state:
+
+secrets:
+  # Gradle init script with the Nexus credentials; only needed when the tracker image is built
+  gradle_init:
+    file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}

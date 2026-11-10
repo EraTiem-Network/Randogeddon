@@ -1,0 +1,16 @@
+# Only the Gradle build goes into the tracker image (tracker.Dockerfile); the archipelago image has its own context
+**/build/
+**/.gradle/
+.gradle/
+.kotlin/
+.idea/
+*.iml
+archipelago/
+data/
+output/
+players/
+roms/
+custom_worlds/
+scripts/
+tracker/
+*.md
