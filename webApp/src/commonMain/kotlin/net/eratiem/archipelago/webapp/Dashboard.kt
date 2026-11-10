@@ -1,0 +1,737 @@
+package net.eratiem.archipelago.webapp
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import net.eratiem.archipelago.shared.EventType
+import net.eratiem.archipelago.shared.FeedEvent
+import net.eratiem.archipelago.shared.HintView
+import net.eratiem.archipelago.shared.ItemFlags
+import net.eratiem.archipelago.shared.PersonSummary
+import net.eratiem.archipelago.shared.PlayerStatus
+import net.eratiem.archipelago.shared.PlayerSummary
+import net.eratiem.archipelago.shared.Summary
+
+private const val THEME_KEY = "ap-theme"
+private const val FEED_VISIBLE_KEY = "ap-feed-visible"
+private const val FEED_POSITION_KEY = "ap-feed-position"
+private val FEED_WIDTH = 440.dp
+
+enum class FeedPosition(val label: String) { RIGHT("Right"), LEFT("Left"), BELOW("Below") }
+private val WIDE = 1100.dp
+private val GAP = 16.dp
+
+@Composable
+fun App() {
+  val scope = rememberCoroutineScope()
+  val repository = remember { TrackerRepository(scope) }
+  DisposableEffect(repository) {
+    repository.start()
+    onDispose { repository.stop() }
+  }
+  val summary by repository.summary.collectAsState()
+  val streamOpen by repository.streamOpen.collectAsState()
+
+  var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
+  val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
+
+  // Relative times ("5m ago") and the session duration move on without new data
+  var now by remember { mutableLongStateOf(Platform.now()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(30_000)
+      now = Platform.now()
+    }
+  }
+  LaunchedEffect(summary?.version) { now = Platform.now() }
+
+  var detailSlot by remember { mutableStateOf<Int?>(null) }
+  var detailPerson by remember { mutableStateOf<String?>(null) }
+
+  // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
+  var feedVisible by remember { mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false") }
+  var feedPosition by remember {
+    mutableStateOf(FeedPosition.entries.firstOrNull { it.name == Platform.loadSetting(FEED_POSITION_KEY) } ?: FeedPosition.RIGHT)
+  }
+  fun setFeedVisible(visible: Boolean) {
+    feedVisible = visible
+    Platform.saveSetting(FEED_VISIBLE_KEY, visible.toString())
+  }
+  fun setFeedPosition(position: FeedPosition) {
+    feedPosition = position
+    Platform.saveSetting(FEED_POSITION_KEY, position.name)
+  }
+
+  ArchipelagoTheme(dark) {
+    val p = LocalPalette.current
+    BoxWithConstraints(
+      // The page colour first: the tint on top of it is translucent
+      Modifier.fillMaxSize().background(p.background).background(
+        Brush.verticalGradient(listOf(p.brandEnd.copy(alpha = if (p.dark) 0.06f else 0.07f), p.background, p.background))
+      )
+    ) {
+      val wide = maxWidth >= WIDE
+      val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
+      Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        Column(Modifier.widthIn(max = 1400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GAP)) {
+          val s = summary
+          Hero(
+            s, streamOpen,
+            onToggleTheme = {
+              themeSetting = if (dark) "light" else "dark"
+              Platform.saveSetting(THEME_KEY, themeSetting)
+            },
+            feedVisible = feedVisible,
+            onToggleFeed = { setFeedVisible(!feedVisible) },
+          )
+          if (s == null) return@Column
+          val error = s.error
+          if (!s.connected && error != null) Banner(error)
+          Stats(s, now, contentWidth)
+          val feed: @Composable (Modifier) -> Unit = { modifier ->
+            Feed(s, modifier, feedPosition, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
+          }
+          val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
+          if (side) {
+            Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
+              if (feedPosition == FeedPosition.LEFT) feed(Modifier.width(FEED_WIDTH))
+              Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(GAP)) {
+                People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+                if (showHints(s)) Hints(s, compact = false)
+              }
+              if (feedPosition == FeedPosition.RIGHT) feed(Modifier.width(FEED_WIDTH))
+            }
+          } else {
+            // Narrow screens: left/right means right after the players, "below" at the very end
+            People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+            if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth())
+            if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
+            if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth())
+          }
+        }
+      }
+    }
+    detailPerson?.let { name ->
+      summary?.let { s ->
+        PersonDialog(name, s, now, repository, onClose = { detailPerson = null })
+      }
+    }
+    detailSlot?.let { slot ->
+      PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null })
+    }
+  }
+}
+
+/** The gradient card on top: title, seed, overall progress and the connection state. */
+@Composable
+private fun Hero(
+  summary: Summary?,
+  streamOpen: Boolean,
+  onToggleTheme: () -> Unit,
+  feedVisible: Boolean,
+  onToggleFeed: () -> Unit,
+) {
+  val p = LocalPalette.current
+  val live = streamOpen && summary?.connected == true
+  // Light: the full gradient. Dark: a dark card with a gradient glow, so the page stays dark
+  val heroBackground = if (p.dark) {
+    Brush.linearGradient(listOf(p.brandStart.copy(alpha = 0.30f), p.brandEnd.copy(alpha = 0.34f)))
+  } else {
+    Brush.linearGradient(listOf(p.brandStart, p.brandEnd))
+  }
+  Column(
+    Modifier.fillMaxWidth().card(p, RoundedCornerShape(20.dp), color = if (p.dark) p.panel else Color.Transparent)
+      .background(heroBackground)
+      .padding(horizontal = 20.dp, vertical = 18.dp)
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Column(Modifier.weight(1f)) {
+        Txt(summary?.title ?: "Archipelago", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
+        val meta = listOfNotNull(
+          summary?.seedName?.let { "Seed $it" },
+          summary?.serverVersion?.let { "AP $it" },
+          summary?.let { hintModeLabel(it) },
+        ).joinToString("  ·  ")
+        Txt(meta.ifEmpty { "Connecting to the tracker…" }, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
+      }
+      Row(
+        Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        Dot(if (live) Color(0xFF6CF0A9) else Color(0xFFFFB4A8))
+        Txt(
+          when {
+            !streamOpen -> "reconnecting…"
+            summary?.connected == true -> "live"
+            else -> "server offline"
+          }, size = 12.5.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 1
+        )
+      }
+      // Shows / hides the live feed; brighter while it is shown
+      IconButton(onToggleFeed, Icon.FEED, tint = Color.White,
+        background = Color.White.copy(alpha = if (feedVisible) 0.32f else 0.12f))
+      IconButton(onToggleTheme, Icon.THEME, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+    }
+    if (summary != null) {
+      val t = summary.totals
+      Spacer(Modifier.height(16.dp))
+      Row(verticalAlignment = Alignment.Bottom) {
+        Txt("${oneDecimal(t.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = Color.White)
+        Txt(
+          "  of ${grouped(t.total)} checks done", size = 13.sp, color = Color.White.copy(alpha = 0.85f),
+          modifier = Modifier.padding(bottom = 7.dp),
+        )
+      }
+      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))) {
+        if (t.percent > 0) {
+          Box(
+            Modifier.fillMaxWidth((t.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
+              .background(if (p.dark) p.brand else SolidColor(Color.White))
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun Banner(text: String) {
+  val p = LocalPalette.current
+  Txt(
+    text, size = 13.sp,
+    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.warn.copy(alpha = 0.15f))
+      .padding(horizontal = 14.dp, vertical = 10.dp),
+  )
+}
+
+/** Lays [count] cells out in rows of as many columns of at least [minWidth] as fit into [width]. */
+@Composable
+private fun Grid(count: Int, width: Dp, minWidth: Dp, gap: Dp = GAP, cell: @Composable (Int, Modifier) -> Unit) {
+  val columns = ((width + gap) / (minWidth + gap)).toInt().coerceIn(1, count.coerceAtLeast(1))
+  Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+    (0 until count).chunked(columns).forEach { row ->
+      // Cells of a row share the height of the tallest one
+      Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(gap)) {
+        row.forEach { cell(it, Modifier.weight(1f).fillMaxHeight()) }
+        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+      }
+    }
+  }
+}
+
+private data class Tile(val label: String, val value: String, val sub: String, val color: Color, val icon: Icon?)
+
+@Composable
+private fun Stats(s: Summary, now: Long, width: Dp) {
+  val p = LocalPalette.current
+  val t = s.totals
+  val open = s.hints.count { !it.found }
+  val tiles = buildList {
+    add(Tile("Goals", "${t.goals} / ${t.players}", "worlds finished", p.ok, Icon.FLAG))
+    add(Tile("Online", "${t.online}", "clients connected", p.useful, null))
+    if (t.lockable > 0) {
+      add(Tile("Unlocked", "${t.lockable - t.locked} / ${t.lockable}", "worlds opened", p.key, Icon.KEY))
+    }
+    if (showHints(s)) add(Tile("Hints", "${s.hints.size}", "$open not found yet", p.progression, null))
+    add(Tile("Session", duration(now - s.startedAt), "tracker uptime", p.brandStart, null))
+  }
+  Grid(tiles.size, width, 160.dp, gap = 12.dp) { i, modifier ->
+    val tile = tiles[i]
+    Row(modifier.card(p).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Box(
+        Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(tile.color.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
+      ) {
+        if (tile.icon != null) DrawnIcon(tile.icon, tile.color, 16.dp) else Dot(tile.color, 10.dp)
+      }
+      Column {
+        Txt(tile.label, size = 12.sp, color = p.muted, weight = FontWeight.Medium)
+        Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
+        Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 1)
+      }
+    }
+  }
+}
+
+private enum class PeopleSort(val label: String) { SESSION("Sort: session"), PROGRESS("Sort: progress"), ACTIVITY("Sort: last activity") }
+
+@Composable
+private fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOpenPerson: (String) -> Unit) {
+  val p = LocalPalette.current
+  var sort by remember { mutableStateOf(PeopleSort.SESSION) }
+  val people = when (sort) {
+    PeopleSort.SESSION -> s.people
+    PeopleSort.PROGRESS -> s.people.sortedByDescending { it.percent }
+    PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
+  }
+  val worlds = s.players.associateBy { it.slot }
+  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Column(Modifier.weight(1f)) {
+        Txt("Players", size = 17.sp, weight = FontWeight.Bold)
+        Txt("${s.people.size} people · ${s.players.size} worlds", size = 12.sp, color = p.muted)
+      }
+      Select(PeopleSort.entries.map { it to it.label }, sort, { sort = it })
+    }
+    if (people.isEmpty()) {
+      Panel(Modifier.fillMaxWidth()) { Txt("Waiting for the server…", color = p.muted, modifier = Modifier.padding(16.dp)) }
+    } else {
+      Grid(people.size, width, 330.dp) { i, modifier ->
+        PersonCard(people[i], people[i].slots.mapNotNull { worlds[it] }, now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+      }
+    }
+  }
+}
+
+@Composable
+private fun PersonCard(
+  person: PersonSummary,
+  worlds: List<PlayerSummary>,
+  now: Long,
+  hintsByPoints: Boolean,
+  modifier: Modifier,
+  onOpen: (Int) -> Unit,
+  onOpenPerson: (String) -> Unit,
+) {
+  val p = LocalPalette.current
+  val locked = worlds.count { it.status == PlayerStatus.LOCKED }
+  Column(modifier.card(p).padding(8.dp)) {
+    // The header opens the person's overview; each world row opens that world
+    HoverRow(onClick = { onOpenPerson(person.name) }, modifier = Modifier.fillMaxWidth()) {
+     Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Box {
+        Avatar(person.name)
+        if (person.online) {
+          Box(Modifier.align(Alignment.BottomEnd).size(13.dp).clip(CircleShape).background(p.panel).padding(2.dp)) {
+            Dot(p.ok, 9.dp)
+          }
+        }
+      }
+      Column(Modifier.weight(1f)) {
+        Txt(person.name, size = 16.sp, weight = FontWeight.Bold, maxLines = 1)
+        val played = worlds.sumOf { playTime(it, now) }
+        val parts = listOfNotNull(
+          "${worlds.size} ${if (worlds.size == 1) "world" else "worlds"}",
+          locked.takeIf { it > 0 }?.let { "$it locked" },
+          if (person.goals > 0) "${person.goals} done" else null,
+          if (played > 0) "${duration(played)} played" else null,
+        )
+        Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 1)
+      }
+      Txt("${oneDecimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
+     }
+    }
+    ProgressBar((person.percent / 100).toFloat(), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
+    worlds.forEach { WorldRow(it, now, hintsByPoints, onOpen) }
+  }
+}
+
+@Composable
+internal fun statusColor(status: PlayerStatus): Color = LocalPalette.current.let { p ->
+  when (status) {
+    PlayerStatus.GOAL, PlayerStatus.COMPLETE -> p.ok
+    PlayerStatus.RELEASED -> p.progression
+    PlayerStatus.PLAYING -> p.useful
+    PlayerStatus.LOCKED -> p.locked
+    PlayerStatus.IDLE -> p.muted
+  }
+}
+
+internal fun statusLabel(world: PlayerSummary): String = when (world.status) {
+  PlayerStatus.IDLE -> if (world.checked == 0) "not started" else "idle"
+  else -> world.status.name.lowercase()
+}
+
+/** One world of a person: game, progress, status; a locked one says what opens it. */
+@Composable
+private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, onOpen: (Int) -> Unit) {
+  val p = LocalPalette.current
+  val locked = world.status == PlayerStatus.LOCKED
+  HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
+      Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          if (world.online) Dot(p.ok, 7.dp)
+          Txt(world.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1,
+            modifier = Modifier.weight(1f).dimmedIf(locked))
+          Pill(statusLabel(world), statusColor(world.status), icon = when (world.status) {
+            PlayerStatus.LOCKED -> Icon.LOCK
+            PlayerStatus.GOAL -> Icon.FLAG
+            else -> null
+          })
+        }
+        Row(Modifier.fillMaxWidth()) {
+          Txt(world.name, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+          if (!locked) Txt(
+            if (world.online) "online" else ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1,
+            color = if (world.online) p.ok else p.muted,
+          )
+        }
+        Spacer(Modifier.height(6.dp))
+        ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+          Txt("${world.checked} / ${world.total} · ${world.progressionReceived} progression", size = 11.5.sp,
+            color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+          val played = playTime(world, now)
+          if (played > 0 || world.goalAt != null) {
+            Txt(
+              listOfNotNull(
+                "${duration(played)} played".takeIf { played > 0 },
+                world.goalAt?.let { "done ${Platform.clock(it)}" },
+              ).joinToString(" · "),
+              size = 11.5.sp, color = p.muted, maxLines = 1,
+            )
+          }
+        }
+        val points = world.hintPoints
+        val cost = world.hintCost
+        if (hintsByPoints && points != null && !locked) {
+          Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Dot(p.progression, 6.dp)
+            Txt(
+              "$points hint points" + when {
+                cost == null -> ""
+                cost == 0 -> " · hints are free"
+                else -> " · ${points / cost} ${if (points / cost == 1) "hint" else "hints"} available"
+              },
+              size = 11.5.sp, color = p.muted, maxLines = 1,
+            )
+          }
+        }
+        val lock = world.lock
+        if (lock != null) {
+          Row(
+            Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp))
+              .background((if (lock.unlocked) p.key else p.locked).copy(alpha = 0.12f))
+              .padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, if (lock.unlocked) p.key else p.locked, 12.dp)
+            Txt(
+              when {
+                lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${ago(it, now)}" } ?: "")
+                lock.hintedAt != null -> "Key hinted: ${lock.hintedAt}"
+                else -> "Waiting for its key (${lock.key})"
+              },
+              size = 11.5.sp, color = if (lock.unlocked) p.text else p.muted, maxLines = 2,
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+/** Hint states as players see them: Archipelago's HintStatus, plus "not found" for all open ones. */
+private enum class HintState(val label: String, val matches: (HintView) -> Boolean) {
+  OPEN("Not found", { !it.found }),
+  ALL("All states", { true }),
+  FOUND("Found", { it.found }),
+  PRIORITY("Priority", { !it.found && it.status == 30 }),
+  AVOID("Avoid", { !it.found && it.status == 20 }),
+  NO_PRIORITY("No priority", { !it.found && it.status == 10 }),
+  UNSPECIFIED("Unmarked", { !it.found && it.status == 0 }),
+}
+
+@Composable
+private fun Hints(s: Summary, compact: Boolean) {
+  val p = LocalPalette.current
+  var person by remember { mutableStateOf<String?>(null) }
+  var world by remember { mutableStateOf<String?>(null) }
+  var state by remember { mutableStateOf(HintState.OPEN) }
+  val worldsOfPerson = person?.let { name ->
+    val slots = s.people.firstOrNull { it.name == name }?.slots.orEmpty().toSet()
+    s.players.filter { it.slot in slots }
+  } ?: s.players
+  // A hint concerns a world if the item is for it or in it (key hints are "for" the world they unlock)
+  val shownWorlds = world?.let { setOf(it) } ?: worldsOfPerson.map { it.name }.toSet()
+  val hints = s.hints.filter { h ->
+    (person == null && world == null || h.receiverName in shownWorlds || h.finderName in shownWorlds) && state.matches(h)
+  }
+  Panel(Modifier.fillMaxWidth(), title = "Hints", subtitle = "${s.hints.count { !it.found }} open · ${s.hints.size} total", actions = {
+    if (s.people.size > 1) {
+      Select(listOf<Pair<String?, String>>(null to "All players") + s.people.map { it.name to it.name }, person, {
+        person = it
+        world = null
+      })
+    }
+    Select(listOf<Pair<String?, String>>(null to "All worlds") + worldsOfPerson.map { it.name to it.name }, world, { world = it })
+    Select(HintState.entries.map { it to it.label }, state, { state = it })
+  }) {
+    if (hints.isEmpty()) {
+      Txt(if (s.hints.isEmpty()) "No hints yet." else "No hints match the filter.", color = p.muted, modifier = Modifier.padding(16.dp))
+      return@Panel
+    }
+    if (!compact) {
+      HintRow(listOf("For", "Item", "Location", "In world of", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+      Divider()
+    }
+    Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
+      hints.forEachIndexed { i, h ->
+        if (i > 0) Divider()
+        if (compact) CompactHint(h) else HintRow(listOf(
+          { Txt(h.receiverName, size = 13.sp, weight = FontWeight.SemiBold) },
+          { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) },
+          {
+            Column {
+              Txt(h.locationName, size = 13.sp)
+              if (h.entrance.isNotEmpty()) Txt(h.entrance, size = 12.sp, color = p.muted)
+            }
+          },
+          { Txt(h.finderName, size = 13.sp, weight = FontWeight.SemiBold) },
+          { HintStatus(h) },
+        ))
+      }
+    }
+  }
+}
+
+@Composable
+internal fun ItemText(name: String, flags: Int, key: Boolean) {
+  val p = LocalPalette.current
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    if (key) DrawnIcon(Icon.KEY, p.key, 12.dp)
+    Txt(name, size = 13.sp, weight = FontWeight.SemiBold, color = if (key) p.key else p.item(flags))
+  }
+}
+
+private val HINT_WEIGHTS = listOf(1f, 1.5f, 2f, 1.2f, .7f)
+
+@Composable
+private fun HintRow(cells: List<@Composable () -> Unit>) {
+  Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    cells.forEachIndexed { i, cell -> Box(Modifier.weight(HINT_WEIGHTS[i])) { cell() } }
+  }
+}
+
+@Composable
+private fun CompactHint(h: HintView) {
+  val p = LocalPalette.current
+  Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Txt(buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(h.receiverName) }
+        append("'s ")
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = p.item(h.itemFlags))) { append(h.itemName) }
+      }, size = 13.sp, modifier = Modifier.weight(1f))
+      HintStatus(h)
+    }
+    Txt("${h.locationName} · ${h.finderName}'s world", size = 12.sp, color = p.muted)
+  }
+}
+
+/** Archipelago's HintStatus: players can mark their hints as priority, avoid or no priority in their client. */
+@Composable
+internal fun HintStatus(h: HintView) {
+  val p = LocalPalette.current
+  when {
+    h.found || h.status == 40 -> Pill("found", p.ok)
+    h.status == 30 -> Pill("priority", p.brandStart)
+    h.status == 20 -> Pill("avoid", p.trap)
+    h.status == 10 -> Pill("no priority", p.muted)
+    else -> Pill("open", p.warn)
+  }
+}
+
+private enum class FeedKind(val label: String) {
+  ALL("All events"), PROGRESSION("Progression"), ITEMS("Items"), KEYS("Keys & goals"), HINTS("Hints"), OTHER("Connections & chat")
+}
+
+@Composable
+private fun Feed(
+  s: Summary,
+  modifier: Modifier,
+  position: FeedPosition,
+  onPosition: (FeedPosition) -> Unit,
+  onHide: () -> Unit,
+) {
+  val p = LocalPalette.current
+  var who by remember { mutableStateOf<Int?>(null) }
+  var kind by remember { mutableStateOf(FeedKind.ALL) }
+  val events = s.events.asReversed().filter { e ->
+    (who == null || who in listOfNotNull(e.slot, e.sender, e.receiver, e.finder)) &&
+      when (kind) {
+        FeedKind.ALL -> true
+        FeedKind.PROGRESSION -> e.type == EventType.ITEM && e.flags and ItemFlags.PROGRESSION != 0
+        FeedKind.ITEMS -> e.type == EventType.ITEM
+        FeedKind.KEYS -> e.type in setOf(EventType.UNLOCK, EventType.GOAL, EventType.RELEASE, EventType.COLLECT)
+        FeedKind.HINTS -> e.type == EventType.HINT
+        FeedKind.OTHER -> e.type in setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN)
+      }
+  }
+  Panel(modifier, title = "Live feed", subtitle = "newest first", actions = {
+    Select(FeedPosition.entries.map { it to it.label }, position, onPosition)
+    IconButton(onHide, Icon.CLOSE)
+  }) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Select(listOf<Pair<Int?, String>>(null to "Everyone") + s.players.map { it.slot to it.name }, who, { who = it })
+      Select(FeedKind.entries.map { it to it.label }, kind, { kind = it })
+    }
+    Divider()
+    if (events.isEmpty()) {
+      Txt("Nothing has happened yet.", color = p.muted, modifier = Modifier.padding(16.dp))
+      return@Panel
+    }
+    Column(
+      Modifier.heightIn(max = if (position == FeedPosition.BELOW) 520.dp else 980.dp)
+        .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)
+    ) {
+      events.forEach { FeedRow(it) }
+    }
+  }
+}
+
+@Composable
+internal fun FeedRow(e: FeedEvent) {
+  val p = LocalPalette.current
+  val (color, icon) = when (e.type) {
+    EventType.ITEM -> p.item(e.flags) to null
+    EventType.UNLOCK -> p.key to Icon.KEY
+    EventType.GOAL -> p.ok to Icon.FLAG
+    EventType.HINT -> p.progression to null
+    EventType.RELEASE, EventType.COLLECT -> p.progression to null
+    else -> p.muted to null
+  }
+  val highlight = e.type == EventType.UNLOCK || e.type == EventType.GOAL
+  Row(
+    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(10.dp))
+      .background(if (highlight) color.copy(alpha = 0.1f) else Color.Transparent)
+      .padding(horizontal = 8.dp, vertical = 7.dp),
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Box(Modifier.padding(top = 3.dp).size(18.dp), contentAlignment = Alignment.Center) {
+      if (icon != null) DrawnIcon(icon, color, 14.dp) else Dot(color, 8.dp)
+    }
+    Column(Modifier.weight(1f)) { FeedLine(e) }
+    Txt(Platform.clock(e.ts), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+  }
+}
+
+@Composable
+private fun FeedLine(e: FeedEvent) {
+  val p = LocalPalette.current
+  val bold = SpanStyle(fontWeight = FontWeight.SemiBold)
+  val system = SpanStyle(color = p.muted, fontStyle = FontStyle.Italic)
+  val item = SpanStyle(fontWeight = FontWeight.SemiBold, color = p.item(e.flags))
+  Txt(buildAnnotatedString {
+    when (e.type) {
+      EventType.ITEM -> {
+        withStyle(bold) { append(e.senderName ?: "") }
+        if (e.sender == e.receiver) {
+          append(" found their ")
+          withStyle(item) { append(e.itemName ?: "") }
+        } else {
+          append(" sent ")
+          withStyle(item) { append(e.itemName ?: "") }
+          append(" to ")
+          withStyle(bold) { append(e.receiverName ?: "") }
+        }
+      }
+
+      EventType.UNLOCK -> {
+        withStyle(bold) { append(e.senderName ?: "") }
+        append(" found the key: ")
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = p.key)) { append(e.playerName ?: "a world") }
+        append(" is unlocked!")
+      }
+
+      EventType.HINT -> {
+        withStyle(system) { append("Hint: ") }
+        withStyle(bold) { append(e.receiverName ?: "") }
+        append("'s ")
+        withStyle(item) { append(e.itemName ?: "") }
+        append(" is at ${e.locationName} in ")
+        withStyle(bold) { append(e.finderName ?: "") }
+        append("'s world")
+        if (e.found) withStyle(SpanStyle(color = p.ok, fontWeight = FontWeight.SemiBold)) { append(" (found)") }
+      }
+
+      EventType.GOAL -> withStyle(SpanStyle(color = p.ok, fontWeight = FontWeight.Bold)) {
+        append("${e.playerName} completed their goal!")
+      }
+
+      EventType.RELEASE -> { withStyle(bold) { append(e.playerName ?: "") }; withStyle(system) { append(" released their remaining items") } }
+      EventType.COLLECT -> { withStyle(bold) { append(e.playerName ?: "") }; withStyle(system) { append(" collected their items") } }
+      EventType.JOIN -> { withStyle(bold) { append(e.playerName ?: "") }; withStyle(system) { append(" joined") } }
+      EventType.PART -> { withStyle(bold) { append(e.playerName ?: "") }; withStyle(system) { append(" left") } }
+      EventType.CHAT -> { withStyle(bold) { append(e.playerName ?: "") }; append(": ${e.message ?: ""}") }
+      EventType.COUNTDOWN -> withStyle(SpanStyle(color = p.ok, fontWeight = FontWeight.Bold)) { append(e.message ?: "") }
+    }
+  }, size = 13.5.sp)
+  val location = e.locationName
+  if ((e.type == EventType.ITEM || e.type == EventType.UNLOCK) && !location.isNullOrEmpty()) {
+    Txt(location, size = 11.5.sp, color = p.muted)
+  }
+}
+
+/** Connected time of [world] so far, including the running session. */
+fun playTime(world: PlayerSummary, now: Long): Long =
+  world.playTimeMs + (world.onlineSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
+
+/** Hints are shown when a hint system is in play, or when the host handed some out anyway (/hint). */
+private fun showHints(s: Summary): Boolean = s.hintSettings.enabled || s.hints.isNotEmpty()
+
+private fun hintModeLabel(s: Summary): String {
+  val h = s.hintSettings
+  val points = when {
+    !h.pointHints -> null
+    h.costPercent == 0 -> "free hints"
+    else -> "hints ${h.costPercent}%"
+  }
+  return when {
+    points != null && h.autoHints -> "$points + auto hints"
+    points != null -> points
+    h.autoHints -> "auto hints only"
+    else -> "no hints"
+  }
+}
