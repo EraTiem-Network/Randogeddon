@@ -6,7 +6,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 ## Conventions
 
 - **Addresses:** the app runs at `randomizer.example.net`; each session's game server at
-  `<session-id>.randomizer.example.net:443`.
+  `<session-id>.randomizer.example.net:443` (TLS, `wss://`).
+    - Plain `ws://<session-id>.randomizer.example.net:2401` as the fallback for game clients that can't do TLS: one
+      port for all sessions, routed by host name like 443, but unencrypted (passwords included).
+    - Current clients connect over TLS: Launcher-based clients retry with `wss://`, and Archipelago.MultiClient.Net
+      (used by many modded games) tries `wss://` first since April 2023. Older or unmaintained mods may only speak
+      `ws://`, so every game of a session is tested with its real client before session day.
+- **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
     - Passwords players type into game clients use only symbols every client accepts and that don't break config
@@ -67,16 +73,29 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] Delete a session: stop the server, remove the seed, save and logins
 - [ ] Only one session at a time (creating a second one is refused until the first is deleted)
 - [ ] Optimal path: the spoiler playthrough rendered as a route (sphere by sphere)
-    - Hidden by default (it is a full spoiler) and only shown after an explicit "reveal" by an admin.
+    - Hidden by default (it is a full spoiler). Admins can reveal it at any time; all players of the session see it
+      once the session is finished.
+- [ ] Finish a session
+    - Automatically when every world has reached its goal or was released; an admin can also finish it by hand
+      earlier (e.g. someone dropped out), and reopen it within a few days if it was a mistake.
+    - Finishing stops the game server, makes the session read-only history, reveals the optimal path to its players
+      and starts the auto-deletion timer of its users (Phase 5).
+    - Open: how long finished sessions are kept, and who can see them (TBD).
 - [ ] Cheats: give items (`/send`), checks (`/send_location`), release and collect, from the panel
     - Every cheat is logged with who did it, and shown in the live feed as a cheat.
 - [ ] Cheat hints, if enabled for the session: admins give free hints (`/hint`, `/hint_location`)
+- [ ] Two-factor login (TOTP, any authenticator app) for admins, since they can cheat and delete sessions
+    - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else later.
 - [ ] The tracker runs the game servers itself
     - The tracker image gets Archipelago (pinned release, world requirements, `serve.py`, World Locks).
     - It starts one MultiServer process per session with the session's options, and stops and restarts it on request.
     - It reads the server log and sends console commands through the process's stdin.
     - Seed generation runs in the tracker too (for "Create a session"); `scripts/generate.sh` stays as a CLI tool.
     - The separate `archipelago` container is removed. The tracker needs no Docker access, it only controls processes.
+- [ ] A session keeps the Archipelago version it was generated with
+    - Saved with the session, together with the apworlds it used (custom worlds, World Locks).
+    - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
+      update never breaks a running session. Releases no session uses any more can be dropped.
 
 ## Phase 4: Multiple Sessions
 
@@ -88,14 +107,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
   Phase 2)
 - [ ] Admins see and control all sessions
 - [ ] Each session's server is reachable from outside
-    - Preferred: one host name per session, `<session-id>.randomizer.example.net:443`. Traefik routes the WebSocket
-      by host name to that session's port inside the container.
-    - Needs a wildcard DNS entry `*.randomizer.example.net` and a wildcard certificate (Let's Encrypt only issues
-      those with the DNS challenge, so Traefik's certificate resolver needs DNS-provider access).
-    - Fallback, if host names don't work: one public port per session from a fixed range.
+    - One host name per session, `<session-id>.randomizer.example.net`, on 443 (TLS) and 2401 (plain fallback, see
+      Conventions). Traefik routes the WebSocket by host name to that session's port inside the container.
+    - Certificates through Traefik's HTTP challenge, one per session host name (Let's Encrypt has no wildcard
+      certificates with the HTTP challenge). For that, the tracker writes a Traefik router per session into a watched
+      file (file provider) and removes it when the session is deleted; the first connection to a new session waits
+      a few seconds for its certificate.
+    - DNS: one wildcard record `*.randomizer.example.net` pointing to the server; no API access for Traefik needed.
     - Not paths (`randomizer.example.net/<session-id>`): Launcher-based clients would accept them, but many modded
       game clients only take host:port.
-    - Open: the port range (defined later).
+    - Open: the session ID format (random like `k7f3q9` or readable like `friday-chaos`), decided in this phase.
 
 ## Phase 5: Proper User Management
 
@@ -111,7 +132,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
 - [ ] Automatic account deletion, chosen when signing up
     - Delete after a time span (weeks, months or years, from a fixed list) or never.
-    - The time counts from the end of the user's last session.
+    - The time counts from the end of the user's last session (when it was finished, Phase 3).
     - The user is told before the deletion happens.
     - Deleting removes only the account (login, e-mail address, settings). Sessions stay viewable: they keep the user's
       UUID and the name the user had in that session, saved with the session.
