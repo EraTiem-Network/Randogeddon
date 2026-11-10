@@ -3,6 +3,16 @@
 The target of this project, phase by phase. Items within a phase are roughly in implementation order.
 `Open:` marks decisions that are not made yet.
 
+## Conventions
+
+- **Addresses:** the app runs at `randomizer.example.net`; each session's game server at
+  `<session-id>.randomizer.example.net:443`.
+- **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
+  letters, digits and symbols, from a cryptographically secure random source.
+    - Passwords players type into game clients use only symbols every client accepts and that don't break config
+      files: printable ASCII, no spaces, quotes or backslashes. Some games only offer an in-game text field without
+      copy and paste.
+
 ## Phase 1: Basic Tracker (done)
 
 *One session, run by hand: generate, deploy, watch.*
@@ -36,6 +46,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Schema with Flyway migrations, access through Exposed (versions CoreSync last used: Exposed 1.6.0,
       Flyway 13.11.1, PostgreSQL JDBC 42.7.14).
     - Connection settings and password in `.env`.
+- [ ] Generated room password for every session
+    - Replaces the manual `AP_PASSWORD`; a session never runs without a password.
+    - Logged-in players see the server address, their slot names and their password on the dashboard, so the login
+      also guards access to the game.
+- [ ] Password per slot
+    - Every slot (world) gets its own generated password; a player can only connect as their own worlds.
+    - Checked by `archipelago/serve.py` against the password field of the client's `Connect` packet, the same field
+      every client (modded games included) already sends the room password in, so no client needs changes.
+    - The tracker's own connections authenticate with an internal secret that players never see.
+    - Hooks into MultiServer's connection handling: re-check it on every Archipelago update.
 
 ## Phase 3: Admin Panel
 
@@ -68,9 +88,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
   Phase 2)
 - [ ] Admins see and control all sessions
 - [ ] Each session's server is reachable from outside
-    - Preferred: one host name per session, `<session>.ap.example.com:443`. Traefik routes the WebSocket by host name
-      to that session's port inside the container (wildcard DNS entry and certificate).
+    - Preferred: one host name per session, `<session-id>.randomizer.example.net:443`. Traefik routes the WebSocket
+      by host name to that session's port inside the container.
+    - Needs a wildcard DNS entry `*.randomizer.example.net` and a wildcard certificate (Let's Encrypt only issues
+      those with the DNS challenge, so Traefik's certificate resolver needs DNS-provider access).
     - Fallback, if host names don't work: one public port per session from a fixed range.
+    - Not paths (`randomizer.example.net/<session-id>`): Launcher-based clients would accept them, but many modded
+      game clients only take host:port.
     - Open: the port range (defined later).
 
 ## Phase 5: Proper User Management
