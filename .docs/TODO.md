@@ -22,7 +22,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] Generate a login (username + random password) for every person of the session
     - People come from `session.yaml`; the username defaults to the person's name.
     - Passwords are stored only as hashes (Argon2id); the plain password is shown once.
-    - Open: how the logins reach the players (printed by the deploy script, shown once on an admin page, ...).
+    - The logins are printed once when they are generated; the host hands them to the players. Phase 5 replaces
+      this with invitations.
 - [ ] Login page; the dashboard is only accessible when logged in
     - Session cookie (HTTP-only, Secure, SameSite=Strict) with an expiry, logout.
     - Rate limiting and a short delay on failed logins.
@@ -30,7 +31,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - `/api/*` and `/api/stream` answer 401 without a valid session.
     - The web app bundle and the login page contain no session data (no seed, names or worlds).
     - The service worker never caches API responses; logging out clears what the app has in memory.
-- [ ] Logins survive tracker restarts (stored next to the tracker state)
+- [ ] PostgreSQL, from this phase on (new `postgres` service in compose)
+    - Users are identified by a UUID from the start; the name is the display name, unique among active accounts.
+    - Schema with Flyway migrations, access through Exposed (versions CoreSync last used: Exposed 1.6.0,
+      Flyway 13.11.1, PostgreSQL JDBC 42.7.14).
+    - Connection settings and password in `.env`.
 
 ## Phase 3: Admin Panel
 
@@ -46,8 +51,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] Cheats: give items (`/send`), checks (`/send_location`), release and collect, from the panel
     - Every cheat is logged with who did it, and shown in the live feed as a cheat.
 - [ ] Cheat hints, if enabled for the session: admins give free hints (`/hint`, `/hint_location`)
-- Open: how the panel controls MultiServer. Either the tracker starts it as a child process (simplest, needed for
-  Phase 4 anyway) or it talks to Docker. This decides whether the `archipelago` container stays.
+- [ ] The tracker runs the game servers itself
+    - The tracker image gets Archipelago (pinned release, world requirements, `serve.py`, World Locks).
+    - It starts one MultiServer process per session with the session's options, and stops and restarts it on request.
+    - It reads the server log and sends console commands through the process's stdin.
+    - Seed generation runs in the tracker too (for "Create a session"); `scripts/generate.sh` stays as a CLI tool.
+    - The separate `archipelago` container is removed. The tracker needs no Docker access, it only controls processes.
 
 ## Phase 4: Multiple Sessions
 
@@ -58,8 +67,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
   Phase 2)
 - [ ] Admins see and control all sessions
-- Open: how players reach each server. Either one port per session (needs a port range in Traefik or the firewall)
-  or one host name per session (`<session>.ap.example.com`, wildcard certificate). AP clients connect to host:port.
+- [ ] Each session's server is reachable from outside
+    - Preferred: one host name per session, `<session>.ap.example.com:443`. Traefik routes the WebSocket by host name
+      to that session's port inside the container (wildcard DNS entry and certificate).
+    - Fallback, if host names don't work: one public port per session from a fixed range.
+    - Open: the port range (defined later).
 
 ## Phase 5: Proper User Management
 
@@ -68,14 +80,22 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] When creating a session: select existing users, or add new ones by e-mail address
 - [ ] New users get an invitation mail with a link to choose their username and password
     - The link is single-use and expires.
-    - Open: mail delivery (SMTP server, sender address).
+    - No open sign-up: an account can only be created with the link from an invitation mail, for the address the
+      admin entered.
+    - Mail via SMTP on `mail.example.net`, sender `randomizer@example.net`, credentials in `.env`. The host is
+      configurable: if the TLS certificate is issued for `mail.example.org`, connect by that name.
 - [ ] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
 - [ ] Automatic account deletion, chosen when signing up
     - Delete after a time span (weeks, months or years, from a fixed list) or never.
     - The time counts from the end of the user's last session.
     - The user is told before the deletion happens.
-    - Open: what "deleted" removes (account only, or also the user's entries in old sessions' history).
+    - Deleting removes only the account (login, e-mail address, settings). Sessions stay viewable: they keep the user's
+      UUID and the name the user had in that session, saved with the session.
+- [ ] Display names are unique among active accounts
+    - Checked without regard to case ("Alice" and "alice" can't both exist), at sign-up and when renaming; a deleted
+      account frees its name.
+    - The UI shows only the name; the UUID appears only when hovering over it (e.g. to tell a deleted user's name in
+      an old session from a new account with the same name).
 - [ ] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.
-- Open: where users and sessions are stored. With accounts that live longer than a session, a database (SQLite or
-  PostgreSQL) instead of files.
+    - Renaming doesn't change the names saved in old sessions.
