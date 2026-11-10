@@ -1,0 +1,6 @@
+# Nobody plays this slot: it holds the keys of the locked worlds (apworlds/world_locks)
+name: Locks
+game: World Locks
+World Locks:
+  locked_worlds: ["Alice-Celeste", "Bob-Yacht", "Carol-DLC"]
+  early_keys: true
