@@ -2,7 +2,7 @@
 # Put a generated seed on the server and (re)start the stack.
 #
 #   ./scripts/deploy-seed.sh output/AP_123.zip                         # on the server itself
-#   ./scripts/deploy-seed.sh output/AP_123.zip me@host:/srv/archipelago  # from your PC via ssh
+#   ./scripts/deploy-seed.sh output/AP_123.zip me@host:/srv/randogeddon  # from your PC via ssh
 #
 # Older seeds in data/ are moved to data/old/ (with their .apsave) so the server picks the new one.
 # session.yaml (who plays which worlds, for the dashboard) is copied along if it exists; another file can be given

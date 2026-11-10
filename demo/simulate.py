@@ -7,8 +7,8 @@ the first two keys are found after a while, the third one is only hinted, so one
 Locked worlds are only played once their key has been found, just like the real session.
 
 Run inside the archipelago image (it has aiohttp):
-    docker run --rm --network archipelago_default -v $PWD/demo:/demo:ro --entrypoint python \
-        archipelago-server:0.6.8 /demo/simulate.py ws://archipelago:38281
+    docker run --rm --network randogeddon_default -v $PWD/demo:/demo:ro --entrypoint python \
+        randogeddon-server:0.6.8 /demo/simulate.py ws://archipelago:38281
 """
 import asyncio
 import json

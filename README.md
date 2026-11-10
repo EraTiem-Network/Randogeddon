@@ -1,11 +1,15 @@
-# Archipelago session server + live tracker
+# Randogeddon
 
-Self-hosted [Archipelago](https://archipelago.gg) multiworld server (plain `MultiServer`, AP **0.6.8**)
-plus a custom live dashboard. Everything runs in Docker behind an existing Traefik.
+Our self-hosted [Archipelago](https://archipelago.gg) multiworld server (plain `MultiServer`, AP **0.6.8**)
+plus a custom live dashboard. Everything runs in Docker behind an existing Traefik. The dashboard is at
+`randogeddon.eratiem.net`, the session's game server at `<session-id>.randogeddon.eratiem.net:443`.
+
+What's done and what comes next (login, admin panel, multiple sessions, user management): [.docs/TODO.md](.docs/TODO.md).
 
 ```
               players' game clients                      browser
-                       │ wss://ap.example.com:443           │ https://tracker.example.com
+                       │ wss://<session-id>.randogeddon     │ https://randogeddon
+                       │       .example.net:443             │         .example.net
                  ┌─────▼─────────────── Traefik ────────────▼─────┐
                  │                                                │
         ┌────────▼────────┐  ws://archipelago:38281   ┌───────────▼──────────┐
@@ -35,8 +39,8 @@ plus a custom live dashboard. Everything runs in Docker behind an existing Traef
 ## One-time server setup
 
 ```sh
-git clone <this repo> /srv/archipelago && cd /srv/archipelago
-cp .env.example .env     # set AP_HOST, TRACKER_HOST, TRAEFIK_*, AP_PASSWORD …
+git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
+cp .env.example .env     # set SESSION_ID, TRAEFIK_*, AP_PASSWORD …
 docker compose build     # takes a few minutes (every world's requirements, the Gradle build)
 ```
 
@@ -44,15 +48,22 @@ Building the tracker image needs **BuildKit** (the `docker buildx` plugin, inclu
 on Arch: `pacman -S docker-buildx`) and your Gradle init script with the Nexus credentials. Compose passes the init
 script into the build as a secret (default `~/.gradle/init.gradle.kts`, change with `GRADLE_INIT_SCRIPT` in `.env`);
 it never ends up in the image. If the server has no init script, build on your PC and copy the image over:
-`docker save archipelago-tracker:latest | ssh you@server docker load`.
+`docker save randogeddon-tracker:latest | ssh you@server docker load`.
 
 `.env` sets `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`, so plain `docker compose …`
 always uses the Traefik labels. Check `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` and
-`TRAEFIK_CERTRESOLVER` against your Traefik setup. If you configure Traefik via the file provider
-instead of labels, the two routes are:
+`TRAEFIK_CERTRESOLVER` against your Traefik setup.
 
-- `Host(ap.example.com)` → `http://archipelago:38281` (websocket; Traefik handles the upgrade, no extra config)
-- `Host(tracker.example.com)` → `http://tracker:8000` (uses SSE; Traefik doesn't buffer it by default)
+DNS: a wildcard record `*.randogeddon.eratiem.net` (and `randogeddon.eratiem.net` itself) pointing at the server,
+so a new session ID needs no DNS change. Certificates come per host name from the cert resolver (HTTP challenge).
+If you configure Traefik via the file provider instead of labels, the two routes are:
+
+- `Host(<SESSION_ID>.randogeddon.eratiem.net)` → `http://archipelago:38281` (websocket; Traefik handles the upgrade,
+  no extra config)
+- `Host(randogeddon.eratiem.net)` → `http://tracker:8000` (uses SSE; Traefik doesn't buffer it by default)
+
+Set a new `SESSION_ID` in `.env` for every session (a DNS label, e.g. `winter26`); it only changes the game server's
+host name. More than one session at a time comes later, see [.docs/TODO.md](.docs/TODO.md) (Phase 4).
 
 The dashboard shows hints, which are mild spoilers. To restrict it, the Traefik overlay has a
 commented-out basic-auth middleware.
@@ -75,20 +86,20 @@ dashboard shows "server offline".
    patch file (for ROM-based games).
 3. **Deploy:**
    ```sh
-   ./scripts/deploy-seed.sh output/AP_<seed>.zip you@server:/srv/archipelago
+   ./scripts/deploy-seed.sh output/AP_<seed>.zip you@server:/srv/randogeddon
    ```
    This copies the zip (and `session.yaml`, if there is one) into `data/`, moves any previous seed and save to
    `data/old/`, and recreates both containers. The server loads the zip directly. `session.yaml` can be edited on
    the server at any time; the dashboard picks up changes by itself.
 4. **Hand out** each player's patch file from the zip (if their game uses one) and the connection info:
-   - Server: `ap.example.com:443`. Clients try `wss://` first, so TLS through Traefik just works.
+   - Server: `<session-id>.randogeddon.eratiem.net:443`. Clients try `wss://` first, so TLS through Traefik just works.
    - Slot name: the `name:` from their YAML. Password: `AP_PASSWORD`.
-5. **Watch** at `https://tracker.example.com`. Phones can install it as an app (see below).
+5. **Watch** at `https://randogeddon.eratiem.net`. Phones can install it as an app (see below).
 
 ### Running commands on the server console
 
 ```sh
-docker attach archipelago-archipelago-1     # detach with Ctrl-P Ctrl-Q (NOT Ctrl-C, that stops the server)
+docker compose attach archipelago     # detach with Ctrl-P Ctrl-Q (NOT Ctrl-C, that stops the server)
 /players              # who's connected
 /send <player> <item> # give an item
 /hint <player> <item> # free hint
@@ -181,7 +192,7 @@ API: `GET /api/state` (summary JSON), `GET /api/player/<slot>`, `GET /api/stream
 
 The dashboard is a web app (PWA), so no app store or Apple account is needed:
 
-- **Android (Chrome):** open `https://tracker.example.com` → menu ⋮ → *Install app* (or *Add to Home screen*).
+- **Android (Chrome):** open `https://randogeddon.eratiem.net` → menu ⋮ → *Install app* (or *Add to Home screen*).
 - **iPhone / iPad (Safari):** open the page → Share → *Add to Home Screen*. It opens full screen with its own icon.
 
 It needs a browser with WebAssembly GC: iOS/Safari 18.2+, Chrome/Edge 119+, Firefox 120+. Older browsers get a

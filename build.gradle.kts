@@ -9,7 +9,7 @@ plugins {
   idea
 }
 
-group = "net.eratiem.archipelago"
+group = "net.eratiem.randogeddon"
 version = "0.1.0-SNAPSHOT"
 
 allprojects {

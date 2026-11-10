@@ -1,4 +1,4 @@
-rootProject.name = "Archipelago"
+rootProject.name = "Randogeddon"
 
 pluginManagement {
   repositories {

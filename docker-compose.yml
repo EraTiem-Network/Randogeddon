@@ -1,10 +1,10 @@
 # Base stack. Combine with an overlay:
 #   server (Traefik):  COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml   (set in .env)
 #   local test:        COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
-name: archipelago
+name: randogeddon
 
 x-ap-image: &ap-image
-  image: archipelago-server:${AP_VERSION:-0.6.8}
+  image: randogeddon-server:${AP_VERSION:-0.6.8}
   build:
     context: ./archipelago
     args:
@@ -15,7 +15,7 @@ services:
     <<: *ap-image
     command: ["server"]
     restart: unless-stopped
-    # Keeps the server console usable: `docker attach archipelago-archipelago-1` (detach: Ctrl-P Ctrl-Q)
+    # Keeps the server console usable: `docker compose attach archipelago` (detach: Ctrl-P Ctrl-Q)
     stdin_open: true
     tty: true
     environment:
@@ -34,7 +34,7 @@ services:
       - ./custom_worlds:/ap/custom_worlds:ro
 
   tracker:
-    image: archipelago-tracker:latest
+    image: randogeddon-tracker:latest
     build:
       context: .
       dockerfile: tracker.Dockerfile
@@ -44,7 +44,7 @@ services:
     environment:
       AP_SERVER: ws://archipelago:38281
       AP_PASSWORD: ${AP_PASSWORD:-}
-      TRACKER_TITLE: ${TRACKER_TITLE:-Archipelago}
+      TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
       # The same hint switches, so the dashboard shows what is in play
       AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
       AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}

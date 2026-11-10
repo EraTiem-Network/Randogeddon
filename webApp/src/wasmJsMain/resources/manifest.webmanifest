@@ -1,6 +1,6 @@
 {
-  "name": "Archipelago Tracker",
-  "short_name": "AP Tracker",
+  "name": "Randogeddon",
+  "short_name": "Randogeddon",
   "description": "Live tracker for our Archipelago multiworld session",
   "start_url": "./",
   "scope": "./",

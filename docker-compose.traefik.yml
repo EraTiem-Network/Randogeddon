@@ -1,32 +1,32 @@
 # Overlay for the server: route both services through an existing Traefik.
-# Game server: wss://${AP_HOST}:443  (players enter "${AP_HOST}:443" in their client)
-# Dashboard:   https://${TRACKER_HOST}
+# Game server: wss://${SESSION_ID}.${BASE_DOMAIN}:443  (players enter "${SESSION_ID}.${BASE_DOMAIN}:443" in their client)
+# Dashboard:   https://${BASE_DOMAIN}
 services:
   archipelago:
     networks: [default, traefik]
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.archipelago.rule: Host(`${AP_HOST}`)
-      traefik.http.routers.archipelago.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
-      traefik.http.routers.archipelago.tls: "true"
-      traefik.http.routers.archipelago.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      traefik.http.services.archipelago.loadbalancer.server.port: "38281"
+      traefik.http.routers.randogeddon-ap.rule: Host(`${SESSION_ID:?set SESSION_ID in .env}.${BASE_DOMAIN:-randogeddon.eratiem.net}`)
+      traefik.http.routers.randogeddon-ap.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.randogeddon-ap.tls: "true"
+      traefik.http.routers.randogeddon-ap.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.randogeddon-ap.loadbalancer.server.port: "38281"
 
   tracker:
     networks: [default, traefik]
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.ap-tracker.rule: Host(`${TRACKER_HOST}`)
-      traefik.http.routers.ap-tracker.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
-      traefik.http.routers.ap-tracker.tls: "true"
-      traefik.http.routers.ap-tracker.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      traefik.http.services.ap-tracker.loadbalancer.server.port: "8000"
+      traefik.http.routers.randogeddon-tracker.rule: Host(`${BASE_DOMAIN:-randogeddon.eratiem.net}`)
+      traefik.http.routers.randogeddon-tracker.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.randogeddon-tracker.tls: "true"
+      traefik.http.routers.randogeddon-tracker.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.randogeddon-tracker.loadbalancer.server.port: "8000"
       # Optional: protect the dashboard (it shows hints = spoilers). Generate with `htpasswd -nb user pass`
       # and double every `$` in the hash. Then uncomment both lines:
-      # traefik.http.middlewares.ap-tracker-auth.basicauth.users: "friends:$$apr1$$...."
-      # traefik.http.routers.ap-tracker.middlewares: ap-tracker-auth
+      # traefik.http.middlewares.randogeddon-tracker-auth.basicauth.users: "friends:$$apr1$$...."
+      # traefik.http.routers.randogeddon-tracker.middlewares: randogeddon-tracker-auth
 
 networks:
   traefik:
