@@ -3,6 +3,8 @@
 Self-hosted [Archipelago](https://archipelago.gg) multiworld server (plain `MultiServer`, AP **0.6.8**)
 plus a custom live dashboard. Everything runs in Docker behind an existing Traefik.
 
+What's done and what comes next (login, admin panel, multiple sessions, user management): [.docs/TODO.md](.docs/TODO.md).
+
 ```
               players' game clients                      browser
                        │ wss://ap.example.com:443           │ https://tracker.example.com
