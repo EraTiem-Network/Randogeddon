@@ -99,3 +99,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.
+
+## Phase 6: More Themes
+
+*Everyone picks how the dashboard looks for them.*
+
+- [ ] Several themes, each with a light and a dark variant
+    - The current colours (`webApp/…/Theme.kt`) become the default theme; a theme is a pair of palettes.
+- [ ] A theme applies to every page: dashboard, person and world views, admin panel, settings, login
+- [ ] Theme and mode are a user setting, stored with the account (settings page from Phase 5)
+    - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it).
+    - Active for that user on every device they log in with; other users are not affected.
+    - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
+      used in this browser.
