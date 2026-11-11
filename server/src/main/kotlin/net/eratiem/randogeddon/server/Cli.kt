@@ -90,7 +90,7 @@ private suspend fun createLogins(config: TrackerConfig, db: RandogeddonDatabase)
   val existing = users.active().map { it.name.lowercase() }.toSet()
   val missing = people.filter { it.lowercase() !in existing }
   if (missing.isEmpty()) {
-    println("All ${people.size} people have a login. A new password: randogeddon logins --reset <person>")
+    println("All ${people.size} players have a login. A new password: randogeddon logins --reset <player>")
     return 0
   }
   val created = missing.map { person ->

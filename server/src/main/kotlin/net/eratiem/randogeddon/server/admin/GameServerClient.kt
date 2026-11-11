@@ -4,6 +4,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.timeout
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -12,12 +13,18 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApworldResult
+import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.ApworldUpload
+import net.eratiem.randogeddon.shared.ArchipelagoInfo
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
@@ -66,6 +73,39 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
 
+  /** The releases with their games, and the apworld library. The first listing of a release takes seconds. */
+  suspend fun archipelago(): ArchipelagoInfo = call {
+    http.get("${config.gameServerApi}/internal/archipelago") { auth(); timeout { requestTimeoutMillis = 4 * 60_000 } }
+  }.let { ApiJson.decodeFromString(ArchipelagoInfo.serializer(), it) }
+
+  /** Adds an apworld to a release's library; lists the release again, so it takes seconds. */
+  suspend fun uploadApworld(upload: ApworldUpload): ApworldResult = library {
+    http.post("${config.gameServerApi}/internal/apworlds") {
+      auth()
+      timeout { requestTimeoutMillis = 4 * 60_000 }
+      contentType(ContentType.Application.Json)
+      setBody(ApiJson.encodeToString(ApworldUpload.serializer(), upload))
+    }
+  }.let { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
+
+  suspend fun tryApworld(request: ApworldTry): ApworldResult = library {
+    http.post("${config.gameServerApi}/internal/apworlds/try") {
+      auth()
+      timeout { requestTimeoutMillis = 4 * 60_000 }
+      contentType(ContentType.Application.Json)
+      setBody(ApiJson.encodeToString(ApworldTry.serializer(), request))
+    }
+  }.let { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
+
+  suspend fun removeApworld(release: String, file: String) {
+    library {
+      http.delete("${config.gameServerApi}/internal/apworlds/${release.encodeURLPathPart()}/${file.encodeURLPathPart()}") {
+        auth()
+        timeout { requestTimeoutMillis = 4 * 60_000 }
+      }
+    }
+  }
+
   /** Stops the game server and moves the seed, its save and room.json away; the files moved. */
   suspend fun deleteSession(): List<String> = call {
     http.post("${config.gameServerApi}/internal/session/delete") { auth() }
@@ -88,6 +128,17 @@ class GameServerClient(private val config: TrackerConfig) {
   }
 
   private fun io.ktor.client.request.HttpRequestBuilder.auth() = header("Authorization", "Bearer ${config.internalToken}")
+
+  /** A library change the gateway refuses (400) is a [SessionProblem] with its reason. */
+  private suspend fun library(block: suspend () -> HttpResponse): String {
+    val response = request(block)
+    if (response.status == HttpStatusCode.BadRequest) {
+      val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
+      throw SessionProblem(HttpStatusCode.BadRequest, message ?: "The gateway refused it")
+    }
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    return response.bodyAsText()
+  }
 
   private suspend fun call(block: suspend () -> HttpResponse): String {
     val response = request(block)

@@ -37,7 +37,7 @@ class PlayerYamlsTest {
     val problems = result.problems.joinToString("\n")
     assertTrue("broken.yaml: not a player YAML" in problems, problems)
     assertTrue("noname.yaml: no name" in problems, problems)
-    assertTrue("2 worlds are called Same" in problems, problems)
+    assertTrue("2 slots are called Same" in problems, problems)
     assertTrue("World Locks" in problems, problems)
     assertTrue("empty.yaml: empty" in problems, problems)
   }
