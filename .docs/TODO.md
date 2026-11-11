@@ -75,9 +75,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [x] Users can be marked as admins; only admins see and reach the panel (checked on the server, not only hidden)
     - `randogeddon admins --grant <person>`; `/api/admin/*` answers 403 for everyone else.
-- [x] Create a session: upload the player YAMLs, set people, locks and hint options, generate the seed
-    - Every world gets one or more people (several: they play it together); new names get a login, shown once.
+- [x] Create a session: upload the player YAMLs, set players, locks and hint options, generate the seed
+    - Every slot gets one or more players (several: they play it together); new names get a login, shown once.
     - The gateway generates the seed; the game server starts on it.
+    - Words: a player is a person (a user with a login), a slot is one YAML, the game only its title.
+- [x] Random locks: a number of slots, picked at random, start open; all others start locked
+- [x] apworlds: the gateway reports each release's games; admins upload apworlds into a library per release, remove
+  them, and try ones made for another release
+    - A YAML whose game the release lacks is flagged before generating; a failed generation names the games that may
+      be the cause (named in the error, or with an untested apworld).
+- [x] Every option in the admin panel explains itself (an info tip on hover or tap)
 - [x] Control the session: start, stop and restart the server, see its log, run server commands
     - Stop and restart ask once more; the log is live; the console keeps a command history.
 - [x] Delete a session: stop the server, remove the seed, save and slot passwords
@@ -87,8 +94,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Hidden by default (it is a full spoiler). Admins can reveal it at any time; all players of the session see it
       once the session is finished.
 - [ ] Finish a session
-    - Automatically when every world has reached its goal or was released; an admin can also finish it by hand
-      earlier (e.g. someone dropped out), and reopen it within a few days if it was a mistake.
+    - Automatically 2 minutes after every slot has reached its goal or was released, with a countdown on the
+      dashboard that admins can cancel; an admin can also finish it by hand earlier (e.g. someone dropped out), and
+      reopen it within 14 days if it was a mistake (or at any time, if flagged so).
+    - A finished session no longer blocks a new one: it becomes a past session, viewable from a list.
     - Finishing stops the game server, makes the session read-only history, reveals the optimal path to its players
       and starts the auto-deletion timer of its users (Phase 5).
     - Finished sessions are kept until an admin deletes them; their players and the admins can see them. Automatic

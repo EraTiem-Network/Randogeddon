@@ -9,6 +9,10 @@ executables (GraalVM Native Image, Linux x86_64).
 
 What's done and what comes next (login, admin panel, multiple sessions, user management): [.docs/TODO.md](.docs/TODO.md).
 
+Words used here and in the dashboard: a **player** is a person (with a login); a **slot** is one YAML, one game in
+the multiworld, played by one or more players (Archipelago itself says "player" for a slot, e.g. in `/send <player>`);
+the **game** is just its title, e.g. Hollow Knight.
+
 ```
               players' game clients                      browser
                        │ wss://<session-id>.randogeddon     │ https://randogeddon
@@ -34,20 +38,20 @@ API on 8001 are not published). A tracker restart or update doesn't drop the pla
 
 | Path | What it is |
 |---|---|
-| `archipelago/` | `serve.py` (MultiServer with the hint switches), `room_info.py`, `ap-generate`; the gateway image installs Archipelago next to them |
+| `archipelago/` | `serve.py` (MultiServer with the hint switches), `room_info.py`, `list_games.py`, `ap-generate`; the gateway image installs Archipelago next to them |
 | `server/` | Tracker server: Kotlin + Ktor. Follows the room, serves the login, the API and the web app; host commands (`randogeddon logins`) |
 | `gateway/` | The game host: runs MultiServer, relays each client connection to it and checks the slot password of every `Connect`; internal API for the admin panel |
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
-| `apworlds/world_locks/` | Our own apworld: worlds that start locked until their key is found (part of the gateway image) |
-| `session.yaml` | Who plays which worlds, only for seeds deployed with the CLI (copy `session.example.yaml`; gitignored) |
+| `apworlds/world_locks/` | Our own apworld: slots that start locked until their key is found (part of the gateway image) |
+| `session.yaml` | Who plays which slots, only for seeds deployed with the CLI (copy `session.example.yaml`; gitignored) |
 | `demo/` | An example session (YAMLs, `session.yaml`, simulated players) — see *Demo* below |
 | `kotlin.Dockerfile` | Builds the tracker image and the gateway image (native, plus the pinned Archipelago release) |
-| `players/` | One YAML per player (gitignored) |
-| `custom_worlds/` | Extra `.apworld` files for games that aren't bundled (gitignored) |
+| `players/` | One YAML per slot (gitignored) |
+| `custom_worlds/` | Extra `.apworld` files for games that aren't bundled, for every release (gitignored); or upload them in the admin panel |
 | `output/` | Generated `AP_<seed>.zip` (gitignored, contains the spoiler) |
-| `data/` | Server side: active seed, `.apsave` savegame, `room.json` (gitignored) |
+| `data/` | Server side: active seed, `.apsave` savegame, `room.json`, the uploaded apworlds in `apworlds/<release>/` (gitignored) |
 | `scripts/generate.sh` | Generate a seed locally |
 | `scripts/deploy-seed.sh` | Push a seed to the server (or install it locally) and restart |
 
@@ -56,7 +60,7 @@ API on 8001 are not published). A tracker restart or update doesn't drop the pla
 ```sh
 git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
 cp .env.example .env     # set SESSION_ID, POSTGRES_PASSWORD, INTERNAL_TOKEN, TRAEFIK_* …
-docker compose build     # takes a few minutes (every world's requirements, the native builds)
+docker compose build     # takes a few minutes (every game's requirements, the native builds)
 ```
 
 Building the tracker and gateway images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
@@ -99,15 +103,18 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
 
 ### In the admin panel
 
-1. **Collect the YAMLs** of the players, one per world, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`).
-   Players export them from the game's options page on archipelago.gg or via the Launcher's *Generate Template
-   Options*. Non-bundled games need their `.apworld` in `custom_worlds/` on the server.
-2. **Create the session** (admin panel, *Session*, only while there is none): *Choose YAMLs…*, then for every world who
-   plays it (one or more people: a world with several players is played together; new names get a login) and whether
-   it starts locked; the hint and release options; *Generate and start*. The gateway generates the seed with its
-   Archipelago release and starts the game server on it.
-3. **Hand out the new logins**: the panel shows each new person's password **once**. People who already had a login
-   keep it.
+1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
+   them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
+   isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
+2. **Create the session** (admin panel, *Session*, only while there is none): *Choose YAMLs…*, then for every slot who
+   plays it (one or more players: a slot with several players is played together; new names get a login); the locks
+   (tick the slots that start locked, or *Random*: a number of slots picked at random start open, all others start
+   locked); the hint and release options; *Generate and start*. Every option has an ⓘ that says what it does. The
+   gateway generates the seed with the chosen Archipelago release and starts the game server on it. A game the release
+   has no apworld for is flagged before generating; if Generate.py fails, the panel names the games that may be the
+   cause (one the error mentions, or one whose apworld comes from another release) above its output.
+3. **Hand out the new logins**: the panel shows each new player's password **once** (and, with random locks, which
+   slots start locked). Players who already had a login keep it.
 4. **Players log in** at `https://randogeddon.eratiem.net`. Under *Your connection* they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
@@ -116,14 +123,29 @@ Patch files for ROM-based games are in the seed: `data/AP_<seed>.zip` on the ser
 panel) stops the game server and moves the seed and its save to `data/old/`; the logins stay. Only one session at a
 time: a new one can be created once the current one is deleted.
 
+### apworlds
+
+The admin panel's *apworlds* lists, for every Archipelago release of the gateway, the games it can generate and serve,
+and its apworld library:
+
+- **Upload apworld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
+  checks that it is an apworld (a zip with one world folder), loads the release's worlds again and says which game it
+  brought, or why it didn't load (e.g. it needs a newer Archipelago). *Remove* takes it out again.
+- **From other releases:** an apworld uploaded for another release can be tried with this one (*Try with …*); it is
+  copied and marked "untested here". If generating fails, such apworlds are among the suspects.
+- Apworlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
+  panel).
+
+The gateway puts exactly these files into each release's `custom_worlds/` before it lists the games or generates.
+
 ### With the CLI
 
-1. **Collect YAMLs** in `players/`, one per world, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export them
+1. **Collect YAMLs** in `players/`, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export them
    from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*.
    Only `.yaml`/`.yml` files may be in that folder, because `Generate.py` parses every file there.
    Put any non-bundled games' `.apworld` files in `custom_worlds/`, **both** locally and on the server.
-   For locked worlds add a World Locks YAML (see below), and write `session.yaml` (who plays which worlds; the
-   logins are made for its people). A seed deployed this way has no session in the database: it runs on the
+   For locked slots add a World Locks YAML (see below), and write `session.yaml` (who plays which slots; the
+   logins are made for its players). A seed deployed this way has no session in the database: it runs on the
    gateway's newest Archipelago release with the `AP_*` options of `.env`.
 2. **Generate** locally:
    ```sh
@@ -139,13 +161,13 @@ time: a new one can be created once the current one is deleted.
    `data/old/`, and recreates the containers. The server loads the zip directly. `session.yaml` can be edited on
    the server at any time; the dashboard picks up changes by itself. The tracker creates the new seed's slot
    passwords within seconds.
-4. **Logins** for the people of `session.yaml` (on the server; existing logins are kept):
+4. **Logins** for the players of `session.yaml` (on the server; existing logins are kept):
    ```sh
    docker compose exec tracker randogeddon logins
    ```
    This prints each new username and password **once**; only their hashes are stored. Hand them out, together with
-   each player's patch file from the zip (if their game uses one). `randogeddon logins --reset <person>` makes a new
-   password (and ends that person's logins).
+   each slot's patch file from the zip (if its game uses one). `randogeddon logins --reset <player>` makes a new
+   password (and ends that player's logins).
 5. **Players log in** at `https://randogeddon.eratiem.net`. Under *Your connection* they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
@@ -158,11 +180,13 @@ every player is disconnected), shows its log live, and has the server console:
 
 ```
 /players              # who's connected
-/send <player> <item> # give an item
-/hint <player> <item> # free hint
-/release <player>     # release a player's items (e.g. someone has to drop out)
-/collect <player>
+/send <slot> <item>   # give an item ("Mantis Claw" in quotes if it has spaces)
+/hint <slot> <item>   # free hint
+/release <slot>       # release a slot's items (e.g. someone has to drop out)
+/collect <slot>
 ```
+
+Archipelago's commands say `<player>` for a slot.
 
 Up and down in the console bring back earlier commands. Every action is logged with the admin's name in the tracker's
 log. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
@@ -182,11 +206,11 @@ progress. **Deploying a new seed starts over.** The old save is kept in `data/ol
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 
-- **Logins** are made when a session is created in the admin panel, or for the people of `session.yaml` with
-  `randogeddon logins` (see *Session day*); the username is the person's name. Passwords are 32 random characters and stored only as Argon2id hashes. A login lasts 30 days
+- **Logins** are made when a session is created in the admin panel, or for the players of `session.yaml` with
+  `randogeddon logins` (see *Session day*); the username is the player's name. Passwords are 32 random characters and stored only as Argon2id hashes. A login lasts 30 days
   (HttpOnly, Secure, SameSite=Strict cookie). Failed logins are slowed down and limited to 5 per minute per address.
   Someone with a login who isn't part of the current session is refused (admins always get in, to the admin panel).
-- **Slot passwords:** every slot (world) of a seed gets its own generated password when the tracker first sees the
+- **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
   changes. A wrong one gets `InvalidPassword`. There is no room password (`AP_PASSWORD` is gone).
@@ -194,17 +218,17 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   spaces, quotes or backslashes). Some games only have an in-game text field without paste, so the dashboard shows
   them in a monospaced font.
 - `docker compose exec tracker randogeddon slots` prints the current seed's slot passwords for the host, e.g. for the
-  Locks slot (`!hint World Key 2`) or worlds nobody plays.
+  Locks slot (`!hint World Key 2`) or slots nobody plays.
 
 The data lives in the `postgres-data` volume (and in the Proxmox backup of the whole VM).
 
 ## Hints
 
-A hint tells a player where one of their items is ("Alice's *Mantis Claw* is at *Sky Meadow: Chest 4* in Bob's
-world"). There are two systems, each switched in `.env` (`AP_POINT_HINTS`, `AP_AUTO_HINTS`, applied on restart):
+A hint tells a player where one of their items is ("Alice-HK's *Mantis Claw* is at *Sky Meadow: Chest 4* in
+Bob-RoR2"). There are two systems, each switched in `.env` (`AP_POINT_HINTS`, `AP_AUTO_HINTS`, applied on restart):
 
 - **Point hints:** checking a location earns `AP_LOCATION_CHECK_POINTS` points (default 1); `!hint <item>` or
-  `!hint_location <location>` costs `AP_HINT_COST` % of the player's world's locations (default 10 %, `0` = free).
+  `!hint_location <location>` costs `AP_HINT_COST` % of the slot's locations (default 10 %, `0` = free).
   Players can mark hints *priority*, *avoid* or *no priority* in their client; the dashboard shows that.
 - **Automatic hints:** some games create hints by themselves, e.g. a shop that hints what it sells.
 
@@ -212,24 +236,25 @@ MultiServer has no switches for this, so the server runs through `archipelago/se
 point hints off, `!hint`/`!hint_location` answer "Hints are turned off"; with automatic hints off, games can still
 scout locations but no hints are created. The host can always give hints from the server console (`/hint`).
 With both off, the dashboard hides hints entirely (unless the host handed some out). With point hints on, every
-world shows its points and how many hints they buy.
+slot shows its points and how many hints they buy. A session from the admin panel brings its own hint options
+instead of the ones in `.env`.
 
-## Locked worlds
+## Locked slots
 
-Some worlds can start locked and open only when their key is found in another world. This is part of the generated
-seed, not just of the dashboard: the `World Locks` apworld (`apworlds/world_locks/`, packed into
-installed in the gateway image) adds one key item per locked world and tells the generator that
-nothing in that world is reachable without its key. So every seed stays completable, chains included (a key inside a
-world that is itself locked).
+Some slots can start locked and open only when their key is found in another slot. This is part of the generated
+seed, not just of the dashboard: the `World Locks` apworld (`apworlds/world_locks/`, installed in the gateway image)
+adds one key item per locked slot and tells the generator that nothing in that slot is reachable without its key. So
+every seed stays completable, chains included (a key inside a slot that is itself locked).
 
-Add one extra YAML to `players/` (nobody plays this slot):
+In the admin panel, tick *starts locked* per slot, or choose *Random* locks with the number of slots that start open
+(at least one; the others are locked). For the CLI, add one extra YAML to `players/` (nobody plays this slot):
 
 ```yaml
 name: Locks
 game: World Locks
 World Locks:
   locked_worlds: ["Alice-Celeste", "Bob-Yacht"]   # slot names
-  early_keys: false                               # true: keys are reachable from the start, worlds open early
+  early_keys: false                               # true: keys are reachable from the start, slots open early
 ```
 
 The game clients don't know about the lock, so it's on the honour system: don't start a locked game before the
@@ -244,17 +269,17 @@ slot about its own checked locations and received items. The slot names come fro
 which the server container writes on startup.
 
 - **Your connection:** the server address, your slot names and their passwords (shown on request, copyable).
-- **Overview:** overall completion, worlds at goal, game clients online, locked worlds opened, hint count.
-- **People:** one card per person of the session (or of `session.yaml`) with their worlds (a world played together
+- **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
+- **Players:** one card per player of the session (or of `session.yaml`) with their slots (a slot played together
   shows on each of its players' cards): game, progress, status
-  (not started / playing / locked / goal / released / complete), online dot, last activity, and for locked worlds
-  the key: who found it, or where it was hinted. Without any people, every world is its own card. Click a
-  person's name for their overview (totals, worlds, open hints, combined connection log, recent activity). Click a world
+  (not started / playing / locked / goal / released / complete), online dot, last activity, and for locked slots
+  the key: who found it, or where it was hinted. Without any players, every slot is its own card. Click a
+  player's name for their overview (totals, slots, open hints, combined connection log, recent activity). Click a slot
   for its received items (filterable), remaining locations, play time and connection log.
-- **Play time:** time a game client was connected to a world, per world and per person, kept across restarts.
+- **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.
 - **Live feed:** item sends colour-coded by classification (purple = progression, blue = useful,
   red = trap), hints, goals, releases, chat and joins. You can filter by player and kind.
-- **Hints:** every hint in the room, filterable by player (person), world and state (not found, found, priority,
+- **Hints:** every hint in the room, filterable by player, slot and state (not found, found, priority,
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
   choice is remembered in their browser. On narrow screens it always sits below the players.
@@ -263,9 +288,9 @@ Known limitations:
 
 - Each tracker connection makes the server post "X tracking … has joined" to the chat. That happens
   once per slot whenever the tracker (re)connects.
-- "Online" comes from join/leave messages. After a tracker restart a world counts as online again as soon as it
+- "Online" comes from join/leave messages. After a tracker restart a slot counts as online again as soon as it
   does something (finds its own item, chats, changes status); such sessions are marked "seen playing" in the
-  world's connection log, since their real start is unknown.
+  slot's connection log, since their real start is unknown.
 - The event history keeps the last 500 events, stored in the `tracker-state` volume.
 
 API: `POST /api/login` (JSON with `username` and `password`, sets the cookie), `POST /api/logout`; with a login:
@@ -295,11 +320,11 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &   # the loop in the background
 ```
 
-Three people with different numbers of games: Alice three (two of them start locked), Bob two (one locked) and, with
-Carol, Risk of Rain 2, which they play together (a shared world: on both cards, both get its slot password). The
+Three players with different numbers of slots: Alice three (two of them start locked), Bob two (one locked) and, with
+Carol, Risk of Rain 2, which they play together (a shared slot: on both cards, both get its slot password). The
 simulator (`demo/simulate.py`) checks locations quickly for half a minute and then evenly until the end, finds the key
 of Alice's Celeste after ~25 s, of her DLCQuest after ~75 s and of Bob's Yacht Dice after ~3 minutes
-(hinted before). Every world reaches its goal within about `DEMO_MINUTES` (default 15); then the simulator ends, which
+(hinted before). Every slot reaches its goal within about `DEMO_MINUTES` (default 15); then the simulator ends, which
 the loop takes as the end of a round. The simulated players connect through the gateway with their slot passwords. It
 replaces the seed in `data/` (the old one goes to `data/old/`); about one in three random seeds can't be generated
 ("unbeatable"), so it retries with another one.
@@ -382,4 +407,5 @@ it doesn't have can't be started (the admin panel and the gateway's log say so).
 
 To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
 of the old release is running (delete it first). Everyone's client and apworld versions should be compatible with
-the release.
+the release. The new release starts with an empty apworld library: the apworlds of the old one show under *From
+other releases* (*apworlds* in the admin panel) and can be tried with it, or upload versions made for the new release.
