@@ -81,6 +81,8 @@ RUN useradd --uid 1000 --create-home randogeddon \
  && touch host.yaml \
  && chown randogeddon . logs host.yaml
 COPY archipelago/serve.py archipelago/room_info.py ./
+# Our own apworlds (World Locks), next to the bundled worlds
+COPY apworlds/ worlds/
 # Seed generation: `docker compose run --rm generate` (see docker-compose.yml)
 COPY archipelago/entrypoint.sh /usr/local/bin/ap-generate
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
