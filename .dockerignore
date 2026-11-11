@@ -1,11 +1,10 @@
-# Only the Gradle build goes into the Kotlin images (kotlin.Dockerfile); the archipelago image has its own context
+# The Gradle build and archipelago/ (serve.py, room_info.py, ap-generate) go into the images of kotlin.Dockerfile
 **/build/
 **/.gradle/
 .gradle/
 .kotlin/
 .idea/
 *.iml
-archipelago/
 data/
 output/
 players/

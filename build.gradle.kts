@@ -88,6 +88,9 @@ fun Project.configureNativeImage() {
           "--static-nolibc",
           // Netty loads its native transport; without this, every start warns about restricted methods
           "--enable-native-access=ALL-UNNAMED",
+          // SIGTERM (docker stop) runs the shutdown hooks: the tracker saves its history, the gateway lets MultiServer
+          // save the game. Without this, a native image as PID 1 ignores SIGTERM and is killed after the grace period
+          "--install-exit-handlers",
           // Flyway builds https help links when it starts. GraalVM 25.0.4 enables the URL handlers from the metadata
           // by itself, but the Docker build image (native-image-community:25) is 25.0.2, which needs this
           "--enable-url-protocols=http,https",
