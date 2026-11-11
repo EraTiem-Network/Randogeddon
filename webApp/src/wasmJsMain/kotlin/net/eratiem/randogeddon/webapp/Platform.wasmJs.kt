@@ -21,6 +21,16 @@ actual object Platform {
     return { jsCloseStream(source) }
   }
 
+  actual fun events(
+    path: String,
+    events: List<String>,
+    onEvent: (String, String) -> Unit,
+    onConnection: (Boolean) -> Unit,
+  ): () -> Unit {
+    val source = jsOpenEvents(path, events.joinToString(","), onEvent, { onConnection(true) }, { onConnection(false) })
+    return { jsCloseStream(source) }
+  }
+
   actual fun showLogin(message: String?, onLoggedIn: () -> Unit) = jsShowLogin(message, onLoggedIn)
 
   actual fun hideLogin() = jsHideLogin()
@@ -58,6 +68,20 @@ private fun jsCopy(text: String): Unit = js("{ try { navigator.clipboard.writeTe
 private fun jsOpenStream(url: String, onState: (String) -> Unit, onOpen: () -> Unit, onError: () -> Unit): JsAny = js(
   """{ const es = new EventSource(url);
        es.addEventListener('state', e => onState(e.data));
+       es.onopen = () => onOpen();
+       es.onerror = () => onError();
+       return es; }"""
+)
+
+private fun jsOpenEvents(
+  url: String,
+  events: String,
+  onEvent: (String, String) -> Unit,
+  onOpen: () -> Unit,
+  onError: () -> Unit,
+): JsAny = js(
+  """{ const es = new EventSource(url);
+       events.split(',').forEach(name => es.addEventListener(name, e => onEvent(name, e.data)));
        es.onopen = () => onOpen();
        es.onerror = () => onError();
        return es; }"""

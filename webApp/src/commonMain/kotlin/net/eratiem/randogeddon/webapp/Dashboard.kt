@@ -132,10 +132,13 @@ fun App() {
 
   var detailSlot by remember { mutableStateOf<Int?>(null) }
   var detailPerson by remember { mutableStateOf<String?>(null) }
+  // The admin panel instead of the dashboard (admins only; the server checks every call too)
+  var adminOpen by remember { mutableStateOf(false) }
   LaunchedEffect(me) {
     if (me == null) {
       detailSlot = null
       detailPerson = null
+      adminOpen = false
     }
   }
 
@@ -186,7 +189,13 @@ fun App() {
             feedVisible = feedVisible,
             onToggleFeed = { setFeedVisible(!feedVisible) },
             onLogout = { scope.launch { repository.logout() } },
+            onAdmin = if (user.admin) ({ adminOpen = !adminOpen }) else null,
+            adminOpen = adminOpen,
           )
+          if (adminOpen && user.admin) {
+            AdminView(now, onBack = { adminOpen = false })
+            return@Column
+          }
           if (s == null) return@Column
           val error = s.error
           if (!s.connected && error != null) Banner(error)
@@ -247,6 +256,9 @@ private fun Hero(
   feedVisible: Boolean,
   onToggleFeed: () -> Unit,
   onLogout: () -> Unit,
+  /** Only for admins. */
+  onAdmin: (() -> Unit)?,
+  adminOpen: Boolean,
 ) {
   val p = LocalPalette.current
   val live = streamOpen && summary?.connected == true
@@ -289,6 +301,9 @@ private fun Hero(
       IconButton(onToggleFeed, Icon.FEED, tint = Color.White,
         background = Color.White.copy(alpha = if (feedVisible) 0.32f else 0.12f))
       IconButton(onToggleTheme, Icon.THEME, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+      // Brighter while the admin panel is open
+      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = Color.White,
+        background = Color.White.copy(alpha = if (adminOpen) 0.32f else 0.12f))
       IconButton(onLogout, Icon.LOGOUT, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
     }
     if (summary != null) {
@@ -370,7 +385,10 @@ private fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifie
     }
     if (showHints(s)) add(Tile("Hints", "${s.hints.size}", "$open not found yet", p.progression, null))
     add(Tile("Play time", duration(s.players.sumOf { playTime(it, now) }), "all worlds together", p.useful, null))
-    add(Tile("Session", duration(now - s.startedAt), "tracker uptime", p.brandStart, null))
+    // The game server's running time for this seed, without the times it was stopped
+    val since = s.sessionRunningSince
+    val session = s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0
+    add(Tile("Session", duration(session), if (since != null) "game server running" else "game server stopped", p.brandStart, null))
   }
   Section(
     "Overview", modifier,
