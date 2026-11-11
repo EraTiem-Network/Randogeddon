@@ -151,7 +151,7 @@ data class LockInfo(
   /** Who found the key. */
   val foundBy: String? = null,
   val foundAt: Long? = null,
-  /** Where the key is, if someone hinted it: "Location (Player's world)". */
+  /** Where the key is, if someone hinted it: "Location (in Slot)". */
   val hintedAt: String? = null,
 )
 
@@ -315,23 +315,36 @@ data class SessionOptions(
   val collectMode: String = "auto",
   val remainingMode: String = "goal",
   val countdownMode: String = "auto",
-  /** World Locks: keys reachable from the start, so locked worlds open early. */
+  /** World Locks: keys reachable from the start, so locked slots open early. */
   val earlyKeys: Boolean = false,
+  /**
+   * Random locks: this many slots, picked at random, start open and all others start locked. `null`: the locks are
+   * chosen per slot ([WorldPlan.locked]).
+   */
+  val openSlots: Int? = null,
 )
 
 /** A player YAML as uploaded in the admin panel. */
 @Serializable
 data class UploadedYaml(val fileName: String, val content: String)
 
-/** A world found in an uploaded YAML. */
+/** A slot found in an uploaded YAML. */
 @Serializable
 data class YamlWorld(val fileName: String, val name: String, val game: String)
 
-/** `POST /api/admin/session/inspect`: the worlds of the uploaded YAMLs, and what's wrong with them. */
+/** `POST /api/admin/session/inspect`: the YAMLs, checked against the games of an Archipelago release. */
+@Serializable
+data class InspectRequest(
+  val yamls: List<UploadedYaml>,
+  /** `null`: the gateway's newest release. */
+  val apVersion: String? = null,
+)
+
+/** The slots of the uploaded YAMLs, and what's wrong with them (a game the release has no apworld for, too). */
 @Serializable
 data class InspectResult(val worlds: List<YamlWorld>, val problems: List<String> = emptyList())
 
-/** One world of a new session: who plays it (one or more users, existing or new names) and whether it starts locked. */
+/** One slot of a new session: who plays it (one or more users, existing or new names) and whether it starts locked. */
 @Serializable
 data class WorldPlan(val name: String, val users: List<String> = emptyList(), val locked: Boolean = false)
 
@@ -349,7 +362,12 @@ data class CreateSessionRequest(
 data class NewLogin(val name: String, val password: String)
 
 @Serializable
-data class CreateSessionResult(val seedName: String, val logins: List<NewLogin> = emptyList())
+data class CreateSessionResult(
+  val seedName: String,
+  val logins: List<NewLogin> = emptyList(),
+  /** The slots that start locked (with random locks, the ones picked). */
+  val locked: List<String> = emptyList(),
+)
 
 /** The current session as the admin panel shows it. */
 @Serializable
@@ -378,16 +396,92 @@ data class GenerateRequest(
   val locked: List<String> = emptyList(),
   val earlyKeys: Boolean = false,
   val apVersion: String,
+  /** The games of the YAMLs, to point at the one that failed. */
+  val games: List<String> = emptyList(),
 )
 
-/** The generated seed (now the data directory's seed), or why it failed: the last lines of Generate.py's output. */
+/**
+ * The generated seed (now the data directory's seed), or why it failed: the last lines of Generate.py's output, and
+ * the games that may be the cause.
+ */
 @Serializable
 data class GenerateResult(
   val seedName: String? = null,
   val seedFile: String? = null,
   val slots: List<String> = emptyList(),
   val log: List<String> = emptyList(),
+  val suspects: List<Suspect> = emptyList(),
 )
+
+/**
+ * A game that may have made a generation fail: named in the error, or without a tested apworld. [apworld]: its file,
+ * if it isn't bundled; [from]: the release that apworld was uploaded for, if it is another one.
+ */
+@Serializable
+data class Suspect(val game: String, val reason: String, val apworld: String? = null, val from: String? = null)
+
+/** Where a game of a release comes from. */
+@Serializable
+enum class GameSource {
+  /** Part of the Archipelago release (or of the gateway image, like World Locks). */
+  @SerialName("bundled") BUNDLED,
+  /** An apworld in the server's `custom_worlds/` directory. */
+  @SerialName("manual") MANUAL,
+  /** An apworld uploaded in the admin panel. */
+  @SerialName("uploaded") UPLOADED,
+}
+
+/** A game an Archipelago release can generate and serve. */
+@Serializable
+data class GameInfo(
+  val game: String,
+  val source: GameSource,
+  /** The apworld file, if it isn't bundled. */
+  val apworld: String? = null,
+  /** Its Python module (`worlds.hk`), to find it in an error. */
+  val module: String? = null,
+)
+
+/** An apworld that didn't load, and why (as Archipelago says). [name]: the game or the file. */
+@Serializable
+data class FailedLoad(val name: String, val reason: String)
+
+/** An apworld file of a release's library: uploaded in the admin panel, or put in `custom_worlds/` by hand. */
+@Serializable
+data class ApworldFile(
+  val file: String,
+  val release: String,
+  val source: GameSource,
+  /** Copied from the library of this release ("try with"): not tested with [release]. */
+  val from: String? = null,
+  val size: Long = 0,
+)
+
+/** One Archipelago release of the gateway: its games, and the apworlds that didn't load. */
+@Serializable
+data class ReleaseInfo(
+  val version: String,
+  val games: List<GameInfo> = emptyList(),
+  val failed: List<FailedLoad> = emptyList(),
+  /** The games couldn't be listed (Python failed). */
+  val error: String? = null,
+)
+
+/** `GET /api/admin/apworlds`: the gateway's releases (newest first) and the apworld library of each. */
+@Serializable
+data class ArchipelagoInfo(val releases: List<ReleaseInfo> = emptyList(), val apworlds: List<ApworldFile> = emptyList())
+
+/** `POST /api/admin/apworlds`: an apworld file for a release's library, base64. */
+@Serializable
+data class ApworldUpload(val release: String, val fileName: String, val base64: String)
+
+/** `POST /api/admin/apworlds/try`: copies an apworld of [from]'s library to [release]'s, to try it there. */
+@Serializable
+data class ApworldTry(val release: String, val from: String, val file: String)
+
+/** What an upload (or a try) brought: the games the file adds, or why it didn't load. */
+@Serializable
+data class ApworldResult(val file: String, val games: List<String> = emptyList(), val error: String? = null)
 
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {

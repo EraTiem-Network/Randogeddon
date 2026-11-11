@@ -66,6 +66,7 @@ data class GatewayConfig(
           apRoot = Path.of(server("apRoot")),
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
+          customWorlds = Path.of(server("customWorlds")),
           port = server("port").toInt(),
           adminPassword = server("adminPassword"),
           // For seeds without a session from the admin panel (deployed with the CLI)
@@ -90,6 +91,8 @@ data class GameServerSettings(
   val apRoot: Path,
   val python: String,
   val dataDir: Path,
+  /** The apworlds put on the server by hand, for every release (read-only). */
+  val customWorlds: Path,
   val port: Int,
   val adminPassword: String,
   val defaults: SessionOptions,
@@ -121,6 +124,8 @@ fun main() {
     runCatching { block() }.onFailure { logger.warn("Could not count the session time: {}", it.message) }
   }
   val archipelago = options?.let { Archipelago(it.apRoot, it.python) }
+  // The apworld library: uploads per release in the data directory, plus the hand-placed ones
+  val apworlds = options?.let { Apworlds(archipelago!!, it.dataDir.resolve("apworlds"), it.customWorlds) }
   val gameServer = options?.let {
     val launcher = Launcher(archipelago!!, SessionSetupStore(database), config.roomJson, it.port, it.defaults, it.adminPassword)
     GameServer(
@@ -136,6 +141,11 @@ fun main() {
     )
   }
   if (gameServer != null) {
+    // MultiServer and Generate.py load the apworlds from each release's custom_worlds/
+    val library = apworlds!!
+    runBlocking { library.syncAll() }
+    // The games of each release, listed ahead (it loads every world), so the admin panel doesn't wait for it
+    background.launch { archipelago!!.versions().forEach { runCatching { library.release(it) } } }
     // Counted before a kill of the gateway stays; the stretch after the last count is unknown and dropped
     runBlocking { runCatching { times.dropOpenCounts() } }
     background.launch {
@@ -178,7 +188,7 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       if (gameServer != null) port(config.internalPort) {
-        internalApi(config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir))
+        internalApi(config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir, apworlds!!), apworlds)
       }
     }
     monitor.subscribe(ApplicationStopping) {
