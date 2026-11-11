@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Migrations and stores against a real PostgreSQL (Testcontainers; Docker must be running). */
 class StoresTest {
@@ -106,6 +107,30 @@ class StoresTest {
     times.dropOpenCounts()
     assertEquals(SessionTime(90_000, null), times.of("seed1"))
     assertNull(times.of("unknown"))
+  }
+
+  @Test
+  fun `a session keeps its worlds, shared ones too, and deleting it keeps the users`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val alice = users.create("Alice", "hash")
+    val bob = users.create("Bob", "hash")
+    setups.create(
+      "seed1", "0.6.8", """{"hintCost":5}""",
+      mapOf("Alice-HK" to listOf(alice.id), "Couch-Coop" to listOf(alice.id, bob.id), "Solo" to emptyList()),
+    )
+    SlotPasswordStore(db).ensure("seed1", listOf("Alice-HK", "Couch-Coop"), { "pw" })
+
+    val setup = setups.of("seed1")!!
+    assertEquals("0.6.8", setup.apVersion)
+    assertEquals("""{"hintCost":5}""", setup.options)
+    assertEquals(listOf("Alice"), setup.worlds["Alice-HK"])
+    assertEquals(setOf("Alice", "Bob"), setup.worlds["Couch-Coop"]?.toSet())
+
+    assertTrue(setups.delete("seed1"))
+    assertNull(setups.of("seed1"))
+    assertEquals(emptyMap(), SlotPasswordStore(db).passwords("seed1"))
+    assertEquals(setOf("Alice", "Bob"), users.active().map { it.name }.toSet())
   }
 
   @Test

@@ -29,7 +29,18 @@ object SessionsTable : Table("sessions") {
   val createdAt = timestamp("created_at")
   val runTimeMs = long("run_time_ms").default(0)
   val countedUntil = timestamp("counted_until").nullable()
+  val apVersion = varchar("ap_version", 32).nullable()
+  /** JSON of the shared SessionOptions; `null` for seeds deployed with the CLI. */
+  val optionsJson = text("options").nullable()
   override val primaryKey = PrimaryKey(id)
+}
+
+/** Who plays which world of a session; a world with several users is played together. */
+object SessionWorldsTable : Table("session_worlds") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val slotName = varchar("slot_name", 64)
+  val userId = uuid("user_id") references UsersTable.id
+  override val primaryKey = PrimaryKey(sessionId, slotName, userId)
 }
 
 object SlotPasswordsTable : Table("slot_passwords") {

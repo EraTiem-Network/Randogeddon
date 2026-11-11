@@ -132,6 +132,53 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
   }
 }
 
+/**
+ * A session as the admin panel set it up: the Archipelago version, the options (JSON), and which users play which
+ * world ([worlds]: slot name -> user names, in the order they were given).
+ */
+data class SessionSetup(
+  val seedName: String,
+  val apVersion: String?,
+  val options: String?,
+  val createdAt: Instant,
+  val worlds: Map<String, List<String>>,
+)
+
+/** The sessions the admin panel creates and deletes. */
+class SessionSetupStore(private val db: RandogeddonDatabase) {
+  /** Records [seedName]'s session; [worlds]: slot name -> the users who play it. */
+  suspend fun create(seedName: String, apVersion: String, options: String, worlds: Map<String, List<Uuid>>, now: Instant = Instant.now()) =
+    db.query {
+      val id = sessionId(seedName, now)
+      SessionsTable.update({ SessionsTable.id eq id }) {
+        it[SessionsTable.apVersion] = apVersion
+        it[SessionsTable.optionsJson] = options
+      }
+      for ((slot, users) in worlds) {
+        for (user in users.distinct()) {
+          SessionWorldsTable.insert {
+            it[sessionId] = id
+            it[slotName] = slot
+            it[userId] = user
+          }
+        }
+      }
+    }
+
+  suspend fun of(seedName: String): SessionSetup? = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
+    val worlds = (SessionWorldsTable innerJoin UsersTable).selectAll()
+      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }
+      .groupBy({ it[SessionWorldsTable.slotName] }, { it[UsersTable.name] })
+    SessionSetup(seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds)
+  }
+
+  /** Removes the session with its slot passwords, world assignments and session time; the users stay. */
+  suspend fun delete(seedName: String): Boolean = db.query {
+    SessionsTable.deleteWhere { SessionsTable.seedName eq seedName } > 0
+  }
+}
+
 /** The id of [seedName]'s session, created if it doesn't exist yet (inside a transaction). */
 internal fun sessionId(seedName: String, now: Instant): Uuid =
   SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
