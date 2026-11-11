@@ -10,5 +10,7 @@ pluginManagement {
 }
 
 include(":shared")
+include(":database")
 include(":server")
+include(":gateway")
 include(":webApp")

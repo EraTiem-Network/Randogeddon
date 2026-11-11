@@ -1,4 +1,4 @@
-# Only the Gradle build goes into the tracker image (tracker.Dockerfile); the archipelago image has its own context
+# Only the Gradle build goes into the Kotlin images (kotlin.Dockerfile); the archipelago image has its own context
 **/build/
 **/.gradle/
 .gradle/
