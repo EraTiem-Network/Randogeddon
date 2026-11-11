@@ -6,12 +6,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionSetupStore
+import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.account.PasswordGenerator
 import net.eratiem.randogeddon.server.account.PasswordHasher
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionFileWatcher
 import org.slf4j.LoggerFactory
@@ -41,7 +44,7 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
       runBlocking {
         when (args.firstOrNull()) {
           "logins" -> when {
-            args.size == 1 -> createLogins(config, UserStore(db))
+            args.size == 1 -> createLogins(config, db)
             args.size == 3 && args[1] == "--reset" -> resetLogin(args[2], UserStore(db))
             else -> usage()
           }
@@ -52,8 +55,8 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
             else -> usage()
           }
           "slots" -> when {
-            args.size == 1 -> printSlots(config, SlotPasswordStore(db), json = false)
-            args.size == 2 && args[1] == "--json" -> printSlots(config, SlotPasswordStore(db), json = true)
+            args.size == 1 -> printSlots(config, db, json = false)
+            args.size == 2 && args[1] == "--json" -> printSlots(config, db, json = true)
             else -> usage()
           }
           "help", "--help", "-h" -> { println(USAGE); 0 }
@@ -68,15 +71,20 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
   exitProcess(code)
 }
 
+/** The people and setup of the current seed, as the running tracker sees them. */
+private suspend fun currentSession(config: TrackerConfig, db: RandogeddonDatabase) =
+  CurrentSession(config, SessionTimeStore(db), SessionSetupStore(db), SessionFileWatcher(config)).apply { refresh() }
+
 private fun usage(): Int {
   System.err.println(USAGE)
   return 2
 }
 
-private suspend fun createLogins(config: TrackerConfig, users: UserStore): Int {
-  val people = SessionFileWatcher(config).people().keys
+private suspend fun createLogins(config: TrackerConfig, db: RandogeddonDatabase): Int {
+  val users = UserStore(db)
+  val people = currentSession(config, db).people().keys
   if (people.isEmpty()) {
-    System.err.println("No people in ${config.sessionYaml}; logins are made for the people of session.yaml.")
+    System.err.println("No people in the session (created in the admin panel, or ${config.sessionYaml}).")
     return 1
   }
   val existing = users.active().map { it.name.lowercase() }.toSet()
@@ -131,12 +139,13 @@ private fun printLogins(logins: List<Pair<String, String>>) {
   println("These passwords are shown only now; hand them to the players. Stored are only their hashes.")
 }
 
-private suspend fun printSlots(config: TrackerConfig, store: SlotPasswordStore, json: Boolean): Int {
+private suspend fun printSlots(config: TrackerConfig, db: RandogeddonDatabase, json: Boolean): Int {
+  val store = SlotPasswordStore(db)
   val room = Room.read(config.roomJson) ?: run {
     System.err.println("No seed yet (${config.roomJson} is missing)")
     return 1
   }
-  val passwords = SlotPasswords(config, store, SessionFileWatcher(config)).current()
+  val passwords = SlotPasswords(config, store, currentSession(config, db)).current()
   if (json) {
     println(buildJsonObject {
       put("seed", room.seedName)

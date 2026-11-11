@@ -1,6 +1,14 @@
 {
   "reflection": [
     {
+      "type": "net.eratiem.randogeddon.shared.AdminSessionView",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ApiError",
       "fields": [
         {
@@ -17,7 +25,31 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.CreateSessionRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.CreateSessionResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.GameServerState",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.InspectResult",
       "fields": [
         {
           "name": "Companion"
@@ -42,6 +74,14 @@
     },
     {
       "type": "net.eratiem.randogeddon.shared.PlayerDetail",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.UploadedYaml",
       "fields": [
         {
           "name": "Companion"
@@ -896,6 +936,15 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.AdminSessionView$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ApiError$Companion",
       "methods": [
         {
@@ -914,7 +963,34 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.CreateSessionRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.CreateSessionResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.GameServerState$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.InspectResult$Companion",
       "methods": [
         {
           "name": "serializer",
@@ -942,6 +1018,15 @@
     },
     {
       "type": "net.eratiem.randogeddon.shared.PlayerDetail$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.UploadedYaml$Companion",
       "methods": [
         {
           "name": "serializer",

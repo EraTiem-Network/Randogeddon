@@ -17,13 +17,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.server.account.LoginService
-import net.eratiem.randogeddon.server.account.SessionClock
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.ap.TrackerService
-import net.eratiem.randogeddon.server.session.SessionFileWatcher
+import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.database.SessionTime
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.Summary
 import org.koin.ktor.ext.inject
 import kotlin.time.Duration.Companion.milliseconds
@@ -35,12 +36,12 @@ private val HASHED = Regex("[0-9a-f]{16,}\\.wasm")
 
 fun Application.routings(trackerConfig: TrackerConfig) {
   val tracker by inject<TrackerService>()
-  val sessionFile by inject<SessionFileWatcher>()
   val logins by inject<LoginService>()
   val slotPasswords by inject<SlotPasswords>()
   val gameServer by inject<GameServerClient>()
-  val sessionClock by inject<SessionClock>()
-  val summaries = SummaryCache(tracker, sessionFile, sessionClock, trackerConfig)
+  val sessionAdmin by inject<SessionAdmin>()
+  val currentSession by inject<CurrentSession>()
+  val summaries = SummaryCache(tracker, currentSession, trackerConfig)
 
   routing {
     loginRoutes(logins)
@@ -50,7 +51,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       install(RequireLogin) { this.logins = logins }
       sessionRoutes(tracker, summaries)
       meRoute(trackerConfig, slotPasswords)
-      adminRoutes(gameServer)
+      adminRoutes(gameServer, sessionAdmin)
     }
 
     // Nothing about the session: open for the container's healthcheck
@@ -112,32 +113,38 @@ private fun Route.sessionRoutes(tracker: TrackerService, summaries: SummaryCache
 /** The serialized summary, built at most once per state version however many dashboards are open. */
 private class SummaryCache(
   private val tracker: TrackerService,
-  private val sessionFile: SessionFileWatcher,
-  private val sessionClock: SessionClock,
+  private val session: CurrentSession,
   private val config: TrackerConfig,
 ) {
   private val mutex = Mutex()
   private var version = -1L
   private var people: Map<String, List<String>> = emptyMap()
   private var time: SessionTime? = null
+  private var options: SessionOptions? = null
   private var json = ""
 
-  /** Changes with the session state, with `session.yaml` and with the session time's count (a start or stop). */
-  suspend fun version(): Long = tracker.read { version } + sessionFile.people().hashCode().toLong().shl(32) +
-    sessionClock.current.hashCode().toLong().shl(16)
+  /** Changes with the session state, with its people and options, and with the session time's count. */
+  suspend fun version(): Long = tracker.read { version } + session.people().hashCode().toLong().shl(32) +
+    (session.time to session.options).hashCode().toLong().shl(16)
 
   suspend fun json(): String = mutex.withLock {
-    val currentPeople = sessionFile.people()
-    val currentTime = sessionClock.current
+    val currentPeople = session.people()
+    val currentTime = session.time
+    // A session from the admin panel brings its hint switches; a CLI-deployed seed uses the environment's
+    val options = session.options
     val summary: Summary? = tracker.read {
-      if (version == this@SummaryCache.version && currentPeople == people && currentTime == time) null
-      else summary(config.title, tracker.lastError, currentPeople, config.pointHints, config.autoHints).copy(
+      if (version == this@SummaryCache.version && currentPeople == people && currentTime == time && options == this@SummaryCache.options) null
+      else summary(
+        config.title, tracker.lastError, currentPeople,
+        options?.pointHints ?: config.pointHints, options?.autoHints ?: config.autoHints,
+      ).copy(
         sessionTimeMs = currentTime?.runTimeMs ?: 0,
         sessionRunningSince = currentTime?.countedUntil?.toEpochMilli(),
       )
     }
     people = currentPeople
     time = currentTime
+    this.options = options
     if (summary != null) {
       version = summary.version
       json = ApiJson.encodeToString(Summary.serializer(), summary)

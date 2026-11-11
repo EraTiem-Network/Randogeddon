@@ -109,6 +109,12 @@ class TrackerService(private val config: TrackerConfig) {
     }
   }
 
+  /** The session was deleted: its state goes, the history file too, so a restart doesn't bring it back. */
+  suspend fun clear() {
+    update { clear() }
+    runCatching { config.statePath.toFile().delete() }
+  }
+
   fun close() {
     http.close()
     save()
