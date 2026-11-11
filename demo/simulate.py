@@ -18,6 +18,8 @@ import sys
 import aiohttp
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:38281"
+# Slot name -> password, from `randogeddon slots --json`
+PASSWORDS = json.load(open(sys.argv[2]))["slots"] if len(sys.argv) > 2 else {}
 LOCK_SLOT = "Locks"
 # When each key (sorted by key name) may be picked up, in seconds after start; None = only hinted
 KEY_SCHEDULE = [25, 75, None]
@@ -66,8 +68,8 @@ async def session(name: str, game: str, tags=("AP",)):
                 return packet
 
     room = await recv("RoomInfo")
-    await ws.send_json([{"cmd": "Connect", "password": "", "game": game, "name": name, "uuid": f"demo-{name}",
-                         "version": room["version"], "items_handling": 0b111, "tags": list(tags),
+    await ws.send_json([{"cmd": "Connect", "password": PASSWORDS.get(name, ""), "game": game, "name": name,
+                         "uuid": f"demo-{name}", "version": room["version"], "items_handling": 0b111, "tags": list(tags),
                          "slot_data": True}])
     connected = await recv("Connected")
     return http, ws, recv, connected
