@@ -106,7 +106,7 @@ class AdminRepository(private val scope: CoroutineScope) {
   }
 }
 
-/** The admin panel: the game server (state, start/stop/restart), its log and its console. */
+/** The admin panel: the session, the apworlds, the game server (state, start/stop/restart), its log and its console. */
 @Composable
 fun AdminView(now: Long, onBack: () -> Unit) {
   val scope = rememberCoroutineScope()
@@ -128,6 +128,7 @@ fun AdminView(now: Long, onBack: () -> Unit) {
       Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
     }
     SessionSection(onChanged = { message = null })
+    ApworldsSection()
     ServerSection(state, problem, now, message, onAction = { action -> run { repository.control(action) } })
     LogSection(repository.log)
     ConsoleSection(onSend = { line -> run { repository.command(line) } })
@@ -177,6 +178,12 @@ private fun ServerSection(
           ActionButton("Start", enabled = !running) { onAction("start") }
           ActionButton("Stop", enabled = running) { confirm = "stop" }
           ActionButton("Restart", enabled = running) { confirm = "restart" }
+          InfoTip(
+            "Start: MultiServer serves the session's seed. Stop: it saves and ends; every player is disconnected and " +
+              "it stays stopped (the session time doesn't count) until started again. Restart: stop and start, " +
+              "e.g. after changing something by hand. A crashed server is started again by the gateway by itself.",
+            Modifier.align(Alignment.CenterVertically),
+          )
         }
       } else {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -236,7 +243,15 @@ private fun ConsoleSection(onSend: (String) -> Unit) {
     input = ""
     back = 0
   }
-  Section("Console", subtitle = "server commands, e.g. /players, /send <player> <item>, /hint <player> <item>") {
+  Section(
+    "Console", subtitle = "server commands, e.g. /players, /send <slot> <item>, /hint <slot> <item>",
+    actions = {
+      InfoTip(
+        "Archipelago's server console. Its commands say \"player\" for a slot: /send Alice-HK Mantis Claw gives the " +
+          "slot Alice-HK that item. Names with spaces in quotes. /help lists every command; the answers show in the log."
+      )
+    },
+  ) {
     Row(
       Modifier.fillMaxWidth().card(p).padding(12.dp),
       verticalAlignment = Alignment.CenterVertically,

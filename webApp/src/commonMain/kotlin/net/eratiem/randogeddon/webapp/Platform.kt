@@ -36,10 +36,10 @@ expect object Platform {
   fun hideLogin()
 
   /**
-   * Lets the user pick text files (e.g. `.yaml,.yml` for [accept]); [onPicked] gets them as a JSON array of
-   * `{"fileName", "content"}` (nothing if the dialog is cancelled).
+   * Lets the user pick files (e.g. `.yaml,.yml` for [accept]); [onPicked] gets them as a JSON array of
+   * `{"fileName", "content"}` (nothing if the dialog is cancelled). The content is the text, or base64 with [binary].
    */
-  fun pickFiles(accept: String, onPicked: (String) -> Unit)
+  fun pickFiles(accept: String, binary: Boolean = false, onPicked: (String) -> Unit)
 
   /** Puts [text] on the clipboard. */
   fun copy(text: String)

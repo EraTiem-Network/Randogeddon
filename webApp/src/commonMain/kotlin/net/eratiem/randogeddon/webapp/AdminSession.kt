@@ -47,6 +47,7 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.NewLogin
 import net.eratiem.randogeddon.shared.SessionInfo
@@ -59,13 +60,44 @@ import net.eratiem.randogeddon.shared.YamlWorld
 private val RELEASE_MODES = listOf("auto", "enabled", "disabled", "goal", "auto-enabled")
 private val REMAINING_MODES = listOf("enabled", "disabled", "goal")
 
+/** What each option of a new session does, for its info tip. */
+private object Tips {
+  const val PLAYERS = "Who plays this slot. A slot with several players is played together: they share it and its " +
+    "slot password. A name without a login gets one when the session is created."
+  const val LOCKS = "A locked slot can't be played until its key is found, somewhere in another slot (World Locks). " +
+    "Choose: tick \"starts locked\" per slot. Random: the given number of slots, picked at random, start open; all " +
+    "others start locked."
+  const val OPEN_SLOTS = "How many slots start open; at least one, and at least one stays locked. Which ones is " +
+    "picked at random when the session is generated."
+  const val STARTS_LOCKED = "This slot waits for its key, which lies somewhere in another slot."
+  const val POINT_HINTS = "Players buy hints with !hint in their client and pay with points they earn by checking " +
+    "locations. Off: !hint and !hint_location are refused; the server console can still give hints."
+  const val AUTO_HINTS = "Games may create hints by themselves, e.g. a shop that shows whose item it sells. Off: " +
+    "those only show the item to the game, no hint is made."
+  const val EARLY_KEYS = "The keys of the locked slots are placed early: somewhere reachable from the start, so " +
+    "the locked slots open soon instead of whenever the logic needs them."
+  const val HINT_COST = "What one hint costs, in % of the slot's locations. With 10 % and 200 locations a hint " +
+    "costs 20 points. 0: hints are free."
+  const val CHECK_POINTS = "Points a slot earns for each location it checks; hints are paid with them."
+  const val RELEASE = "When a slot's remaining items are sent to their owners (!release). auto: by itself when the " +
+    "slot reaches its goal. enabled: anytime with !release. disabled: never. goal: with !release after the goal. " +
+    "auto-enabled: by itself at the goal, and anytime with !release."
+  const val COLLECT = "When a slot gets its own items that are still in other slots (!collect), with the same " +
+    "choices as release: auto (at the goal), enabled (anytime), disabled, goal (with !collect after the goal), " +
+    "auto-enabled."
+  const val REMAINING = "Whether a player may ask which of their items are still out there (!remaining): enabled " +
+    "anytime, disabled never, goal only after the slot's goal."
+  const val RELEASE_VERSION = "The Archipelago release that generates and serves this session; the session stays on " +
+    "it. Which games it has is listed under apworlds."
+}
+
 /** An answer of the admin API: the decoded body, or the error message. */
-private sealed interface Answer<out T> {
+internal sealed interface Answer<out T> {
   data class Ok<T>(val value: T) : Answer<T>
   data class Failed(val message: String) : Answer<Nothing>
 }
 
-private suspend fun <T> call(method: String, path: String, body: String?, decode: (String) -> T): Answer<T> {
+internal suspend fun <T> call(method: String, path: String, body: String?, decode: (String) -> T): Answer<T> {
   val result = Platform.request(method, path, body) ?: return Answer.Failed("The server can't be reached")
   if (result.status in 200..299) return runCatching { Answer.Ok(decode(result.body)) }.getOrElse { Answer.Failed("Unexpected answer") }
   val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }.getOrNull()
@@ -73,7 +105,7 @@ private suspend fun <T> call(method: String, path: String, body: String?, decode
 }
 
 /**
- * The admin panel's session: without one, the form to create it (YAMLs, who plays which world, locks, options);
+ * The admin panel's session: without one, the form to create it (YAMLs, who plays which slot, locks, options);
  * with one, what it is and a delete button. [onChanged] after creating or deleting (the game server restarts).
  */
 @Composable
@@ -97,7 +129,7 @@ fun SessionSection(onChanged: () -> Unit) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       created?.let { result ->
-        NewLogins(result.logins, onDone = { created = null })
+        NewLogins(result.logins, result.locked, onDone = { created = null })
       }
       when {
         current == null -> Txt("…", color = p.muted)
@@ -171,7 +203,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
   var error by remember { mutableStateOf<String?>(null) }
 
   fun inspect() = scope.launch {
-    val body = ApiJson.encodeToString(ListSerializer(UploadedYaml.serializer()), yamls.toList())
+    val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
     when (val answer = call("POST", "api/admin/session/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
       is Answer.Ok -> {
         worlds = answer.value.worlds
@@ -182,8 +214,10 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
       is Answer.Failed -> problems = listOf(answer.message)
     }
   }
+  // Another release may have other games
+  LaunchedEffect(version) { if (yamls.isNotEmpty()) inspect() }
 
-  Txt("1. The player YAMLs", size = 13.sp, weight = FontWeight.SemiBold)
+  Txt("1. The YAMLs, one per slot", size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Button("Choose YAMLs…") {
       Platform.pickFiles(".yaml,.yml") { json ->
@@ -199,16 +233,44 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
     }
   }
   problems.forEach { Txt(it, size = 12.5.sp, color = p.trap) }
+  if (problems.any { it.startsWith("No apworld for") }) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt("Upload the missing apworlds below, then:", size = 12.5.sp, color = p.muted)
+      SmallButton("Check again", { inspect() })
+    }
+  }
 
   if (worlds.isNotEmpty()) {
-    Txt("2. Who plays which world", size = 13.sp, weight = FontWeight.SemiBold)
+    val random = options.openSlots != null
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      Txt("2. Who plays which slot", size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(Tips.PLAYERS)
+    }
     Txt(
-      "A world can have several players (they play it together). New names get a login when the session is created.",
+      "One slot per YAML. A slot can have several players (they play it together). New names get a login when the " +
+        "session is created.",
       size = 12.sp, color = p.muted,
     )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Labeled("Locks", Tips.LOCKS) {
+        Select(
+          listOf("choose" to "Choose per slot", "random" to "Random"), if (random) "random" else "choose",
+          { mode ->
+            options = options.copy(openSlots = if (mode == "random") (worlds.size / 2).coerceIn(1, maxOf(1, worlds.size - 1)) else null)
+          },
+        )
+      }
+      options.openSlots?.let { open ->
+        NumberField("slots start open", open, Tips.OPEN_SLOTS) { options = options.copy(openSlots = it) }
+        if (open < 1 || open >= worlds.size) {
+          Txt("Between 1 and ${worlds.size - 1}", size = 12.5.sp, color = p.trap)
+        }
+      }
+    }
     worlds.forEach { world ->
       WorldRow(
-        world, users[world.name].orEmpty(), view.users, locked[world.name] == true,
+        world, users[world.name].orEmpty(), view.users, !random && locked[world.name] == true,
+        lockable = !random,
         onUsers = { users[world.name] = it },
         onLocked = { locked[world.name] = it },
       )
@@ -216,32 +278,41 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
 
     Txt("3. Options", size = 13.sp, weight = FontWeight.SemiBold)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Check("Point hints (!hint)", options.pointHints) { options = options.copy(pointHints = it) }
-      Check("Automatic hints", options.autoHints) { options = options.copy(autoHints = it) }
-      if (locked.values.any { it }) Check("Keys early", options.earlyKeys) { options = options.copy(earlyKeys = it) }
+      Check("Point hints (!hint)", options.pointHints, Tips.POINT_HINTS) { options = options.copy(pointHints = it) }
+      Check("Automatic hints", options.autoHints, Tips.AUTO_HINTS) { options = options.copy(autoHints = it) }
+      if (random || locked.values.any { it }) {
+        Check("Keys early", options.earlyKeys, Tips.EARLY_KEYS) { options = options.copy(earlyKeys = it) }
+      }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       if (options.pointHints) {
-        NumberField("Hint cost %", options.hintCost) { options = options.copy(hintCost = it) }
-        NumberField("Points per check", options.locationCheckPoints) { options = options.copy(locationCheckPoints = it) }
+        NumberField("Hint cost %", options.hintCost, Tips.HINT_COST) { options = options.copy(hintCost = it) }
+        NumberField("Points per check", options.locationCheckPoints, Tips.CHECK_POINTS) { options = options.copy(locationCheckPoints = it) }
       }
-      Labeled("Release") { Select(RELEASE_MODES.map { it to it }, options.releaseMode, { options = options.copy(releaseMode = it) }) }
-      Labeled("Collect") { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }) }
-      Labeled("Remaining") { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }) }
-      if (view.apVersions.size > 1) {
-        Labeled("Archipelago") { Select(view.apVersions.map { it to it }, version ?: "", { version = it }) }
+      Labeled("Release", Tips.RELEASE) { Select(RELEASE_MODES.map { it to it }, options.releaseMode, { options = options.copy(releaseMode = it) }) }
+      Labeled("Collect", Tips.COLLECT) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }) }
+      Labeled("Remaining", Tips.REMAINING) { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }) }
+      when {
+        view.apVersions.size > 1 -> Labeled("Archipelago", Tips.RELEASE_VERSION) {
+          Select(view.apVersions.map { it to it }, version ?: "", { version = it })
+        }
+        version != null -> Labeled("Archipelago $version", Tips.RELEASE_VERSION) {}
       }
     }
     if (view.apVersions.isEmpty()) Txt("The gateway reports no Archipelago release.", size = 12.5.sp, color = p.trap)
+    val openOk = options.openSlots?.let { it in 1 until worlds.size } ?: true
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Button(if (busy) "Generating…" else "Generate and start", enabled = !busy && problems.isEmpty() && view.apVersions.isNotEmpty()) {
+      Button(
+        if (busy) "Generating…" else "Generate and start",
+        enabled = !busy && problems.isEmpty() && view.apVersions.isNotEmpty() && openOk,
+      ) {
         busy = true
         error = null
         scope.launch {
           val request = CreateSessionRequest(
             yamls = yamls.toList(),
-            worlds = worlds.map { WorldPlan(it.name, users[it.name].orEmpty(), locked[it.name] == true) },
+            worlds = worlds.map { WorldPlan(it.name, users[it.name].orEmpty(), !random && locked[it.name] == true) },
             options = options,
             apVersion = version,
           )
@@ -255,11 +326,28 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
       }
       if (busy) Txt("Archipelago generates the seed; that can take a minute.", size = 12.5.sp, color = p.muted)
     }
-    error?.let { Mono(it, p.trap) }
+    error?.let { GenerationError(it) }
   }
 }
 
-/** One world of the new session: its players (chips; type a name and Enter, or pick a suggestion) and the lock. */
+/** A failed generation: the suspected games as text, Generate.py's output below in monospace. */
+@Composable
+private fun GenerationError(message: String) {
+  val p = LocalPalette.current
+  val marker = "Generate.py said:"
+  val split = message.indexOf(marker)
+  if (split < 0) {
+    Mono(message, p.trap)
+  } else {
+    Txt(message.substring(0, split + marker.length).trim(), size = 12.5.sp, color = p.trap)
+    Mono(message.substring(split + marker.length).trim(), p.text)
+  }
+}
+
+/**
+ * One slot of the new session: its players (chips; type a name and Enter, or pick a suggestion) and the lock (unless
+ * the locks are random: not [lockable]).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WorldRow(
@@ -267,6 +355,7 @@ private fun WorldRow(
   users: List<String>,
   known: List<String>,
   locked: Boolean,
+  lockable: Boolean,
   onUsers: (List<String>) -> Unit,
   onLocked: (Boolean) -> Unit,
 ) {
@@ -286,7 +375,7 @@ private fun WorldRow(
           Txt(world.name, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
           Txt("${world.game} · ${world.fileName}", size = 11.5.sp, color = p.muted, maxLines = 1)
         }
-        Check("starts locked", locked, onLocked)
+        if (lockable) Check("starts locked", locked, Tips.STARTS_LOCKED, onLocked)
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { name ->
@@ -300,7 +389,7 @@ private fun WorldRow(
           },
         )
       }
-      // Logins that match what's typed (or, before typing, those not in this world yet)
+      // Logins that match what's typed (or, before typing, those not in this slot yet)
       val suggestions = known.filter { k -> users.none { it.equals(k, ignoreCase = true) } }
         .filter { input.isBlank() || it.contains(input.trim(), ignoreCase = true) }.take(8)
       if (input.isNotBlank() && suggestions.isNotEmpty()) {
@@ -325,15 +414,16 @@ private fun UserChip(name: String, isNew: Boolean, onRemove: () -> Unit) {
   }
 }
 
-/** The logins of a session just created; their passwords are shown only now. */
+/** The logins of a session just created (their passwords are shown only now) and the slots that start locked. */
 @Composable
-private fun NewLogins(logins: List<NewLogin>, onDone: () -> Unit) {
+private fun NewLogins(logins: List<NewLogin>, locked: List<String>, onDone: () -> Unit) {
   val p = LocalPalette.current
   Column(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.ok.copy(alpha = 0.1f)).padding(12.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Txt("Session created; the game server is starting.", size = 13.sp, weight = FontWeight.SemiBold)
+    if (locked.isNotEmpty()) Txt("Start locked: ${locked.joinToString(", ")}", size = 12.5.sp)
     if (logins.isEmpty()) {
       Txt("Everyone already had a login.", size = 12.5.sp, color = p.muted)
     } else {
@@ -351,34 +441,38 @@ private fun NewLogins(logins: List<NewLogin>, onDone: () -> Unit) {
 }
 
 @Composable
-private fun Check(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun Check(label: String, checked: Boolean, tip: String? = null, onChange: (Boolean) -> Unit) {
   val p = LocalPalette.current
-  Row(
-    Modifier.clip(RoundedCornerShape(8.dp)).clickable { onChange(!checked) }.padding(vertical = 2.dp, horizontal = 2.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Box(
-      Modifier.size(16.dp).clip(RoundedCornerShape(4.dp))
-        .background(if (checked) p.accent else Color.Transparent)
-        .border(1.5.dp, if (checked) p.accent else p.muted, RoundedCornerShape(4.dp)),
-    )
-    Txt(label, size = 12.5.sp, maxLines = 1)
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(
+      Modifier.clip(RoundedCornerShape(8.dp)).clickable { onChange(!checked) }.padding(vertical = 2.dp, horizontal = 2.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      Box(
+        Modifier.size(16.dp).clip(RoundedCornerShape(4.dp))
+          .background(if (checked) p.accent else Color.Transparent)
+          .border(1.5.dp, if (checked) p.accent else p.muted, RoundedCornerShape(4.dp)),
+      )
+      Txt(label, size = 12.5.sp, maxLines = 1)
+    }
+    if (tip != null) InfoTip(tip)
   }
 }
 
 @Composable
-private fun Labeled(label: String, content: @Composable () -> Unit) {
+private fun Labeled(label: String, tip: String? = null, content: @Composable () -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
     Txt(label, size = 12.5.sp, color = LocalPalette.current.muted)
+    if (tip != null) InfoTip(tip)
     content()
   }
 }
 
 @Composable
-private fun NumberField(label: String, value: Int, onChange: (Int) -> Unit) {
+private fun NumberField(label: String, value: Int, tip: String? = null, onChange: (Int) -> Unit) {
   var text by remember(value) { mutableStateOf(value.toString()) }
-  Labeled(label) {
+  Labeled(label, tip) {
     FilterField(text, { typed ->
       text = typed.filter { it.isDigit() }.take(3)
       text.toIntOrNull()?.let(onChange)
@@ -387,14 +481,14 @@ private fun NumberField(label: String, value: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun Mono(text: String, color: Color, modifier: Modifier = Modifier) {
+internal fun Mono(text: String, color: Color, modifier: Modifier = Modifier) {
   SelectionContainer(modifier) {
     BasicText(text, style = TextStyle(color = color, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace))
   }
 }
 
 @Composable
-private fun Button(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
+internal fun Button(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
   val p = LocalPalette.current
   val color = if (danger) p.trap else p.accent
   Txt(

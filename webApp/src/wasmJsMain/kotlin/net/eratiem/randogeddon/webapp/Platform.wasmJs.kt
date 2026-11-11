@@ -35,7 +35,7 @@ actual object Platform {
 
   actual fun hideLogin() = jsHideLogin()
 
-  actual fun pickFiles(accept: String, onPicked: (String) -> Unit) = jsPickFiles(accept, onPicked)
+  actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
 
   actual fun copy(text: String) = jsCopy(text)
 
@@ -65,12 +65,16 @@ private fun jsShowLogin(message: String?, onLoggedIn: () -> Unit): Unit =
 
 private fun jsHideLogin(): Unit = js("window.randogeddonLogin.hide()")
 
-// A hidden file input; every chosen file is read as text
-private fun jsPickFiles(accept: String, onPicked: (String) -> Unit): Unit = js(
+// A hidden file input; every chosen file is read as text, or as base64 (from a data: URL)
+private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit): Unit = js(
   """{ const input = document.createElement('input');
        input.type = 'file'; input.multiple = true; input.accept = accept;
+       const read = f => binary
+         ? new Promise(done => { const r = new FileReader();
+             r.onload = () => done(r.result.substring(r.result.indexOf(',') + 1)); r.readAsDataURL(f); })
+         : f.text();
        input.addEventListener('change', () => {
-         Promise.all(Array.from(input.files).map(f => f.text().then(t => ({ fileName: f.name, content: t }))))
+         Promise.all(Array.from(input.files).map(f => read(f).then(t => ({ fileName: f.name, content: t }))))
            .then(files => onPicked(JSON.stringify(files)));
        });
        input.click(); }"""
