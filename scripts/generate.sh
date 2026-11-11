@@ -18,7 +18,7 @@ done
 ./scripts/build-apworlds.sh >/dev/null
 echo "Generating with ${#yamls[@]} player file(s): ${yamls[*]}"
 
-docker compose --profile tools run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" generate generate "$@"
+docker compose --profile tools run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" generate "$@"
 
 latest="$(ls -t output/AP_*.zip 2>/dev/null | head -n1 || true)"
 [[ -n "$latest" ]] || { echo "Generation produced no AP_*.zip — check the log above." >&2; exit 1; }

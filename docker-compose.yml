@@ -2,52 +2,29 @@
 #   server (Traefik):  COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml   (set in .env)
 #   local test:        COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
 #
-# Game clients reach MultiServer only through the gateway, which checks the slot passwords; the dashboard (tracker)
-# needs a login. Both keep their data in PostgreSQL.
+# The gateway is the game host: it runs MultiServer and is the game clients' only way in, checking the slot passwords.
+# The dashboard (tracker) needs a login and controls the game server through the gateway (admin panel). Both keep
+# their data in PostgreSQL.
 name: randogeddon
 
-x-ap-image: &ap-image
-  image: randogeddon-server:${AP_VERSION:-0.6.8}
-  build:
-    context: ./archipelago
-    args:
-      AP_VERSION: ${AP_VERSION:-0.6.8}
-
-# The Kotlin apps: native executables, both from kotlin.Dockerfile (one Gradle build for both)
-x-kotlin-build: &kotlin-build
+# Built from kotlin.Dockerfile: the native Kotlin apps (one Gradle build for both) and Archipelago for the gateway
+x-build: &build
   context: .
   dockerfile: kotlin.Dockerfile
   secrets: [gradle_init]
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
+    AP_VERSION: ${AP_VERSION:-0.6.8}
 
 x-database: &database
   DB_URL: jdbc:postgresql://postgres:5432/randogeddon
   DB_USER: randogeddon
   DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
-services:
-  archipelago:
-    <<: *ap-image
-    command: ["server"]
-    restart: unless-stopped
-    # Keeps the server console usable: `docker compose attach archipelago` (detach: Ctrl-P Ctrl-Q)
-    stdin_open: true
-    tty: true
-    environment:
-      AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
-      AP_HINT_COST: ${AP_HINT_COST:-10}
-      AP_LOCATION_CHECK_POINTS: ${AP_LOCATION_CHECK_POINTS:-1}
-      AP_RELEASE_MODE: ${AP_RELEASE_MODE:-auto}
-      AP_COLLECT_MODE: ${AP_COLLECT_MODE:-auto}
-      AP_REMAINING_MODE: ${AP_REMAINING_MODE:-goal}
-      AP_COUNTDOWN_MODE: ${AP_COUNTDOWN_MODE:-auto}
-      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
-      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
-    volumes:
-      - ./data:/data
-      - ./custom_worlds:/ap/custom_worlds:ro
+# Between tracker and gateway (the admin panel's control of the game server)
+x-internal-token: &internal-token ${INTERNAL_TOKEN:?set INTERNAL_TOKEN in .env}
 
+services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
@@ -63,20 +40,50 @@ services:
       timeout: 5s
       retries: 10
 
-  tracker:
-    image: randogeddon-tracker:latest
+  gateway:
+    image: randogeddon-gateway:${AP_VERSION:-0.6.8}
     build:
-      <<: *kotlin-build
-      target: tracker
+      <<: *build
+      target: gateway
     restart: unless-stopped
+    # MultiServer saves on /exit when the gateway stops; give it the time
+    stop_grace_period: 30s
     depends_on:
-      archipelago:
-        condition: service_started
       postgres:
         condition: service_healthy
     environment:
       <<: *database
-      AP_SERVER: ws://archipelago:38281
+      INTERNAL_TOKEN: *internal-token
+      AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
+      AP_HINT_COST: ${AP_HINT_COST:-10}
+      AP_LOCATION_CHECK_POINTS: ${AP_LOCATION_CHECK_POINTS:-1}
+      AP_RELEASE_MODE: ${AP_RELEASE_MODE:-auto}
+      AP_COLLECT_MODE: ${AP_COLLECT_MODE:-auto}
+      AP_REMAINING_MODE: ${AP_REMAINING_MODE:-goal}
+      AP_COUNTDOWN_MODE: ${AP_COUNTDOWN_MODE:-auto}
+      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
+      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
+    volumes:
+      - ./data:/data                                            # seeds, saves; room.json is written here
+      - ./custom_worlds:/opt/archipelago/${AP_VERSION:-0.6.8}/custom_worlds:ro
+
+  tracker:
+    image: randogeddon-tracker:latest
+    build:
+      <<: *build
+      target: tracker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    environment:
+      <<: *database
+      # MultiServer inside the gateway; port 38282 is not published, only the tracker connects there directly
+      AP_SERVER: ws://gateway:38282
+      GAME_SERVER_API: http://gateway:8001
+      INTERNAL_TOKEN: *internal-token
       # Shown to logged-in players; the Traefik overlay sets the public host name
       AP_PUBLIC_ADDRESS: ${AP_PUBLIC_ADDRESS:-localhost:38281}
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
@@ -84,35 +91,20 @@ services:
       AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
       AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
     volumes:
-      - ./data:/data:ro              # reads room.json written by the server
+      - ./data:/data:ro              # reads room.json written by the gateway
       - tracker-state:/state         # event history survives restarts
-
-  gateway:
-    image: randogeddon-gateway:latest
-    build:
-      <<: *kotlin-build
-      target: gateway
-    restart: unless-stopped
-    depends_on:
-      archipelago:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-    environment:
-      <<: *database
-      AP_UPSTREAM: ws://archipelago:38281
-    volumes:
-      - ./data:/data:ro              # room.json names the seed whose slot passwords apply
 
   # One-shot seed generation (run locally):  ./scripts/generate.sh
   generate:
-    <<: *ap-image
+    image: randogeddon-gateway:${AP_VERSION:-0.6.8}
     profiles: ["tools"]
-    command: ["generate"]
+    # As root, so it can hand the output to the host user (HOST_UID)
+    user: "0"
+    entrypoint: ["ap-generate"]
     volumes:
       - ./players:/players:ro
       - ./output:/output
-      - ./custom_worlds:/ap/custom_worlds:ro
+      - ./custom_worlds:/opt/archipelago/${AP_VERSION:-0.6.8}/custom_worlds:ro
       - ./roms:/roms:ro
 
 volumes:
@@ -120,6 +112,6 @@ volumes:
   postgres-data:
 
 secrets:
-  # Gradle init script with the Nexus credentials; only needed when the tracker and gateway images are built
+  # Gradle init script with the Nexus credentials; only needed when the images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}

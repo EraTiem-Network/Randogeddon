@@ -28,7 +28,7 @@ done
 mv "data/.incoming-$NAME" "data/$NAME"
 if [[ -f data/.incoming-session.yaml ]]; then mv data/.incoming-session.yaml data/session.yaml; fi
 # The build reads the Gradle init script outside the build context; no prompt for that here (see README, setup)
-BUILDX_BAKE_ENTITLEMENTS_FS=0 docker compose up -d --build --force-recreate archipelago tracker gateway
+BUILDX_BAKE_ENTITLEMENTS_FS=0 docker compose up -d --build --force-recreate gateway tracker
 docker compose ps
 '
 
