@@ -1,6 +1,30 @@
 {
   "reflection": [
     {
+      "type": "net.eratiem.randogeddon.shared.CommandRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GameServerState",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.LogLines",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
       "type": "com.zaxxer.hikari.HikariConfig",
       "fields": [
         {
@@ -651,6 +675,33 @@
       "methods": [
         {
           "name": "ofShared",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.CommandRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GameServerState$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.LogLines$Companion",
+      "methods": [
+        {
+          "name": "serializer",
           "parameterTypes": []
         }
       ]

@@ -1,10 +1,32 @@
 gateway:
   # Port game clients connect to (behind Traefik: <session-id>.<BASE_DOMAIN>:443)
   port: "$PORT:38281"
-  # MultiServer, reachable only inside compose (the archipelago service)
+  # MultiServer, run by this gateway (gameServer below) on a port only reachable inside compose
   upstream: "$AP_UPSTREAM:ws://localhost:38282"
-  # Names the seed MultiServer serves; written by the archipelago container on startup
+  # Names the seed MultiServer serves; written before each start
   roomJson: "$ROOM_JSON:/data/room.json"
+  internal:
+    # The tracker controls the game server here; never published or routed by Traefik
+    port: "$INTERNAL_PORT:8001"
+    # Shared with the tracker; without it the internal API refuses every call
+    token: "$INTERNAL_TOKEN:"
+  gameServer:
+    # false: MultiServer runs elsewhere (development), the gateway only relays to upstream
+    enabled: "$GAME_SERVER:true"
+    # Archipelago (one pinned release) with serve.py and room_info.py
+    apHome: "$AP_HOME:/opt/archipelago/0.6.8"
+    python: "$PYTHON:python"
+    # Seeds (the newest is served), saves
+    dataDir: "$DATA_DIR:/data"
+    port: "$AP_PORT:38282"
+    # MultiServer's options (see .env.example)
+    hintCost: "$AP_HINT_COST:10"
+    locationCheckPoints: "$AP_LOCATION_CHECK_POINTS:1"
+    releaseMode: "$AP_RELEASE_MODE:auto"
+    collectMode: "$AP_COLLECT_MODE:auto"
+    remainingMode: "$AP_REMAINING_MODE:goal"
+    countdownMode: "$AP_COUNTDOWN_MODE:auto"
+    adminPassword: "$AP_ADMIN_PASSWORD:"
   database:
     # PostgreSQL: the slot passwords (created by the tracker)
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
