@@ -5,7 +5,7 @@
 #   ./scripts/deploy-seed.sh output/AP_123.zip me@host:/srv/randogeddon  # from your PC via ssh
 #
 # Older seeds in data/ are moved to data/old/ (with their .apsave) so the server picks the new one.
-# session.yaml (who plays which worlds, for the dashboard) is copied along if it exists; another file can be given
+# session.yaml (who plays which slots, for the dashboard) is copied along if it exists; another file can be given
 # with SESSION_FILE=path.
 # WARNING: switching seeds mid-session means starting over; the old save stays in data/old/.
 set -euo pipefail

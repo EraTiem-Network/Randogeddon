@@ -75,12 +75,13 @@ ENV SKIP_REQUIREMENTS_UPDATE=true
 FROM archipelago AS gateway
 # MultiServer runs as this user and writes host.yaml and logs/ next to itself. Archipelago checks whether its own
 # directory is writable: if not, it moves to the home directory and copies folders there that a plain checkout doesn't
-# have (and fails). So the directory itself (not what's in it) belongs to the user.
+# have (and fails). So the directory itself (not what's in it) belongs to the user. custom_worlds/ too: the gateway
+# fills it with the apworlds of the library (uploaded in the admin panel, or in the server's custom_worlds/).
 RUN useradd --uid 1000 --create-home randogeddon \
  && mkdir -p logs custom_worlds \
  && touch host.yaml \
- && chown randogeddon . logs host.yaml
-COPY archipelago/serve.py archipelago/room_info.py ./
+ && chown randogeddon . logs host.yaml custom_worlds
+COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Seed generation: `docker compose run --rm generate` (see docker-compose.yml)
