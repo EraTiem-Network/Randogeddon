@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the demo session locally, to look at the dashboard:
 #   ./scripts/demo.sh        generate demo/players, deploy it locally, start the stack and the simulated players
-#   ./scripts/demo.sh loop   the same over and over: when every world is done (100 %), wait 2 minutes, start a new round
+#   ./scripts/demo.sh loop   the same over and over: when every slot is done (100 %), wait 2 minutes, start a new round
 #   ./scripts/demo.sh stop   stop the simulated players (the stack keeps running; `docker compose down` stops it)
 #
 # The demo replaces the seed in data/ (the previous one is moved to data/old/). Dashboard: http://localhost:8000
@@ -83,7 +83,7 @@ echo "Demo running: http://localhost:8000  (stop the players with ./scripts/demo
 
 if [[ "${1:-}" == "loop" ]]; then
   while true; do
-    # The simulator exits when every world is done (or when it crashes; then the next round starts all the same)
+    # The simulator exits when every slot is done (or when it crashes; then the next round starts all the same)
     code="$(docker wait "$SIM" 2>/dev/null || echo 1)"
     echo "$(date '+%F %T') Round over (simulator exit $code); next one in $((PAUSE / 60)) minutes"
     sleep "$PAUSE"

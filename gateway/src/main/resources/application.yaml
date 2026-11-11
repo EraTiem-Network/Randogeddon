@@ -13,11 +13,14 @@ gateway:
   gameServer:
     # false: MultiServer runs elsewhere (development), the gateway only relays to upstream
     enabled: "$GAME_SERVER:true"
-    # The Archipelago releases, one directory each (e.g. /opt/archipelago/0.6.8) with serve.py and room_info.py
+    # The Archipelago releases, one directory each (e.g. /opt/archipelago/0.6.8) with serve.py, room_info.py and
+    # list_games.py
     apRoot: "$AP_ROOT:/opt/archipelago"
     python: "$PYTHON:python"
-    # Seeds (the newest is served), saves
+    # Seeds (the newest is served), saves, and the apworlds uploaded in the admin panel (apworlds/<release>/)
     dataDir: "$DATA_DIR:/data"
+    # Apworlds put on the server by hand; every release gets them
+    customWorlds: "$CUSTOM_WORLDS:/custom_worlds"
     port: "$AP_PORT:38282"
     # MultiServer's options for seeds deployed with the CLI (see .env.example); sessions from the admin panel bring
     # their own

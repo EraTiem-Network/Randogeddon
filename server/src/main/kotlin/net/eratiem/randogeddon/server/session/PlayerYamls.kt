@@ -12,8 +12,8 @@ import net.eratiem.randogeddon.shared.YamlWorld
 private val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
 
 /**
- * What the admin panel needs to know of the uploaded player YAMLs before generating: each world's name and game.
- * Generate.py checks everything else. A file can hold several worlds (YAML documents separated by `---`); a weighted
+ * What the admin panel needs to know of the uploaded player YAMLs before generating: each slot's name and game.
+ * Generate.py checks everything else. A file can hold several slots (YAML documents separated by `---`); a weighted
  * game (`game: {A: 1, B: 1}`) is shown as "A / B".
  */
 object PlayerYamls {
@@ -45,8 +45,12 @@ object PlayerYamls {
       }
     }
     worlds.groupBy { it.name.lowercase() }.filterValues { it.size > 1 }.forEach { (_, same) ->
-      problems += "${same.size} worlds are called ${same.first().name} (${same.joinToString { it.fileName }}); names must be unique"
+      problems += "${same.size} slots are called ${same.first().name} (${same.joinToString { it.fileName }}); names must be unique"
     }
     return InspectResult(worlds, problems)
   }
+
+  /** The games of [worlds] that aren't in [games] (a release's), each game of a weighted one on its own. */
+  fun missingGames(worlds: List<YamlWorld>, games: Set<String>): List<String> =
+    worlds.flatMap { it.game.split(" / ") }.distinct().filter { it !in games }
 }

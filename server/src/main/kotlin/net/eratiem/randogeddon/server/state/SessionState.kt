@@ -442,7 +442,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val hint = hints.values.firstOrNull { it.receivingPlayer in lockSlots() && itemName(it.item, it.receivingPlayer) == key }
     return LockInfo(
       key, unlocked = false,
-      hintedAt = hint?.let { "${locationName(it.location, it.findingPlayer)} (${playerName(it.findingPlayer)}'s world)" },
+      hintedAt = hint?.let { "${locationName(it.location, it.findingPlayer)} (in ${playerName(it.findingPlayer)})" },
     )
   }
 

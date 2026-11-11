@@ -16,20 +16,24 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionProblem
-import net.eratiem.randogeddon.server.session.PlayerYamls
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.GameServerState
+import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.LogLines
-import net.eratiem.randogeddon.shared.UploadedYaml
 import java.lang.invoke.MethodHandles
 import kotlin.time.Duration.Companion.milliseconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 private val LOG_POLL = 750.milliseconds
+
+/** The largest apworld upload, as base64 (the gateway takes 64 MB files). */
+private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /**
  * Under the protected `/api` branch: the admin panel's control of the game server, which the gateway runs. Every
@@ -40,12 +44,36 @@ fun Route.adminRoutes(gameServer: GameServerClient, sessions: SessionAdmin) {
     install(RequireAdmin)
     route("/session") {
       get { gatewayCall { call.respond(sessions.view()) } }
-      // The worlds of the uploaded YAMLs, before the admin assigns them
-      post("/inspect") { call.respond(PlayerYamls.inspect(call.receive<List<UploadedYaml>>())) }
+      // The slots of the uploaded YAMLs, before the admin assigns them; games the release lacks are problems
+      post("/inspect") { call.respond(sessions.inspect(call.receive<InspectRequest>())) }
       post { gatewayCall { call.respond(sessions.create(call.receive<CreateSessionRequest>(), call.loggedIn.user.name)) } }
       delete {
         gatewayCall {
           sessions.delete(call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+    }
+    // The apworld library of each Archipelago release
+    route("/apworlds") {
+      get { gatewayCall { call.respond(gameServer.archipelago()) } }
+      post {
+        val upload = call.receive<ApworldUpload>()
+        if (upload.base64.length > MAX_APWORLD_BASE64) return@post call.respond(HttpStatusCode.PayloadTooLarge, ApiError("Larger than 64 MB"))
+        logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.fileName, upload.release)
+        gatewayCall { call.respond(gameServer.uploadApworld(upload)) }
+      }
+      post("/try") {
+        val request = call.receive<ApworldTry>()
+        logger.info("{} tries {} of Archipelago {} with {}", call.loggedIn.user.name, request.file, request.from, request.release)
+        gatewayCall { call.respond(gameServer.tryApworld(request)) }
+      }
+      delete("/{release}/{file}") {
+        val release = call.parameters["release"]!!
+        val file = call.parameters["file"]!!
+        logger.info("{} removes {} from Archipelago {}", call.loggedIn.user.name, file, release)
+        gatewayCall {
+          gameServer.removeApworld(release, file)
           call.respond(HttpStatusCode.NoContent)
         }
       }

@@ -378,13 +378,13 @@ private fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifie
   val t = s.totals
   val open = s.hints.count { !it.found }
   val tiles = buildList {
-    add(Tile("Goals", "${t.goals} / ${t.players}", "worlds finished", p.ok, Icon.FLAG))
+    add(Tile("Goals", "${t.goals} / ${t.players}", "slots finished", p.ok, Icon.FLAG))
     add(Tile("Online", "${t.online}", "clients connected", p.useful, null))
     if (t.lockable > 0) {
-      add(Tile("Unlocked", "${t.lockable - t.locked} / ${t.lockable}", "worlds opened", p.key, Icon.KEY))
+      add(Tile("Unlocked", "${t.lockable - t.locked} / ${t.lockable}", "slots opened", p.key, Icon.KEY))
     }
     if (showHints(s)) add(Tile("Hints", "${s.hints.size}", "$open not found yet", p.progression, null))
-    add(Tile("Play time", duration(s.players.sumOf { playTime(it, now) }), "all worlds together", p.useful, null))
+    add(Tile("Play time", duration(s.players.sumOf { playTime(it, now) }), "all slots together", p.useful, null))
     // The game server's running time for this seed, without the times it was stopped
     val since = s.sessionRunningSince
     val session = s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0
@@ -392,7 +392,7 @@ private fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifie
   }
   Section(
     "Overview", modifier,
-    subtitle = "${t.players} worlds · ${grouped(t.checked)} of ${grouped(t.total)} checks",
+    subtitle = "${t.players} slots · ${grouped(t.checked)} of ${grouped(t.total)} checks",
   ) {
     Grid(
       tiles.size, width, 160.dp, if (fillHeight) Modifier.weight(1f) else Modifier,
@@ -434,7 +434,7 @@ private fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOp
   }
   val worlds = s.players.associateBy { it.slot }
   Section(
-    "Players", subtitle = "${s.people.size} people · ${s.players.size} worlds",
+    "Players", subtitle = "${s.people.size} ${if (s.people.size == 1) "player" else "players"} · ${s.players.size} slots",
     actions = { Select(PeopleSort.entries.map { it to it.label }, sort, { sort = it }) },
   ) {
     if (people.isEmpty()) {
@@ -475,7 +475,7 @@ private fun PersonCard(
         Txt(person.name, size = 16.sp, weight = FontWeight.Bold, maxLines = 1)
         val played = worlds.sumOf { playTime(it, now) }
         val parts = listOfNotNull(
-          "${worlds.size} ${if (worlds.size == 1) "world" else "worlds"}",
+          "${worlds.size} ${if (worlds.size == 1) "slot" else "slots"}",
           locked.takeIf { it > 0 }?.let { "$it locked" },
           if (person.goals > 0) "${person.goals} done" else null,
           if (played > 0) "${duration(played)} played" else null,
@@ -638,7 +638,7 @@ private fun Hints(s: Summary, compact: Boolean) {
         world = null
       })
     }
-    Select(listOf<Pair<String?, String>>(null to "All worlds") + worldsOfPerson.map { it.name to it.name }, world, { world = it })
+    Select(listOf<Pair<String?, String>>(null to "All slots") + worldsOfPerson.map { it.name to it.name }, world, { world = it })
     Select(HintState.entries.map { it to it.label }, state, { state = it })
   }) {
     Column(Modifier.fillMaxWidth().card(p)) { HintList(s, hints, compact) }
@@ -653,7 +653,7 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     return
   }
   if (!compact) {
-    HintRow(listOf("For", "Item", "Location", "In world of", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+    HintRow(listOf("For", "Item", "Location", "In slot", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
     Divider()
   }
   Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
@@ -705,7 +705,7 @@ private fun CompactHint(h: HintView) {
       }, size = 13.sp, modifier = Modifier.weight(1f))
       HintStatus(h)
     }
-    Txt("${h.locationName} · ${h.finderName}'s world", size = 12.sp, color = p.muted)
+    Txt("${h.locationName} · in ${h.finderName}", size = 12.sp, color = p.muted)
   }
 }
 
@@ -824,7 +824,7 @@ private fun FeedLine(e: FeedEvent) {
       EventType.UNLOCK -> {
         withStyle(bold) { append(e.senderName ?: "") }
         append(" found the key: ")
-        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = p.key)) { append(e.playerName ?: "a world") }
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = p.key)) { append(e.playerName ?: "a slot") }
         append(" is unlocked!")
       }
 
@@ -835,7 +835,6 @@ private fun FeedLine(e: FeedEvent) {
         withStyle(item) { append(e.itemName ?: "") }
         append(" is at ${e.locationName} in ")
         withStyle(bold) { append(e.finderName ?: "") }
-        append("'s world")
         if (e.found) withStyle(SpanStyle(color = p.ok, fontWeight = FontWeight.SemiBold)) { append(" (found)") }
       }
 

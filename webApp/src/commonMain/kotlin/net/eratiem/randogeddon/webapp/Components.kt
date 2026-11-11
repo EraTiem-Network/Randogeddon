@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -346,6 +347,34 @@ fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
     modifier = modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).clickable(onClick = onClick)
       .padding(horizontal = 10.dp, vertical = 4.dp),
   )
+}
+
+/**
+ * A small "i" next to an option or button: what it does, on hover, or on tap on a phone (tap again or anywhere else
+ * to close).
+ */
+@Composable
+fun InfoTip(text: String, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  val interaction = remember { MutableInteractionSource() }
+  val hovered by interaction.collectIsHoveredAsState()
+  var tapped by remember { mutableStateOf(false) }
+  Box(
+    modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (hovered || tapped) p.accent else p.muted, CircleShape)
+      .hoverable(interaction)
+      .clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+    contentAlignment = Alignment.Center,
+  ) {
+    Txt("i", size = 10.sp, color = if (hovered || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
+    if (hovered || tapped) {
+      Popup(offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+        Txt(
+          text, size = 12.sp,
+          modifier = Modifier.widthIn(max = 320.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+        )
+      }
+    }
+  }
 }
 
 /** A clickable row that tints itself while hovered. */

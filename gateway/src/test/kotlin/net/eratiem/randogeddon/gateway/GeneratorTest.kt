@@ -20,7 +20,8 @@ import kotlin.test.assertTrue
 
 /**
  * Seed generation with a shell script as "Generate.py" (and `sh` as the interpreter): it lists the YAMLs it was given
- * and writes a seed, or fails when a YAML says so. Skipped on Windows (needs sh).
+ * and writes a seed, or fails when a YAML says so (and then waits for Enter, like Generate.py). Skipped on Windows
+ * (needs sh).
  */
 class GeneratorTest {
   private lateinit var root: Path
@@ -39,15 +40,19 @@ class GeneratorTest {
         players="${'$'}2"; out="${'$'}4"
         ls "${'$'}players" > "$root/files-$version.txt"
         cat "${'$'}players"/* > "$root/seen-$version.txt"
-        grep -q "unbeatable" "${'$'}players"/* && { echo "Game appears as unbeatable"; exit 1; }
+        grep -q "unbeatable" "${'$'}players"/* && { echo "Traceback (most recent call last):"; echo "  File \"worlds/hk/__init__.py\""; echo "Game appears as unbeatable"; read -r _; exit 1; }
         echo "version $version"
         touch "${'$'}out/AP_12345.zip"
         """.trimIndent()
+      )
+      home.resolve("list_games.py").writeText(
+        """echo '{"games":[{"game":"Hollow Knight","module":"worlds.hk"},{"game":"Archipelago","module":"worlds.generic"}]}' > "${'$'}1""""
       )
     }
   }
 
   private val archipelago get() = Archipelago(root, "sh")
+  private val generator get() = Generator(archipelago, data, Apworlds(archipelago, data.resolve("apworlds"), null))
 
   @Test
   fun `versions are listed newest first, by number`() {
@@ -62,7 +67,7 @@ class GeneratorTest {
     data.resolve("AP_999.apsave").createFile()
     data.resolve("room.json").writeText("{}")
 
-    val result = Generator(archipelago, data).generate(
+    val result = generator.generate(
       GenerateRequest(
         yamls = listOf(UploadedYaml("Alice HK.yaml", "name: Alice-HK"), UploadedYaml("../evil.yml", "name: Bob")),
         locked = listOf("Bob"),
@@ -79,7 +84,7 @@ class GeneratorTest {
 
   @Test
   fun `the locked worlds become a World Locks slot, the file names are made safe`() = runBlocking {
-    Generator(archipelago, data).generate(
+    generator.generate(
       GenerateRequest(
         listOf(UploadedYaml("../Alice HK.yaml", "name: Al")), locked = listOf("Al\"ice", "Bob"), apVersion = "0.6.8",
       )
@@ -95,17 +100,20 @@ class GeneratorTest {
   @Test
   fun `a failed generation keeps the current seed and says why`() = runBlocking {
     data.resolve("AP_999.zip").createFile()
-    val result = Generator(archipelago, data).generate(
-      GenerateRequest(listOf(UploadedYaml("a.yaml", "unbeatable")), apVersion = "0.6.8")
+    val result = generator.generate(
+      GenerateRequest(listOf(UploadedYaml("a.yaml", "unbeatable")), apVersion = "0.6.8", games = listOf("Hollow Knight", "Celeste"))
     )
     assertNull(result.seedName)
     assertTrue(result.log.any { "unbeatable" in it })
     assertTrue(data.resolve("AP_999.zip").exists())
+    // Celeste isn't in the release at all; Hollow Knight's module is in the traceback
+    assertEquals(listOf("Celeste", "Hollow Knight"), result.suspects.map { it.game })
+    assertEquals("named in the error", result.suspects[1].reason)
   }
 
   @Test
   fun `a version the gateway doesn't have is refused`() = runBlocking {
-    val result = Generator(archipelago, data).generate(GenerateRequest(emptyList(), apVersion = "1.0.0"))
+    val result = generator.generate(GenerateRequest(emptyList(), apVersion = "1.0.0"))
     assertNull(result.seedName)
     assertTrue(result.log.single().contains("not installed"))
   }

@@ -64,8 +64,8 @@ services:
       AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
       AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
     volumes:
-      - ./data:/data                                            # seeds, saves; room.json is written here
-      - ./custom_worlds:/opt/archipelago/${AP_VERSION:-0.6.8}/custom_worlds:ro
+      - ./data:/data                  # seeds, saves, uploaded apworlds; room.json is written here
+      - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   tracker:
     image: randogeddon-tracker:latest

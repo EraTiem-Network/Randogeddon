@@ -4,6 +4,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### apworlds, random locks, tooltips (Phase 3, part 3)
+- The same words everywhere: a **player** is a person with a login, a **slot** is one YAML (one game in the
+  multiworld, played by one or more players), the **game** is its title. The dashboard and the admin panel say
+  "slot" where they said "world".
+- Random locks: instead of ticking the locked slots, set how many slots start open; that many, picked at random,
+  start open and all others start locked. The panel shows which ones it picked.
+- apworlds in the admin panel: every Archipelago release of the gateway lists its games; admins upload apworlds into
+  a release's library (`data/apworlds/<release>/`), remove them, and try one uploaded for another release. Apworlds in
+  the server's `custom_worlds/` count for every release (compose mounts it at `/custom_worlds` now).
+- A YAML whose game the release doesn't have is flagged before generating. When generating fails, the panel names
+  the games that may be the cause (named in the error, or with an apworld from another release) above the output.
+- Every option of the session form, the server buttons and the console have an ⓘ that says what they do.
+
 ### Sessions in the admin panel (Phase 3, part 2)
 - Create a session in the admin panel: upload the player YAMLs, set who plays which world (one or more people per
   world: a world can be played together; new names get a login, shown once), which worlds start locked, and the hint

@@ -102,21 +102,25 @@ class Launcher(
 }
 
 /**
- * Generates seeds with Archipelago's Generate.py: the uploaded YAMLs, plus a World Locks slot for the worlds that
+ * Generates seeds with Archipelago's Generate.py: the uploaded YAMLs, plus a World Locks slot for the slots that
  * start locked. The new seed becomes the data directory's seed; the previous one goes to `old/` first, as
- * scripts/deploy-seed.sh does. One generation at a time.
+ * scripts/deploy-seed.sh does. One generation at a time, with the release's apworlds as they are now. When it fails,
+ * the games that may be the cause come with the log.
  */
-class Generator(private val archipelago: Archipelago, private val dataDir: Path) {
+class Generator(private val archipelago: Archipelago, private val dataDir: Path, private val apworlds: Apworlds) {
   private val mutex = Mutex()
 
   suspend fun generate(request: GenerateRequest): GenerateResult = mutex.withLock {
-    withContext(Dispatchers.IO) { run(request) }
-  }
-
-  private fun run(request: GenerateRequest): GenerateResult {
     val home = runCatching { archipelago.home(request.apVersion) }.getOrElse {
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
+    val release = apworlds.release(request.apVersion)
+    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home) } }
+    if (result.seedName != null) result
+    else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
+  }
+
+  private fun run(request: GenerateRequest, home: Path): GenerateResult {
     val work = createTempDirectory("generate")
     try {
       val players = work.resolve("players").createDirectories()
@@ -129,10 +133,18 @@ class Generator(private val archipelago: Archipelago, private val dataDir: Path)
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
         "--outputpath", output.absolutePathString(),
       ).directory(home.toFile()).redirectErrorStream(true).start()
+      // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
+      proc.outputStream.close()
+      // Reading blocks until the output ends: the time limit has to end the process from outside
+      Thread { if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
       val lines = proc.inputStream.bufferedReader().readLines()
-      if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly()
+      proc.waitFor()
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
-        ?: return GenerateResult(log = lines.takeLast(40).ifEmpty { listOf("Generate.py ended without a seed") })
+        ?: return GenerateResult(
+        // The error from its traceback on, not the list of every world it prints first
+        log = lines.indexOfLast { it.startsWith("Traceback") }.let { if (it >= 0) lines.drop(it).take(60) else lines.takeLast(60) }
+          .ifEmpty { listOf("Generate.py ended without a seed") },
+      )
 
       retire()
       val target = dataDir.resolve(zip.name)

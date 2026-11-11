@@ -51,7 +51,7 @@ fun ConnectionSection(me: Me, summary: Summary, modifier: Modifier = Modifier, f
     ) {
       Field("Server", me.server)
       when {
-        slot == null -> Txt("Your worlds appear here once the seed is running.", size = 13.sp, color = p.muted)
+        slot == null -> Txt("Your slots appear here once the seed is running.", size = 13.sp, color = p.muted)
         me.slots.size > 1 -> SearchableSelect(
           me.slots.map { Triple(it.name, shortSlotName(it.name, me.name), it.game) }, slot.name, { picked = it },
           Modifier.fillMaxWidth(),

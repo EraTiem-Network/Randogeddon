@@ -202,7 +202,7 @@ class SessionStateTest {
     s.onSetReply("_read_hints_0_4", element(
       """[{"receiving_player":4,"finding_player":3,"location":11,"item":7400000,"found":false,"item_flags":1}]"""
     ))
-    assertEquals("Chest B (Bob's world)", s.summary("t", null, people).players[1].lock!!.hintedAt)
+    assertEquals("Chest B (in Bob)", s.summary("t", null, people).players[1].lock!!.hintedAt)
     assertEquals("Key to Alice-Locked", s.renderHints().single().itemName)
 
     // Bob finds it

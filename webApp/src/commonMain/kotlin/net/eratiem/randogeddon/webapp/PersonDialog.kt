@@ -88,7 +88,7 @@ fun PersonDialog(
           Column(Modifier.weight(1f)) {
             Txt(person.name, size = 18.sp, weight = FontWeight.Bold)
             Txt(
-              "${worlds.size} worlds · ${person.checked} / ${person.total} checks" +
+              "${worlds.size} slots · ${person.checked} / ${person.total} checks" +
                 if (person.online) " · online" else "",
               size = 12.5.sp, color = if (person.online) p.ok else p.muted,
             )
@@ -107,7 +107,7 @@ fun PersonDialog(
           }
 
           val left: @Composable ColumnScope.() -> Unit = {
-            Section("Worlds")
+            Section("Slots")
             worlds.forEach { w ->
               HoverRow(onClick = { openWorld = w.slot }, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
@@ -136,7 +136,7 @@ fun PersonDialog(
                     Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
                     HintStatus(h)
                   }
-                  Txt("${h.locationName} · ${h.finderName}'s world · for ${h.receiverName}", size = 12.sp, color = p.muted)
+                  Txt("${h.locationName} · in ${h.finderName} · for ${h.receiverName}", size = 12.sp, color = p.muted)
                 }
                 Divider()
               }
