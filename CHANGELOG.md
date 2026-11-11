@@ -4,9 +4,30 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Login (Phase 2)
+- The dashboard needs a login: `docker compose exec tracker randogeddon logins` creates one for every person of
+  `session.yaml` and prints the generated passwords once (`--reset <person>` for a new one). Passwords are hashed with
+  Argon2id; logins last 30 days (HttpOnly, Secure, SameSite=Strict cookie); failed logins are slowed down and rate
+  limited. Without a login, the API and the live stream answer 401; someone not in `session.yaml` gets 403.
+- The login form is a plain HTML form, so password managers can save and fill it.
+- Every slot of a seed gets its own generated password, shown to its player under *Your connection* on the dashboard
+  (with the server address). `randogeddon slots` prints them for the host.
+- New service `gateway` (Kotlin): game clients connect through it; it checks the password of every `Connect` against
+  the slot's and answers `InvalidPassword` otherwise. MultiServer is no longer published. Replaces the room password
+  (`AP_PASSWORD` is gone); the tracker connects internally without one.
+- PostgreSQL (new service `postgres`, `POSTGRES_PASSWORD` in `.env`) for logins and slot passwords; schema with Flyway,
+  access with Exposed (module `:database`).
+- `demo/session.yaml` is in the repository now (the ignore rule for `session.yaml` only covers the root); the demo's
+  players connect through the gateway with their slot passwords, and the demo prints the logins.
+
+### Native build
+- Tracker and gateway run as GraalVM native executables (Linux x86_64, `-march=x86-64-v3` for the server's i7-8700),
+  built in `kotlin.Dockerfile` (replaces `tracker.Dockerfile`); the tracker starts in milliseconds instead of seconds.
+- Reachability metadata recorded with the tracing agent; Flyway's migrations are listed in an index instead of scanned.
+
 ### Randogeddon
 - The project is now called Randogeddon: images `randogeddon-server` / `randogeddon-tracker`, compose project
-  `randogeddon-<session>`, Kotlin package `net.eratiem.randogeddon`, dashboard and PWA title.
+  `randogeddon`, Kotlin package `net.eratiem.randogeddon`, dashboard and PWA title.
 - Addresses from the roadmap: the dashboard at `randogeddon.eratiem.net` (`BASE_DOMAIN`), the game server at
   `<session-id>.randogeddon.eratiem.net:443` (`SESSION_ID`). Replaces `AP_HOST` and `TRACKER_HOST`.
 - Migrating a running server: `docker compose -p archipelago down` before the first deploy with the new name. The
