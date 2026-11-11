@@ -1,6 +1,9 @@
 # Base stack. Combine with an overlay:
 #   server (Traefik):  COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml   (set in .env)
 #   local test:        COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
+#
+# Game clients reach MultiServer only through the gateway, which checks the slot passwords; the dashboard (tracker)
+# needs a login. Both keep their data in PostgreSQL.
 name: randogeddon
 
 x-ap-image: &ap-image
@@ -9,6 +12,19 @@ x-ap-image: &ap-image
     context: ./archipelago
     args:
       AP_VERSION: ${AP_VERSION:-0.6.8}
+
+# The Kotlin apps: native executables, both from kotlin.Dockerfile (one Gradle build for both)
+x-kotlin-build: &kotlin-build
+  context: .
+  dockerfile: kotlin.Dockerfile
+  secrets: [gradle_init]
+  args:
+    NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
+
+x-database: &database
+  DB_URL: jdbc:postgresql://postgres:5432/randogeddon
+  DB_USER: randogeddon
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
 services:
   archipelago:
@@ -19,7 +35,6 @@ services:
     stdin_open: true
     tty: true
     environment:
-      AP_PASSWORD: ${AP_PASSWORD:-}
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
       AP_HINT_COST: ${AP_HINT_COST:-10}
       AP_LOCATION_CHECK_POINTS: ${AP_LOCATION_CHECK_POINTS:-1}
@@ -33,17 +48,37 @@ services:
       - ./data:/data
       - ./custom_worlds:/ap/custom_worlds:ro
 
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: randogeddon
+      POSTGRES_USER: randogeddon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "randogeddon", "-d", "randogeddon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   tracker:
     image: randogeddon-tracker:latest
     build:
-      context: .
-      dockerfile: tracker.Dockerfile
-      secrets: [gradle_init]
+      <<: *kotlin-build
+      target: tracker
     restart: unless-stopped
-    depends_on: [archipelago]
+    depends_on:
+      archipelago:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
+      <<: *database
       AP_SERVER: ws://archipelago:38281
-      AP_PASSWORD: ${AP_PASSWORD:-}
+      # Shown to logged-in players; the Traefik overlay sets the public host name
+      AP_PUBLIC_ADDRESS: ${AP_PUBLIC_ADDRESS:-localhost:38281}
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
       # The same hint switches, so the dashboard shows what is in play
       AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
@@ -51,6 +86,23 @@ services:
     volumes:
       - ./data:/data:ro              # reads room.json written by the server
       - tracker-state:/state         # event history survives restarts
+
+  gateway:
+    image: randogeddon-gateway:latest
+    build:
+      <<: *kotlin-build
+      target: gateway
+    restart: unless-stopped
+    depends_on:
+      archipelago:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *database
+      AP_UPSTREAM: ws://archipelago:38281
+    volumes:
+      - ./data:/data:ro              # room.json names the seed whose slot passwords apply
 
   # One-shot seed generation (run locally):  ./scripts/generate.sh
   generate:
@@ -65,8 +117,9 @@ services:
 
 volumes:
   tracker-state:
+  postgres-data:
 
 secrets:
-  # Gradle init script with the Nexus credentials; only needed when the tracker image is built
+  # Gradle init script with the Nexus credentials; only needed when the tracker and gateway images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}

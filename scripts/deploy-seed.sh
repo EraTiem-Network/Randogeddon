@@ -27,7 +27,8 @@ for f in data/*.archipelago data/AP_*.zip data/*.apsave data/room.json data/sess
 done
 mv "data/.incoming-$NAME" "data/$NAME"
 if [[ -f data/.incoming-session.yaml ]]; then mv data/.incoming-session.yaml data/session.yaml; fi
-docker compose up -d --build --force-recreate archipelago tracker
+# The build reads the Gradle init script outside the build context; no prompt for that here (see README, setup)
+BUILDX_BAKE_ENTITLEMENTS_FS=0 docker compose up -d --build --force-recreate archipelago tracker gateway
 docker compose ps
 '
 

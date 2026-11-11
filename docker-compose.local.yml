@@ -1,7 +1,8 @@
 # Overlay for local testing / no reverse proxy: publish the ports directly.
 #   game server: localhost:38281    dashboard: http://localhost:8000
 services:
-  archipelago:
+  # Game clients connect to the gateway; MultiServer itself is not published
+  gateway:
     ports:
       - "38281:38281"
   tracker:
