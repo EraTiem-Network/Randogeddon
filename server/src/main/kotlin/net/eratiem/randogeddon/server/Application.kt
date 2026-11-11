@@ -13,10 +13,14 @@ import net.eratiem.randogeddon.server.util.logger
 import org.koin.core.annotation.KoinApplication
 import java.lang.invoke.MethodHandles
 
-/** Starts the tracker: the dashboard and its API on [TrackerConfig.port], following the room in the background. */
-fun main() {
+/**
+ * Starts the tracker: the dashboard and its API on [TrackerConfig.port], following the room in the background. With
+ * arguments, runs one of the host's commands instead ([runCommand]).
+ */
+fun main(args: Array<String>) {
   val config = ApplicationConfig("application.yaml")
   val trackerConfig = TrackerConfig.from(config)
+  if (args.isNotEmpty()) return runCommand(args.toList(), trackerConfig)
 
   logger.info("Dashboard on port {}, following {}", trackerConfig.port, trackerConfig.serverUrl)
 

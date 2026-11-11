@@ -234,6 +234,27 @@ data class ReceivedItemView(
   val flags: Int,
 )
 
+/** `POST /api/login`. */
+@Serializable
+data class LoginRequest(val username: String, val password: String)
+
+/** An answer that isn't data: why a login failed, or why access was refused. */
+@Serializable
+data class ApiError(val message: String)
+
+/** `GET /api/me` (and the answer to a successful login): who is logged in and how they join the game. */
+@Serializable
+data class Me(
+  val name: String,
+  /** Where game clients connect, `host:port`. */
+  val server: String,
+  /** The person's worlds with their passwords; empty until the tracker knows the seed. */
+  val slots: List<MySlot> = emptyList(),
+)
+
+@Serializable
+data class MySlot(val name: String, val game: String, val password: String)
+
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {
   const val PROGRESSION = 0b001
