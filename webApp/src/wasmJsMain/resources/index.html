@@ -16,8 +16,10 @@
   <meta name="apple-mobile-web-app-title" content="Randogeddon">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <style>
-    :root { --bg: #f5f4fa; --text: #1b1a2b; --muted: #6c6a80; --accent: #7c5cff; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #07070c; --text: #e9e8f2; --muted: #8d8ba3; --accent: #8e72ff; } }
+    :root { --bg: #f5f4fa; --panel: #ffffff; --border: #e7e4f0; --text: #1b1a2b; --muted: #6c6a80; --accent: #7c5cff;
+      --error: #d92d20; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #07070c; --panel: #101118; --border: #22232f; --text: #e9e8f2;
+      --muted: #8d8ba3; --accent: #8e72ff; --error: #f97066; } }
     html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
     #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 14px; color: var(--muted); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 16px; }
@@ -25,6 +27,23 @@
       border-top-color: var(--accent); animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     #splash b { color: var(--text); }
+    /* Compose's own container: it attaches a shadow root there, which would hide everything else if it were <body> */
+    #app { position: fixed; inset: 0; }
+    /* The login: a real form (not Compose's canvas), so password managers can save and fill the generated password */
+    #login { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: var(--bg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #login[hidden] { display: none; }
+    #login form { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px; padding: 24px;
+      border-radius: 20px; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+    #login h1 { margin: 0 0 4px; font-size: 22px; }
+    #login label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12.5px; }
+    #login input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 9px 11px; }
+    #login input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    #login button { font: inherit; font-weight: 600; color: #fff; border: 0; border-radius: 10px; padding: 10px;
+      background: linear-gradient(90deg, #ff7a45, var(--accent)); cursor: pointer; }
+    #login button:disabled { opacity: 0.6; cursor: default; }
+    #login .message { margin: 0; color: var(--error); min-height: 1.4em; }
   </style>
 </head>
 <body>
@@ -32,6 +51,16 @@
     <div class="ring"></div>
     <div><b>Randogeddon</b><br>loading…</div>
     <noscript>This page needs JavaScript.</noscript>
+  </div>
+  <div id="app"></div>
+  <div id="login" hidden>
+    <form>
+      <h1>Randogeddon</h1>
+      <label>Name<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Log in</button>
+    </form>
   </div>
   <script>
     // Kotlin/Wasm needs WasmGC: Chrome/Edge 119+, Firefox 120+, Safari 18.2+ (iOS 18.2+)
@@ -47,6 +76,61 @@
       var s = document.createElement("script");
       s.src = "webApp.js";
       document.body.appendChild(s);
+    })();
+    // Shown by the web app (Platform.showLogin) when the server answers 401
+    window.randogeddonLogin = (function () {
+      var root = document.getElementById("login");
+      var form = root.querySelector("form");
+      var message = root.querySelector(".message");
+      var button = form.querySelector("button");
+      var done = null;
+      // Compose keeps the pixel density it started with: after a browser zoom it would draw everything blurry. So the
+      // page reloads once the zoom has settled (the login and the settings stay); behind the login form nothing of
+      // Compose is visible, so there it waits for the login.
+      var stale = false;
+      var zoomTimer = null;
+      (function watchZoom(ratio) {
+        window.matchMedia("(resolution: " + ratio + "dppx)").addEventListener("change", function () {
+          var now = window.devicePixelRatio;
+          watchZoom(now);
+          if (now === ratio) return;
+          if (!root.hidden) { stale = true; return; }
+          // Several zoom steps in a row reload once, after the last one
+          clearTimeout(zoomTimer);
+          zoomTimer = setTimeout(function () { location.reload(); }, 400);
+        }, { once: true });
+      })(window.devicePixelRatio);
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        button.disabled = true;
+        message.textContent = "";
+        fetch("api/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: form.username.value, password: form.password.value })
+        }).then(function (r) {
+          if (r.ok) {
+            form.password.value = "";
+            if (stale) { location.reload(); return; }
+            root.hidden = true;
+            if (done) done();
+            return;
+          }
+          if (r.status === 429) { message.textContent = "Too many attempts. Please wait a minute."; return; }
+          return r.json().then(function (e) { message.textContent = e.message; },
+            function () { message.textContent = "Login failed (" + r.status + ")."; });
+        }, function () {
+          message.textContent = "The server can't be reached.";
+        }).finally(function () { button.disabled = false; });
+      });
+      return {
+        show: function (text, onLoggedIn) {
+          done = onLoggedIn;
+          message.textContent = text || "";
+          root.hidden = false;
+          (form.username.value ? form.password : form.username).focus();
+        },
+        hide: function () { root.hidden = true; }
+      };
     })();
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });

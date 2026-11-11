@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+/** An HTTP answer: its status code and body. */
+data class HttpResult(val status: Int, val body: String)
+
 /** What the dashboard needs from the platform; the browser implementation is in wasmJsMain. */
 expect object Platform {
   fun now(): Long
@@ -7,14 +10,25 @@ expect object Platform {
   /** Wall-clock time of [epochMillis] as `HH:mm` in the viewer's time zone. */
   fun clock(epochMillis: Long): String
 
-  /** GET [path] relative to the page; the body, or `null` on any error. */
-  suspend fun get(path: String): String?
+  /** [method] [path] relative to the page, with a JSON [body]; `null` if the server can't be reached. */
+  suspend fun request(method: String, path: String, body: String? = null): HttpResult?
 
   /**
    * Opens the live stream at [path] and calls [onState] with the data of every `state` event. Reconnects by itself;
    * [onConnection] tells whether the stream is currently open. Returns a function that closes it.
    */
   fun stream(path: String, onState: (String) -> Unit, onConnection: (Boolean) -> Unit): () -> Unit
+
+  /**
+   * Shows the login form of index.html (a real HTML form, so password managers can save and fill it), with
+   * [message] above it if given. [onLoggedIn] is called once the server accepted a login.
+   */
+  fun showLogin(message: String?, onLoggedIn: () -> Unit)
+
+  fun hideLogin()
+
+  /** Puts [text] on the clipboard. */
+  fun copy(text: String)
 
   fun systemDarkMode(): Boolean
 

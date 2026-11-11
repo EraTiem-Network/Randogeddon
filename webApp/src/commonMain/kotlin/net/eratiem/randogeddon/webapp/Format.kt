@@ -33,3 +33,14 @@ fun duration(millis: Long): String {
 
 /** `12,345` with a thin grouping, readable in every locale. */
 fun grouped(value: Int): String = value.toString().reversed().chunked(3).joinToString(",").reversed()
+
+/**
+ * A slot name without its person's name in front, where the person is clear anyway: "Alice-HK" of Alice is "HK".
+ * Only with a separator after the name (`-`, `_`, space, `.`); otherwise, and if nothing would be left, the full name.
+ */
+fun shortSlotName(slot: String, person: String?): String {
+  if (person.isNullOrEmpty() || !slot.startsWith(person, ignoreCase = true)) return slot
+  val rest = slot.substring(person.length)
+  if (rest.firstOrNull() !in setOf('-', '_', ' ', '.')) return slot
+  return rest.drop(1).trimStart('-', '_', ' ', '.').ifEmpty { slot }
+}
