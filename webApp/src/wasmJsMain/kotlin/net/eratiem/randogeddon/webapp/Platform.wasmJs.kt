@@ -8,14 +8,24 @@ actual object Platform {
 
   actual fun clock(epochMillis: Long): String = jsClock(epochMillis.toDouble())
 
-  actual suspend fun get(path: String): String? = suspendCancellableCoroutine { cont ->
-    jsFetchText(path, { text -> if (cont.isActive) cont.resume(text) }, { if (cont.isActive) cont.resume(null) })
+  actual suspend fun request(method: String, path: String, body: String?): HttpResult? = suspendCancellableCoroutine { cont ->
+    jsFetch(
+      method, path, body,
+      { status, text -> if (cont.isActive) cont.resume(HttpResult(status, text)) },
+      { if (cont.isActive) cont.resume(null) },
+    )
   }
 
   actual fun stream(path: String, onState: (String) -> Unit, onConnection: (Boolean) -> Unit): () -> Unit {
     val source = jsOpenStream(path, onState, { onConnection(true) }, { onConnection(false) })
     return { jsCloseStream(source) }
   }
+
+  actual fun showLogin(message: String?, onLoggedIn: () -> Unit) = jsShowLogin(message, onLoggedIn)
+
+  actual fun hideLogin() = jsHideLogin()
+
+  actual fun copy(text: String) = jsCopy(text)
 
   actual fun systemDarkMode(): Boolean = jsDarkMode()
 
@@ -29,11 +39,21 @@ private fun jsNow(): Double = js("Date.now()")
 private fun jsClock(ms: Double): String =
   js("new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")
 
-private fun jsFetchText(url: String, ok: (String) -> Unit, fail: () -> Unit): Unit = js(
-  """{ fetch(url, { cache: 'no-store' })
-         .then(r => r.ok ? r.text() : Promise.reject(r.status))
-         .then(t => ok(t), () => fail()); }"""
+// Same-origin requests carry the session cookie by default
+private fun jsFetch(method: String, url: String, body: String?, ok: (Int, String) -> Unit, fail: () -> Unit): Unit = js(
+  """{ const init = { method: method, cache: 'no-store' };
+       if (body !== null) { init.body = body; init.headers = { 'Content-Type': 'application/json' }; }
+       fetch(url, init)
+         .then(r => r.text().then(t => ok(r.status, t)), () => fail()); }"""
 )
+
+// The form and its script are in index.html (window.randogeddonLogin)
+private fun jsShowLogin(message: String?, onLoggedIn: () -> Unit): Unit =
+  js("window.randogeddonLogin.show(message, onLoggedIn)")
+
+private fun jsHideLogin(): Unit = js("window.randogeddonLogin.hide()")
+
+private fun jsCopy(text: String): Unit = js("{ try { navigator.clipboard.writeText(text); } catch (e) {} }")
 
 private fun jsOpenStream(url: String, onState: (String) -> Unit, onOpen: () -> Unit, onError: () -> Unit): JsAny = js(
   """{ const es = new EventSource(url);

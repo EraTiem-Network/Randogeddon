@@ -1,10 +1,15 @@
 // Makes the dashboard installable (Android "Install app") and lets it open while offline with the last loaded app.
 // Network first: a new build is always used when the server is reachable; the API and the live stream are never
 // cached or touched.
-const CACHE = "ap-tracker-v1";
+const CACHE = "randogeddon-v1";
 
 self.addEventListener("install", (event) => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+// Also drops caches of older versions (e.g. "ap-tracker-v1" from before the rename)
+self.addEventListener("activate", (event) => event.waitUntil(
+  caches.keys()
+    .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+    .then(() => self.clients.claim())
+));
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);

@@ -1,5 +1,15 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.hoverable
+import net.eratiem.randogeddon.shared.LockInfo
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.Layout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.FeedEvent
 import net.eratiem.randogeddon.shared.HintView
@@ -63,6 +74,34 @@ private val FEED_WIDTH = 440.dp
 enum class FeedPosition(val label: String) { RIGHT("Right"), LEFT("Left"), BELOW("Below") }
 private val WIDE = 1100.dp
 private val GAP = 16.dp
+private val CONNECTION_WIDTH = 420.dp
+/** The side feed is never shorter than this, even next to a single small person card. */
+private val MIN_SIDE_HEIGHT = 420.dp
+
+/**
+ * [main] and, to its left or right, [side] in [sideWidth], measured to exactly the height of [main] (at least
+ * [MIN_SIDE_HEIGHT]). A Row can't do that: the feed scrolls, and scrolling content has no intrinsic height.
+ */
+@Composable
+private fun SideBySide(sideFirst: Boolean, sideWidth: Dp, main: @Composable () -> Unit, side: @Composable () -> Unit) {
+  Layout(contents = listOf(main, side)) { (mainMeasurables, sideMeasurables), constraints ->
+    val sidePx = sideWidth.roundToPx()
+    val gapPx = GAP.roundToPx()
+    val mainWidth = (constraints.maxWidth - sidePx - gapPx).coerceAtLeast(0)
+    val mainPlaceable = mainMeasurables.first().measure(Constraints(minWidth = mainWidth, maxWidth = mainWidth))
+    val height = maxOf(mainPlaceable.height, MIN_SIDE_HEIGHT.roundToPx())
+    val sidePlaceable = sideMeasurables.first().measure(Constraints.fixed(sidePx, height))
+    layout(constraints.maxWidth, height) {
+      if (sideFirst) {
+        sidePlaceable.place(0, 0)
+        mainPlaceable.place(sidePx + gapPx, 0)
+      } else {
+        mainPlaceable.place(0, 0)
+        sidePlaceable.place(mainWidth + gapPx, 0)
+      }
+    }
+  }
+}
 
 @Composable
 fun App() {
@@ -74,6 +113,9 @@ fun App() {
   }
   val summary by repository.summary.collectAsState()
   val streamOpen by repository.streamOpen.collectAsState()
+  // null until logged in; the login form of index.html covers the page meanwhile
+  val me by repository.me.collectAsState()
+  val unreachable by repository.unreachable.collectAsState()
 
   var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
   val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
@@ -90,6 +132,12 @@ fun App() {
 
   var detailSlot by remember { mutableStateOf<Int?>(null) }
   var detailPerson by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(me) {
+    if (me == null) {
+      detailSlot = null
+      detailPerson = null
+    }
+  }
 
   // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
   var feedVisible by remember { mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false") }
@@ -121,6 +169,14 @@ fun App() {
       ) {
         Column(Modifier.widthIn(max = 1400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GAP)) {
           val s = summary
+          val user = me ?: run {
+            // Before the login is known: either the login form of index.html covers the page, or the server is away
+            if (unreachable) Txt(
+              "Can't reach the server – trying again…", color = LocalPalette.current.muted,
+              modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
+            )
+            return@Column
+          }
           Hero(
             s, streamOpen,
             onToggleTheme = {
@@ -129,30 +185,44 @@ fun App() {
             },
             feedVisible = feedVisible,
             onToggleFeed = { setFeedVisible(!feedVisible) },
+            onLogout = { scope.launch { repository.logout() } },
           )
           if (s == null) return@Column
           val error = s.error
           if (!s.connected && error != null) Banner(error)
-          Stats(s, now, contentWidth)
-          val feed: @Composable (Modifier) -> Unit = { modifier ->
-            Feed(s, modifier, feedPosition, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
+          if (wide) {
+            // The tiles and the connection share a row and its height
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
+              Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+              ConnectionSection(user, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+            }
+          } else {
+            ConnectionSection(user, s, Modifier.fillMaxWidth())
+            Stats(s, now, contentWidth)
+          }
+          val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
+            Feed(s, modifier, feedPosition, fillHeight, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
           }
           val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
           if (side) {
-            Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-              if (feedPosition == FeedPosition.LEFT) feed(Modifier.width(FEED_WIDTH))
-              Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(GAP)) {
-                People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-                if (showHints(s)) Hints(s, compact = false)
-              }
-              if (feedPosition == FeedPosition.RIGHT) feed(Modifier.width(FEED_WIDTH))
-            }
+            // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
+            SideBySide(
+              sideFirst = feedPosition == FeedPosition.LEFT,
+              sideWidth = FEED_WIDTH,
+              main = {
+                Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
+                  People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+                  if (showHints(s)) Hints(s, compact = false)
+                }
+              },
+              side = { feed(Modifier.fillMaxSize(), true) },
+            )
           } else {
             // Narrow screens: left/right means right after the players, "below" at the very end
             People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-            if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth())
+            if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-            if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth())
+            if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
           }
         }
       }
@@ -176,6 +246,7 @@ private fun Hero(
   onToggleTheme: () -> Unit,
   feedVisible: Boolean,
   onToggleFeed: () -> Unit,
+  onLogout: () -> Unit,
 ) {
   val p = LocalPalette.current
   val live = streamOpen && summary?.connected == true
@@ -218,6 +289,7 @@ private fun Hero(
       IconButton(onToggleFeed, Icon.FEED, tint = Color.White,
         background = Color.White.copy(alpha = if (feedVisible) 0.32f else 0.12f))
       IconButton(onToggleTheme, Icon.THEME, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+      IconButton(onLogout, Icon.LOGOUT, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
     }
     if (summary != null) {
       val t = summary.totals
@@ -251,14 +323,31 @@ private fun Banner(text: String) {
   )
 }
 
-/** Lays [count] cells out in rows of as many columns of at least [minWidth] as fit into [width]. */
+/**
+ * Lays [count] cells out in rows of as many columns of at least [minWidth] as fit into [width]. [balanced]: rows as
+ * even as possible (3 + 3 instead of 5 + 1). [fillHeight]: the rows share the height the grid is given.
+ */
 @Composable
-private fun Grid(count: Int, width: Dp, minWidth: Dp, gap: Dp = GAP, cell: @Composable (Int, Modifier) -> Unit) {
-  val columns = ((width + gap) / (minWidth + gap)).toInt().coerceIn(1, count.coerceAtLeast(1))
-  Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+private fun Grid(
+  count: Int,
+  width: Dp,
+  minWidth: Dp,
+  modifier: Modifier = Modifier,
+  gap: Dp = GAP,
+  balanced: Boolean = false,
+  fillHeight: Boolean = false,
+  cell: @Composable (Int, Modifier) -> Unit,
+) {
+  val fitting = ((width + gap) / (minWidth + gap)).toInt().coerceIn(1, count.coerceAtLeast(1))
+  val rowCount = (count + fitting - 1) / fitting
+  val columns = if (balanced && rowCount > 0) (count + rowCount - 1) / rowCount else fitting
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
     (0 until count).chunked(columns).forEach { row ->
       // Cells of a row share the height of the tallest one
-      Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(gap)) {
+      Row(
+        if (fillHeight) Modifier.weight(1f) else Modifier.height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+      ) {
         row.forEach { cell(it, Modifier.weight(1f).fillMaxHeight()) }
         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
       }
@@ -269,7 +358,7 @@ private fun Grid(count: Int, width: Dp, minWidth: Dp, gap: Dp = GAP, cell: @Comp
 private data class Tile(val label: String, val value: String, val sub: String, val color: Color, val icon: Icon?)
 
 @Composable
-private fun Stats(s: Summary, now: Long, width: Dp) {
+private fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
   val p = LocalPalette.current
   val t = s.totals
   val open = s.hints.count { !it.found }
@@ -280,22 +369,36 @@ private fun Stats(s: Summary, now: Long, width: Dp) {
       add(Tile("Unlocked", "${t.lockable - t.locked} / ${t.lockable}", "worlds opened", p.key, Icon.KEY))
     }
     if (showHints(s)) add(Tile("Hints", "${s.hints.size}", "$open not found yet", p.progression, null))
+    add(Tile("Play time", duration(s.players.sumOf { playTime(it, now) }), "all worlds together", p.useful, null))
     add(Tile("Session", duration(now - s.startedAt), "tracker uptime", p.brandStart, null))
   }
-  Grid(tiles.size, width, 160.dp, gap = 12.dp) { i, modifier ->
-    val tile = tiles[i]
-    Row(modifier.card(p).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-      Box(
-        Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(tile.color.copy(alpha = 0.15f)),
-        contentAlignment = Alignment.Center,
-      ) {
-        if (tile.icon != null) DrawnIcon(tile.icon, tile.color, 16.dp) else Dot(tile.color, 10.dp)
-      }
-      Column {
-        Txt(tile.label, size = 12.sp, color = p.muted, weight = FontWeight.Medium)
-        Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
-        Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 1)
-      }
+  Section(
+    "Overview", modifier,
+    subtitle = "${t.players} worlds · ${grouped(t.checked)} of ${grouped(t.total)} checks",
+  ) {
+    Grid(
+      tiles.size, width, 160.dp, if (fillHeight) Modifier.weight(1f) else Modifier,
+      gap = 12.dp, balanced = true, fillHeight = fillHeight,
+    ) { i, cellModifier ->
+      StatTile(tiles[i], cellModifier)
+    }
+  }
+}
+
+@Composable
+private fun StatTile(tile: Tile, modifier: Modifier) {
+  val p = LocalPalette.current
+  Row(modifier.card(p).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Box(
+      Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(tile.color.copy(alpha = 0.15f)),
+      contentAlignment = Alignment.Center,
+    ) {
+      if (tile.icon != null) DrawnIcon(tile.icon, tile.color, 16.dp) else Dot(tile.color, 10.dp)
+    }
+    Column {
+      Txt(tile.label, size = 12.sp, color = p.muted, weight = FontWeight.Medium)
+      Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
+      Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 1)
     }
   }
 }
@@ -312,14 +415,10 @@ private fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOp
     PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
   }
   val worlds = s.players.associateBy { it.slot }
-  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Column(Modifier.weight(1f)) {
-        Txt("Players", size = 17.sp, weight = FontWeight.Bold)
-        Txt("${s.people.size} people · ${s.players.size} worlds", size = 12.sp, color = p.muted)
-      }
-      Select(PeopleSort.entries.map { it to it.label }, sort, { sort = it })
-    }
+  Section(
+    "Players", subtitle = "${s.people.size} people · ${s.players.size} worlds",
+    actions = { Select(PeopleSort.entries.map { it to it.label }, sort, { sort = it }) },
+  ) {
     if (people.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt("Waiting for the server…", color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
@@ -389,31 +488,83 @@ internal fun statusLabel(world: PlayerSummary): String = when (world.status) {
   else -> world.status.name.lowercase()
 }
 
+/**
+ * For worlds that start locked, under the game icon, as wide and down to the end of the world's texts: a key once it
+ * was found, a lock until then (so the status pill leaves out "locked"). What it
+ * means (who found the key, where it was hinted, which key it waits for) shows on hover, or on tap on a phone.
+ */
+@Composable
+private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  val color = if (lock.unlocked) p.key else p.locked
+  val interaction = remember { MutableInteractionSource() }
+  val hovered by interaction.collectIsHoveredAsState()
+  var tapped by remember { mutableStateOf(false) }
+  Box(
+    modifier.width(34.dp).heightIn(min = 18.dp).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.18f))
+      .hoverable(interaction)
+      // Its own click: a tap shows the text instead of opening the world
+      .clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+    contentAlignment = Alignment.Center,
+  ) {
+    DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, color, 11.dp)
+    if (hovered || tapped) {
+      Popup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+        Txt(
+          when {
+            lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${ago(it, now)}" } ?: "")
+            lock.hintedAt != null -> "Locked · key hinted: ${lock.hintedAt}"
+            else -> "Locked · waiting for ${lock.key}"
+          },
+          size = 12.sp, maxLines = 3,
+          modifier = Modifier.widthIn(max = 260.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+      }
+    }
+  }
+}
+
+/** The hints a world can buy with its points, for the bubble next to its status ("3 hints · 12 pts"). */
+private fun hintBubble(world: PlayerSummary, hintsByPoints: Boolean): String? {
+  val points = world.hintPoints ?: return null
+  if (!hintsByPoints || world.status == PlayerStatus.LOCKED) return null
+  val cost = world.hintCost
+  return when {
+    cost == null -> "$points pts"
+    cost == 0 -> "hints free"
+    else -> "${points / cost} ${if (points / cost == 1) "hint" else "hints"} · $points pts"
+  }
+}
+
 /** One world of a person: game, progress, status; a locked one says what opens it. */
 @Composable
 private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, onOpen: (Int) -> Unit) {
   val p = LocalPalette.current
   val locked = world.status == PlayerStatus.LOCKED
   HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
+    // As tall as the texts, so the lock badge under the game icon ends with them
+    Row(Modifier.height(IntrinsicSize.Min).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
+        world.lock?.let { LockBadge(it, now, Modifier.weight(1f)) }
+      }
       Column(Modifier.weight(1f)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          if (world.online) Dot(p.ok, 7.dp)
           Txt(world.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1,
             modifier = Modifier.weight(1f).dimmedIf(locked))
-          Pill(statusLabel(world), statusColor(world.status), icon = when (world.status) {
-            PlayerStatus.LOCKED -> Icon.LOCK
-            PlayerStatus.GOAL -> Icon.FLAG
-            else -> null
-          })
+          hintBubble(world, hintsByPoints)?.let { Pill(it, p.progression) }
+          // "playing" in colour while a game client is connected, grey otherwise
+          val playing = world.status == PlayerStatus.PLAYING || world.online && world.status == PlayerStatus.IDLE
+          // Locked: the badge under the game icon says it
+          if (!locked) Pill(
+            if (playing) "playing" else statusLabel(world),
+            if (playing && !world.online) p.muted else statusColor(if (playing) PlayerStatus.PLAYING else world.status),
+            icon = if (world.status == PlayerStatus.GOAL) Icon.FLAG else null,
+          )
         }
         Row(Modifier.fillMaxWidth()) {
-          Txt(world.name, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          if (!locked) Txt(
-            if (world.online) "online" else ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1,
-            color = if (world.online) p.ok else p.muted,
-          )
+          Txt("Slot: ${shortSlotName(world.name, world.person)}", size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+          if (!locked && !world.online) Txt(ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
         }
         Spacer(Modifier.height(6.dp))
         ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
@@ -428,42 +579,6 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
                 world.goalAt?.let { "done ${Platform.clock(it)}" },
               ).joinToString(" · "),
               size = 11.5.sp, color = p.muted, maxLines = 1,
-            )
-          }
-        }
-        val points = world.hintPoints
-        val cost = world.hintCost
-        if (hintsByPoints && points != null && !locked) {
-          Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Dot(p.progression, 6.dp)
-            Txt(
-              "$points hint points" + when {
-                cost == null -> ""
-                cost == 0 -> " · hints are free"
-                else -> " · ${points / cost} ${if (points / cost == 1) "hint" else "hints"} available"
-              },
-              size = 11.5.sp, color = p.muted, maxLines = 1,
-            )
-          }
-        }
-        val lock = world.lock
-        if (lock != null) {
-          Row(
-            Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp))
-              .background((if (lock.unlocked) p.key else p.locked).copy(alpha = 0.12f))
-              .padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-          ) {
-            DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, if (lock.unlocked) p.key else p.locked, 12.dp)
-            Txt(
-              when {
-                lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${ago(it, now)}" } ?: "")
-                lock.hintedAt != null -> "Key hinted: ${lock.hintedAt}"
-                else -> "Waiting for its key (${lock.key})"
-              },
-              size = 11.5.sp, color = if (lock.unlocked) p.text else p.muted, maxLines = 2,
             )
           }
         }
@@ -498,7 +613,7 @@ private fun Hints(s: Summary, compact: Boolean) {
   val hints = s.hints.filter { h ->
     (person == null && world == null || h.receiverName in shownWorlds || h.finderName in shownWorlds) && state.matches(h)
   }
-  Panel(Modifier.fillMaxWidth(), title = "Hints", subtitle = "${s.hints.count { !it.found }} open · ${s.hints.size} total", actions = {
+  Section("Hints", Modifier.fillMaxWidth(), subtitle = "${s.hints.count { !it.found }} open · ${s.hints.size} total", actions = {
     if (s.people.size > 1) {
       Select(listOf<Pair<String?, String>>(null to "All players") + s.people.map { it.name to it.name }, person, {
         person = it
@@ -508,30 +623,36 @@ private fun Hints(s: Summary, compact: Boolean) {
     Select(listOf<Pair<String?, String>>(null to "All worlds") + worldsOfPerson.map { it.name to it.name }, world, { world = it })
     Select(HintState.entries.map { it to it.label }, state, { state = it })
   }) {
-    if (hints.isEmpty()) {
-      Txt(if (s.hints.isEmpty()) "No hints yet." else "No hints match the filter.", color = p.muted, modifier = Modifier.padding(16.dp))
-      return@Panel
-    }
-    if (!compact) {
-      HintRow(listOf("For", "Item", "Location", "In world of", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
-      Divider()
-    }
-    Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
-      hints.forEachIndexed { i, h ->
-        if (i > 0) Divider()
-        if (compact) CompactHint(h) else HintRow(listOf(
-          { Txt(h.receiverName, size = 13.sp, weight = FontWeight.SemiBold) },
-          { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) },
-          {
-            Column {
-              Txt(h.locationName, size = 13.sp)
-              if (h.entrance.isNotEmpty()) Txt(h.entrance, size = 12.sp, color = p.muted)
-            }
-          },
-          { Txt(h.finderName, size = 13.sp, weight = FontWeight.SemiBold) },
-          { HintStatus(h) },
-        ))
-      }
+    Column(Modifier.fillMaxWidth().card(p)) { HintList(s, hints, compact) }
+  }
+}
+
+@Composable
+private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
+  val p = LocalPalette.current
+  if (hints.isEmpty()) {
+    Txt(if (s.hints.isEmpty()) "No hints yet." else "No hints match the filter.", color = p.muted, modifier = Modifier.padding(16.dp))
+    return
+  }
+  if (!compact) {
+    HintRow(listOf("For", "Item", "Location", "In world of", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+    Divider()
+  }
+  Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
+    hints.forEachIndexed { i, h ->
+      if (i > 0) Divider()
+      if (compact) CompactHint(h) else HintRow(listOf(
+        { Txt(h.receiverName, size = 13.sp, weight = FontWeight.SemiBold) },
+        { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) },
+        {
+          Column {
+            Txt(h.locationName, size = 13.sp)
+            if (h.entrance.isNotEmpty()) Txt(h.entrance, size = 12.sp, color = p.muted)
+          }
+        },
+        { Txt(h.finderName, size = 13.sp, weight = FontWeight.SemiBold) },
+        { HintStatus(h) },
+      ))
     }
   }
 }
@@ -592,6 +713,8 @@ private fun Feed(
   s: Summary,
   modifier: Modifier,
   position: FeedPosition,
+  /** Beside players and hints: the given height is filled and the list scrolls inside. */
+  fillHeight: Boolean,
   onPosition: (FeedPosition) -> Unit,
   onHide: () -> Unit,
 ) {
@@ -609,24 +732,26 @@ private fun Feed(
         FeedKind.OTHER -> e.type in setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN)
       }
   }
-  Panel(modifier, title = "Live feed", subtitle = "newest first", actions = {
+  Section("Live feed", modifier, subtitle = "newest first", actions = {
     Select(FeedPosition.entries.map { it to it.label }, position, onPosition)
     IconButton(onHide, Icon.CLOSE)
   }) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Select(listOf<Pair<Int?, String>>(null to "Everyone") + s.players.map { it.slot to it.name }, who, { who = it })
-      Select(FeedKind.entries.map { it to it.label }, kind, { kind = it })
-    }
-    Divider()
-    if (events.isEmpty()) {
-      Txt("Nothing has happened yet.", color = p.muted, modifier = Modifier.padding(16.dp))
-      return@Panel
-    }
-    Column(
-      Modifier.heightIn(max = if (position == FeedPosition.BELOW) 520.dp else 980.dp)
-        .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)
-    ) {
-      events.forEach { FeedRow(it) }
+    Column(Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p)) {
+      Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Select(listOf<Pair<Int?, String>>(null to "Everyone") + s.players.map { it.slot to it.name }, who, { who = it })
+        Select(FeedKind.entries.map { it to it.label }, kind, { kind = it })
+      }
+      Divider()
+      if (events.isEmpty()) {
+        Txt("Nothing has happened yet.", color = p.muted, modifier = Modifier.padding(16.dp))
+      } else {
+        Column(
+          (if (fillHeight) Modifier.weight(1f) else Modifier.heightIn(max = if (position == FeedPosition.BELOW) 520.dp else 640.dp))
+            .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)
+        ) {
+          events.forEach { FeedRow(it) }
+        }
+      }
     }
   }
 }

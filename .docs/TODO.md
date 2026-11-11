@@ -33,37 +33,41 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Renamed to Randogeddon; dashboard at `randogeddon.eratiem.net`, the session's game server at
   `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN`, `SESSION_ID` in `.env`)
 
-## Phase 2: User Login
+## Phase 2: User Login (done)
 
 *Nobody sees anything of the session without logging in.*
 
-- [ ] Generate a login (username + random password) for every person of the session
+- [x] Generate a login (username + random password) for every person of the session
     - People come from `session.yaml`; the username defaults to the person's name.
     - Passwords are stored only as hashes (Argon2id); the plain password is shown once.
-    - The logins are printed once when they are generated; the host hands them to the players. Phase 5 replaces
-      this with invitations.
-- [ ] Login page; the dashboard is only accessible when logged in
-    - Session cookie (HTTP-only, Secure, SameSite=Strict) with an expiry, logout.
-    - Rate limiting and a short delay on failed logins.
-- [ ] No data before login
-    - `/api/*` and `/api/stream` answer 401 without a valid session.
+    - The logins are printed once when they are generated (`randogeddon logins` in the tracker container); the host
+      hands them to the players. Phase 5 replaces this with invitations.
+- [x] Login page; the dashboard is only accessible when logged in
+    - Session cookie (HTTP-only, Secure, SameSite=Strict) with an expiry (30 days), logout.
+    - Rate limiting (5 per minute per address) and a short delay on failed logins.
+    - A plain HTML form in `index.html`, not part of the Compose canvas, so password managers can save and fill it.
+- [x] No data before login
+    - `/api/*` and `/api/stream` answer 401 without a valid session (403 for a user who isn't in the session).
     - The web app bundle and the login page contain no session data (no seed, names or worlds).
     - The service worker never caches API responses; logging out clears what the app has in memory.
-- [ ] PostgreSQL, from this phase on (new `postgres` service in compose)
+- [x] PostgreSQL, from this phase on (new `postgres` service in compose)
     - Users are identified by a UUID from the start; the name is the display name, unique among active accounts.
-    - Schema with Flyway migrations, access through Exposed (versions CoreSync last used: Exposed 1.6.0,
-      Flyway 13.11.1, PostgreSQL JDBC 42.7.14).
+    - Schema with Flyway migrations, access through Exposed (module `:database`; Exposed 1.6.1, Flyway 13.12.1,
+      PostgreSQL JDBC 42.7.14).
     - Connection settings and password in `.env`.
-- [ ] Generated room password for every session
-    - Replaces the manual `AP_PASSWORD`; a session never runs without a password.
-    - Logged-in players see the server address, their slot names and their password on the dashboard, so the login
+- [x] ~~Generated room password for every session~~ Superseded by the slot passwords: a client's `Connect` carries
+  only one password, so there is no room password any more and a session never runs open.
+    - Logged-in players see the server address, their slot names and their passwords on the dashboard, so the login
       also guards access to the game.
-- [ ] Password per slot
+- [x] Password per slot
     - Every slot (world) gets its own generated password; a player can only connect as their own worlds.
-    - Checked by `archipelago/serve.py` against the password field of the client's `Connect` packet, the same field
-      every client (modded games included) already sends the room password in, so no client needs changes.
-    - The tracker's own connections authenticate with an internal secret that players never see.
-    - Hooks into MultiServer's connection handling: re-check it on every Archipelago update.
+    - Checked by the **gateway** (`:gateway`, Kotlin) in front of MultiServer against the password field of the
+      client's `Connect` packet, the same field every client (modded games included) already sends the room password
+      in, so no client needs changes. MultiServer itself is reachable only inside the compose network.
+    - The tracker connects to MultiServer internally and needs no password.
+    - The gateway follows the Archipelago network protocol, not MultiServer's code: check it when the protocol
+      changes (an Archipelago update with a new or changed `Connect`).
+- [x] Tracker and gateway as native executables (GraalVM, Linux x86_64, `-march=x86-64-v3` for the i7-8700)
 
 ## Phase 3: Admin Panel
 
@@ -118,6 +122,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server; no API access for Traefik needed.
     - Not paths (`randogeddon.eratiem.net/<session-id>`): Launcher-based clients would accept them, but many modded
       game clients only take host:port.
+    - The gateway (Phase 2) already sees each connection's host name, so it can route to the session's MultiServer
+      itself instead of one Traefik router per session.
     - Open: the session ID format (random like `k7f3q9` or readable like `friday-chaos`), decided in this phase.
 
 ## Phase 5: Proper User Management

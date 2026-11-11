@@ -1,0 +1,6 @@
+{
+  "resources": [
+    { "glob": "db/migration/index.txt" },
+    { "glob": "db/migration/*.sql" }
+  ]
+}

@@ -1,0 +1,6 @@
+# The demo's people (see scripts/demo.sh); the names are the `name:` of demo/players. Not everyone plays the same
+# number of worlds, so the dashboard shows cards of different heights.
+people:
+  Alice: [Alice-HK, Alice-Celeste, Alice-DLC]
+  Bob: [Bob-Timespinner, Bob-Yacht]
+  Carol: [Carol-RoR2]

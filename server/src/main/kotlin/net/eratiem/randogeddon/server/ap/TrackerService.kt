@@ -28,8 +28,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.state.SessionState
-import net.eratiem.randogeddon.server.state.SlotType
 import net.eratiem.randogeddon.server.state.array
 import net.eratiem.randogeddon.server.state.int
 import net.eratiem.randogeddon.server.state.obj
@@ -38,8 +38,6 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -123,13 +121,7 @@ class TrackerService(private val config: TrackerConfig) {
 
   private fun slotNames(): List<String> {
     config.bootstrapSlot?.let { return listOf(it) }
-    if (!config.roomJson.exists()) return emptyList()
-    return runCatching {
-      ApiJson.parseToJsonElement(config.roomJson.readText()).jsonObject.array("slots").orEmpty()
-        .map { it.jsonObject }
-        .filter { it.int("type") == SlotType.PLAYER }
-        .mapNotNull { it.string("name") }
-    }.getOrDefault(emptyList())
+    return Room.read(config.roomJson)?.players.orEmpty().map { it.name }
   }
 
   private suspend fun primary(slotName: String) = http.webSocket(config.serverUrl) {
@@ -258,10 +250,11 @@ class TrackerService(private val config: TrackerConfig) {
       val roomInfo = expect("RoomInfo")
       send(buildJsonObject {
         put("cmd", "Connect")
-        put("password", config.password)
+        // MultiServer has no password: only the gateway is reachable from outside, and it checks the game clients
+        put("password", "")
         put("game", "") // trackers may connect without a game
         put("name", slotName)
-        put("uuid", "ap-dashboard-$slotName")
+        put("uuid", "randogeddon-$slotName")
         put("version", roomInfo["version"] ?: buildJsonObject {
           put("major", 0); put("minor", 6); put("build", 0); put("class", "Version")
         })

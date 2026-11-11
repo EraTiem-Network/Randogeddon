@@ -10,8 +10,18 @@ import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.conditionalheaders.ConditionalHeaders
 import io.ktor.http.ContentType
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
+import io.ktor.server.plugins.origin
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
+import net.eratiem.randogeddon.database.LoginSessionStore
+import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SlotPasswordStore
+import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.RandogeddonTracker
+import net.eratiem.randogeddon.server.account.LoginService
+import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.shared.ApiJson
 import org.koin.dsl.module
@@ -19,17 +29,34 @@ import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import org.koin.plugin.module.dsl.withConfiguration
+import kotlin.time.Duration.Companion.minutes
 
 fun Application.installs(trackerConfig: TrackerConfig) {
   install(Koin) {
     slf4jLogger()
     modules(module {
       single { trackerConfig }
+      // Migrates on start; the gateway only reads
+      single { RandogeddonDatabase.connect(trackerConfig.database, migrate = true) }
+      single { UserStore(get()) }
+      single { LoginSessionStore(get()) }
+      single { SlotPasswordStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
 
   install(ContentNegotiation) { json(ApiJson) }
+  // Behind Traefik: the client's address (for the login rate limit) comes from X-Forwarded-For
+  install(XForwardedHeaders) {
+    // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up
+    useLastProxy()
+  }
+  install(RateLimit) {
+    register(LOGIN_RATE_LIMIT) {
+      rateLimiter(limit = 5, refillPeriod = 1.minutes)
+      requestKey { it.request.origin.remoteHost }
+    }
+  }
   install(SSE)
   // ETag/Last-Modified for the static files, so the browser revalidates the web app instead of downloading it again
   install(ConditionalHeaders)
@@ -44,5 +71,15 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   // Follows the room for as long as the application runs
   val tracker by inject<TrackerService>()
   tracker.start(this)
-  monitor.subscribe(ApplicationStopping) { tracker.close() }
+  val database by inject<RandogeddonDatabase>()
+  monitor.subscribe(ApplicationStopping) {
+    tracker.close()
+    database.close()
+  }
+  val slotPasswords by inject<SlotPasswords>()
+  slotPasswords.watch(this)
+  val logins by inject<LoginService>()
+  logins.cleanUp(this)
 }
+
+val LOGIN_RATE_LIMIT = RateLimitName("login")

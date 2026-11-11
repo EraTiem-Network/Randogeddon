@@ -10,11 +10,12 @@ randogeddon:
     sessionYaml: "$SESSION_YAML:/data/session.yaml"
     # Where the tracker keeps the event history, so it survives restarts
     statePath: "$STATE_PATH:/state/tracker.json"
+    # Where game clients connect (the gateway), shown to logged-in players with their slot passwords
+    publicAddress: "$AP_PUBLIC_ADDRESS:localhost:38281"
   server:
-    # The Archipelago server, as seen from the tracker (inside compose: the archipelago service)
+    # The Archipelago server, as seen from the tracker (inside compose: the archipelago service, which only the tracker
+    # and the gateway reach)
     url: "$AP_SERVER:ws://localhost:38281"
-    # The room password (MultiServer --password); empty for an open room
-    password: "$AP_PASSWORD:"
     # Slot list written by the archipelago container on startup
     roomJson: "$ROOM_JSON:/data/room.json"
     # Connect with this slot first instead of the first one in roomJson
@@ -22,3 +23,8 @@ randogeddon:
     # The hint switches of the archipelago container (archipelago/serve.py), shown on the dashboard
     pointHints: "$AP_POINT_HINTS:true"
     autoHints: "$AP_AUTO_HINTS:true"
+  database:
+    # PostgreSQL: logins and slot passwords
+    url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
+    user: "$DB_USER:randogeddon"
+    password: "$DB_PASSWORD:"

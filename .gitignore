@@ -11,7 +11,7 @@ roms/*
 !roms/.gitkeep
 
 .env
-session.yaml
+/session.yaml
 __pycache__/
 
 ### Gradle / Kotlin ###

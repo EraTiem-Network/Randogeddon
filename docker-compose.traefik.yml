@@ -1,8 +1,9 @@
-# Overlay for the server: route both services through an existing Traefik.
+# Overlay for the server: route the gateway (game clients) and the tracker (dashboard) through an existing Traefik.
 # Game server: wss://${SESSION_ID}.${BASE_DOMAIN}:443  (players enter "${SESSION_ID}.${BASE_DOMAIN}:443" in their client)
 # Dashboard:   https://${BASE_DOMAIN}
 services:
-  archipelago:
+  # MultiServer itself stays inside: game clients come in through the gateway
+  gateway:
     networks: [default, traefik]
     labels:
       traefik.enable: "true"
@@ -15,6 +16,9 @@ services:
 
   tracker:
     networks: [default, traefik]
+    environment:
+      # Shown to logged-in players with their slot passwords
+      AP_PUBLIC_ADDRESS: ${SESSION_ID}.${BASE_DOMAIN:-randogeddon.eratiem.net}:443
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
@@ -23,10 +27,6 @@ services:
       traefik.http.routers.randogeddon-tracker.tls: "true"
       traefik.http.routers.randogeddon-tracker.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
       traefik.http.services.randogeddon-tracker.loadbalancer.server.port: "8000"
-      # Optional: protect the dashboard (it shows hints = spoilers). Generate with `htpasswd -nb user pass`
-      # and double every `$` in the hash. Then uncomment both lines:
-      # traefik.http.middlewares.randogeddon-tracker-auth.basicauth.users: "friends:$$apr1$$...."
-      # traefik.http.routers.randogeddon-tracker.middlewares: randogeddon-tracker-auth
 
 networks:
   traefik:

@@ -40,7 +40,6 @@ case "$mode" in
       --countdown_mode "${AP_COUNTDOWN_MODE:-auto}"
       --auto_shutdown 0
       --logtime)
-    [[ -n "${AP_PASSWORD:-}" ]] && args+=(--password "$AP_PASSWORD")
     [[ -n "${AP_ADMIN_PASSWORD:-}" ]] && args+=(--server_password "$AP_ADMIN_PASSWORD")
     exec python "${args[@]}" "$@"
     ;;

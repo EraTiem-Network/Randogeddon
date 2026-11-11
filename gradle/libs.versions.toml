@@ -1,4 +1,7 @@
 [versions]
+# https://plugins.gradle.org/plugin/org.graalvm.buildtools.native
+graalvm-native = "1.1.18"
+
 # https://mvnrepository.com/artifact/org.jetbrains.kotlin/kotlin-stdlib
 kotlin = "2.4.21"
 # https://mvnrepository.com/artifact/org.jetbrains.kotlinx/kotlinx-coroutines-core
@@ -26,6 +29,19 @@ koin-plugin = "1.2.1"
 # https://mvnrepository.com/artifact/io.ktor/ktor-client-core
 ktor = "3.6.0"
 
+# https://mvnrepository.com/artifact/org.jetbrains.exposed/exposed-core
+exposed = "1.6.1"
+# https://mvnrepository.com/artifact/org.flywaydb/flyway-core
+flyway = "13.12.1"
+# https://mvnrepository.com/artifact/org.postgresql/postgresql
+postgresql = "42.7.14"
+# https://mvnrepository.com/artifact/com.zaxxer/HikariCP
+hikari = "7.1.0"
+# https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk18on
+bouncycastle = "1.86"
+# https://mvnrepository.com/artifact/org.testcontainers/testcontainers
+testcontainers = "2.0.5"
+
 # https://mvnrepository.com/artifact/org.slf4j/slf4j-api
 slf4j-api = "2.0.20"
 # https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
@@ -50,6 +66,13 @@ ktor-server = [
   "ktor-server-compression",
   "ktor-serialization-kotlinx-json",
 ]
+# Login: rate limiting of the login, the client address behind Traefik
+ktor-server-login = [
+  "ktor-server-rate-limit",
+  "ktor-server-forwarded-header",
+]
+
+database = ["exposed-core", "exposed-jdbc", "exposed-java-time", "flyway-core", "flyway-database-postgresql", "postgresql", "hikari"]
 
 compose = ["compose-runtime", "compose-foundation", "compose-ui"]
 
@@ -78,12 +101,25 @@ ktor-server-sse = { group = "io.ktor", name = "ktor-server-sse", version.ref = "
 ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
 ktor-server-conditional-headers = { group = "io.ktor", name = "ktor-server-conditional-headers", version.ref = "ktor" }
 ktor-server-compression = { group = "io.ktor", name = "ktor-server-compression", version.ref = "ktor" }
-ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version.ref = "ktor" }
+ktor-server-rate-limit = { group = "io.ktor", name = "ktor-server-rate-limit", version.ref = "ktor" }
+ktor-server-forwarded-header = { group = "io.ktor", name = "ktor-server-forwarded-header", version.ref = "ktor" }
+ktor-server-websockets = { group = "io.ktor", name = "ktor-server-websockets", version.ref = "ktor" }
+ktor-server-test-host ={ group = "io.ktor", name = "ktor-server-test-host", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
 ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
+
+exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version.ref = "exposed" }
+exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version.ref = "exposed" }
+exposed-java-time = { group = "org.jetbrains.exposed", name = "exposed-java-time", version.ref = "exposed" }
+flyway-core = { group = "org.flywaydb", name = "flyway-core", version.ref = "flyway" }
+flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
+postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+hikari = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikari" }
+bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
+testcontainers-postgresql = { group = "org.testcontainers", name = "testcontainers-postgresql", version.ref = "testcontainers" }
 
 slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j-api" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback-classic" }
@@ -97,3 +133,4 @@ compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-m
 
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 koin = { id = "io.insert-koin.compiler.plugin", version.ref = "koin-plugin" }
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }

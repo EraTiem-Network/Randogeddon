@@ -1,0 +1,12 @@
+gateway:
+  # Port game clients connect to (behind Traefik: <session-id>.<BASE_DOMAIN>:443)
+  port: "$PORT:38281"
+  # MultiServer, reachable only inside compose (the archipelago service)
+  upstream: "$AP_UPSTREAM:ws://localhost:38282"
+  # Names the seed MultiServer serves; written by the archipelago container on startup
+  roomJson: "$ROOM_JSON:/data/room.json"
+  database:
+    # PostgreSQL: the slot passwords (created by the tracker)
+    url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
+    user: "$DB_USER:randogeddon"
+    password: "$DB_PASSWORD:"

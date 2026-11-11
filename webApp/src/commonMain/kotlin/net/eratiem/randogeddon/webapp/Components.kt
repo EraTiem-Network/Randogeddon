@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -134,6 +137,35 @@ fun Panel(
   }
 }
 
+/**
+ * A titled block of the page: the heading (title, subtitle, [actions] on the right) above its content, which brings
+ * its own card. With [fillHeight] the content gets the height that is left (for blocks of a given height).
+ */
+@Composable
+fun Section(
+  title: String,
+  modifier: Modifier = Modifier,
+  subtitle: String? = null,
+  actions: @Composable RowScope.() -> Unit = {},
+  content: @Composable ColumnScope.() -> Unit,
+) {
+  val p = LocalPalette.current
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+      Modifier.heightIn(min = 34.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Column(Modifier.weight(1f)) {
+        Txt(title, size = 17.sp, weight = FontWeight.Bold)
+        if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1)
+      }
+      actions()
+    }
+    content()
+  }
+}
+
 @Composable
 fun Divider(modifier: Modifier = Modifier) {
   Box(modifier.fillMaxWidth().height(1.dp).background(LocalPalette.current.border.copy(alpha = 0.7f)))
@@ -219,7 +251,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK }
+enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -273,8 +305,29 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
           moveTo(w * .22f, w * .12f); lineTo(w * .85f, w * .3f); lineTo(w * .22f, w * .5f); close()
         }, color)
       }
+
+      // A door frame open to the right, an arrow leaving through it
+      Icon.LOGOUT -> {
+        drawPath(Path().apply {
+          moveTo(w * .5f, w * .15f); lineTo(w * .15f, w * .15f); lineTo(w * .15f, w * .85f); lineTo(w * .5f, w * .85f)
+        }, color, style = Stroke(stroke, cap = StrokeCap.Round))
+        drawLine(color, Offset(w * .4f, w * .5f), Offset(w * .88f, w * .5f), stroke, StrokeCap.Round)
+        drawPath(Path().apply { moveTo(w * .7f, w * .32f); lineTo(w * .88f, w * .5f); lineTo(w * .7f, w * .68f) },
+          color, style = Stroke(stroke, cap = StrokeCap.Round))
+      }
     }
   }
+}
+
+/** A small text button, e.g. "Copy". */
+@Composable
+fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  Txt(
+    text, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1,
+    modifier = modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).clickable(onClick = onClick)
+      .padding(horizontal = 10.dp, vertical = 4.dp),
+  )
 }
 
 /** A clickable row that tints itself while hovered. */
@@ -334,6 +387,79 @@ fun <T> Select(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Uni
             )
           }
         }
+      }
+    }
+  }
+}
+
+/**
+ * A dropdown with a search field on top of its list, for longer lists. [options]: value, label and a second line
+ * (e.g. the game); the search matches both.
+ */
+@Composable
+fun <T> SearchableSelect(
+  options: List<Triple<T, String, String>>,
+  selected: T,
+  onSelect: (T) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val p = LocalPalette.current
+  var open by remember { mutableStateOf(false) }
+  var query by remember { mutableStateOf("") }
+  var anchorHeight by remember { mutableStateOf(0) }
+  val current = options.firstOrNull { it.first == selected }
+  Box(modifier.onSizeChanged { anchorHeight = it.height }) {
+    Row(
+      Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.panelAlt).border(1.dp, p.border, RoundedCornerShape(10.dp))
+        .clickable { open = true; query = "" }.padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      if (current != null) GameChip(current.third, size = 24.dp)
+      Column(Modifier.weight(1f)) {
+        Txt(current?.second ?: "", size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+        if (current != null) Txt(current.third, size = 11.5.sp, color = p.muted, maxLines = 1)
+      }
+      DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
+    }
+    if (open) {
+      val focus = remember { FocusRequester() }
+      val shown = options.filter { (_, label, detail) ->
+        query.isBlank() || label.contains(query.trim(), ignoreCase = true) || detail.contains(query.trim(), ignoreCase = true)
+      }
+      Popup(
+        offset = IntOffset(0, anchorHeight + 6),
+        onDismissRequest = { open = false },
+        properties = PopupProperties(focusable = true),
+      ) {
+        Column(
+          Modifier.widthIn(min = 220.dp, max = 320.dp).card(p, RoundedCornerShape(12.dp)).padding(6.dp),
+          verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          FilterField(query, { query = it }, "Search…", Modifier.fillMaxWidth().focusRequester(focus))
+          Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+            if (shown.isEmpty()) Txt("Nothing found", size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
+            shown.forEach { (value, label, detail) ->
+              val active = value == selected
+              Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                  .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
+                  .clickable { onSelect(value); open = false }
+                  .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
+                GameChip(detail, size = 24.dp)
+                Column {
+                  Txt(label, size = 13.sp, maxLines = 1, weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (active) p.accent else p.text)
+                  Txt(detail, size = 11.5.sp, color = p.muted, maxLines = 1)
+                }
+              }
+            }
+          }
+        }
+        LaunchedEffect(Unit) { focus.requestFocus() }
       }
     }
   }
