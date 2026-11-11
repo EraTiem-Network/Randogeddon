@@ -2,16 +2,19 @@
 
 Fake game clients connect to every world that is open, check locations (quickly at first, then slowly, so the
 dashboard keeps moving), chat a little, finish one world and find the keys of the locked worlds on a schedule:
-the first two keys are found after a while, the third one is only hinted, so one world stays locked.
+the first two keys are found after a while, the third one late (it is hinted first). Every world reaches its goal
+within about DEMO_MINUTES (default 15); then the script exits, which `scripts/demo.sh loop` takes as the end of a
+round.
 
 Locked worlds are only played once their key has been found, just like the real session.
 
-Run inside the archipelago image (it has aiohttp):
-    docker run --rm --network randogeddon_default -v $PWD/demo:/demo:ro --entrypoint python \
-        randogeddon-server:0.6.8 /demo/simulate.py ws://archipelago:38281
+Run inside the gateway image (it has Archipelago and aiohttp):
+    docker run --rm --network randogeddon_default -v $PWD/demo:/demo:ro -v $PWD/output/demo:/slots:ro \
+        --entrypoint python randogeddon-gateway:0.6.8 /demo/simulate.py ws://gateway:38281 /slots/slots.json
 """
 import asyncio
 import json
+import os
 import random
 import sys
 
@@ -21,9 +24,13 @@ URL = sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:38281"
 # Slot name -> password, from `randogeddon slots --json`
 PASSWORDS = json.load(open(sys.argv[2]))["slots"] if len(sys.argv) > 2 else {}
 LOCK_SLOT = "Locks"
-# When each key (sorted by key name) may be picked up, in seconds after start; None = only hinted
-KEY_SCHEDULE = [25, 75, None]
+# When each key (sorted by key name) may be picked up, in seconds after start; None = only hinted. The last one is
+# found late, so a world stays locked for a while (and its key is hinted first), but every world can finish.
+KEY_SCHEDULE = [25, 75, 180]
+LATE_KEY = 120           # keys due later than this are hinted at HINT_AFTER
 HINT_AFTER = 40
+# The whole demo takes about this long: every world spreads its remaining checks evenly up to the end
+END = float(os.environ.get("DEMO_MINUTES", "15")) * 60
 FAST_PHASE = 30          # seconds of quick checks at the start
 FAST_SHARE = 0.3         # share of a world's locations checked in the fast phase
 BREAKS = {"Bob-Timespinner": (100, 40)}  # world -> (leave after s, come back after s), for the connection log
@@ -136,7 +143,7 @@ async def play(name: str, game: str, finisher: bool):
             if extra:
                 await ws.send_json([{"cmd": "LocationScouts", "locations": extra, "create_as_hint": 2}])
             for loc, when in my_keys.items():
-                if when is None:
+                if when is None or when > LATE_KEY:
                     await ws.send_json([{"cmd": "LocationScouts", "locations": [loc], "create_as_hint": 2}])
         if not candidates:
             await asyncio.sleep(2)
@@ -149,11 +156,15 @@ async def play(name: str, game: str, finisher: bool):
             await ws.send_json([{"cmd": "Say", "text": random.choice(CHAT)}])
         if now < FAST_PHASE and checked < fast:
             await asyncio.sleep(random.uniform(0.2, 0.6))
-        else:
-            await asyncio.sleep(random.uniform(2, 5) if finisher else random.uniform(8, 20))
+        elif missing:
+            # Evenly up to this world's end (the finisher is done halfway), a little irregular
+            end = END * (0.5 if finisher else 1.0)
+            pause = max(0.3, (end - elapsed()) / len(missing))
+            await asyncio.sleep(pause * random.uniform(0.6, 1.4))
     await ws.send_json([{"cmd": "StatusUpdate", "status": 30}])
     await ws.send_json([{"cmd": "Say", "text": "done! GG"}])
-    await asyncio.Event().wait()  # stay connected
+    print(f"{name} done after {elapsed():.0f} s", flush=True)
+    # Stays connected (online on the dashboard) until every world is done
 
 
 async def main():
@@ -174,8 +185,10 @@ async def main():
     # The world that finishes during the demo: the smallest one that starts open
     finisher = "Carol-RoR2"
     tasks = [asyncio.create_task(play(name, game, name == finisher)) for name, game in worlds]
-    print(f"Playing {len(worlds)} worlds; locked: {', '.join(key_of)}", flush=True)
+    print(f"Playing {len(worlds)} worlds in about {END / 60:.0f} minutes; locked: {', '.join(key_of)}", flush=True)
     await asyncio.gather(*tasks)
+    # Every world is at its goal: the session is at 100 %. The exit tells scripts/demo.sh loop to start a new round.
+    print(f"All worlds done after {elapsed():.0f} s", flush=True)
 
 
 lock_player = 0
