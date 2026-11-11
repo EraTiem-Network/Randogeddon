@@ -17,14 +17,15 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.RandogeddonTracker
 import net.eratiem.randogeddon.server.account.LoginService
-import net.eratiem.randogeddon.server.account.SessionClock
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.ap.TrackerService
+import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.shared.ApiJson
 import org.koin.dsl.module
 import org.koin.ktor.ext.inject
@@ -44,6 +45,7 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { LoginSessionStore(get()) }
       single { SlotPasswordStore(get()) }
       single { SessionTimeStore(get()) }
+      single { SessionSetupStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
@@ -83,8 +85,8 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   slotPasswords.watch(this)
   val logins by inject<LoginService>()
   logins.cleanUp(this)
-  val sessionClock by inject<SessionClock>()
-  sessionClock.watch(this)
+  val currentSession by inject<CurrentSession>()
+  currentSession.watch(this)
 }
 
 val LOGIN_RATE_LIMIT = RateLimitName("login")

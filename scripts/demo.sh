@@ -31,7 +31,8 @@ docker compose build tracker gateway
 
 # A new seed. About one in three random seeds of the demo can't be generated ("Game appears as unbeatable"): retry.
 generate() {
-  ./scripts/build-apworlds.sh >/dev/null
+  # World Locks is part of the gateway image; an old packed copy here would be loaded twice
+  rm -f custom_worlds/world_locks.apworld
   mkdir -p output/demo
   for attempt in 1 2 3 4 5; do
     rm -f output/demo/AP_*.zip

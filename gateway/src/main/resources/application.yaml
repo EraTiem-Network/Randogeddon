@@ -13,13 +13,16 @@ gateway:
   gameServer:
     # false: MultiServer runs elsewhere (development), the gateway only relays to upstream
     enabled: "$GAME_SERVER:true"
-    # Archipelago (one pinned release) with serve.py and room_info.py
-    apHome: "$AP_HOME:/opt/archipelago/0.6.8"
+    # The Archipelago releases, one directory each (e.g. /opt/archipelago/0.6.8) with serve.py and room_info.py
+    apRoot: "$AP_ROOT:/opt/archipelago"
     python: "$PYTHON:python"
     # Seeds (the newest is served), saves
     dataDir: "$DATA_DIR:/data"
     port: "$AP_PORT:38282"
-    # MultiServer's options (see .env.example)
+    # MultiServer's options for seeds deployed with the CLI (see .env.example); sessions from the admin panel bring
+    # their own
+    pointHints: "$AP_POINT_HINTS:true"
+    autoHints: "$AP_AUTO_HINTS:true"
     hintCost: "$AP_HINT_COST:10"
     locationCheckPoints: "$AP_LOCATION_CHECK_POINTS:1"
     releaseMode: "$AP_RELEASE_MODE:auto"

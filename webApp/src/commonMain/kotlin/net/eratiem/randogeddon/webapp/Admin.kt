@@ -127,6 +127,7 @@ fun AdminView(now: Long, onBack: () -> Unit) {
       IconButton(onBack, Icon.BACK)
       Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
     }
+    SessionSection(onChanged = { message = null })
     ServerSection(state, problem, now, message, onAction = { action -> run { repository.control(action) } })
     LogSection(repository.log)
     ConsoleSection(onSend = { line -> run { repository.command(line) } })

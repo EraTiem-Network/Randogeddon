@@ -27,15 +27,18 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.GameServer")
 
+/** One start of MultiServer: the command line, extra environment variables and the directory to run in. */
+data class Launch(val command: List<String>, val environment: Map<String, String> = emptyMap(), val workDir: Path? = null)
+
 /**
- * How to run MultiServer: [command] for a seed file, [prepare] before each start (writes room.json). Both are given
- * from outside, so tests can use a small script instead of Archipelago.
+ * How to run MultiServer: [prepare] before each start (writes room.json), then [launch] for the seed file (which may
+ * fail, e.g. for an Archipelago version this gateway doesn't have). Both are given from outside, so tests can use a
+ * small script instead of Archipelago.
  */
 class GameServerConfig(
   val dataDir: Path,
-  val command: (seed: Path) -> List<String>,
+  val launch: (seed: Path) -> Launch,
   val prepare: (seed: Path) -> Unit = {},
-  val workDir: Path? = null,
   /** Until a seed shows up, the data directory is looked at this often. */
   val seedPoll: Duration = 15.seconds,
   /** The first pause before restarting after a crash; doubles up to [maxBackoff]. */
@@ -134,9 +137,16 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   /** Runs one MultiServer process until it ends; its exit code. */
   private fun run(seed: Path): Int {
     runCatching { config.prepare(seed) }.onFailure { note("Could not prepare ${seed.name}: ${it.message}") }
+    val launch = runCatching { config.launch(seed) }.getOrElse {
+      note("Can't start ${seed.name}: ${it.message}")
+      return -1
+    }
     note("Starting the game server on ${seed.name}")
-    val proc = ProcessBuilder(config.command(seed))
-      .apply { config.workDir?.let { directory(it.toFile()) } }
+    val proc = ProcessBuilder(launch.command)
+      .apply {
+        launch.workDir?.let { directory(it.toFile()) }
+        environment().putAll(launch.environment)
+      }
       .redirectErrorStream(true)
       .start()
     process = proc

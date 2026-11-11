@@ -40,8 +40,8 @@ API on 8001 are not published). A tracker restart or update doesn't drop the pla
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
-| `apworlds/world_locks/` | Our own apworld: worlds that start locked until their key is found (packed by `scripts/build-apworlds.sh`) |
-| `session.yaml` | Who plays which worlds, for the dashboard (copy `session.example.yaml`; gitignored) |
+| `apworlds/world_locks/` | Our own apworld: worlds that start locked until their key is found (part of the gateway image) |
+| `session.yaml` | Who plays which worlds, only for seeds deployed with the CLI (copy `session.example.yaml`; gitignored) |
 | `demo/` | An example session (YAMLs, `session.yaml`, simulated players) — see *Demo* below |
 | `kotlin.Dockerfile` | Builds the tracker image and the gateway image (native, plus the pinned Archipelago release) |
 | `players/` | One YAML per player (gitignored) |
@@ -97,12 +97,34 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
 
 ## Session day
 
+### In the admin panel
+
+1. **Collect the YAMLs** of the players, one per world, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`).
+   Players export them from the game's options page on archipelago.gg or via the Launcher's *Generate Template
+   Options*. Non-bundled games need their `.apworld` in `custom_worlds/` on the server.
+2. **Create the session** (admin panel, *Session*, only while there is none): *Choose YAMLs…*, then for every world who
+   plays it (one or more people: a world with several players is played together; new names get a login) and whether
+   it starts locked; the hint and release options; *Generate and start*. The gateway generates the seed with its
+   Archipelago release and starts the game server on it.
+3. **Hand out the new logins**: the panel shows each new person's password **once**. People who already had a login
+   keep it.
+4. **Players log in** at `https://randogeddon.eratiem.net`. Under *Your connection* they find the server
+   (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
+   slot names and each slot's password. Phones can install the dashboard as an app (see below).
+
+Patch files for ROM-based games are in the seed: `data/AP_<seed>.zip` on the server. **Deleting** the session (admin
+panel) stops the game server and moves the seed and its save to `data/old/`; the logins stay. Only one session at a
+time: a new one can be created once the current one is deleted.
+
+### With the CLI
+
 1. **Collect YAMLs** in `players/`, one per world, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export them
    from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*.
    Only `.yaml`/`.yml` files may be in that folder, because `Generate.py` parses every file there.
    Put any non-bundled games' `.apworld` files in `custom_worlds/`, **both** locally and on the server.
    For locked worlds add a World Locks YAML (see below), and write `session.yaml` (who plays which worlds; the
-   logins are made for its people).
+   logins are made for its people). A seed deployed this way has no session in the database: it runs on the
+   gateway's newest Archipelago release with the `AP_*` options of `.env`.
 2. **Generate** locally:
    ```sh
    ./scripts/generate.sh                 # extra args go to Generate.py, e.g. --spoiler 3 --seed 42
@@ -130,7 +152,7 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
 
 ### Admin panel: the game server and its console
 
-Admins get a sliders button in the dashboard's header. The admin panel shows the game server's state (running,
+Admins get a gear button in the dashboard's header. The admin panel shows the game server's state (running,
 starting, stopped, crashed, waiting for a seed), lets them start, stop and restart it (stop and restart ask once more:
 every player is disconnected), shows its log live, and has the server console:
 
@@ -160,10 +182,10 @@ progress. **Deploying a new seed starts over.** The old save is kept in `data/ol
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 
-- **Logins** are made for the people of `session.yaml` with `randogeddon logins` (see *Session day*); the username is
-  the person's name. Passwords are 32 random characters and stored only as Argon2id hashes. A login lasts 30 days
+- **Logins** are made when a session is created in the admin panel, or for the people of `session.yaml` with
+  `randogeddon logins` (see *Session day*); the username is the person's name. Passwords are 32 random characters and stored only as Argon2id hashes. A login lasts 30 days
   (HttpOnly, Secure, SameSite=Strict cookie). Failed logins are slowed down and limited to 5 per minute per address.
-  Someone with a login who isn't a person of the current `session.yaml` is refused.
+  Someone with a login who isn't part of the current session is refused (admins always get in, to the admin panel).
 - **Slot passwords:** every slot (world) of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
@@ -172,7 +194,7 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   spaces, quotes or backslashes). Some games only have an in-game text field without paste, so the dashboard shows
   them in a monospaced font.
 - `docker compose exec tracker randogeddon slots` prints the current seed's slot passwords for the host, e.g. for the
-  Locks slot (`!hint World Key 2`) or worlds that aren't in `session.yaml`.
+  Locks slot (`!hint World Key 2`) or worlds nobody plays.
 
 The data lives in the `postgres-data` volume (and in the Proxmox backup of the whole VM).
 
@@ -196,7 +218,7 @@ world shows its points and how many hints they buy.
 
 Some worlds can start locked and open only when their key is found in another world. This is part of the generated
 seed, not just of the dashboard: the `World Locks` apworld (`apworlds/world_locks/`, packed into
-`custom_worlds/world_locks.apworld` by `generate.sh`) adds one key item per locked world and tells the generator that
+installed in the gateway image) adds one key item per locked world and tells the generator that
 nothing in that world is reachable without its key. So every seed stays completable, chains included (a key inside a
 world that is itself locked).
 
@@ -223,9 +245,10 @@ which the server container writes on startup.
 
 - **Your connection:** the server address, your slot names and their passwords (shown on request, copyable).
 - **Overview:** overall completion, worlds at goal, game clients online, locked worlds opened, hint count.
-- **People:** one card per person of `session.yaml` with their worlds: game, progress, status
+- **People:** one card per person of the session (or of `session.yaml`) with their worlds (a world played together
+  shows on each of its players' cards): game, progress, status
   (not started / playing / locked / goal / released / complete), online dot, last activity, and for locked worlds
-  the key: who found it, or where it was hinted. Without `session.yaml`, every world is its own card. Click a
+  the key: who found it, or where it was hinted. Without any people, every world is its own card. Click a
   person's name for their overview (totals, worlds, open hints, combined connection log, recent activity). Click a world
   for its received items (filterable), remaining locations, play time and connection log.
 - **Play time:** time a game client was connected to a world, per world and per person, kept across restarts.
@@ -272,9 +295,10 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &   # the loop in the background
 ```
 
-Three people with different numbers of games: Alice three (two of them start locked), Bob two (one locked), Carol
-one. The simulator (`demo/simulate.py`) checks locations quickly for half a minute and then evenly until the end,
-finds the key of Alice's Celeste after ~25 s, of her DLCQuest after ~75 s and of Bob's Yacht Dice after ~3 minutes
+Three people with different numbers of games: Alice three (two of them start locked), Bob two (one locked) and, with
+Carol, Risk of Rain 2, which they play together (a shared world: on both cards, both get its slot password). The
+simulator (`demo/simulate.py`) checks locations quickly for half a minute and then evenly until the end, finds the key
+of Alice's Celeste after ~25 s, of her DLCQuest after ~75 s and of Bob's Yacht Dice after ~3 minutes
 (hinted before). Every world reaches its goal within about `DEMO_MINUTES` (default 15); then the simulator ends, which
 the loop takes as the end of a round. The simulated players connect through the gateway with their slot passwords. It
 replaces the seed in `data/` (the old one goes to `data/old/`); about one in three random seeds can't be generated
@@ -352,6 +376,10 @@ and review the result:
 
 ## Updating Archipelago
 
-Set `AP_VERSION` in `.env` to a new release tag, then run `docker compose build` and redeploy.
-Everyone's client and apworld versions should be compatible with the server version. Seeds are
-generally playable on newer servers but not older ones, so generate and serve with the same image.
+A session keeps the Archipelago release it was generated with, and the gateway runs it only with that release: one
+it doesn't have can't be started (the admin panel and the gateway's log say so). The gateway image has one release
+(`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the admin panel offers what it has.
+
+To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
+of the old release is running (delete it first). Everyone's client and apworld versions should be compatible with
+the release.

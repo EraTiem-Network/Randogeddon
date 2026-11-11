@@ -191,6 +191,13 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     version++
   }
 
+  /** Forgets the session (it was deleted in the admin panel): the dashboard is empty until the next seed. */
+  fun clear() {
+    reset(null)
+    connected = false
+    touch()
+  }
+
   // ------------------------------------------------------------------------------------------------------- packets
 
   /** @return whether this is another seed than before; the state was reset then. */

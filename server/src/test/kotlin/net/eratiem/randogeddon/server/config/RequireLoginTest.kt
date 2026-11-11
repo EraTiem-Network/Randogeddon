@@ -28,7 +28,8 @@ class RequireLoginTest {
   /** Alice is a person of the session (as "Alice"), Mallory has a login but isn't. */
   private val check = object : LoginCheck {
     override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada)[token]
-    override fun personOf(user: User) = mapOf(alice to "Alice", ada to "Ada")[user]
+    // Ada is an admin outside the session
+    override fun personOf(user: User) = mapOf(alice to "Alice")[user]
   }
 
   private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {

@@ -75,11 +75,14 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [x] Users can be marked as admins; only admins see and reach the panel (checked on the server, not only hidden)
     - `randogeddon admins --grant <person>`; `/api/admin/*` answers 403 for everyone else.
-- [ ] Create a session: upload the player YAMLs, set people, locks and hint options, generate the seed
+- [x] Create a session: upload the player YAMLs, set people, locks and hint options, generate the seed
+    - Every world gets one or more people (several: they play it together); new names get a login, shown once.
+    - The gateway generates the seed; the game server starts on it.
 - [x] Control the session: start, stop and restart the server, see its log, run server commands
     - Stop and restart ask once more; the log is live; the console keeps a command history.
-- [ ] Delete a session: stop the server, remove the seed, save and logins
-- [ ] Only one session at a time (creating a second one is refused until the first is deleted)
+- [x] Delete a session: stop the server, remove the seed, save and slot passwords
+    - The logins stay: they belong to people, who will play again (see Phase 5).
+- [x] Only one session at a time (creating a second one is refused until the first is deleted)
 - [ ] Optimal path: the spoiler playthrough rendered as a route (sphere by sphere)
     - Hidden by default (it is a full spoiler). Admins can reveal it at any time; all players of the session see it
       once the session is finished.
@@ -103,7 +106,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The tracker controls it over an internal API (own port, never published, shared token).
     - The separate `archipelago` container is removed; seed generation uses the gateway image (`ap-generate`),
       `scripts/generate.sh` stays as a CLI tool. Generating from the panel comes with "Create a session".
-- [ ] A session keeps the Archipelago version it was generated with
+- [x] A session keeps the Archipelago version it was generated with
+    - The gateway runs and generates only the releases it has; one release in the image for now, a second one is
+      added next to it when an update comes.
     - Saved with the session, together with the apworlds it used (custom worlds, World Locks).
     - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
       update never breaks a running session. Releases no session uses any more can be dropped.

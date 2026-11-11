@@ -11,7 +11,7 @@ import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Room
-import net.eratiem.randogeddon.server.session.SessionFileWatcher
+import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
 import org.koin.core.annotation.Single
@@ -40,7 +40,7 @@ interface LoginCheck {
 class LoginService(
   private val users: UserStore,
   private val logins: LoginSessionStore,
-  private val sessionFile: SessionFileWatcher,
+  private val session: CurrentSession,
 ) : LoginCheck {
   /** The token for the session cookie, or `null` if the name or password is wrong. */
   suspend fun login(name: String, password: String): String? {
@@ -59,7 +59,7 @@ class LoginService(
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 
   /** Same name as the person, without regard to case. */
-  override fun personOf(user: User): String? = sessionFile.people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
+  override fun personOf(user: User): String? = session.people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
 
   /** Removes expired logins every few hours, for as long as [scope] runs. */
   fun cleanUp(scope: CoroutineScope) = scope.launch {
@@ -80,7 +80,7 @@ class LoginService(
 class SlotPasswords(
   private val config: TrackerConfig,
   private val store: SlotPasswordStore,
-  private val sessionFile: SessionFileWatcher,
+  private val session: CurrentSession,
 ) {
   /** Slot name -> password of the seed in room.json, creating missing ones; empty while there is no seed. */
   suspend fun current(): Map<String, String> {
@@ -89,12 +89,12 @@ class SlotPasswords(
     return store.ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
   }
 
-  /** The worlds of [person] (from `session.yaml`) with game and password, in the order of the file. */
+  /** The worlds of [person] (a world played together is theirs too) with game and password. */
   suspend fun of(person: String): List<MySlot> {
     val room = Room.read(config.roomJson) ?: return emptyList()
     val passwords = current()
     val games = room.players.associate { it.name to it.game }
-    return sessionFile.people()[person].orEmpty().mapNotNull { slot ->
+    return session.people()[person].orEmpty().mapNotNull { slot ->
       passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) }
     }
   }

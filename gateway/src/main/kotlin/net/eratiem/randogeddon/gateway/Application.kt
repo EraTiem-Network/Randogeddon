@@ -26,13 +26,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GameServerStatus
+import net.eratiem.randogeddon.shared.SessionOptions
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
-import kotlin.io.path.absolutePathString
 import kotlin.time.Duration.Companion.seconds
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 
@@ -47,12 +48,13 @@ data class GatewayConfig(
   val internalPort: Int,
   val internalToken: String,
   /** `null`: MultiServer runs elsewhere (development against `upstream`), the gateway only relays. */
-  val gameServer: MultiServerOptions?,
+  val gameServer: GameServerSettings?,
 ) {
   companion object {
     fun from(config: ApplicationConfig): GatewayConfig {
       fun value(key: String) = config.property("gateway.$key").getString()
       fun server(key: String) = value("gameServer.$key")
+      fun flag(key: String) = server(key).trim().lowercase() !in setOf("0", "false", "no", "off")
       return GatewayConfig(
         port = value("port").toInt(),
         upstream = value("upstream"),
@@ -60,57 +62,38 @@ data class GatewayConfig(
         database = DatabaseConfig(value("database.url"), value("database.user"), value("database.password")),
         internalPort = value("internal.port").toInt(),
         internalToken = value("internal.token"),
-        gameServer = if (server("enabled").trim().lowercase() in setOf("0", "false", "no", "off")) null else MultiServerOptions(
-          apHome = Path.of(server("apHome")),
+        gameServer = if (!flag("enabled")) null else GameServerSettings(
+          apRoot = Path.of(server("apRoot")),
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
           port = server("port").toInt(),
-          hintCost = server("hintCost"),
-          locationCheckPoints = server("locationCheckPoints"),
-          releaseMode = server("releaseMode"),
-          collectMode = server("collectMode"),
-          remainingMode = server("remainingMode"),
-          countdownMode = server("countdownMode"),
           adminPassword = server("adminPassword"),
+          // For seeds without a session from the admin panel (deployed with the CLI)
+          defaults = SessionOptions(
+            pointHints = flag("pointHints"),
+            autoHints = flag("autoHints"),
+            hintCost = server("hintCost").toInt(),
+            locationCheckPoints = server("locationCheckPoints").toInt(),
+            releaseMode = server("releaseMode"),
+            collectMode = server("collectMode"),
+            remainingMode = server("remainingMode"),
+            countdownMode = server("countdownMode"),
+          ),
         ),
       )
     }
   }
 }
 
-/** MultiServer's options, as the archipelago container's entrypoint passed them before. */
-data class MultiServerOptions(
-  val apHome: Path,
+/** Where Archipelago is (one directory per release under [apRoot]) and how MultiServer runs. */
+data class GameServerSettings(
+  val apRoot: Path,
   val python: String,
   val dataDir: Path,
   val port: Int,
-  val hintCost: String,
-  val locationCheckPoints: String,
-  val releaseMode: String,
-  val collectMode: String,
-  val remainingMode: String,
-  val countdownMode: String,
-  /** For `!admin` remote commands; empty: disabled. */
   val adminPassword: String,
-) {
-  /** serve.py = MultiServer plus the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS, read from the environment). */
-  fun command(seed: Path): List<String> = buildList {
-    addAll(listOf(python, "serve.py", seed.absolutePathString(), "--host", "0.0.0.0", "--port", port.toString()))
-    addAll(listOf("--hint_cost", hintCost, "--location_check_points", locationCheckPoints))
-    addAll(listOf("--release_mode", releaseMode, "--collect_mode", collectMode))
-    addAll(listOf("--remaining_mode", remainingMode, "--countdown_mode", countdownMode))
-    addAll(listOf("--auto_shutdown", "0", "--logtime"))
-    if (adminPassword.isNotBlank()) addAll(listOf("--server_password", adminPassword))
-  }
-
-  /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py). */
-  fun writeRoomJson(seed: Path, roomJson: Path) {
-    val proc = ProcessBuilder(python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
-      .directory(apHome.toFile()).redirectErrorStream(true).start()
-    val output = proc.inputStream.bufferedReader().readText()
-    check(proc.waitFor() == 0) { "room_info.py failed: ${output.trim().lines().lastOrNull()}" }
-  }
-}
+  val defaults: SessionOptions,
+)
 
 /**
  * Accepts game clients on [GatewayConfig.port] and relays each one to MultiServer, which it runs itself; the tracker
@@ -137,13 +120,14 @@ fun main() {
   fun count(block: suspend () -> Unit) = counts.launch {
     runCatching { block() }.onFailure { logger.warn("Could not count the session time: {}", it.message) }
   }
+  val archipelago = options?.let { Archipelago(it.apRoot, it.python) }
   val gameServer = options?.let {
+    val launcher = Launcher(archipelago!!, SessionSetupStore(database), config.roomJson, it.port, it.defaults, it.adminPassword)
     GameServer(
       GameServerConfig(
         dataDir = it.dataDir,
-        command = it::command,
-        prepare = { seed -> it.writeRoomJson(seed, config.roomJson) },
-        workDir = it.apHome,
+        launch = launcher::launch,
+        prepare = launcher::prepare,
         // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
         onRunning = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.started(seed) } } },
         onEnded = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.stopped(seed) } } },
@@ -165,7 +149,7 @@ fun main() {
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game server")
   logger.info(
     "Gateway on port {}, relaying to {}; {}", config.port, config.upstream,
-    if (gameServer != null) "running MultiServer from ${options.apHome}" else "MultiServer runs elsewhere",
+    if (archipelago != null) "running MultiServer (Archipelago ${archipelago.versions().joinToString()})" else "MultiServer runs elsewhere",
   )
 
   embeddedServer(
@@ -193,7 +177,9 @@ fun main() {
         webSocket("/{path...}") { relay(http, config.upstream, passwords) }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
-      if (gameServer != null) port(config.internalPort) { internalApi(config.internalToken, gameServer) }
+      if (gameServer != null) port(config.internalPort) {
+        internalApi(config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir))
+      }
     }
     monitor.subscribe(ApplicationStopping) {
       // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last count.

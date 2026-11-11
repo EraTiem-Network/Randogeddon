@@ -4,6 +4,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Sessions in the admin panel (Phase 3, part 2)
+- Create a session in the admin panel: upload the player YAMLs, set who plays which world (one or more people per
+  world: a world can be played together; new names get a login, shown once), which worlds start locked, and the hint
+  and release options. The gateway generates the seed and starts the game server on it. One session at a time.
+- Delete it: the game server stops, the seed and its save go to `data/old/`, its slot passwords and setup are removed;
+  the logins stay.
+- A session keeps the Archipelago release it was generated with; the gateway runs and generates only releases it
+  has (`/opt/archipelago/<version>`).
+- The session's people come from the database; `session.yaml` is only used for seeds deployed with the CLI.
+- Admins reach the admin panel even when they aren't part of the session.
+- World Locks is part of the gateway image; `scripts/build-apworlds.sh` is gone (an old
+  `custom_worlds/world_locks.apworld` is removed by the scripts).
+
 ### Admin panel (Phase 3, part 1)
 - Admins: `randogeddon admins --grant <person>` (`--revoke`, or no option to list them). Only admins see the admin
   panel, and every `/api/admin` call is checked on the server (403 otherwise).

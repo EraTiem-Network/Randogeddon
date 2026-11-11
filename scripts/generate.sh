@@ -14,8 +14,9 @@ fi
 for f in players/*; do
   case "$f" in *.yaml|*.yml) ;; *) echo "Refusing: players/ contains a non-YAML file ($f) — Generate.py would try to parse it." >&2; exit 1;; esac
 done
-# Our own apworlds (apworlds/ -> custom_worlds/*.apworld), e.g. World Locks
-./scripts/build-apworlds.sh >/dev/null
+# Our own apworlds (apworlds/, e.g. World Locks) are part of the gateway image now; an old packed copy in
+# custom_worlds/ would be loaded twice
+rm -f custom_worlds/world_locks.apworld
 echo "Generating with ${#yamls[@]} player file(s): ${yamls[*]}"
 
 docker compose --profile tools run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" generate "$@"

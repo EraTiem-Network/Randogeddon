@@ -25,8 +25,11 @@ import kotlin.time.Duration.Companion.seconds
 /** HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. */
 const val SESSION_COOKIE = "randogeddon_session"
 
-/** The logged-in user of a call that passed [RequireLogin]. */
-data class LoggedIn(val user: User, val person: String)
+/**
+ * The logged-in user of a call that passed [RequireLogin]. [person]: who they are in the session; `null` only for an
+ * admin outside it (who still reaches the admin panel, e.g. to create the next session).
+ */
+data class LoggedIn(val user: User, val person: String?)
 
 private val LOGGED_IN = AttributeKey<LoggedIn>("LoggedIn")
 
@@ -34,7 +37,7 @@ val ApplicationCall.loggedIn: LoggedIn get() = attributes[LOGGED_IN]
 
 /**
  * Lets a call through only with a valid login of someone in the session: 401 without (the web app then shows the
- * login), 403 for a user who isn't a person of `session.yaml`.
+ * login), 403 for a user who isn't one of its people. Admins always get through.
  */
 class RequireLoginConfig {
   lateinit var logins: LoginCheck
@@ -49,7 +52,7 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
       return@onCall
     }
     val person = logins.personOf(user)
-    if (person == null) {
+    if (person == null && !user.admin) {
       call.respond(HttpStatusCode.Forbidden, ApiError("${user.name} is not part of this session"))
       return@onCall
     }
@@ -79,7 +82,7 @@ fun Route.loginRoutes(logins: LoginService) {
         delay(1.seconds)
         return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong name or password"))
       }
-      if (logins.personOf(user) == null) {
+      if (logins.personOf(user) == null && !user.admin) {
         logins.logout(token)
         return@post call.respond(HttpStatusCode.Forbidden, ApiError("${user.name} is not part of this session"))
       }
@@ -99,7 +102,10 @@ fun Route.meRoute(config: TrackerConfig, slotPasswords: SlotPasswords) {
   get("/me") {
     val me = call.loggedIn
     call.respond(
-      Me(name = me.user.name, server = config.publicAddress, slots = slotPasswords.of(me.person), admin = me.user.admin)
+      Me(
+        name = me.user.name, server = config.publicAddress, admin = me.user.admin,
+        slots = me.person?.let { slotPasswords.of(it) }.orEmpty(),
+      )
     )
   }
 }

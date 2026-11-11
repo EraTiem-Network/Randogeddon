@@ -301,6 +301,94 @@ data class LogLines(val lines: List<LogLine>, val last: Long)
 @Serializable
 data class CommandRequest(val line: String)
 
+/** A session's game server options, set when it is created (the defaults are those of `.env.example`). */
+@Serializable
+data class SessionOptions(
+  /** Players buy hints with points (`!hint`). */
+  val pointHints: Boolean = true,
+  /** Games create hints on their own (e.g. shops). */
+  val autoHints: Boolean = true,
+  /** % of a world's locations a hint costs; 0 = free. */
+  val hintCost: Int = 10,
+  val locationCheckPoints: Int = 1,
+  val releaseMode: String = "auto",
+  val collectMode: String = "auto",
+  val remainingMode: String = "goal",
+  val countdownMode: String = "auto",
+  /** World Locks: keys reachable from the start, so locked worlds open early. */
+  val earlyKeys: Boolean = false,
+)
+
+/** A player YAML as uploaded in the admin panel. */
+@Serializable
+data class UploadedYaml(val fileName: String, val content: String)
+
+/** A world found in an uploaded YAML. */
+@Serializable
+data class YamlWorld(val fileName: String, val name: String, val game: String)
+
+/** `POST /api/admin/session/inspect`: the worlds of the uploaded YAMLs, and what's wrong with them. */
+@Serializable
+data class InspectResult(val worlds: List<YamlWorld>, val problems: List<String> = emptyList())
+
+/** One world of a new session: who plays it (one or more users, existing or new names) and whether it starts locked. */
+@Serializable
+data class WorldPlan(val name: String, val users: List<String> = emptyList(), val locked: Boolean = false)
+
+@Serializable
+data class CreateSessionRequest(
+  val yamls: List<UploadedYaml>,
+  val worlds: List<WorldPlan>,
+  val options: SessionOptions = SessionOptions(),
+  /** `null`: the gateway's newest Archipelago release. */
+  val apVersion: String? = null,
+)
+
+/** A login created for a new person; the password is shown only this once. */
+@Serializable
+data class NewLogin(val name: String, val password: String)
+
+@Serializable
+data class CreateSessionResult(val seedName: String, val logins: List<NewLogin> = emptyList())
+
+/** The current session as the admin panel shows it. */
+@Serializable
+data class SessionInfo(
+  val seedName: String,
+  /** `null` for a seed deployed with the CLI. */
+  val apVersion: String? = null,
+  val createdAt: Long? = null,
+  val options: SessionOptions? = null,
+  val worlds: List<WorldPlan> = emptyList(),
+)
+
+/** `GET /api/admin/session`: the session (if any), what a new one can use, and who has a login. */
+@Serializable
+data class AdminSessionView(
+  val session: SessionInfo? = null,
+  /** Archipelago releases the gateway can run, newest first. */
+  val apVersions: List<String> = emptyList(),
+  val users: List<String> = emptyList(),
+)
+
+/** Tracker → gateway: generate a seed from these YAMLs; World Locks is added from [locked]. */
+@Serializable
+data class GenerateRequest(
+  val yamls: List<UploadedYaml>,
+  val locked: List<String> = emptyList(),
+  val earlyKeys: Boolean = false,
+  val apVersion: String,
+)
+
+/** The generated seed (now the data directory's seed), or why it failed: the last lines of Generate.py's output. */
+@Serializable
+data class GenerateResult(
+  val seedName: String? = null,
+  val seedFile: String? = null,
+  val slots: List<String> = emptyList(),
+  val log: List<String> = emptyList(),
+)
+
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {
   const val PROGRESSION = 0b001

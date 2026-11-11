@@ -183,7 +183,7 @@ async def main():
 
     worlds = [(info["name"], info["game"]) for s, info in sorted(slots.items()) if info["game"] != "World Locks"]
     # The world that finishes during the demo: the smallest one that starts open
-    finisher = "Carol-RoR2"
+    finisher = "Team-RoR2"
     tasks = [asyncio.create_task(play(name, game, name == finisher)) for name, game in worlds]
     print(f"Playing {len(worlds)} worlds in about {END / 60:.0f} minutes; locked: {', '.join(key_of)}", flush=True)
     await asyncio.gather(*tasks)

@@ -17,7 +17,31 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.GenerateRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GenerateResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.LogLines",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.UploadedYaml",
       "fields": [
         {
           "name": "Companion"
@@ -698,7 +722,34 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.GenerateRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GenerateResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.LogLines$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.UploadedYaml$Companion",
       "methods": [
         {
           "name": "serializer",
