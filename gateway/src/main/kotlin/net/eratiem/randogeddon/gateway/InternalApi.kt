@@ -9,6 +9,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import net.eratiem.randogeddon.shared.CommandRequest
+import net.eratiem.randogeddon.shared.GenerateRequest
 import java.security.MessageDigest
 
 /**
@@ -29,10 +30,23 @@ val InternalAuth = createRouteScopedPlugin("InternalAuth", ::InternalAuthConfig)
   }
 }
 
-/** The tracker's control of the game server: state, start/stop/restart, log, console. */
-fun Route.internalApi(token: String, server: GameServer) {
+/**
+ * The tracker's control of the game server: state, start/stop/restart, log, console; and of the sessions: the
+ * Archipelago releases, generating a seed, deleting the current one.
+ */
+fun Route.internalApi(token: String, server: GameServer, archipelago: Archipelago, generator: Generator) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
+    get("/versions") { call.respond(archipelago.versions()) }
+    // Takes as long as Generate.py does (up to minutes); the new seed is served after a restart
+    post("/generate") { call.respond(generator.generate(call.receive<GenerateRequest>())) }
+    // Stops the game server and moves the seed, its save and room.json to data/old; then waits for the next seed
+    post("/session/delete") {
+      server.stop()
+      val moved = generator.retire()
+      server.start()
+      call.respond(moved)
+    }
     route("/server") {
       get { call.respond(server.state) }
       post("/start") {

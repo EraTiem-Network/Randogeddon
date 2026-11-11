@@ -1,0 +1,112 @@
+package net.eratiem.randogeddon.gateway
+
+import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.UploadedYaml
+import org.junit.Assume.assumeFalse
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createFile
+import kotlin.io.path.exists
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * Seed generation with a shell script as "Generate.py" (and `sh` as the interpreter): it lists the YAMLs it was given
+ * and writes a seed, or fails when a YAML says so. Skipped on Windows (needs sh).
+ */
+class GeneratorTest {
+  private lateinit var root: Path
+  private lateinit var data: Path
+
+  @BeforeTest
+  fun setUp() {
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    root = Files.createTempDirectory("archipelago")
+    data = Files.createTempDirectory("data")
+    for (version in listOf("0.6.8", "0.6.10", "0.5.1")) {
+      val home = root.resolve(version).createDirectories()
+      home.resolve("MultiServer.py").createFile()
+      home.resolve("Generate.py").writeText(
+        """
+        players="${'$'}2"; out="${'$'}4"
+        ls "${'$'}players" > "$root/files-$version.txt"
+        cat "${'$'}players"/* > "$root/seen-$version.txt"
+        grep -q "unbeatable" "${'$'}players"/* && { echo "Game appears as unbeatable"; exit 1; }
+        echo "version $version"
+        touch "${'$'}out/AP_12345.zip"
+        """.trimIndent()
+      )
+    }
+  }
+
+  private val archipelago get() = Archipelago(root, "sh")
+
+  @Test
+  fun `versions are listed newest first, by number`() {
+    assertEquals(listOf("0.6.10", "0.6.8", "0.5.1"), archipelago.versions())
+    assertEquals("0.6.10", archipelago.newest)
+    assertFailsWith<IllegalArgumentException> { archipelago.home("0.9.9") }
+  }
+
+  @Test
+  fun `a generated seed replaces the previous one, which goes to old`() = runBlocking {
+    data.resolve("AP_999.zip").createFile()
+    data.resolve("AP_999.apsave").createFile()
+    data.resolve("room.json").writeText("{}")
+
+    val result = Generator(archipelago, data).generate(
+      GenerateRequest(
+        yamls = listOf(UploadedYaml("Alice HK.yaml", "name: Alice-HK"), UploadedYaml("../evil.yml", "name: Bob")),
+        locked = listOf("Bob"),
+        earlyKeys = true,
+        apVersion = "0.6.8",
+      )
+    )
+    assertEquals("12345", result.seedName)
+    assertTrue(data.resolve("AP_12345.zip").exists())
+    assertTrue(data.resolve("old/AP_999.zip").exists() && data.resolve("old/AP_999.apsave").exists())
+    assertTrue(!data.resolve("room.json").exists())
+    assertTrue(result.log.any { "version 0.6.8" in it })
+  }
+
+  @Test
+  fun `the locked worlds become a World Locks slot, the file names are made safe`() = runBlocking {
+    Generator(archipelago, data).generate(
+      GenerateRequest(
+        listOf(UploadedYaml("../Alice HK.yaml", "name: Al")), locked = listOf("Al\"ice", "Bob"), apVersion = "0.6.8",
+      )
+    )
+    val seen = root.resolve("seen-0.6.8.txt").readText()
+    assertTrue("game: World Locks" in seen, seen)
+    assertTrue("""locked_worlds: ["Al\"ice", "Bob"]""" in seen, seen)
+    assertTrue("early_keys: false" in seen, seen)
+    val files = root.resolve("files-0.6.8.txt").readText().lines().filter { it.isNotBlank() }
+    assertEquals(listOf("000-Alice_HK.yaml", "zz-world-locks.yaml"), files)
+  }
+
+  @Test
+  fun `a failed generation keeps the current seed and says why`() = runBlocking {
+    data.resolve("AP_999.zip").createFile()
+    val result = Generator(archipelago, data).generate(
+      GenerateRequest(listOf(UploadedYaml("a.yaml", "unbeatable")), apVersion = "0.6.8")
+    )
+    assertNull(result.seedName)
+    assertTrue(result.log.any { "unbeatable" in it })
+    assertTrue(data.resolve("AP_999.zip").exists())
+  }
+
+  @Test
+  fun `a version the gateway doesn't have is refused`() = runBlocking {
+    val result = Generator(archipelago, data).generate(GenerateRequest(emptyList(), apVersion = "1.0.0"))
+    assertNull(result.seedName)
+    assertTrue(result.log.single().contains("not installed"))
+  }
+}

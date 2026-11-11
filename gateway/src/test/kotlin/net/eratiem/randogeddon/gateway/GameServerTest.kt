@@ -55,7 +55,7 @@ class GameServerTest {
   private fun server(prepared: MutableList<String> = mutableListOf()) = GameServer(
     GameServerConfig(
       dataDir = dir,
-      command = { seed -> listOf("sh", dir.resolve("fake.sh").toString(), seed.fileName.toString()) },
+      launch = { seed -> Launch(listOf("sh", dir.resolve("fake.sh").toString(), seed.fileName.toString())) },
       prepare = { seed -> prepared += seed.fileName.toString() },
       seedPoll = 50.milliseconds,
       backoff = 50.milliseconds,
