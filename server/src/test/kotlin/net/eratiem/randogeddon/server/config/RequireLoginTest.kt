@@ -23,11 +23,12 @@ import kotlin.uuid.Uuid
 class RequireLoginTest {
   private val alice = User(Uuid.random(), "alice", "hash")
   private val mallory = User(Uuid.random(), "Mallory", "hash")
+  private val ada = User(Uuid.random(), "Ada", "hash", admin = true)
 
   /** Alice is a person of the session (as "Alice"), Mallory has a login but isn't. */
   private val check = object : LoginCheck {
-    override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory)[token]
-    override fun personOf(user: User) = if (user == alice) "Alice" else null
+    override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada)[token]
+    override fun personOf(user: User) = mapOf(alice to "Alice", ada to "Ada")[user]
   }
 
   private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {
@@ -40,6 +41,13 @@ class RequireLoginTest {
           get("/state") {
             handled = true
             call.respondText("state of ${call.loggedIn.person}")
+          }
+          route("/admin") {
+            install(RequireAdmin)
+            get("/server") {
+              handled = true
+              call.respondText("server")
+            }
           }
         }
         get("/healthz") { call.respondText("ok") }
@@ -70,6 +78,15 @@ class RequireLoginTest {
     val response = client.get("/api/state") { cookie(SESSION_COOKIE, "a") }
     assertEquals(HttpStatusCode.OK, response.status)
     assertEquals("state of Alice", response.bodyAsText())
+    assertTrue(handled())
+  }
+
+  @Test
+  fun `the admin routes are for admins only`() = test { handled ->
+    assertEquals(HttpStatusCode.Unauthorized, client.get("/api/admin/server").status)
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/server") { cookie(SESSION_COOKIE, "a") }.status)
+    assertFalse(handled())
+    assertEquals("server", client.get("/api/admin/server") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
     assertTrue(handled())
   }
 

@@ -17,9 +17,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.server.account.LoginService
+import net.eratiem.randogeddon.server.account.SessionClock
 import net.eratiem.randogeddon.server.account.SlotPasswords
+import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.server.session.SessionFileWatcher
+import net.eratiem.randogeddon.database.SessionTime
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.Summary
 import org.koin.ktor.ext.inject
@@ -35,7 +38,9 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val sessionFile by inject<SessionFileWatcher>()
   val logins by inject<LoginService>()
   val slotPasswords by inject<SlotPasswords>()
-  val summaries = SummaryCache(tracker, sessionFile, trackerConfig)
+  val gameServer by inject<GameServerClient>()
+  val sessionClock by inject<SessionClock>()
+  val summaries = SummaryCache(tracker, sessionFile, sessionClock, trackerConfig)
 
   routing {
     loginRoutes(logins)
@@ -45,6 +50,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       install(RequireLogin) { this.logins = logins }
       sessionRoutes(tracker, summaries)
       meRoute(trackerConfig, slotPasswords)
+      adminRoutes(gameServer)
     }
 
     // Nothing about the session: open for the container's healthcheck
@@ -107,23 +113,31 @@ private fun Route.sessionRoutes(tracker: TrackerService, summaries: SummaryCache
 private class SummaryCache(
   private val tracker: TrackerService,
   private val sessionFile: SessionFileWatcher,
+  private val sessionClock: SessionClock,
   private val config: TrackerConfig,
 ) {
   private val mutex = Mutex()
   private var version = -1L
   private var people: Map<String, List<String>> = emptyMap()
+  private var time: SessionTime? = null
   private var json = ""
 
-  /** Changes with the session state and with `session.yaml`. */
-  suspend fun version(): Long = tracker.read { version } + sessionFile.people().hashCode().toLong().shl(32)
+  /** Changes with the session state, with `session.yaml` and with the session time's count (a start or stop). */
+  suspend fun version(): Long = tracker.read { version } + sessionFile.people().hashCode().toLong().shl(32) +
+    sessionClock.current.hashCode().toLong().shl(16)
 
   suspend fun json(): String = mutex.withLock {
     val currentPeople = sessionFile.people()
+    val currentTime = sessionClock.current
     val summary: Summary? = tracker.read {
-      if (version == this@SummaryCache.version && currentPeople == people) null
-      else summary(config.title, tracker.lastError, currentPeople, config.pointHints, config.autoHints)
+      if (version == this@SummaryCache.version && currentPeople == people && currentTime == time) null
+      else summary(config.title, tracker.lastError, currentPeople, config.pointHints, config.autoHints).copy(
+        sessionTimeMs = currentTime?.runTimeMs ?: 0,
+        sessionRunningSince = currentTime?.countedUntil?.toEpochMilli(),
+      )
     }
     people = currentPeople
+    time = currentTime
     if (summary != null) {
       version = summary.version
       json = ApiJson.encodeToString(Summary.serializer(), summary)

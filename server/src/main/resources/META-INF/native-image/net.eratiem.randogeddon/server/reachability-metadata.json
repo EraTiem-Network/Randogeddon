@@ -9,6 +9,22 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.CommandRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GameServerState",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.LoginRequest",
       "fields": [
         {
@@ -881,6 +897,24 @@
     },
     {
       "type": "net.eratiem.randogeddon.shared.ApiError$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.CommandRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GameServerState$Companion",
       "methods": [
         {
           "name": "serializer",
