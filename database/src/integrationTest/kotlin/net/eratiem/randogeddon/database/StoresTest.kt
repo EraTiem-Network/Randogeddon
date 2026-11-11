@@ -48,6 +48,17 @@ class StoresTest {
   }
 
   @Test
+  fun `users are no admins until granted`() = runBlocking {
+    val users = UserStore(db)
+    val dave = users.create("Dave", "hash")
+    assertEquals(false, users.findActive("dave")?.admin)
+    users.setAdmin(dave.id, true)
+    assertEquals(true, users.findActive(dave.id)?.admin)
+    users.setAdmin(dave.id, false)
+    assertEquals(false, users.active().single().admin)
+  }
+
+  @Test
   fun `a new password ends the user's logins`() = runBlocking {
     val users = UserStore(db)
     val logins = LoginSessionStore(db)
@@ -72,6 +83,29 @@ class StoresTest {
     assertNull(logins.userOf("old", now))
     assertEquals(carol.id, logins.userOf("fresh", now))
     assertEquals(1, logins.deleteExpired(now))
+  }
+
+  @Test
+  fun `the session time counts only while the game server runs`() = runBlocking {
+    val times = SessionTimeStore(db)
+    val t0 = Instant.parse("2026-11-11T10:00:00Z")
+    times.started("seed1", t0)
+    times.tick("seed1", t0.plusSeconds(30))
+    times.stopped("seed1", t0.plusSeconds(45))
+    assertEquals(SessionTime(45_000, null), times.of("seed1"))
+
+    // Stopped for an hour: doesn't count
+    times.tick("seed1", t0.plusSeconds(3645))
+    times.started("seed1", t0.plusSeconds(3645))
+    times.stopped("seed1", t0.plusSeconds(3660))
+    assertEquals(45_000L + 15_000, times.of("seed1")?.runTimeMs)
+
+    // Killed while running: the stretch since the last count is dropped on the next start
+    times.started("seed1", t0.plusSeconds(4000))
+    times.tick("seed1", t0.plusSeconds(4030))
+    times.dropOpenCounts()
+    assertEquals(SessionTime(90_000, null), times.of("seed1"))
+    assertNull(times.of("unknown"))
   }
 
   @Test

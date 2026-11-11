@@ -25,6 +25,13 @@ data class Summary(
   val hintSettings: HintSettings = HintSettings(),
   /** When the tracker started, epoch milliseconds. */
   val startedAt: Long,
+  /**
+   * How long the game server has run for this seed since its first start, without the times it was stopped. Counted
+   * up to [sessionRunningSince]; while it runs, add `now - sessionRunningSince`.
+   */
+  val sessionTimeMs: Long = 0,
+  /** Epoch milliseconds the count runs from while the game server runs; `null` while it is stopped. */
+  val sessionRunningSince: Long? = null,
   /** Increases with every change of the session state. */
   val version: Long,
   val totals: Totals,
@@ -250,10 +257,49 @@ data class Me(
   val server: String,
   /** The person's worlds with their passwords; empty until the tracker knows the seed. */
   val slots: List<MySlot> = emptyList(),
+  /** Sees and reaches the admin panel. */
+  val admin: Boolean = false,
 )
 
 @Serializable
 data class MySlot(val name: String, val game: String, val password: String)
+
+/** The game server (MultiServer, run by the gateway) as the admin panel shows it. */
+@Serializable
+enum class GameServerStatus {
+  /** No seed in the data directory yet. */
+  @SerialName("no_seed") NO_SEED,
+  @SerialName("starting") STARTING,
+  @SerialName("running") RUNNING,
+  /** Stopped by an admin; stays stopped until started again. */
+  @SerialName("stopped") STOPPED,
+  /** Ended on its own; the gateway starts it again after a pause. */
+  @SerialName("crashed") CRASHED,
+}
+
+@Serializable
+data class GameServerState(
+  val status: GameServerStatus,
+  /** File name of the seed it serves (or last served). */
+  val seed: String? = null,
+  /** Epoch milliseconds of the current start, while starting or running. */
+  val since: Long? = null,
+  val lastExitCode: Int? = null,
+  /** Restarts after crashes since the last start by an admin. */
+  val restarts: Int = 0,
+)
+
+/** One line of the game server's output; [n] counts up from 1 over the gateway's lifetime. */
+@Serializable
+data class LogLine(val n: Long, val ts: Long, val text: String)
+
+/** Lines after the asked-for number; [last] is the number to ask with next time. */
+@Serializable
+data class LogLines(val lines: List<LogLine>, val last: Long)
+
+/** A line for the server console, e.g. `/players`. */
+@Serializable
+data class CommandRequest(val line: String)
 
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {

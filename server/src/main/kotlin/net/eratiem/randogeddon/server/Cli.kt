@@ -21,6 +21,9 @@ private const val USAGE = """Usage: randogeddon [command]
   (no command)              run the tracker
   logins                    create logins for the people of session.yaml that have none, and print them once
   logins --reset <person>   a new password for <person>; their logins end
+  admins                    who is an admin
+  admins --grant <person>   make <person> an admin (sees and reaches the admin panel)
+  admins --revoke <person>  take it back
   slots [--json]            the slot passwords of the current seed"""
 
 /**
@@ -40,6 +43,12 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
           "logins" -> when {
             args.size == 1 -> createLogins(config, UserStore(db))
             args.size == 3 && args[1] == "--reset" -> resetLogin(args[2], UserStore(db))
+            else -> usage()
+          }
+          "admins" -> when {
+            args.size == 1 -> listAdmins(UserStore(db))
+            args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db))
+            args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db))
             else -> usage()
           }
           "slots" -> when {
@@ -95,6 +104,22 @@ private suspend fun resetLogin(person: String, users: UserStore): Int {
   users.setPassword(user.id, PasswordHasher.hash(password))
   printLogins(listOf(user.name to password))
   println("${user.name}'s previous logins have ended.")
+  return 0
+}
+
+private suspend fun listAdmins(users: UserStore): Int {
+  val admins = users.active().filter { it.admin }.map { it.name }
+  println(if (admins.isEmpty()) "No admins yet: randogeddon admins --grant <person>" else "Admins: ${admins.joinToString()}")
+  return 0
+}
+
+private suspend fun setAdmin(person: String, admin: Boolean, users: UserStore): Int {
+  val user = users.findActive(person) ?: run {
+    System.err.println("No login for '$person'. Create the missing ones with: randogeddon logins")
+    return 1
+  }
+  users.setAdmin(user.id, admin)
+  println(if (admin) "${user.name} is an admin now." else "${user.name} is no admin any more.")
   return 0
 }
 

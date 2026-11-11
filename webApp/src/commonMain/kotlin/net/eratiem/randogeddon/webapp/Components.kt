@@ -64,6 +64,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import kotlin.math.cos
+import kotlin.math.PI
+import kotlin.math.sin
 
 val CardShape = RoundedCornerShape(16.dp)
 
@@ -251,7 +254,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT }
+enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -304,6 +307,21 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawPath(Path().apply {
           moveTo(w * .22f, w * .12f); lineTo(w * .85f, w * .3f); lineTo(w * .22f, w * .5f); close()
         }, color)
+      }
+
+      // A gear: a ring with eight teeth
+      Icon.ADMIN -> {
+        val center = Offset(w / 2, w / 2)
+        drawCircle(color, radius = w * .26f, center = center, style = Stroke(stroke * 1.3f))
+        repeat(8) { i ->
+          val angle = i * PI / 4
+          val dx = cos(angle).toFloat()
+          val dy = sin(angle).toFloat()
+          drawLine(
+            color, Offset(center.x + dx * w * .30f, center.y + dy * w * .30f),
+            Offset(center.x + dx * w * .44f, center.y + dy * w * .44f), stroke * 1.5f, StrokeCap.Butt,
+          )
+        }
       }
 
       // A door frame open to the right, an arrow leaving through it

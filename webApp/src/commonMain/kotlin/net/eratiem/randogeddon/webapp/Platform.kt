@@ -19,6 +19,14 @@ expect object Platform {
    */
   fun stream(path: String, onState: (String) -> Unit, onConnection: (Boolean) -> Unit): () -> Unit
 
+  /** Like [stream], for a stream with several event types: [onEvent] gets the type and the data of each of [events]. */
+  fun events(
+    path: String,
+    events: List<String>,
+    onEvent: (String, String) -> Unit,
+    onConnection: (Boolean) -> Unit,
+  ): () -> Unit
+
   /**
    * Shows the login form of index.html (a real HTML form, so password managers can save and fill it), with
    * [message] above it if given. [onLoggedIn] is called once the server accepted a login.

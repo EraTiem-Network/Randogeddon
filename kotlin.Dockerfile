@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
-# The Kotlin apps of this repository as native executables (GraalVM Native Image, Linux x86_64):
+# The images of this repository; the Kotlin apps are native executables (GraalVM Native Image, Linux x86_64):
 #   target tracker   the dashboard server (:server) with the Compose web app (:webApp)
-#   target gateway   the game clients' entry to MultiServer, checks the slot passwords (:gateway)
-# Both are built in one stage, so `docker compose build` runs Gradle once.
+#   target gateway   the game host: runs MultiServer (Archipelago, pinned release) and is the game clients' entry to it,
+#                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`)
+# The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once.
 #
 # The Nexus credentials come from your Gradle init script as a BuildKit secret (see docker-compose.yml); they are only
 # mounted while Gradle runs and never end up in an image layer.
@@ -50,7 +51,38 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8000 && printf "GET /healthz HTTP/1.0\r\n\r\n" >&3 && grep -q "\"ok\":true" <&3'
 CMD ["/app/randogeddon"]
 
-FROM runtime AS gateway
+# Archipelago from a pinned upstream release, for the game server and seed generation. Debian 12 (glibc 2.36), so the
+# native gateway runs on it too.
+FROM python:3.12-slim-bookworm AS archipelago
+ARG AP_VERSION=0.6.8
+ENV PYTHONUNBUFFERED=1 \
+    AP_HOME=/opt/archipelago/${AP_VERSION}
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git gcc g++ libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR ${AP_HOME}
+RUN git clone --depth 1 --branch "${AP_VERSION}" https://github.com/ArchipelagoMW/Archipelago.git . \
+ && rm -rf .git
+# Core requirements + compiled speedups (otherwise AP tries to build them at runtime)
+RUN pip install --no-cache-dir -r requirements.txt cython "setuptools>=75,<81" \
+ && cythonize -b -i _speedups.pyx
+# The requirements of every bundled world, so generation works for all games
+RUN python ModuleUpdate.py -y
+# Never try to pip-install anything at runtime
+ENV SKIP_REQUIREMENTS_UPDATE=true
+
+FROM archipelago AS gateway
+# MultiServer runs as this user and writes host.yaml and logs/ next to itself. Archipelago checks whether its own
+# directory is writable: if not, it moves to the home directory and copies folders there that a plain checkout doesn't
+# have (and fails). So the directory itself (not what's in it) belongs to the user.
+RUN useradd --uid 1000 --create-home randogeddon \
+ && mkdir -p logs custom_worlds \
+ && touch host.yaml \
+ && chown randogeddon . logs host.yaml
+COPY archipelago/serve.py archipelago/room_info.py ./
+# Seed generation: `docker compose run --rm generate` (see docker-compose.yml)
+COPY archipelago/entrypoint.sh /usr/local/bin/ap-generate
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
 ENV ROOM_JSON=/data/room.json
 USER randogeddon

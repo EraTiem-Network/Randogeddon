@@ -10,8 +10,11 @@ plugins {
  * slot's password (from PostgreSQL, see :database). Runs on its own, so a tracker restart doesn't drop the players.
  */
 dependencies {
+  implementation(project(":shared"))
   implementation(project(":database"))
   implementation(libs.ktor.server.core)
+  implementation(libs.ktor.server.content.negotiation)
+  implementation(libs.ktor.serialization.kotlinx.json)
   implementation(libs.ktor.server.netty)
   implementation(libs.ktor.server.config.yaml)
   implementation(libs.ktor.server.websockets)
@@ -23,6 +26,7 @@ dependencies {
   implementation(libs.bundles.logging.runtime)
 
   testImplementation(kotlin("test"))
+  testImplementation(libs.ktor.server.test.host)
 }
 
 application {
@@ -50,8 +54,11 @@ sourceSets {
   }
 }
 
-// `./gradlew :gateway:run`: against MultiServer on localhost:38282 (MultiServer's own port when running next to it)
+// `./gradlew :gateway:run`: only relays, to a MultiServer on localhost:38282 (GAME_SERVER=true to run one, with
+// AP_HOME pointing to an Archipelago checkout)
 tasks.named<JavaExec>("run") {
   workingDir = rootDir
   environment("ROOM_JSON", System.getenv("ROOM_JSON") ?: "data/room.json")
+  environment("GAME_SERVER", System.getenv("GAME_SERVER") ?: "false")
+  environment("DATA_DIR", System.getenv("DATA_DIR") ?: "data")
 }

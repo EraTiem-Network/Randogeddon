@@ -1,0 +1,83 @@
+package net.eratiem.randogeddon.server.admin
+
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.CommandRequest
+import net.eratiem.randogeddon.shared.GameServerState
+import net.eratiem.randogeddon.shared.LogLines
+import org.koin.core.annotation.Single
+
+/** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
+class GameServerUnavailable(val status: HttpStatusCode, message: String) : Exception(message)
+
+/**
+ * The gateway's internal API (gateway/.../InternalApi.kt): the game server's state, start/stop/restart, its log and
+ * console. A stop waits until MultiServer has saved, so the timeout is generous.
+ */
+@Single
+class GameServerClient(private val config: TrackerConfig) {
+  private val http = HttpClient(CIO) {
+    install(HttpTimeout) { requestTimeoutMillis = 45_000 }
+  }
+
+  suspend fun state(): GameServerState = call { http.get("${config.gameServerApi}/internal/server") { auth() } }
+    .let { ApiJson.decodeFromString(GameServerState.serializer(), it) }
+
+  /** [action]: start, stop or restart. */
+  suspend fun control(action: String): GameServerState {
+    require(action in setOf("start", "stop", "restart")) { "Unknown action $action" }
+    return call { http.post("${config.gameServerApi}/internal/server/$action") { auth() } }
+      .let { ApiJson.decodeFromString(GameServerState.serializer(), it) }
+  }
+
+  suspend fun log(since: Long): LogLines = call {
+    http.get("${config.gameServerApi}/internal/server/log?since=$since") { auth() }
+  }.let { ApiJson.decodeFromString(LogLines.serializer(), it) }
+
+  /** `false` if no game server is running to take it. */
+  suspend fun command(line: String): Boolean {
+    val response = request {
+      http.post("${config.gameServerApi}/internal/server/command") {
+        auth()
+        contentType(ContentType.Application.Json)
+        setBody(ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
+      }
+    }
+    return when {
+      response.status == HttpStatusCode.Conflict -> false
+      response.status.isSuccess() -> true
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  private fun io.ktor.client.request.HttpRequestBuilder.auth() = header("Authorization", "Bearer ${config.internalToken}")
+
+  private suspend fun call(block: suspend () -> HttpResponse): String {
+    val response = request(block)
+    if (!response.status.isSuccess()) {
+      throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+    return response.bodyAsText()
+  }
+
+  private suspend fun request(block: suspend () -> HttpResponse): HttpResponse = try {
+    block()
+  } catch (e: kotlinx.coroutines.CancellationException) {
+    throw e
+  } catch (e: Exception) {
+    throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway can't be reached: ${e.message ?: e::class.simpleName}")
+  }
+}

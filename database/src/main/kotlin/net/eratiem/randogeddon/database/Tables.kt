@@ -11,6 +11,7 @@ object UsersTable : Table("users") {
   val passwordHash = varchar("password_hash", 255)
   val createdAt = timestamp("created_at")
   val deletedAt = timestamp("deleted_at").nullable()
+  val isAdmin = bool("is_admin").default(false)
   override val primaryKey = PrimaryKey(id)
 }
 
@@ -26,6 +27,8 @@ object SessionsTable : Table("sessions") {
   val id = uuid("id")
   val seedName = varchar("seed_name", 64)
   val createdAt = timestamp("created_at")
+  val runTimeMs = long("run_time_ms").default(0)
+  val countedUntil = timestamp("counted_until").nullable()
   override val primaryKey = PrimaryKey(id)
 }
 

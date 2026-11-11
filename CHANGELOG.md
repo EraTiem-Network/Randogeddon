@@ -4,6 +4,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Admin panel (Phase 3, part 1)
+- Admins: `randogeddon admins --grant <person>` (`--revoke`, or no option to list them). Only admins see the admin
+  panel, and every `/api/admin` call is checked on the server (403 otherwise).
+- The gateway is the game host now: its image has Archipelago (pinned release) and it runs MultiServer itself, so a
+  tracker restart or update no longer drops the players. A crashed MultiServer starts again after a pause; one stopped
+  by an admin stays stopped. The `archipelago` container is gone; seed generation uses the gateway image
+  (`ap-generate`).
+- Admin panel: the game server's state, start, stop and restart (with a confirmation), its live log, and the server
+  console with a command history. The tracker controls the gateway over an internal API on its own port, with a shared
+  `INTERNAL_TOKEN` (new in `.env`).
+- `docker stop` lets MultiServer save before it ends (native exit handlers, 30 s grace period for the gateway).
+- Demo: every world reaches its goal within about 15 minutes (`DEMO_MINUTES`); `./scripts/demo.sh loop` starts a new
+  round 2 minutes after a round reaches 100 %, keeping the logins; Alice is an admin.
+- Moving an existing server over: `sudo chown -R 1000:1000 data` (the gateway runs as uid 1000, the old container as
+  root) and set `INTERNAL_TOKEN` in `.env`.
+
 ### Login (Phase 2)
 - The dashboard needs a login: `docker compose exec tracker randogeddon logins` creates one for every person of
   `session.yaml` and prints the generated passwords once (`--reset <person>` for a new one). Passwords are hashed with

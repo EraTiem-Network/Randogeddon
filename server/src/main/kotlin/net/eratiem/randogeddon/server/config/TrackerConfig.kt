@@ -22,6 +22,9 @@ data class TrackerConfig(
   val pointHints: Boolean,
   val autoHints: Boolean,
   val database: DatabaseConfig,
+  /** The gateway's internal API, which runs the game server (admin panel). */
+  val gameServerApi: String,
+  val internalToken: String,
 ) {
   companion object {
     fun from(config: ApplicationConfig): TrackerConfig {
@@ -39,6 +42,8 @@ data class TrackerConfig(
         pointHints = flag(value("server.pointHints")),
         autoHints = flag(value("server.autoHints")),
         database = DatabaseConfig(value("database.url"), value("database.user"), value("database.password")),
+        gameServerApi = value("server.gameServerApi").trimEnd('/'),
+        internalToken = value("server.internalToken"),
       )
     }
   }

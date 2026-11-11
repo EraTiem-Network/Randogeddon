@@ -1,2 +1,4 @@
 # Flyway migrations, in this directory; a native image can't list it, so every file is named here (checked by a test)
 V1__accounts.sql
+V2__admins.sql
+V3__session_time.sql

@@ -57,6 +57,16 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
   }
 }
 
+/**
+ * Lets a call through only for admins (403 otherwise); goes inside [RequireLogin], which provides [loggedIn]. Checked
+ * on every call, so hiding the panel in the web app is not what protects it.
+ */
+val RequireAdmin = createRouteScopedPlugin("RequireAdmin") {
+  onCall { call ->
+    if (!call.loggedIn.user.admin) call.respond(HttpStatusCode.Forbidden, ApiError("Only admins can do this"))
+  }
+}
+
 /** `POST /api/login`, `POST /api/logout`; `GET /api/me` ([meRoute]) is in the protected routes. */
 fun Route.loginRoutes(logins: LoginService) {
   rateLimit(LOGIN_RATE_LIMIT) {
@@ -88,7 +98,9 @@ fun Route.loginRoutes(logins: LoginService) {
 fun Route.meRoute(config: TrackerConfig, slotPasswords: SlotPasswords) {
   get("/me") {
     val me = call.loggedIn
-    call.respond(Me(name = me.user.name, server = config.publicAddress, slots = slotPasswords.of(me.person)))
+    call.respond(
+      Me(name = me.user.name, server = config.publicAddress, slots = slotPasswords.of(me.person), admin = me.user.admin)
+    )
   }
 }
 

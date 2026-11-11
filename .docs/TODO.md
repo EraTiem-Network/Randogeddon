@@ -73,9 +73,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 *The host runs the session from the browser instead of the shell.*
 
-- [ ] Users can be marked as admins; only admins see and reach the panel (checked on the server, not only hidden)
+- [x] Users can be marked as admins; only admins see and reach the panel (checked on the server, not only hidden)
+    - `randogeddon admins --grant <person>`; `/api/admin/*` answers 403 for everyone else.
 - [ ] Create a session: upload the player YAMLs, set people, locks and hint options, generate the seed
-- [ ] Control the session: start, stop and restart the server, see its log, run server commands
+- [x] Control the session: start, stop and restart the server, see its log, run server commands
+    - Stop and restart ask once more; the log is live; the console keeps a command history.
 - [ ] Delete a session: stop the server, remove the seed, save and logins
 - [ ] Only one session at a time (creating a second one is refused until the first is deleted)
 - [ ] Optimal path: the spoiler playthrough rendered as a route (sphere by sphere)
@@ -86,18 +88,21 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       earlier (e.g. someone dropped out), and reopen it within a few days if it was a mistake.
     - Finishing stops the game server, makes the session read-only history, reveals the optimal path to its players
       and starts the auto-deletion timer of its users (Phase 5).
-    - Open: how long finished sessions are kept, and who can see them (TBD).
+    - Finished sessions are kept until an admin deletes them; their players and the admins can see them. Automatic
+      deletion can come with the auto-deletion of users (Phase 5).
 - [ ] Cheats: give items (`/send`), checks (`/send_location`), release and collect, from the panel
     - Every cheat is logged with who did it, and shown in the live feed as a cheat.
 - [ ] Cheat hints, if enabled for the session: admins give free hints (`/hint`, `/hint_location`)
-- [ ] Two-factor login (TOTP, any authenticator app) for admins, since they can cheat and delete sessions
-    - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else later.
-- [ ] The tracker runs the game servers itself
-    - The tracker image gets Archipelago (pinned release, world requirements, `serve.py`, World Locks).
-    - It starts one MultiServer process per session with the session's options, and stops and restarts it on request.
+- Two-factor login moved to Phase 5 (proper user management).
+- [x] The **gateway** runs the game servers itself (not the tracker: so a tracker restart or update never drops
+  the players; the gateway already sits in front of MultiServer)
+    - The gateway image gets Archipelago (pinned release, world requirements, `serve.py`, World Locks).
+    - It starts the MultiServer process with the session's options, and stops and restarts it on request (one session
+      for now; one process per session comes with Phase 4).
     - It reads the server log and sends console commands through the process's stdin.
-    - Seed generation runs in the tracker too (for "Create a session"); `scripts/generate.sh` stays as a CLI tool.
-    - The separate `archipelago` container is removed. The tracker needs no Docker access, it only controls processes.
+    - The tracker controls it over an internal API (own port, never published, shared token).
+    - The separate `archipelago` container is removed; seed generation uses the gateway image (`ap-generate`),
+      `scripts/generate.sh` stays as a CLI tool. Generating from the panel comes with "Create a session".
 - [ ] A session keeps the Archipelago version it was generated with
     - Saved with the session, together with the apworlds it used (custom worlds, World Locks).
     - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
@@ -149,6 +154,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       account frees its name.
     - The UI shows only the name; the UUID appears only when hovering over it (e.g. to tell a deleted user's name in
       an old session from a new account with the same name).
+- [ ] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
+    - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else.
 - [ ] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.

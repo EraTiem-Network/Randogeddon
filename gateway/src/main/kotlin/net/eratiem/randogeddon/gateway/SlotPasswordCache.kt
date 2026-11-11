@@ -27,7 +27,7 @@ class SlotPasswordCache(private val store: SlotPasswordStore, private val roomJs
   private var loadedAt: TimeSource.Monotonic.ValueTimeMark? = null
 
   suspend fun current(): Map<String, String> = mutex.withLock {
-    val currentSeed = seedName()
+    val currentSeed = readSeedName(roomJson)
     val fresh = loadedAt?.let { it.elapsedNow() < REFRESH } == true
     // Reloaded when stale, for a new seed, and quickly while still empty (the tracker is about to create them)
     if (!fresh || currentSeed != seed || passwords.isEmpty()) {
@@ -42,9 +42,10 @@ class SlotPasswordCache(private val store: SlotPasswordStore, private val roomJs
     }
     passwords
   }
-
-  private fun seedName(): String? = runCatching {
-    if (!roomJson.exists()) return null
-    ((Json.parseToJsonElement(roomJson.readText()) as JsonObject)["seed_name"] as? JsonPrimitive)?.content
-  }.getOrNull()
 }
+
+/** The seed's name in room.json (not its file name): what the tracker and the database know it by. */
+fun readSeedName(roomJson: Path): String? = runCatching {
+  if (!roomJson.exists()) return null
+  ((Json.parseToJsonElement(roomJson.readText()) as JsonObject)["seed_name"] as? JsonPrimitive)?.content
+}.getOrNull()

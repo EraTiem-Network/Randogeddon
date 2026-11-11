@@ -3,8 +3,9 @@
 Our self-hosted [Archipelago](https://archipelago.gg) multiworld server (plain `MultiServer`, AP **0.6.8**)
 plus a custom live dashboard. Everything runs in Docker behind an existing Traefik. The dashboard is at
 `randogeddon.eratiem.net` and needs a login; the session's game server is at
-`<session-id>.randogeddon.eratiem.net:443`, where every slot has its own generated password. The Kotlin apps (tracker
-and gateway) run as native executables (GraalVM Native Image, Linux x86_64).
+`<session-id>.randogeddon.eratiem.net:443`, where every slot has its own generated password. The gateway runs the game
+server; admins start, stop and command it from the admin panel. The Kotlin apps (tracker and gateway) run as native
+executables (GraalVM Native Image, Linux x86_64).
 
 What's done and what comes next (login, admin panel, multiple sessions, user management): [.docs/TODO.md](.docs/TODO.md).
 
@@ -14,34 +15,35 @@ What's done and what comes next (login, admin panel, multiple sessions, user man
                        │       .example.net:443             │         .example.net
                  ┌─────▼─────────────── Traefik ────────────▼─────┐
                  │                                                │
-        ┌────────▼────────┐                           ┌───────────▼──────────┐
-        │  gateway        │  checks each Connect's    │  tracker (Ktor)      │
-        │  (Ktor)         │  slot password            │  login, API, SSE,    │
-        └────────┬────────┘                           │  Wasm app            │
-                 │ ws                                 └───┬───────────┬──────┘
-        ┌────────▼────────┐  ws://archipelago:38281       │           │
-        │  archipelago    │◄──────────────────────────────┘           │
-        │  MultiServer.py │   Tracker-tag clients (internal)          │
-        └──────┬──────────┘                           ┌───────────────▼──────┐
-          ./data (seed, .apsave, room.json)           │  postgres            │◄── gateway reads
-                                                      │  logins, slot pw     │    the slot passwords
-                                                      └──────────────────────┘
+        ┌────────▼──────────────────┐                 ┌───────────▼──────────┐
+        │  gateway (Ktor)           │  internal API   │  tracker (Ktor)      │
+        │  checks each Connect's    │◄────────────────┤  login, API, SSE,    │
+        │  slot password            │  :8001 (control)│  admin panel,        │
+        │  ┌─────────────────────┐  │                 │  Wasm app            │
+        │  │ MultiServer :38282  │◄─┼─────────────────┤  Tracker-tag clients │
+        │  └─────────────────────┘  │                 └───┬──────────────────┘
+        └──────┬──────────┬─────────┘                     │
+   ./data (seed, .apsave, │room.json)             ┌───────▼──────────────┐
+                          └──────────────────────►│  postgres            │
+                            reads slot passwords  │  logins, slot pw     │
+                                                  └──────────────────────┘
 ```
 
-MultiServer is reachable only inside the compose network; game clients come in through the gateway.
+The gateway runs MultiServer as a child process; only the tracker reaches it directly (port 38282 and the internal
+API on 8001 are not published). A tracker restart or update doesn't drop the players.
 
 | Path | What it is |
 |---|---|
-| `archipelago/` | Image built from the pinned upstream release; used for **both** generation and the server |
+| `archipelago/` | `serve.py` (MultiServer with the hint switches), `room_info.py`, `ap-generate`; the gateway image installs Archipelago next to them |
 | `server/` | Tracker server: Kotlin + Ktor. Follows the room, serves the login, the API and the web app; host commands (`randogeddon logins`) |
-| `gateway/` | The game clients' entry: relays each connection to MultiServer and checks the slot password of every `Connect` |
+| `gateway/` | The game host: runs MultiServer, relays each client connection to it and checks the slot password of every `Connect`; internal API for the admin panel |
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
 | `apworlds/world_locks/` | Our own apworld: worlds that start locked until their key is found (packed by `scripts/build-apworlds.sh`) |
 | `session.yaml` | Who plays which worlds, for the dashboard (copy `session.example.yaml`; gitignored) |
 | `demo/` | An example session (YAMLs, `session.yaml`, simulated players) — see *Demo* below |
-| `kotlin.Dockerfile` | Builds the tracker and gateway images (native) from the Gradle build |
+| `kotlin.Dockerfile` | Builds the tracker image and the gateway image (native, plus the pinned Archipelago release) |
 | `players/` | One YAML per player (gitignored) |
 | `custom_worlds/` | Extra `.apworld` files for games that aren't bundled (gitignored) |
 | `output/` | Generated `AP_<seed>.zip` (gitignored, contains the spoiler) |
@@ -53,7 +55,7 @@ MultiServer is reachable only inside the compose network; game clients come in t
 
 ```sh
 git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
-cp .env.example .env     # set SESSION_ID, POSTGRES_PASSWORD, TRAEFIK_* …
+cp .env.example .env     # set SESSION_ID, POSTGRES_PASSWORD, INTERNAL_TOKEN, TRAEFIK_* …
 docker compose build     # takes a few minutes (every world's requirements, the native builds)
 ```
 
@@ -81,8 +83,17 @@ If you configure Traefik via the file provider instead of labels, the two routes
 Set a new `SESSION_ID` in `.env` for every session (a DNS label, e.g. `winter26`); it only changes the game server's
 host name. More than one session at a time comes later, see [.docs/TODO.md](.docs/TODO.md) (Phase 4).
 
-Until a seed is deployed, the server container waits and logs `No seed in /data yet`, and the
-dashboard shows "server offline".
+Until a seed is deployed, the gateway waits and logs `No seed in /data yet`, and the dashboard shows "server
+offline".
+
+The gateway runs as uid 1000 and writes saves and `room.json` to `data/`; when moving from the old `archipelago`
+container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`.
+
+Make yourself an admin (after creating the logins, see *Session day*):
+
+```sh
+docker compose exec tracker randogeddon admins --grant <person>    # --revoke takes it back; `admins` lists them
+```
 
 ## Session day
 
@@ -117,17 +128,23 @@ dashboard shows "server offline".
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
 
-### Running commands on the server console
+### Admin panel: the game server and its console
 
-```sh
-docker compose attach archipelago     # detach with Ctrl-P Ctrl-Q (NOT Ctrl-C, that stops the server)
+Admins get a sliders button in the dashboard's header. The admin panel shows the game server's state (running,
+starting, stopped, crashed, waiting for a seed), lets them start, stop and restart it (stop and restart ask once more:
+every player is disconnected), shows its log live, and has the server console:
+
+```
 /players              # who's connected
 /send <player> <item> # give an item
 /hint <player> <item> # free hint
 /release <player>     # release a player's items (e.g. someone has to drop out)
 /collect <player>
-/exit                 # stop the server (the container restarts it automatically)
 ```
+
+Up and down in the console bring back earlier commands. Every action is logged with the admin's name in the tracker's
+log. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
+admin stays stopped until started again.
 
 Players can also use `!hint <item>`, `!remaining`, `!release`, `!collect` and `!countdown 10` from their
 client, depending on the `AP_*_MODE` settings in `.env`. `AP_ADMIN_PASSWORD` enables `!admin` for
@@ -249,17 +266,23 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 
 ```sh
 ./scripts/demo.sh        # generates demo/players, deploys it locally, plays it with simulated players
+./scripts/demo.sh loop   # the same, again and again: 2 minutes after a round reaches 100 %, a new round starts
 ./scripts/demo.sh stop   # stops the simulated players; `docker compose down` stops everything
+
+nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &   # the loop in the background
 ```
 
 Three people with different numbers of games: Alice three (two of them start locked), Bob two (one locked), Carol
-one. The simulator (`demo/simulate.py`) checks locations quickly for half a minute and then slowly, finds the key of
-Alice's Celeste after ~25 s and of her DLCQuest after ~75 s; the third key is only hinted, so Bob's Yacht Dice stays
-locked. The simulated players connect
-through the gateway with their slot passwords. It replaces the seed in `data/` (the old one goes to `data/old/`).
+one. The simulator (`demo/simulate.py`) checks locations quickly for half a minute and then evenly until the end,
+finds the key of Alice's Celeste after ~25 s, of her DLCQuest after ~75 s and of Bob's Yacht Dice after ~3 minutes
+(hinted before). Every world reaches its goal within about `DEMO_MINUTES` (default 15); then the simulator ends, which
+the loop takes as the end of a round. The simulated players connect through the gateway with their slot passwords. It
+replaces the seed in `data/` (the old one goes to `data/old/`); about one in three random seeds can't be generated
+("unbeatable"), so it retries with another one.
 
-At the end it prints the logins of Alice, Bob and Carol (only when they are created; later runs keep them, a new
-password: `docker compose exec tracker randogeddon logins --reset Alice`). Open http://localhost:8000 and log in.
+The first round prints the logins of Alice, Bob and Carol (only when they are created; later rounds keep them, a new
+password: `docker compose exec tracker randogeddon logins --reset Alice`). Alice is an admin. Open
+http://localhost:8000 and log in.
 
 The demo builds the native images, so it needs Docker for Linux containers; on Windows, run it in WSL (see
 *Native build*).
@@ -268,7 +291,7 @@ The demo builds the native images, so it needs Docker for Linux containers; on W
 
 ```sh
 export COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml   # publishes 38281 + 8000, no Traefik
-export POSTGRES_PASSWORD=local                                     # or set it in .env
+export POSTGRES_PASSWORD=local INTERNAL_TOKEN=local                # or set them in .env
 ./scripts/generate.sh && ./scripts/deploy-seed.sh output/AP_*.zip
 docker compose exec tracker randogeddon logins
 # game server (gateway) on localhost:38281, dashboard on http://localhost:8000
@@ -287,7 +310,8 @@ CoreSync. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
 ./gradlew :database:integrationTest             # schema and stores against PostgreSQL (Testcontainers, Linux Docker)
 ./gradlew :webApp:wasmJsBrowserDistribution     # build the web app -> webApp/build/dist/wasmJs/productionExecutable
 ./gradlew :server:run                           # tracker on :8000 against localhost:38281, PostgreSQL on :5432
-./gradlew :gateway:run                          # gateway on :38281 against MultiServer on localhost:38282
+./gradlew :gateway:run                          # gateway on :38281, only relaying to a MultiServer on :38282
+GAME_SERVER=true AP_HOME=<archipelago checkout> ./gradlew :gateway:run   # running MultiServer itself
 ./gradlew :server:run --args="logins"           # a host command, against the same database
 ```
 
