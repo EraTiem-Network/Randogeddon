@@ -188,7 +188,7 @@ private fun StepHeader() {
     Txt("Item", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     Spacer(Modifier.width(ARROW_COLUMN))
     Txt("Slot", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
-    Txt("Location", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+    Txt("Check", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
   }
 }
 
@@ -319,7 +319,7 @@ private fun FullLog(text: String, narrow: Boolean) {
       }
     }
   }
-  Section("Full spoiler log", subtitle = "every location of every slot, the options and the playthrough", actions = {
+  Section("Full spoiler log", subtitle = "every check of every slot, the options and the playthrough", actions = {
     if (!narrow) search(Modifier)
   }) {
     if (narrow) search(Modifier.fillMaxWidth())

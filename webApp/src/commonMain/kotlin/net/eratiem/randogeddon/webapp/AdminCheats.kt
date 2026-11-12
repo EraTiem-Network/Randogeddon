@@ -88,13 +88,19 @@ fun CheatSection(server: GameServerState?) {
   }
   // Another session: the slot may not exist any more
   LaunchedEffect(view?.slots) { if (slot != null && view?.slots?.contains(slot) == false) slot = null }
-  // The slot's items and open locations, for the second picker
+  // The slot's items and open locations, for the second picker; another slot starts empty
   LaunchedEffect(slot) {
     names = null
     value = null
+  }
+  // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
+  LaunchedEffect(slot, view) {
     val s = slot ?: return@LaunchedEffect
     val answer = call("GET", "api/admin/cheat/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
-    if (answer is Answer.Ok) names = answer.value
+    if (answer is Answer.Ok) {
+      names = answer.value
+      if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
+    }
   }
 
   val current = view
@@ -110,6 +116,8 @@ fun CheatSection(server: GameServerState?) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       when {
         current == null -> Txt("…", color = p.muted)
+        // Once every check is done there is nothing to cheat either
+        current.done -> Txt("Every check is done: nothing is left to cheat.", size = 13.sp, color = p.muted)
         current.slots.isEmpty() -> Txt("No session with slots yet.", size = 13.sp, color = p.muted)
         else -> {
           if (!current.available) Txt("Only while the game server runs a session that isn't finished.", size = 12.5.sp, color = p.muted)

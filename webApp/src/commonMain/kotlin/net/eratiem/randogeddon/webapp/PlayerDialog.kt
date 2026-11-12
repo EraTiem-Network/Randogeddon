@@ -132,7 +132,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
               }
             }
             Spacer(Modifier.height(14.dp))
-            Section("Remaining locations (${d.missing.size})")
+            Section("Remaining checks (${d.missing.size})")
             if (d.missing.isEmpty()) Txt("All done!", size = 13.sp, color = p.ok)
             d.missing.forEach { ListRow { Txt(it, size = 13.sp) } }
           }

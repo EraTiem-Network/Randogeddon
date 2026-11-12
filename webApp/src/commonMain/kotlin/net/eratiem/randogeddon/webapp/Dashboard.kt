@@ -728,7 +728,7 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     return
   }
   if (!compact) {
-    HintRow(listOf("For", "Item", "Location", "In slot", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+    HintRow(listOf("For", "Item", "Check", "In slot", "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
     Divider()
   }
   Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
