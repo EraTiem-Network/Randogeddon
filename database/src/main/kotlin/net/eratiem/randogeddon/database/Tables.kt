@@ -32,6 +32,14 @@ object SessionsTable : Table("sessions") {
   val apVersion = varchar("ap_version", 32).nullable()
   /** JSON of the shared SessionOptions; `null` for seeds deployed with the CLI. */
   val optionsJson = text("options").nullable()
+  val finishedAt = timestamp("finished_at").nullable()
+  /** Who finished it by hand; `null`: by itself (or not finished). */
+  val finishedBy = varchar("finished_by", 64).nullable()
+  val finishDueAt = timestamp("finish_due_at").nullable()
+  /** Its auto-deletion is disabled (an admin's choice). */
+  val keep = bool("keep").default(false)
+  /** Its auto-deletion was enabled again then: the retention counts from there (`null`: from [finishedAt]). */
+  val retainedSince = timestamp("retained_since").nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
@@ -48,4 +56,16 @@ object SlotPasswordsTable : Table("slot_passwords") {
   val slotName = varchar("slot_name", 64)
   val password = varchar("password", 64)
   override val primaryKey = PrimaryKey(sessionId, slotName)
+}
+
+/** The cheats admins ran from the admin panel, per session. */
+object CheatLogTable : Table("cheat_log") {
+  val id = long("id").autoIncrement()
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val at = timestamp("at")
+  val admin = varchar("admin", 64)
+  val action = varchar("action", 32)
+  val slotName = varchar("slot_name", 64)
+  val value = varchar("value", 255).nullable()
+  override val primaryKey = PrimaryKey(id)
 }

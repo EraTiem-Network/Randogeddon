@@ -134,6 +134,50 @@ class StoresTest {
   }
 
   @Test
+  fun `a session finishes, is listed as finished, and can be reopened`() = runBlocking {
+    val finishes = SessionFinishStore(db)
+    val t0 = Instant.parse("2026-11-13T20:00:00Z")
+    SessionTimeStore(db).started("111", t0)
+    SessionTimeStore(db).started("222", t0)
+    assertEquals(FinishState(null, null, null, false), finishes.of("111"))
+    assertNull(finishes.of("unknown"))
+
+    finishes.setDue("111", t0.plusSeconds(120))
+    assertEquals(t0.plusSeconds(120), finishes.of("111")?.dueAt)
+    finishes.finish("111", by = null, now = t0.plusSeconds(120))
+    finishes.finish("222", by = "Ada", now = t0.plusSeconds(300))
+    assertEquals(FinishState(t0.plusSeconds(120), null, null, false), finishes.of("111"))
+    // The newest first
+    assertEquals(listOf("222" to "Ada", "111" to null), finishes.finished().map { it.seedName to it.finishedBy })
+
+    assertTrue(finishes.setKeep("111", true))
+    assertEquals(true, finishes.of("111")?.keep)
+    assertNull(finishes.of("111")?.retainedSince)
+    // Enabled again: the retention counts from then
+    assertTrue(finishes.setKeep("111", false, now = t0.plusSeconds(900)))
+    assertEquals(FinishState(t0.plusSeconds(120), null, null, false, t0.plusSeconds(900)), finishes.of("111"))
+    assertEquals(t0.plusSeconds(900), finishes.finished().single { it.seedName == "111" }.retainedSince)
+    assertEquals(false, finishes.setKeep("unknown", true))
+    finishes.reopen("222")
+    assertEquals(FinishState(null, null, null, false), finishes.of("222"))
+    assertEquals(listOf("111"), finishes.finished().map { it.seedName })
+  }
+
+  @Test
+  fun `the cheats are kept per session, the newest first, and go with it`() = runBlocking {
+    val log = CheatLogStore(db)
+    val t0 = Instant.parse("2026-11-13T20:00:00Z")
+    log.add("111", CheatEntry(t0, "Ada", "ITEM", "Alice-HK", "Mantis Claw"))
+    log.add("111", CheatEntry(t0.plusSeconds(5), "Ada", "RELEASE", "Bob-Yacht", null))
+    log.add("222", CheatEntry(t0, "Bea", "ITEM", "X", "Y"))
+    assertEquals(listOf("RELEASE", "ITEM"), log.of("111").map { it.action })
+    assertEquals(CheatEntry(t0, "Ada", "ITEM", "Alice-HK", "Mantis Claw"), log.of("111").last())
+    SessionSetupStore(db).delete("111")
+    assertEquals(emptyList(), log.of("111"))
+    assertEquals(1, log.of("222").size)
+  }
+
+  @Test
   fun `slot passwords stay for a seed and are new for the next one`() = runBlocking {
     val slots = SlotPasswordStore(db)
     var n = 0
