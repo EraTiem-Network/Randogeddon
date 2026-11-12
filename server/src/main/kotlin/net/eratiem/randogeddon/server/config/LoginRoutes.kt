@@ -22,7 +22,10 @@ import net.eratiem.randogeddon.shared.LoginRequest
 import net.eratiem.randogeddon.shared.Me
 import kotlin.time.Duration.Companion.seconds
 
-/** HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. */
+/**
+ * HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. Secure
+ * can be switched off for a local demo ([TrackerConfig.cookieSecure]).
+ */
 const val SESSION_COOKIE = "randogeddon_session"
 
 /**
@@ -84,7 +87,7 @@ val RequireAdmin = createRouteScopedPlugin("RequireAdmin") {
 }
 
 /** `POST /api/login`, `POST /api/logout`; `GET /api/me` ([meRoute]) is in the protected routes. */
-fun Route.loginRoutes(logins: LoginService) {
+fun Route.loginRoutes(logins: LoginService, secure: Boolean = true) {
   rateLimit(LOGIN_RATE_LIMIT) {
     post("/api/login") {
       val request = call.receive<LoginRequest>()
@@ -99,13 +102,13 @@ fun Route.loginRoutes(logins: LoginService) {
         logins.logout(token)
         return@post call.respond(HttpStatusCode.Forbidden, ApiError("${user.name} is not part of this session"))
       }
-      call.response.cookies.append(sessionCookie(token, LOGIN_DURATION.inWholeSeconds))
+      call.response.cookies.append(sessionCookie(token, LOGIN_DURATION.inWholeSeconds, secure))
       call.respond(HttpStatusCode.NoContent)
     }
   }
   post("/api/logout") {
     call.request.cookies[SESSION_COOKIE]?.let { logins.logout(it) }
-    call.response.cookies.append(sessionCookie("", 0))
+    call.response.cookies.append(sessionCookie("", 0, secure))
     call.respond(HttpStatusCode.NoContent)
   }
 }
@@ -124,12 +127,12 @@ fun Route.meRoute(config: TrackerConfig, slotPasswords: SlotPasswords) {
   }
 }
 
-private fun sessionCookie(value: String, maxAgeSeconds: Long) = Cookie(
+internal fun sessionCookie(value: String, maxAgeSeconds: Long, secure: Boolean) = Cookie(
   name = SESSION_COOKIE,
   value = value,
   maxAge = maxAgeSeconds.toInt(),
   path = "/",
-  secure = true,
+  secure = secure,
   httpOnly = true,
   extensions = mapOf("SameSite" to "Strict"),
 )

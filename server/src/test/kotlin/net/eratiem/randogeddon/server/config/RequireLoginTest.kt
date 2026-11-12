@@ -117,4 +117,14 @@ class RequireLoginTest {
   fun `routes outside the branch stay open`() = test {
     assertEquals("ok", client.get("/healthz").bodyAsText())
   }
+
+  @Test
+  fun `the login cookie is secure unless switched off for a local demo`() {
+    val cookie = sessionCookie("t", 60, secure = true)
+    assertTrue(cookie.secure && cookie.httpOnly)
+    assertEquals("Strict", cookie.extensions["SameSite"])
+    val demo = sessionCookie("t", 60, secure = false)
+    assertFalse(demo.secure)
+    assertTrue(demo.httpOnly)
+  }
 }

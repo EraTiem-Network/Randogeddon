@@ -15,6 +15,9 @@ randogeddon:
     # A finished session that isn't the current one is deleted this many days after it finished, unless an admin
     # disabled its auto-deletion; 0: never
     sessionRetentionDays: "$SESSION_RETENTION_DAYS:90"
+    # The login cookie only over HTTPS (browsers make an exception for localhost). false only for a demo over plain
+    # HTTP from other devices in the local network
+    cookieSecure: "$COOKIE_SECURE:true"
   server:
     # MultiServer, as seen from the tracker (inside compose: the gateway runs it on a port only the tracker reaches)
     url: "$AP_SERVER:ws://localhost:38282"
