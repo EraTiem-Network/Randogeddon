@@ -4,6 +4,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Picking sessions, links (Phase 4, part 2)
+- Every view has a link of its own and survives a reload: `#/` the user's sessions, `#/<id>` a session's dashboard,
+  `#/<id>/spoiler` its spoiler log, `#/admin`, `#/admin/<id>` and `#/admin/new` the admin panel. Back and forward
+  move between them.
+- After the login, the user's only running session opens; with several or none running, their sessions are listed as
+  cards (running and finished, how far each got, their slots, who is online).
+- The dashboard's top card has the session's ID as its heading, which switches between the user's sessions or goes
+  back to the list; the list of other sessions below the dashboard is gone. "Randogeddon" is a headline above it.
+- Admin panel: *Dashboard* opens a session's dashboard, also one the admin doesn't play in.
+
 ### Several sessions at once (Phase 4, part 1)
 - Sessions have an ID (a DNS label, chosen when the session is created, a free suggestion like `brave-otter` prefilled):
   the game server's address `<id>.<domain>` and the session's name in the API. Migration V6 gives the sessions from

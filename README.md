@@ -123,8 +123,10 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
    or one whose APWorld comes from another release) above its output.
 3. **Hand out the new logins**: the panel shows each new player's password **once** (and, with random locks, which
    slots start locked). Players who already had a login keep it.
-4. **Players log in** at `https://randogeddon.eratiem.net`. The dashboard opens their running session (with several,
-   the others are listed below it). Under *Your connection* they find the server
+4. **Players log in** at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
+   (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
+   has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/admin` and
+   `#/admin/<session-id>` the admin panel. Under *Your connection* they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
 

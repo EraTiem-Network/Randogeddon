@@ -142,6 +142,7 @@ private object Tips {
     "the live feed. Giving items and checks works without this."
   const val SESSION_ID = "The session's name in the links, and its address for game clients (<ID>.<domain>). " +
     "Lowercase letters, digits and -, starting with a letter; it can't be changed later."
+  const val DASHBOARD = "The session's dashboard as its players see it (slot passwords only for your own slots)."
   const val PAUSE = "Pausing stops the game server: the session is read-only, the dashboard shows how far it got, " +
     "and its players see the spoiler log. It can be reopened within 14 days."
   const val END = "Every check is done. Ending stops the game server for good: the dashboard keeps showing how it " +
@@ -190,6 +191,7 @@ fun SessionSection(
   cache: AdminCache,
   onChanged: () -> Unit,
   onSpoiler: (String) -> Unit,
+  onDashboard: (String) -> Unit,
   server: @Composable () -> Unit = {},
 ) {
   val p = LocalPalette.current
@@ -240,6 +242,7 @@ fun SessionSection(
           onReopen = { act("reopen") },
           onKeep = { keep -> act("keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep))) },
           onSpoiler = { onSpoiler(id) },
+          onDashboard = { onDashboard(id) },
         )
       }
       if (!gone) server()
@@ -607,6 +610,7 @@ private fun SessionSummary(
   onReopen: () -> Unit,
   onKeep: (Boolean) -> Unit,
   onSpoiler: () -> Unit,
+  onDashboard: () -> Unit,
 ) {
   val p = LocalPalette.current
   // "finish", "spoiler", "delete" or "keep": the question shown instead of the actions
@@ -668,6 +672,7 @@ private fun SessionSummary(
       if (finishedAt != null) {
         Tip(Tips.KEEP) { SmallButton(if (session.keep) "Enable auto-deletion" else "Disable auto-deletion", { pending = "keep" }) }
       }
+      Tip(Tips.DASHBOARD) { SmallButton("Dashboard", onDashboard) }
       Tip(Tips.SPOILER) { SmallButton("Spoiler log…", { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
     }
   }

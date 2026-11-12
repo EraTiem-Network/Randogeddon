@@ -130,10 +130,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [x] More than one session at the same time, each with its own MultiServer, seed, save and tracker state
     - As many run at once as the gateway has ports for (`AP_PORTS`); a finished session doesn't take one.
-- [ ] The dashboard lists the sessions a user is part of; the session is chosen after login
+- [x] The dashboard lists the sessions a user is part of; the session is chosen after login
+    - The only running one opens by itself; the top card switches between them. Each view has a link (`#/<id>`,
+      `#/admin/<id>`, …).
 - [x] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
   Phase 2)
-- [ ] Admins see and control all sessions
+- [x] Admins see and control all sessions
 - [ ] Each session's server is reachable from outside
     - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS) and 2401 (plain fallback, see
       Conventions). Traefik routes the WebSocket by host name to that session's port inside the container.

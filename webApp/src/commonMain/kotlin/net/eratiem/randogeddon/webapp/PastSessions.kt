@@ -2,8 +2,10 @@ package net.eratiem.randogeddon.webapp
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -27,35 +29,70 @@ import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
 
 /**
- * The viewer's other sessions (those they play in; admins see the rest in the admin panel), the newest first: each
- * with how far it is and whether it runs; [onOpen] shows one instead.
+ * The page after the login, unless exactly one running session is the user's (it opens then): the user's sessions as
+ * cards, running ones first, each with its title, ID, how it stands, how far it got, the user's slots and who is
+ * online. [onOpen] shows one. [admin]: a hint where the other sessions are.
  */
 @Composable
-fun SessionsSection(sessions: List<SessionEntry>, onOpen: (String) -> Unit) {
+fun SessionPicker(sessions: List<SessionEntry>, admin: Boolean, onOpen: (String) -> Unit) {
   val p = LocalPalette.current
-  Section("Your other sessions", subtitle = "running ones, and finished ones as they were when they finished") {
-    Column(Modifier.fillMaxWidth().card(p)) {
-      sessions.forEachIndexed { i, session ->
-        if (i > 0) Divider()
-        HoverRow(onClick = { onOpen(session.id) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
-          Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Txt(session.id, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-              StatusPill(session.status)
+  val running = sessions.filter { it.status.running }
+  val finished = sessions.filter { !it.status.running }
+  if (sessions.isEmpty()) {
+    Txt(
+      if (admin) "You don't play in a session. Every session is in the admin panel." else "You aren't part of a session yet.",
+      color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
+    )
+    return
+  }
+  listOf("Running" to running, "Finished" to finished).filter { it.second.isNotEmpty() }.forEach { (title, list) ->
+    Section(
+      title,
+      subtitle = if (title == "Running") "pick one to see its dashboard" else "as they were when they finished",
+    ) {
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = ((maxWidth + 16.dp) / (360.dp + 16.dp)).toInt().coerceIn(1, 3)
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+          list.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+              row.forEach { SessionCard(it, Modifier.weight(1f), onOpen) }
+              repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
-            Txt(
-              listOfNotNull(
-                "Seed ${session.seedName}",
-                session.finishedAt?.let { "finished ${Platform.date(it)}" } ?: session.createdAt?.let { "since ${Platform.date(it)}" },
-                session.online.takeIf { it > 0 && session.finishedAt == null }?.let { "$it online" },
-                session.deletesAt?.let { "deleted on ${Platform.date(it)}" },
-              ).joinToString(" · "),
-              size = 12.sp, color = p.muted, maxLines = 2,
-            )
           }
-          Txt("${oneDecimal(session.percent)}%", size = 16.sp, weight = FontWeight.Bold, brush = p.brand,
-            modifier = Modifier.padding(end = 12.dp))
         }
+      }
+    }
+  }
+}
+
+@Composable
+private fun SessionCard(session: SessionEntry, modifier: Modifier, onOpen: (String) -> Unit) {
+  val p = LocalPalette.current
+  Column(modifier.card(p)) {
+    HoverRow(onClick = { onOpen(session.id) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+      Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+          StatusPill(session.status)
+        }
+        Txt(
+          listOfNotNull(
+            session.id,
+            session.finishedAt?.let { "finished ${Platform.date(it)}" } ?: session.createdAt?.let { "since ${Platform.date(it)}" },
+          ).joinToString(" · "),
+          size = 12.sp, color = p.muted, maxLines = 1,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          ProgressBar((session.percent / 100).toFloat(), Modifier.weight(1f), height = 6.dp)
+          Txt("${oneDecimal(session.percent)}%", size = 13.sp, weight = FontWeight.Bold, brush = p.brand)
+        }
+        Txt(
+          listOfNotNull(
+            session.mySlots.takeIf { it.isNotEmpty() }?.let { "Your slots: ${it.joinToString(", ")}" },
+            session.online.takeIf { it > 0 && session.status.running }?.let { "$it online" },
+          ).joinToString(" · ").ifEmpty { "${session.slots} slots" },
+          size = 12.sp, color = p.muted, maxLines = 2,
+        )
       }
     }
   }
