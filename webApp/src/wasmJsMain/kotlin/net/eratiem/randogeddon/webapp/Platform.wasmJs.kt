@@ -43,6 +43,8 @@ actual object Platform {
 
   actual fun systemDarkMode(): Boolean = jsDarkMode()
 
+  actual fun touchScreen(): Boolean = jsTouchScreen()
+
   actual fun loadSetting(key: String): String? = jsLoadSetting(key)
 
   actual fun saveSetting(key: String, value: String?) = jsSaveSetting(key, value)
@@ -112,6 +114,8 @@ private fun jsOpenEvents(
 private fun jsCloseStream(source: JsAny): Unit = js("source.close()")
 
 private fun jsDarkMode(): Boolean = js("window.matchMedia('(prefers-color-scheme: dark)').matches")
+
+private fun jsTouchScreen(): Boolean = js("window.matchMedia('(pointer: coarse)').matches")
 
 // Storage can be blocked (private mode, disabled site data); the dashboard works without it
 private fun jsLoadSetting(key: String): String? =

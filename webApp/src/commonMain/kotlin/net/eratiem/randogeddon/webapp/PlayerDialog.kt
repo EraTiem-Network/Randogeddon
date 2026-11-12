@@ -152,15 +152,6 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
 }
 
 @Composable
-private fun RowScope.Fact(label: String, value: String, color: Color = LocalPalette.current.text) {
-  val p = LocalPalette.current
-  Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(p.panelAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
-    Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1)
-    Txt(value, size = 16.sp, weight = FontWeight.Bold, color = color, maxLines = 1)
-  }
-}
-
-@Composable
 private fun Section(title: String) {
   Txt(title.uppercase(), size = 12.sp, color = LocalPalette.current.muted, weight = FontWeight.SemiBold,
     modifier = Modifier.padding(bottom = 8.dp))

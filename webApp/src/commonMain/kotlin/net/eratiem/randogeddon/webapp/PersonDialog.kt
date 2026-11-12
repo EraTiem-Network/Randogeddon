@@ -187,7 +187,7 @@ fun PersonDialog(
 }
 
 @Composable
-private fun RowScope.Fact(label: String, value: String, color: Color = LocalPalette.current.text) {
+internal fun RowScope.Fact(label: String, value: String, color: Color = LocalPalette.current.text) {
   val p = LocalPalette.current
   Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(p.panelAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
     Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1)

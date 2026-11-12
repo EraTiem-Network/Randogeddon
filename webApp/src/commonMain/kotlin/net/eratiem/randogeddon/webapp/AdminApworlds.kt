@@ -73,7 +73,7 @@ fun ApworldsSection() {
     scope.launch {
       outcome = when (val answer = call("POST", path, body) { ApiJson.decodeFromString(ApworldResult.serializer(), it) }) {
         is Answer.Ok -> answer.value.let { r ->
-          if (r.error != null) false to "${r.file} didn't load: ${r.error}"
+          if (r.error != null) false to "${r.file} was not added, it doesn't load: ${r.error}"
           else true to "${r.file} brings ${r.games.joinToString(", ")}"
         }
         is Answer.Failed -> false to answer.message

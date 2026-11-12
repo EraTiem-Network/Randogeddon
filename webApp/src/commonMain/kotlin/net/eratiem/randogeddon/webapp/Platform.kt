@@ -49,6 +49,9 @@ expect object Platform {
 
   fun systemDarkMode(): Boolean
 
+  /** The main pointer is a finger (a phone or tablet), not a mouse. */
+  fun touchScreen(): Boolean
+
   /** Per-viewer settings; missing (or blocked storage) is `null`. */
   fun loadSetting(key: String): String?
   fun saveSetting(key: String, value: String?)

@@ -189,6 +189,7 @@ fun App() {
       )
     ) {
       val wide = maxWidth >= WIDE
+      val narrow = maxWidth < NARROW
       val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
       Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -217,6 +218,7 @@ fun App() {
               onLogout = { scope.launch { repository.logout() } },
               onAdmin = if (user.admin) ({ adminOpen = !adminOpen; pastSeed = null; spoilerSeed = null }) else null,
               adminOpen = adminOpen,
+              stacked = narrow,
             )
             spoilerSeed?.let { seed ->
               SpoilerView(seed, onBack = { spoilerSeed = null })
@@ -299,7 +301,10 @@ fun App() {
   }
 }
 
-/** The gradient card on top: title, seed, overall progress and the connection state. */
+/**
+ * The gradient card on top: title, seed, overall progress and the connection state. [stacked] (a phone): the title,
+ * the session info, the pill and buttons, and the bar each on their own line.
+ */
 @Composable
 private fun Hero(
   summary: Summary?,
@@ -311,6 +316,7 @@ private fun Hero(
   /** Only for admins. */
   onAdmin: (() -> Unit)?,
   adminOpen: Boolean,
+  stacked: Boolean,
 ) {
   val p = LocalPalette.current
   val live = streamOpen && summary?.connected == true
@@ -325,16 +331,21 @@ private fun Hero(
       .background(heroBackground)
       .padding(horizontal = 20.dp, vertical = 18.dp)
   ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-      Column(Modifier.weight(1f)) {
+    val heading: @Composable (Modifier) -> Unit = { modifier ->
+      Column(modifier) {
         Txt(summary?.title ?: "Randogeddon", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
         val meta = listOfNotNull(
           summary?.seedName?.let { "Seed $it" },
           summary?.serverVersion?.let { "AP $it" },
           summary?.let { hintModeLabel(it) },
-        ).joinToString("  ·  ")
-        Txt(meta.ifEmpty { "Connecting to the tracker…" }, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
+        ).ifEmpty { listOf("Connecting to the tracker…") }
+        // A phone: one line each
+        (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
+          Txt(it, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
+        }
       }
+    }
+    val controls: @Composable () -> Unit = {
       // As tall as the buttons next to it
       Row(
         Modifier.height(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
@@ -359,6 +370,16 @@ private fun Hero(
       if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = Color.White,
         background = Color.White.copy(alpha = if (adminOpen) 0.32f else 0.12f))
       IconButton(onLogout, Icon.LOGOUT, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+    }
+    if (stacked) {
+      heading(Modifier)
+      Spacer(Modifier.height(12.dp))
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
+    } else {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        heading(Modifier.weight(1f))
+        controls()
+      }
     }
     if (summary != null) {
       val t = summary.totals
