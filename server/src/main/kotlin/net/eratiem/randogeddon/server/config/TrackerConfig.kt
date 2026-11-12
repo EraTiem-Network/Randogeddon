@@ -11,18 +11,19 @@ data class TrackerConfig(
   val port: Int,
   val title: String,
   val webDir: Path,
-  val statePath: Path,
-  val sessionYaml: Path,
-  /** Where game clients connect (the gateway), `host:port`; shown to logged-in players. */
+  /** The tracker's own files: each session's history and, once it finished, its archive (`sessions/<id>/`). */
+  val stateDir: Path,
+  /** The gateway's data directory (read-only): each session's room.json in `sessions/<id>/`. */
+  val dataDir: Path,
+  /**
+   * Where game clients connect to a session, shown to its players with their slot passwords; `{id}` is the session's
+   * ID, e.g. `{id}.randogeddon.eratiem.net:443`.
+   */
   val publicAddress: String,
-  val serverUrl: String,
-  val roomJson: Path,
-  /** Connect with this slot first; otherwise the first player in [roomJson]. */
-  val bootstrapSlot: String?,
-  val pointHints: Boolean,
-  val autoHints: Boolean,
+  /** The host the sessions' MultiServers are reached on (the gateway runs them, each on its own port). */
+  val gatewayHost: String,
   val database: DatabaseConfig,
-  /** The gateway's internal API, which runs the game server (admin panel). */
+  /** The gateway's internal API, which runs the game servers (admin panel). */
   val gameServerApi: String,
   val internalToken: String,
   /** Past sessions are deleted this many days after they finished (unless kept); 0: never. */
@@ -30,6 +31,9 @@ data class TrackerConfig(
   /** The login cookie is sent over HTTPS only; off just for a demo over plain HTTP in the local network. */
   val cookieSecure: Boolean = true,
 ) {
+  /** Where the players of session [id] connect. */
+  fun addressOf(id: String): String = publicAddress.replace("{id}", id)
+
   companion object {
     fun from(config: ApplicationConfig): TrackerConfig {
       fun value(key: String) = config.property("randogeddon.$key").getString()
@@ -37,14 +41,10 @@ data class TrackerConfig(
         port = value("tracker.port").toInt(),
         title = value("tracker.title"),
         webDir = Path.of(value("tracker.webDir")),
-        statePath = Path.of(value("tracker.statePath")),
-        sessionYaml = Path.of(value("tracker.sessionYaml")),
+        stateDir = Path.of(value("tracker.stateDir")),
+        dataDir = Path.of(value("tracker.dataDir")),
         publicAddress = value("tracker.publicAddress"),
-        serverUrl = value("server.url"),
-        roomJson = Path.of(value("server.roomJson")),
-        bootstrapSlot = value("server.bootstrapSlot").ifBlank { null },
-        pointHints = flag(value("server.pointHints")),
-        autoHints = flag(value("server.autoHints")),
+        gatewayHost = value("server.gatewayHost"),
         database = DatabaseConfig(value("database.url"), value("database.user"), value("database.password")),
         gameServerApi = value("server.gameServerApi").trimEnd('/'),
         internalToken = value("server.internalToken"),

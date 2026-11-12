@@ -6,32 +6,26 @@ randogeddon:
     title: "$TRACKER_TITLE:Randogeddon"
     # The built web app (webApp's wasmJs distribution)
     webDir: "$WEB_DIR:webApp/build/dist/wasmJs/productionExecutable"
-    # Who plays which worlds (and the dashboard's grouping); optional, re-read when it changes
-    sessionYaml: "$SESSION_YAML:/data/session.yaml"
-    # Where the tracker keeps the event history, so it survives restarts
-    statePath: "$STATE_PATH:/state/tracker.json"
-    # Where game clients connect (the gateway), shown to logged-in players with their slot passwords
-    publicAddress: "$AP_PUBLIC_ADDRESS:localhost:38281"
-    # A finished session that isn't the current one is deleted this many days after it finished, unless an admin
-    # disabled its auto-deletion; 0: never
+    # The tracker's files: each session's event history and, once finished, its archive (sessions/<id>/)
+    stateDir: "$STATE_DIR:/state"
+    # The gateway's data directory, read-only: each session's room.json (sessions/<id>/room.json)
+    dataDir: "$DATA_DIR:/data"
+    # Where game clients connect to a session ({id}: its ID), shown to its players with their slot passwords. Behind
+    # Traefik: {id}.<BASE_DOMAIN>:443
+    publicAddress: "$PUBLIC_ADDRESS:ws://localhost:38281/{id}"
+    # A finished session is deleted this many days after it finished, unless an admin disabled its auto-deletion;
+    # 0: never
     sessionRetentionDays: "$SESSION_RETENTION_DAYS:90"
     # The login cookie only over HTTPS (browsers make an exception for localhost). false only for a demo over plain
     # HTTP from other devices in the local network
     cookieSecure: "$COOKIE_SECURE:true"
   server:
-    # MultiServer, as seen from the tracker (inside compose: the gateway runs it on a port only the tracker reaches)
-    url: "$AP_SERVER:ws://localhost:38282"
-    # The gateway's internal API, which starts, stops and restarts MultiServer and passes console commands (admin panel)
+    # The gateway, which runs one MultiServer per session (on ports only the tracker reaches)
+    gatewayHost: "$GATEWAY_HOST:localhost"
+    # The gateway's internal API: the sessions' game servers (start, stop, console), generating seeds (admin panel)
     gameServerApi: "$GAME_SERVER_API:http://localhost:8001"
     # Shared with the gateway
     internalToken: "$INTERNAL_TOKEN:"
-    # Slot list written by the archipelago container on startup
-    roomJson: "$ROOM_JSON:/data/room.json"
-    # Connect with this slot first instead of the first one in roomJson
-    bootstrapSlot: "$TRACKER_SLOT:"
-    # The hint switches of the game server (archipelago/serve.py, run by the gateway), shown on the dashboard
-    pointHints: "$AP_POINT_HINTS:true"
-    autoHints: "$AP_AUTO_HINTS:true"
   database:
     # PostgreSQL: logins and slot passwords
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"

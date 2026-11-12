@@ -30,14 +30,16 @@ import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.SessionServers
 import org.koin.core.annotation.Single
 
 /** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
 class GameServerUnavailable(val status: HttpStatusCode, message: String) : Exception(message)
 
 /**
- * The gateway's internal API (gateway/.../InternalApi.kt): the game server's state, start/stop/restart, its log and
- * console. A stop waits until MultiServer has saved, so the timeout is generous.
+ * The gateway's internal API (gateway/.../InternalApi.kt): each session's game server (state, start/stop/restart, its
+ * log and console), generating a session's seed, deleting its files, its spoiler log; the releases and the apworld
+ * library. A stop waits until MultiServer has saved, so the timeout is generous.
  */
 @Single
 class GameServerClient(private val config: TrackerConfig) {
@@ -45,27 +47,38 @@ class GameServerClient(private val config: TrackerConfig) {
     install(HttpTimeout) { requestTimeoutMillis = 45_000 }
   }
 
-  suspend fun state(): GameServerState = call { http.get("${config.gameServerApi}/internal/server") { auth() } }
+  private fun session(id: String) = "${config.gameServerApi}/internal/sessions/${id.encodeURLPathPart()}"
+
+  /** Every session the gateway has files of, with its game server. */
+  suspend fun sessions(): SessionServers = call { http.get("${config.gameServerApi}/internal/sessions") { auth() } }
+    .let { ApiJson.decodeFromString(SessionServers.serializer(), it) }
+
+  suspend fun state(id: String): GameServerState = call { http.get("${session(id)}/server") { auth() } }
     .let { ApiJson.decodeFromString(GameServerState.serializer(), it) }
 
-  /** [action]: start, stop or restart. */
-  suspend fun control(action: String): GameServerState {
+  /** [action]: start, stop or restart; a start without a free game server is a [SessionProblem] (409). */
+  suspend fun control(id: String, action: String): GameServerState {
     require(action in setOf("start", "stop", "restart")) { "Unknown action $action" }
-    return call { http.post("${config.gameServerApi}/internal/server/$action") { auth() } }
-      .let { ApiJson.decodeFromString(GameServerState.serializer(), it) }
+    val response = request { http.post("${session(id)}/server/$action") { auth() } }
+    if (response.status == HttpStatusCode.Conflict || response.status == HttpStatusCode.NotFound) {
+      val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
+      throw SessionProblem(response.status, message ?: "The gateway answered ${response.status}")
+    }
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    return ApiJson.decodeFromString(GameServerState.serializer(), response.bodyAsText())
   }
 
-  suspend fun log(since: Long): LogLines = call {
-    http.get("${config.gameServerApi}/internal/server/log?since=$since") { auth() }
+  suspend fun log(id: String, since: Long): LogLines = call {
+    http.get("${session(id)}/server/log?since=$since") { auth() }
   }.let { ApiJson.decodeFromString(LogLines.serializer(), it) }
 
   /** The Archipelago releases the gateway has, newest first. */
   suspend fun versions(): List<String> = call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
     .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
 
-  /** Generates a seed; it becomes the data directory's seed (served after a restart). Takes up to minutes. */
-  suspend fun generate(request: GenerateRequest): GenerateResult = call {
-    http.post("${config.gameServerApi}/internal/generate") {
+  /** Generates session [id]'s seed (served once its game server starts). Takes up to minutes. */
+  suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
+    http.post("${session(id)}/generate") {
       auth()
       timeout { requestTimeoutMillis = 11 * 60_000 }
       contentType(ContentType.Application.Json)
@@ -106,34 +119,17 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }
 
-  /** Stops the game server and moves the seed, its save and room.json away; the files moved. */
-  suspend fun deleteSession(): List<String> = call {
-    http.post("${config.gameServerApi}/internal/session/delete") { auth() }
-  }.let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
-
-  /** A finished session makes way: its seed and save go to the gateway's archive (data/sessions/<seed>). */
-  suspend fun archiveSession() {
-    call { http.post("${config.gameServerApi}/internal/sessions/archive") { auth() } }
+  /** Stops session [id]'s game server; its files go to the gateway's `old/`, or for good ([purge]). */
+  suspend fun delete(id: String, purge: Boolean): Boolean {
+    val response = request { http.delete("${session(id)}${if (purge) "?purge=true" else ""}") { auth() } }
+    if (response.status == HttpStatusCode.NotFound) return false
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    return true
   }
 
-  /** An archived session's files come back and are served (reopening it). */
-  suspend fun activate(seed: String) {
-    val response = request { http.post("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}/activate") { auth() } }
-    if (!response.status.isSuccess()) {
-      val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
-      throw SessionProblem(HttpStatusCode.Conflict, message ?: "The gateway answered ${response.status}")
-    }
-  }
-
-  /** Deletes an archived session's files for good; `false` if the gateway has none. */
-  suspend fun deleteArchived(seed: String): Boolean {
-    val response = request { http.delete("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}") { auth() } }
-    return response.status.isSuccess()
-  }
-
-  /** The seed's spoiler log; `null` if there is none (generated without one, or its files are gone). */
-  suspend fun spoiler(seed: String): String? {
-    val response = request { http.get("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}/spoiler") { auth() } }
+  /** The session's spoiler log; `null` if there is none (generated without one, or its files are gone). */
+  suspend fun spoiler(id: String): String? {
+    val response = request { http.get("${session(id)}/spoiler") { auth() } }
     return when {
       response.status == HttpStatusCode.NotFound -> null
       response.status.isSuccess() -> response.bodyAsText()
@@ -142,9 +138,9 @@ class GameServerClient(private val config: TrackerConfig) {
   }
 
   /** `false` if no game server is running to take it. */
-  suspend fun command(line: String): Boolean {
+  suspend fun command(id: String, line: String): Boolean {
     val response = request {
-      http.post("${config.gameServerApi}/internal/server/command") {
+      http.post("${session(id)}/server/command") {
         auth()
         contentType(ContentType.Application.Json)
         setBody(ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))

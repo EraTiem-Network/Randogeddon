@@ -8,13 +8,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.database.SessionFinishStore
-import net.eratiem.randogeddon.server.ap.TrackerService
-import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Archives
-import net.eratiem.randogeddon.server.session.CurrentSession
+import net.eratiem.randogeddon.server.session.LiveSession
+import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.REOPEN_WINDOW
-import net.eratiem.randogeddon.server.session.Room
-import net.eratiem.randogeddon.server.session.Summaries
 import net.eratiem.randogeddon.server.session.completed
 import net.eratiem.randogeddon.server.session.reopenUntil
 import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
@@ -47,118 +44,104 @@ internal fun finishStep(done: Boolean, dueAt: Instant?, cancelled: Boolean, now:
 }
 
 /**
- * Finishing and reopening the session. It finishes by itself [FINISH_DELAY] after every slot is done (admins see the
- * countdown and can cancel it), or by hand. Finishing freezes what the dashboard shows (the archive), keeps the
- * tracker's history and stops the game server; the gateway then refuses to serve the seed. A finished session that
- * wasn't completed (100 %) can be reopened within [REOPEN_WINDOW], also after a newer session replaced it.
+ * Finishing and reopening sessions. A session finishes by itself [FINISH_DELAY] after every slot is done (admins see
+ * the countdown and can cancel it), or by hand. Finishing freezes what the dashboard shows (the archive), stops its
+ * tracker connection and its game server; the gateway then refuses to serve the seed. A finished session that wasn't
+ * completed (100 %) can be reopened within [REOPEN_WINDOW], while a game server is free.
  */
 @Single
 class SessionLifecycle(
-  private val config: TrackerConfig,
-  private val tracker: TrackerService,
-  private val session: CurrentSession,
+  private val sessions: LiveSessions,
   private val finishes: SessionFinishStore,
   private val archives: Archives,
-  private val summaries: Summaries,
   private val gameServer: GameServerClient,
 ) {
   private val mutex = Mutex()
 
-  /** The seed whose countdown an admin cancelled; it doesn't start again until a slot isn't done any more. */
-  @Volatile
-  private var cancelledFor: String? = null
-
   fun watch(scope: CoroutineScope) = scope.launch {
     while (true) {
-      try {
-        tick()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        logger.warn("Finishing check failed: {}", e.message)
+      for (session in sessions.all().filter { !it.finished }) {
+        try {
+          tick(session)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          logger.warn("Finishing check of {} failed: {}", session.id, e.message)
+        }
       }
       delay(2.seconds)
     }
   }
 
-  private suspend fun tick(now: Instant = Instant.now()) = mutex.withLock {
-    val seed = Room.read(config.roomJson)?.seedName ?: return@withLock
+  private suspend fun tick(session: LiveSession, now: Instant = Instant.now()) = mutex.withLock {
+    val seed = session.seedName
     val state = finishes.of(seed) ?: return@withLock
     if (state.finishedAt != null) return@withLock
     // Without the connection the tracker doesn't know; nothing changes then (e.g. while the server restarts)
-    val done = tracker.read { if (connected) allDone() else null } ?: return@withLock
-    if (!done) cancelledFor = null
-    when (finishStep(done, state.dueAt, cancelledFor == seed, now)) {
+    val done = session.tracker.read { if (connected) allDone() else null } ?: return@withLock
+    if (!done) session.countdownCancelled = false
+    when (finishStep(done, state.dueAt, session.countdownCancelled, now)) {
       FinishStep.ARM -> {
         finishes.setDue(seed, now.plus(FINISH_DELAY.toJavaDuration()))
-        logger.info("Every slot of {} is done; it finishes in {}", seed, FINISH_DELAY)
+        logger.info("Every slot of {} is done; it finishes in {}", session.id, FINISH_DELAY)
       }
       FinishStep.DISARM -> {
         finishes.setDue(seed, null)
-        logger.info("A slot of {} isn't done any more; it doesn't finish", seed)
+        logger.info("A slot of {} isn't done any more; it doesn't finish", session.id)
       }
-      FinishStep.FINISH -> finish(seed, by = null, now)
+      FinishStep.FINISH -> finish(session, by = null, now)
       FinishStep.NONE -> return@withLock
     }
-    session.refresh()
+    sessions.refresh()
   }
 
-  /** Finishes the current session now ([admin] did). */
-  suspend fun finishNow(admin: String) = mutex.withLock {
-    val seed = current()
-    val state = finishes.of(seed)
-    if (state?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, "The session is finished already")
-    finish(seed, admin, Instant.now())
-    session.refresh()
+  /** Finishes session [id] now ([admin] did). */
+  suspend fun finishNow(id: String, admin: String) = mutex.withLock {
+    val session = session(id)
+    if (finishes.of(session.seedName)?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, "$id is finished already")
+    finish(session, admin, Instant.now())
+    sessions.refresh()
   }
 
   /** Stops the countdown; it starts again only after a slot wasn't done for a while. */
-  suspend fun cancel(admin: String) = mutex.withLock {
-    val seed = current()
-    finishes.setDue(seed, null)
-    cancelledFor = seed
-    session.refresh()
-    logger.info("{} cancelled the finishing of {}", admin, seed)
+  suspend fun cancel(id: String, admin: String) = mutex.withLock {
+    val session = session(id)
+    finishes.setDue(session.seedName, null)
+    session.countdownCancelled = true
+    sessions.refresh()
+    logger.info("{} cancelled the finishing of {}", admin, id)
   }
 
-  /**
-   * Reopens a finished session: the current seed again, or an archived one (then the current session must be
-   * finished or gone; it is archived). The game server starts on it.
-   */
-  suspend fun reopen(seed: String, admin: String) = mutex.withLock {
-    val state = finishes.of(seed)
-    val finishedAt = state?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, "$seed isn't finished")
-    val until = reopenUntil(finishedAt, completed(archives.read(seed)?.summary?.totals?.percent))
-      ?: throw SessionProblem(HttpStatusCode.Conflict, "$seed was completed (100 %); a completed session can't be reopened")
+  /** Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. */
+  suspend fun reopen(id: String, admin: String) = mutex.withLock {
+    val session = session(id)
+    val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, "$id isn't finished")
+    val until = reopenUntil(finishedAt, completed(archives.read(id)?.summary?.totals?.percent))
+      ?: throw SessionProblem(HttpStatusCode.Conflict, "$id was completed (100 %); a completed session can't be reopened")
     if (Instant.now().isAfter(until)) {
-      throw SessionProblem(HttpStatusCode.Conflict, "$seed finished more than ${REOPEN_WINDOW.inWholeDays} days ago")
+      throw SessionProblem(HttpStatusCode.Conflict, "$id finished more than ${REOPEN_WINDOW.inWholeDays} days ago")
     }
-    val current = Room.read(config.roomJson)?.seedName
-    if (current == seed) {
-      finishes.reopen(seed)
-      gameServer.control("start")
-    } else {
-      if (current != null && finishes.of(current)?.finishedAt == null) {
-        throw SessionProblem(HttpStatusCode.Conflict, "Session $current is running; finish or delete it first")
-      }
-      if (current != null) gameServer.archiveSession()
-      finishes.reopen(seed)
-      gameServer.activate(seed)
-      archives.history(seed)?.let { tracker.restore(it) } ?: tracker.clear()
+    finishes.reopen(session.seedName)
+    try {
+      gameServer.control(id, "start")
+    } catch (e: Exception) {
+      // No free game server (or no gateway): it stays finished
+      finishes.finish(session.seedName, session.finish?.finishedBy, finishedAt)
+      throw e
     }
-    archives.delete(seed)
+    archives.forget(id)
     // Every slot may still be done: no new countdown until one isn't
-    cancelledFor = seed
-    session.refresh()
-    logger.info("{} reopened session {}", admin, seed)
+    session.countdownCancelled = true
+    sessions.refresh()
+    logger.info("{} reopened session {}", admin, id)
   }
 
-  private fun current(): String =
-    Room.read(config.roomJson)?.seedName ?: throw SessionProblem(HttpStatusCode.Conflict, "There is no session")
+  private fun session(id: String): LiveSession =
+    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
 
-  /** Freezes the dashboard's view of [seed] into its archive, then stops the game server for good. */
-  private suspend fun finish(seed: String, by: String?, now: Instant) {
-    val live = summaries.build()
+  /** Freezes the dashboard's view of [session] into its archive, then stops its tracker and game server for good. */
+  private suspend fun finish(session: LiveSession, by: String?, now: Instant) {
+    val live = session.build()
     val ms = now.toEpochMilli()
     // The session time ends here
     val time = live.sessionTimeMs + (live.sessionRunningSince?.let { (ms - it).coerceAtLeast(0) } ?: 0)
@@ -173,13 +156,12 @@ class SessionLifecycle(
       players = worlds, people = people, totals = live.totals.copy(online = 0),
       finishedAt = ms, finishesAt = null, sessionTimeMs = time, sessionRunningSince = null,
     )
-    val details = tracker.read { players.values.filter { it.game != WORLD_LOCKS_GAME }.mapNotNull { playerDetail(it.slot) } }
+    val details = session.tracker.read { players.values.filter { it.game != WORLD_LOCKS_GAME }.mapNotNull { playerDetail(it.slot) } }
       .map { d -> d.copy(sessions = d.sessions.map { if (it.end == null) it.copy(end = ms) else it }) }
-    tracker.saveNow()
-    archives.keepHistory(seed)
-    archives.write(seed, ArchivedSession(summary, details, by))
-    finishes.finish(seed, by, now)
-    runCatching { gameServer.control("stop") }.onFailure { logger.warn("Could not stop the game server: {}", it.message) }
-    logger.info("Session {} finished{}", seed, by?.let { " by $it" } ?: " (every slot done)")
+    archives.write(session.id, ArchivedSession(summary, details, by))
+    finishes.finish(session.seedName, by, now)
+    session.disconnect()
+    runCatching { gameServer.control(session.id, "stop") }.onFailure { logger.warn("Could not stop the game server of {}: {}", session.id, it.message) }
+    logger.info("Session {} finished{}", session.id, by?.let { " by $it" } ?: " (every slot done)")
   }
 }

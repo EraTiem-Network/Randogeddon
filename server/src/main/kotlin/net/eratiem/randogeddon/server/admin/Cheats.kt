@@ -3,8 +3,8 @@ package net.eratiem.randogeddon.server.admin
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.CheatEntry
 import net.eratiem.randogeddon.database.CheatLogStore
-import net.eratiem.randogeddon.server.ap.TrackerService
-import net.eratiem.randogeddon.server.session.CurrentSession
+import net.eratiem.randogeddon.server.session.LiveSession
+import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatLogEntry
@@ -53,35 +53,37 @@ internal fun cheatText(admin: String, action: CheatAction, slot: String, value: 
 
 /**
  * Cheats from the admin panel: items, checks, release and collect, and free hints if the session allows them. They
- * go to the server console; every one is logged with the admin's name and shown in the live feed.
+ * go to the session's server console; every one is logged with the admin's name and shown in its live feed.
  */
 @Single
 class Cheats(
   private val gameServer: GameServerClient,
-  private val tracker: TrackerService,
-  private val session: CurrentSession,
+  private val sessions: LiveSessions,
   private val log: CheatLogStore,
 ) {
-  suspend fun view(): CheatView {
-    val seed = session.seedName ?: return CheatView()
-    val running = runCatching { gameServer.state().status == GameServerStatus.RUNNING }.getOrDefault(false)
+  suspend fun view(id: String): CheatView {
+    val session = session(id)
+    val tracker = session.tracker
+    val running = runCatching { gameServer.state(id).status == GameServerStatus.RUNNING }.getOrDefault(false)
     return CheatView(
       slots = tracker.read { cheatSlots() },
       done = tracker.read { everyCheckDone() },
       cheatHints = session.options?.cheatHints == true,
-      available = running && session.finish?.finishedAt == null,
-      log = log.of(seed).map {
+      available = running && !session.finished,
+      log = log.of(session.seedName).map {
         CheatLogEntry(it.at.toEpochMilli(), it.admin, CheatAction.valueOf(it.action), it.slotName, it.value)
       },
     )
   }
 
-  suspend fun names(slot: String): CheatNames =
-    tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, "No slot $slot")
+  suspend fun names(id: String, slot: String): CheatNames =
+    session(id).tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, "No slot $slot")
 
-  suspend fun run(request: CheatRequest, admin: String) {
-    val seed = session.seedName ?: throw SessionProblem(HttpStatusCode.Conflict, "There is no session")
-    if (session.finish?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, "The session is finished")
+  suspend fun run(id: String, request: CheatRequest, admin: String) {
+    val session = session(id)
+    val tracker = session.tracker
+    val seed = session.seedName
+    if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, "The session is finished")
     if (request.action in HINTS && session.options?.cheatHints != true) {
       throw SessionProblem(HttpStatusCode.Forbidden, "This session doesn't allow cheat hints")
     }
@@ -98,10 +100,13 @@ class Cheats(
       }
     }
     val command = cheatCommand(request.action, request.slot, value)
-    if (!gameServer.command(command)) throw SessionProblem(HttpStatusCode.Conflict, "The game server isn't running")
-    logger.info("{} cheated: {}", admin, command)
+    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, "The game server isn't running")
+    logger.info("{} cheated in {}: {}", admin, id, command)
     val shown = value.takeIf { request.action in NEEDS_VALUE }
     log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown))
     tracker.cheat(cheatText(admin, request.action, request.slot, shown))
   }
+
+  private fun session(id: String): LiveSession =
+    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
 }

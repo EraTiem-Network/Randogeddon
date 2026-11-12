@@ -14,7 +14,7 @@ import org.koin.core.annotation.KoinApplication
 import java.lang.invoke.MethodHandles
 
 /**
- * Starts the tracker: the dashboard and its API on [TrackerConfig.port], following the room in the background. With
+ * Starts the tracker: the dashboard and its API on [TrackerConfig.port], following every session in the background. With
  * arguments, runs one of the host's commands instead ([runCommand]).
  */
 fun main(args: Array<String>) {
@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
   val trackerConfig = TrackerConfig.from(config)
   if (args.isNotEmpty()) return runCommand(args.toList(), trackerConfig)
 
-  logger.info("Dashboard on port {}, following {}", trackerConfig.port, trackerConfig.serverUrl)
+  logger.info("Dashboard on port {}, the game servers on {}", trackerConfig.port, trackerConfig.gatewayHost)
 
   embeddedServer(
     factory = Netty,

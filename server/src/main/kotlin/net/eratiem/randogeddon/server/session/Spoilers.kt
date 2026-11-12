@@ -43,15 +43,16 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
   return Spoiler(seed, spheres, text)
 }
 
-/** The spoiler logs of the seeds, from the gateway (it reads them from the seeds' zips), kept once read. */
+/** The spoiler logs of the sessions, from the gateway (it reads them from the seeds' zips), kept once read. */
 @Single
 class Spoilers(private val gameServer: GameServerClient) {
   private val cache = ConcurrentHashMap<String, Spoiler>()
 
-  suspend fun of(seed: String): Spoiler? =
-    cache[seed] ?: gameServer.spoiler(seed)?.let { parseSpoiler(seed, it) }?.also { cache[seed] = it }
+  /** Session [id]'s spoiler log; [seed]: its seed's name. */
+  suspend fun of(id: String, seed: String): Spoiler? =
+    cache[id] ?: gameServer.spoiler(id)?.let { parseSpoiler(seed, it) }?.also { cache[id] = it }
 
-  fun forget(seed: String) {
-    cache.remove(seed)
+  fun forget(id: String) {
+    cache.remove(id)
   }
 }
