@@ -11,10 +11,50 @@ val ApiJson: Json = Json {
   encodeDefaults = true
 }
 
-/** Everything the dashboard shows at once; sent by `GET /api/state` and on every change by `GET /api/stream`. */
+/**
+ * The ID of a session: its address for game clients (`<id>.<domain>`) and in the dashboard's links. A DNS label that
+ * starts with a letter (so it never looks like a seed name), 3 to 40 lowercase letters, digits and hyphens.
+ */
+object SessionIds {
+  const val MAX_LENGTH = 40
+  private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
+
+  /** Words the API and the dashboard's links use themselves. */
+  private val RESERVED = setOf("admin", "api", "inspect", "new", "sessions", "www")
+
+  fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
+
+  /** What's wrong with [id] as a session ID; `null`: nothing. */
+  fun problem(id: String): String? = when {
+    id.length < 3 -> "At least 3 characters"
+    id.length > MAX_LENGTH -> "At most $MAX_LENGTH characters"
+    id[0] !in 'a'..'z' -> "Starts with a letter (a–z)"
+    id.any { it !in 'a'..'z' && it !in '0'..'9' && it != '-' } -> "Only a–z, 0–9 and -"
+    id.endsWith('-') -> "Doesn't end with -"
+    "--" in id -> "No two - in a row"
+    id in RESERVED -> "$id is reserved"
+    else -> null
+  }
+}
+
+/** How far a session is: running (maybe about to end by itself), or finished, paused or ended (completed). */
+@Serializable
+enum class SessionStatus {
+  @SerialName("live") LIVE,
+  /** Every slot is done: it ends by itself soon. */
+  @SerialName("finishing") FINISHING,
+  /** Finished before it was complete; it can be reopened for a while. */
+  @SerialName("paused") PAUSED,
+  /** Finished complete (100 %). */
+  @SerialName("ended") ENDED,
+}
+
+/** Everything the dashboard shows at once; sent by `GET /api/sessions/{id}/state` and on every change by `.../stream`. */
 @Serializable
 data class Summary(
   val title: String,
+  /** The session's ID (see [SessionIds]). */
+  val sessionId: String? = null,
   val connected: Boolean,
   val error: String? = null,
   val seedName: String? = null,
@@ -255,18 +295,21 @@ data class LoginRequest(val username: String, val password: String)
 @Serializable
 data class ApiError(val message: String)
 
-/** `GET /api/me` (and the answer to a successful login): who is logged in and how they join the game. */
+/** `GET /api/me`: who is logged in. Their sessions are `GET /api/sessions`. */
 @Serializable
 data class Me(
   val name: String,
-  /** Where game clients connect, `host:port`. */
-  val server: String,
-  /** The person's worlds with their passwords; empty until the tracker knows the seed. */
-  val slots: List<MySlot> = emptyList(),
-  /** Sees and reaches the admin panel. */
+  /** Sees and reaches the admin panel, and every session. */
   val admin: Boolean = false,
-  /** Part of the current session; `false`: only of past sessions (or an admin outside it). */
-  val inSession: Boolean = true,
+)
+
+/** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
+@Serializable
+data class Connection(
+  /** E.g. `friday-chaos.randogeddon.eratiem.net:443`, or `ws://localhost:38281/friday-chaos` locally. */
+  val server: String,
+  /** The person's slots with their passwords; empty until the tracker knows the seed. */
+  val slots: List<MySlot> = emptyList(),
 )
 
 @Serializable
@@ -304,6 +347,14 @@ data class LogLine(val n: Long, val ts: Long, val text: String)
 /** Lines after the asked-for number; [last] is the number to ask with next time. */
 @Serializable
 data class LogLines(val lines: List<LogLine>, val last: Long)
+
+/** Gateway → tracker: one session's game server, and the port MultiServer listens on while it runs. */
+@Serializable
+data class SessionServer(val id: String, val state: GameServerState, val port: Int? = null)
+
+/** `GET /internal/sessions`: every session the gateway has files of, and how many game servers can run at once. */
+@Serializable
+data class SessionServers(val sessions: List<SessionServer> = emptyList(), val capacity: Int = 0)
 
 /** A line for the server console, e.g. `/players`. */
 @Serializable
@@ -374,6 +425,8 @@ data class WorldPlan(
 
 @Serializable
 data class CreateSessionRequest(
+  /** The new session's ID (see [SessionIds]); it must be free. */
+  val id: String,
   val yamls: List<UploadedYaml>,
   val worlds: List<WorldPlan>,
   val options: SessionOptions = SessionOptions(),
@@ -387,15 +440,17 @@ data class NewLogin(val name: String, val password: String)
 
 @Serializable
 data class CreateSessionResult(
+  val id: String,
   val seedName: String,
   val logins: List<NewLogin> = emptyList(),
   /** The slots that start locked (with random locks, the ones picked). */
   val locked: List<String> = emptyList(),
 )
 
-/** The current session as the admin panel shows it. */
+/** A session as the admin panel shows it. */
 @Serializable
 data class SessionInfo(
+  val id: String,
   val seedName: String,
   /** `null` for a seed deployed with the CLI. */
   val apVersion: String? = null,
@@ -415,27 +470,34 @@ data class SessionInfo(
   val percent: Double = 0.0,
 )
 
-/** A finished session, for the list of past sessions. */
+/** A session in the lists: of the sessions a player is part of, of every session for admins. */
 @Serializable
-data class PastSession(
+data class SessionEntry(
+  val id: String,
   val seedName: String,
   val title: String,
+  val status: SessionStatus = SessionStatus.LIVE,
   val createdAt: Long? = null,
-  val finishedAt: Long,
+  /** `null` while it runs. */
+  val finishedAt: Long? = null,
   /** Who finished it by hand; `null`: by itself. */
   val finishedBy: String? = null,
   val players: List<String> = emptyList(),
+  /** The slots of the one asking (none for an admin who doesn't play). */
+  val mySlots: List<String> = emptyList(),
   val slots: Int = 0,
   val percent: Double = 0.0,
   val goals: Int = 0,
-  /** Still the game server's seed (nothing newer was created). */
-  val current: Boolean = false,
-  /** It can be reopened until then; `null`: it can't (it was completed). */
+  /** Players with a game client connected now. */
+  val online: Int = 0,
+  /** It can be reopened until then; `null`: it can't (it was completed, or it isn't finished). */
   val reopenUntil: Long? = null,
   /** Its auto-deletion is disabled. */
   val keep: Boolean = false,
-  /** It is deleted then; `null`: never (kept, or no auto-deletion). The current seed only once a newer one exists. */
+  /** It is deleted then; `null`: never (kept, no auto-deletion, or not finished). */
   val deletesAt: Long? = null,
+  /** Its game server, for admins only. */
+  val server: GameServerState? = null,
 )
 
 /** A finished session as it was when it finished: the dashboard's summary and every slot's details. */
@@ -446,7 +508,7 @@ data class ArchivedSession(
   val finishedBy: String? = null,
 )
 
-/** `POST /api/admin/sessions/{seed}/keep`: [keep] disables the session's auto-deletion. */
+/** `POST /api/admin/sessions/{id}/keep`: [keep] disables the session's auto-deletion. */
 @Serializable
 data class KeepRequest(val keep: Boolean)
 
@@ -454,7 +516,7 @@ data class KeepRequest(val keep: Boolean)
 @Serializable
 data class Sphere(val number: Int, val entries: List<String>)
 
-/** `GET /api/spoiler/{seed}`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
+/** `GET /api/sessions/{id}/spoiler`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
 @Serializable
 data class Spoiler(val seedName: String, val spheres: List<Sphere> = emptyList(), val text: String)
 
@@ -502,13 +564,27 @@ data class CheatView(
 @Serializable
 data class CheatNames(val items: List<String> = emptyList(), val locations: List<String> = emptyList())
 
-/** `GET /api/admin/session`: the session (if any), what a new one can use, and who has a login. */
+/** `GET /api/admin/sessions/{id}`: one session, what a new one can use, and who has a login. */
 @Serializable
 data class AdminSessionView(
   val session: SessionInfo? = null,
   /** Archipelago releases the gateway can run, newest first. */
   val apVersions: List<String> = emptyList(),
   val users: List<String> = emptyList(),
+)
+
+/**
+ * `GET /api/admin/sessions`: every session with its game server, what a new one can use, who has a login, and how many
+ * game servers can run at once ([capacity]; finished sessions don't count).
+ */
+@Serializable
+data class AdminOverview(
+  val sessions: List<SessionEntry> = emptyList(),
+  val apVersions: List<String> = emptyList(),
+  val users: List<String> = emptyList(),
+  val capacity: Int = 0,
+  /** A free ID for the next session, e.g. `friday-chaos`. */
+  val suggestedId: String = "",
 )
 
 /** Tracker → gateway: generate a seed from these YAMLs; World Locks is added from [locked]. */
@@ -523,7 +599,7 @@ data class GenerateRequest(
 )
 
 /**
- * The generated seed (now the data directory's seed), or why it failed: the last lines of Generate.py's output, and
+ * The generated seed (now the session's seed, in its directory), or why it failed: the last lines of Generate.py's output, and
  * the games that may be the cause.
  */
 @Serializable
