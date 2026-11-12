@@ -18,6 +18,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
   warning), the players once the session is finished.
 - Cheats in the admin panel: give items, check locations, release, collect; free hints if the session was created
   with cheat hints. Every cheat is stored with the admin's name and shown in the live feed.
+- Uploads are checked before they are taken: a file that isn't a player YAML is refused with the reason, and so is
+  an APWorld that doesn't load (a file it would have replaced stays).
+- Locks: at least one slot starts open (the last open one can't be ticked), and a single slot can't be locked.
+  *Mixed* locks: a three-way switch per slot (open, left to chance, locked); a slider sets how many slots start open,
+  as it does for *Random* locks.
+- Past sessions in the admin panel no longer list their players in the line: a click opens an overview with them.
+- Cheats offer only slots with locations left to check, and their pickers drop a location once it is checked. With
+  every check done (100 %) there is nothing to cheat, as without a session. The dashboard says "checks" where it
+  said "locations".
+- Dropdowns: a search field when they have more than 10 entries (not focused by itself on a phone, where its keyboard
+  would cover the list); tapping a dropdown or an ⓘ again closes it. Tips on buttons show on a long press on a phone.
+- Phones: the top card (one line per detail), the past sessions and the spoiler log stack their parts. The full
+  spoiler log's search marks and counts the findings and jumps between them.
 - Migration V5 (finish state, cheat log). The demo loop waits 4 minutes after a round: it finishes after 2.
 
 ### APWorlds, random locks, tooltips (Phase 3, part 3)

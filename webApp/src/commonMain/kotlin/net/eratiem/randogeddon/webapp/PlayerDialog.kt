@@ -132,7 +132,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
               }
             }
             Spacer(Modifier.height(14.dp))
-            Section("Remaining locations (${d.missing.size})")
+            Section("Remaining checks (${d.missing.size})")
             if (d.missing.isEmpty()) Txt("All done!", size = 13.sp, color = p.ok)
             d.missing.forEach { ListRow { Txt(it, size = 13.sp) } }
           }
@@ -148,15 +148,6 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         }
       }
     }
-  }
-}
-
-@Composable
-private fun RowScope.Fact(label: String, value: String, color: Color = LocalPalette.current.text) {
-  val p = LocalPalette.current
-  Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(p.panelAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
-    Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1)
-    Txt(value, size = 16.sp, weight = FontWeight.Bold, color = color, maxLines = 1)
   }
 }
 

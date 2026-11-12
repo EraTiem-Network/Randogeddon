@@ -73,6 +73,13 @@ class SessionStateTest {
     assertEquals(listOf("Boss", "Chest B", "Chest C"), names.locations)
     assertEquals(listOf("Alice", "Bob"), s.cheatSlots())
     assertEquals(null, s.cheatNames("Nobody"))
+    // A slot with every location checked is no longer offered; with all of them, nothing is left
+    s.players.getValue(1).let { it.checked += it.missing; it.missing.clear() }
+    assertEquals(listOf("Bob"), s.cheatSlots())
+    assertFalse(s.everyCheckDone())
+    s.players.getValue(2).let { it.checked += it.missing; it.missing.clear() }
+    assertEquals(emptyList(), s.cheatSlots())
+    assertTrue(s.everyCheckDone())
   }
 
   @Test

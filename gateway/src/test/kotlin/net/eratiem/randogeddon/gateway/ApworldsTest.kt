@@ -159,14 +159,18 @@ class ApworldsTest {
   }
 
   @Test
-  fun `an apworld that doesn't load says why, and can be removed`() {
+  fun `an apworld that doesn't load is refused, and says why`() {
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
     val lib = Library()
+    lib.upload("0.6.8", "celeste.apworld", zip("celeste/__init__.py"))
     val result = lib.upload("0.6.8", "broken.apworld", zip("broken/__init__.py"))
     assertEquals("cannot import", result.error)
-    runBlocking { lib.apworlds.remove("0.6.8", "broken.apworld") }
-    assertEquals(emptyList(), lib.customWorlds("0.6.8"))
+    assertEquals(emptyList(), result.games)
+    // Not kept: neither in the library nor in custom_worlds; the release lists its games without it
     assertTrue(!lib.data.resolve("apworlds/0.6.8/broken.apworld").exists())
+    assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
+    assertEquals(emptyList(), runBlocking { lib.apworlds.release("0.6.8") }.failed)
+    assertFailsWith<ApworldProblem> { runBlocking { lib.apworlds.remove("0.6.8", "broken.apworld") } }
   }
 
   @Test

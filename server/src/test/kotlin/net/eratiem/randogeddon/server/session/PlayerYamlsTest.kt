@@ -16,6 +16,7 @@ class PlayerYamlsTest {
       )
     )
     assertEquals(emptyList(), result.problems)
+    assertEquals(emptyList(), result.invalid)
     assertEquals(
       listOf("Alice-HK" to "Hollow Knight", "Bob" to "Celeste 64 / DLCQuest", "Carol-A" to "APQuest", "Carol-B" to "APQuest"),
       result.worlds.map { it.name to it.game },
@@ -32,9 +33,18 @@ class PlayerYamlsTest {
         UploadedYaml("b.yaml", "name: same\ngame: APQuest"),
         UploadedYaml("locks.yaml", "name: Locks\ngame: World Locks"),
         UploadedYaml("empty.yaml", "  \n"),
+        UploadedYaml("notes.txt", "name: Txt\ngame: APQuest"),
+        // One good document doesn't save the file
+        UploadedYaml("half.yaml", "name: Good\ngame: APQuest\n---\njust text"),
       )
     )
     val problems = result.problems.joinToString("\n")
+    assertTrue("notes.txt: not a .yaml or .yml file" in problems, problems)
+    assertEquals(
+      setOf("broken.yaml", "noname.yaml", "locks.yaml", "empty.yaml", "notes.txt", "half.yaml"), result.invalid.toSet(),
+    )
+    // Duplicate names are a problem, but the files themselves are player YAMLs
+    assertEquals(listOf("Same", "same"), result.worlds.map { it.name })
     assertTrue("broken.yaml: not a player YAML" in problems, problems)
     assertTrue("noname.yaml: no name" in problems, problems)
     assertTrue("2 slots are called Same" in problems, problems)

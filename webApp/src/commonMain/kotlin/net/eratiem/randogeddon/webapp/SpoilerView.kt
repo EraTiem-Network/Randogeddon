@@ -4,12 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,8 +30,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,22 +71,26 @@ fun SpoilerView(seed: String, onBack: () -> Unit) {
     }
   }
 
-  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      IconButton(onBack, Icon.BACK)
-      Column(Modifier.weight(1f)) {
-        Txt("Spoiler log", size = 20.sp, weight = FontWeight.Bold)
-        Txt("Seed $seed" + (spoiler?.let { " · ${it.spheres.size} spheres" } ?: ""), size = 12.5.sp, color = p.muted)
+  BoxWithConstraints {
+    // A phone: the steps as two lines each, the pickers and the search below their headings
+    val narrow = maxWidth < NARROW
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        IconButton(onBack, Icon.BACK)
+        Column(Modifier.weight(1f)) {
+          Txt("Spoiler log", size = 20.sp, weight = FontWeight.Bold)
+          Txt("Seed $seed" + (spoiler?.let { " · ${it.spheres.size} spheres" } ?: ""), size = 12.5.sp, color = p.muted)
+        }
       }
+      problem?.let { Txt(it, size = 13.sp, color = p.trap) }
+      val s = spoiler
+      if (s == null) {
+        if (problem == null) Txt("Loading…", color = p.muted)
+        return@Column
+      }
+      if (s.spheres.isNotEmpty()) Playthrough(s.spheres, narrow)
+      FullLog(s.text, narrow)
     }
-    problem?.let { Txt(it, size = 13.sp, color = p.trap) }
-    val s = spoiler
-    if (s == null) {
-      if (problem == null) Txt("Loading…", color = p.muted)
-      return@Column
-    }
-    if (s.spheres.isNotEmpty()) Playthrough(s.spheres)
-    FullLog(s.text)
   }
 }
 
@@ -99,7 +118,7 @@ private fun step(entry: String): Step {
 }
 
 @Composable
-private fun Playthrough(spheres: List<Sphere>) {
+private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
   val p = LocalPalette.current
   val steps = remember(spheres) { spheres.associate { it.number to it.entries.map(::step) } }
   val slots = remember(steps) {
@@ -109,15 +128,17 @@ private fun Playthrough(spheres: List<Sphere>) {
   var open by remember { mutableStateOf(emptySet<Int>()) }
   var slot by remember { mutableStateOf<String?>(null) }
   fun shown(number: Int) = steps[number].orEmpty().filter { slot == null || it.itemSlot == slot || it.locationSlot == slot }
+  val controls: @Composable () -> Unit = {
+    Select(listOf<Pair<String?, String>>(null to "Every slot") + slots.map { it to it }, slot, { slot = it })
+    SmallButton(if (open.size == spheres.size) "Fold all" else "Unfold all", {
+      open = if (open.size == spheres.size) emptySet() else spheres.map { it.number }.toSet()
+    })
+  }
   Section(
     "Playthrough", subtitle = "the way through the seed, sphere by sphere: what becomes reachable, and is needed, at each step",
-    actions = {
-      Select(listOf<Pair<String?, String>>(null to "Every slot") + slots.map { it to it }, slot, { slot = it })
-      SmallButton(if (open.size == spheres.size) "Fold all" else "Unfold all", {
-        open = if (open.size == spheres.size) emptySet() else spheres.map { it.number }.toSet()
-      })
-    },
+    actions = { if (!narrow) controls() },
   ) {
+    if (narrow) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
     Column(Modifier.fillMaxWidth().card(p)) {
       val visible = spheres.filter { shown(it.number).isNotEmpty() }
       if (visible.isEmpty()) Txt("Nothing for $slot.", color = p.muted, modifier = Modifier.padding(16.dp))
@@ -127,7 +148,7 @@ private fun Playthrough(spheres: List<Sphere>) {
         val unfolded = sphere.number in open || slot != null
         Row(
           Modifier.fillMaxWidth().hand().clickable { open = if (sphere.number in open) open - sphere.number else open + sphere.number }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = if (narrow) 12.dp else 16.dp, vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -139,9 +160,15 @@ private fun Playthrough(spheres: List<Sphere>) {
           Pill("${entries.size} ${if (entries.size == 1) "step" else "steps"}", p.muted)
         }
         if (unfolded) {
-          Column(Modifier.fillMaxWidth().padding(start = 38.dp, end = 16.dp, bottom = 12.dp)) {
-            StepHeader()
-            entries.forEachIndexed { j, entry -> StepRow(entry, odd = j % 2 == 1) }
+          if (narrow) {
+            Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 10.dp)) {
+              entries.forEachIndexed { j, entry -> StepCard(entry, odd = j % 2 == 1) }
+            }
+          } else {
+            Column(Modifier.fillMaxWidth().padding(start = 38.dp, end = 16.dp, bottom = 12.dp)) {
+              StepHeader()
+              entries.forEachIndexed { j, entry -> StepRow(entry, odd = j % 2 == 1) }
+            }
           }
         }
       }
@@ -161,7 +188,7 @@ private fun StepHeader() {
     Txt("Item", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     Spacer(Modifier.width(ARROW_COLUMN))
     Txt("Slot", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
-    Txt("Location", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+    Txt("Check", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
   }
 }
 
@@ -182,6 +209,30 @@ private fun StepRow(step: Step, odd: Boolean) {
   }
 }
 
+/** A step on a phone: Slot · Item, and below it → Slot · Location. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StepCard(step: Step, odd: Boolean) {
+  val p = LocalPalette.current
+  Column(
+    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (odd) p.panelAlt else Color.Transparent)
+      .padding(horizontal = 8.dp, vertical = 6.dp),
+    verticalArrangement = Arrangement.spacedBy(3.dp),
+  ) {
+    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      step.itemSlot?.let { SlotTag(it) }
+      Txt(step.item, size = 13.sp, weight = FontWeight.SemiBold)
+    }
+    if (step.location != null) {
+      FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Txt("→ ", size = 12.5.sp, color = p.muted)
+        step.locationSlot?.let { SlotTag(it) }
+        Txt(step.location, size = 12.5.sp, color = p.muted)
+      }
+    }
+  }
+}
+
 /** A slot in its colour. */
 @Composable
 private fun SlotTag(slot: String) {
@@ -194,20 +245,91 @@ private fun SlotTag(slot: String) {
   )
 }
 
+/** At most this many findings are marked; the count says when there are more. */
+private const val MAX_FINDINGS = 2000
+
+/** Where [query] occurs in [text] (ignoring case), at most [MAX_FINDINGS]; nothing for less than 2 characters. */
+internal fun findings(text: String, query: String): List<Int> {
+  if (query.length < 2) return emptyList()
+  return buildList {
+    var at = text.indexOf(query, 0, ignoreCase = true)
+    while (at >= 0 && size < MAX_FINDINGS) {
+      add(at)
+      at = text.indexOf(query, at + query.length, ignoreCase = true)
+    }
+  }
+}
+
+/**
+ * The whole log, monospace. The search marks every finding (the current one stronger) and counts them; the arrows,
+ * or Enter and Shift+Enter, jump from one to the next.
+ */
 @Composable
-private fun FullLog(text: String) {
+private fun FullLog(text: String, narrow: Boolean) {
   val p = LocalPalette.current
   var query by remember { mutableStateOf("") }
-  val lines = remember(text) { text.lines() }
-  val shown = if (query.isBlank()) text else lines.filter { it.contains(query.trim(), ignoreCase = true) }
-    .joinToString("\n").ifEmpty { "Nothing matches." }
-  Section("Full spoiler log", subtitle = "every location of every slot, the options and the playthrough", actions = {
-    FilterField(query, { query = it }, "Search…", Modifier.width(200.dp))
+  val q = query.trim()
+  val found = remember(text, q) { findings(text, q) }
+  var current by remember(text, q) { mutableStateOf(0) }
+  val mark = p.warn.copy(alpha = 0.35f)
+  val currentMark = p.accent.copy(alpha = 0.55f)
+  val marked = remember(text, found, current, mark, currentMark) {
+    buildAnnotatedString {
+      append(text)
+      found.forEachIndexed { n, start ->
+        addStyle(SpanStyle(background = if (n == current) currentMark else mark), start, start + q.length)
+      }
+    }
+  }
+  val scroll = rememberScrollState()
+  var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+  val density = LocalDensity.current
+  // The current finding a few lines below the top of the box
+  LaunchedEffect(found, current, layout) {
+    val l = layout ?: return@LaunchedEffect
+    val at = found.getOrNull(current) ?: return@LaunchedEffect
+    val top = l.getLineTop(l.getLineForOffset(at)) - with(density) { 48.dp.toPx() }
+    scroll.animateScrollTo(top.toInt().coerceAtLeast(0))
+  }
+  fun step(by: Int) {
+    if (found.isNotEmpty()) current = (current + by).mod(found.size)
+  }
+  val search: @Composable (Modifier) -> Unit = { modifier ->
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      FilterField(
+        query, { query = it }, "Search…",
+        (if (narrow) Modifier.weight(1f) else Modifier.width(200.dp)).onPreviewKeyEvent { event ->
+          if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+            step(if (event.isShiftPressed) -1 else 1)
+            true
+          } else false
+        },
+      )
+      if (q.length >= 2) {
+        Txt(
+          when {
+            found.isEmpty() -> "none"
+            found.size >= MAX_FINDINGS -> "${current + 1} / ${MAX_FINDINGS}+"
+            else -> "${current + 1} / ${found.size}"
+          },
+          size = 12.5.sp, color = if (found.isEmpty()) p.trap else p.muted, maxLines = 1,
+        )
+        IconButton({ step(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f))
+        IconButton({ step(1) }, Icon.CHEVRON, Modifier.size(30.dp))
+      }
+    }
+  }
+  Section("Full spoiler log", subtitle = "every check of every slot, the options and the playthrough", actions = {
+    if (!narrow) search(Modifier)
   }) {
+    if (narrow) search(Modifier.fillMaxWidth())
     Box(Modifier.fillMaxWidth().card(p).heightIn(max = 560.dp)) {
       SelectionContainer {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp)) {
-          BasicText(shown, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace))
+        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
+          BasicText(
+            marked, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+            onTextLayout = { layout = it },
+          )
         }
       }
     }

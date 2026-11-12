@@ -49,7 +49,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val cheats by inject<Cheats>()
 
   routing {
-    loginRoutes(logins)
+    loginRoutes(logins, trackerConfig.cookieSecure)
 
     // Everything about the session needs a login (login and logout above are outside this branch)
     route("/api") {

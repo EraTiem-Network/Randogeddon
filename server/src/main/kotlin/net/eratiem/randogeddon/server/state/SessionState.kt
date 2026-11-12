@@ -440,7 +440,14 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /** The slot names an admin can cheat for (not the World Locks slot). */
-  fun cheatSlots(): List<String> = players.values.filter { it.game != WORLD_LOCKS_GAME }.map { it.name }
+  fun cheatSlots(): List<String> = players.values.filter { it.game != WORLD_LOCKS_GAME && !it.complete }.map { it.name }
+
+  /** Every slot has checked all its locations: nothing is left to cheat. */
+  fun everyCheckDone(): Boolean = players.values.filter { it.game != WORLD_LOCKS_GAME }.let { slots ->
+    slots.isNotEmpty() && slots.all { it.complete }
+  }
+
+  private val Player.complete: Boolean get() = total > 0 && missing.isEmpty()
 
   /** For cheats: every item of the slot's game, and the slot's locations not checked yet; `null` for an unknown slot. */
   fun cheatNames(slotName: String): CheatNames? {

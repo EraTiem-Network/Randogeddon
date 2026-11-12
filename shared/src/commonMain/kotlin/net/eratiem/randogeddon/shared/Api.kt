@@ -326,8 +326,9 @@ data class SessionOptions(
   /** World Locks: keys reachable from the start, so locked slots open early. */
   val earlyKeys: Boolean = false,
   /**
-   * Random locks: this many slots, picked at random, start open and all others start locked. `null`: the locks are
-   * chosen per slot ([WorldPlan.locked]).
+   * Random locks: this many slots start open in all, and all others start locked. Which ones is picked at random:
+   * among every slot, or, once a slot is [WorldPlan.random], among those (the others start as [WorldPlan.locked] says).
+   * `null`: the locks are chosen per slot ([WorldPlan.locked]).
    */
   val openSlots: Int? = null,
   /** Admins may give free hints from the admin panel (cheats). */
@@ -352,11 +353,24 @@ data class InspectRequest(
 
 /** The slots of the uploaded YAMLs, and what's wrong with them (a game the release has no apworld for, too). */
 @Serializable
-data class InspectResult(val worlds: List<YamlWorld>, val problems: List<String> = emptyList())
+data class InspectResult(
+  val worlds: List<YamlWorld>,
+  val problems: List<String> = emptyList(),
+  /** The files that aren't player YAMLs at all (or not all of them): the panel doesn't take them. */
+  val invalid: List<String> = emptyList(),
+)
 
-/** One slot of a new session: who plays it (one or more users, existing or new names) and whether it starts locked. */
+/**
+ * One slot of a new session: who plays it (one or more users, existing or new names) and whether it starts locked, or
+ * whether that is left to chance ([random], with [SessionOptions.openSlots]).
+ */
 @Serializable
-data class WorldPlan(val name: String, val users: List<String> = emptyList(), val locked: Boolean = false)
+data class WorldPlan(
+  val name: String,
+  val users: List<String> = emptyList(),
+  val locked: Boolean = false,
+  val random: Boolean = false,
+)
 
 @Serializable
 data class CreateSessionRequest(
@@ -469,10 +483,15 @@ data class CheatRequest(val action: CheatAction, val slot: String, val value: St
 @Serializable
 data class CheatLogEntry(val ts: Long, val admin: String, val action: CheatAction, val slot: String, val value: String? = null)
 
-/** `GET /api/admin/cheat`: the slots to cheat for, whether hints are allowed, and the session's cheats so far. */
+/**
+ * `GET /api/admin/cheat`: the slots to cheat for (those with locations left to check), whether hints are allowed, and
+ * the session's cheats so far.
+ */
 @Serializable
 data class CheatView(
   val slots: List<String> = emptyList(),
+  /** Every slot has checked all its locations (100 %): nothing is left to cheat. */
+  val done: Boolean = false,
   val cheatHints: Boolean = false,
   /** The game server runs and the session isn't finished. */
   val available: Boolean = false,

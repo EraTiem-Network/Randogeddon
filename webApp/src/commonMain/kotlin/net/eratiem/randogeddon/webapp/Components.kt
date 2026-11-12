@@ -6,6 +6,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,8 +37,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,8 +59,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -75,6 +81,7 @@ import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 val CardShape = RoundedCornerShape(16.dp)
@@ -373,15 +380,21 @@ fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<Stri
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
   var tapped by remember { mutableStateOf(false) }
+  var closedAt by remember { mutableLongStateOf(0L) }
   Box(
     modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (hovered || tapped) p.accent else p.muted, CircleShape)
       .hoverable(interaction)
-      .hand().clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+      .hand().clickable(interactionSource = interaction, indication = null) {
+        if (!justClosed(closedAt)) tapped = !tapped
+      },
     contentAlignment = Alignment.Center,
   ) {
     Txt("i", size = 10.sp, color = if (hovered || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
     if (hovered || tapped) {
-      AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+      AppPopup(
+        offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }),
+        onDismissRequest = { tapped = false; closedAt = Platform.now() },
+      ) {
         TipCard(text, options)
       }
     }
@@ -411,9 +424,15 @@ private fun TipCard(text: String, options: List<Pair<String, String>>) {
 private const val TIP_DELAY_MS = 600L
 
 /**
+ * A popup closed less than a moment ago: the tap on its own anchor that closed it (popups close on the press outside
+ * them) mustn't open it again on release.
+ */
+private fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
+
+/**
  * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it. A click
- * hides it until the pointer comes back (a dropdown's list opens there). Phones have no hover; there the session
- * form's "i" tips remain.
+ * hides it until the pointer comes back (a dropdown's list opens there). Touch screens have no hover: there a long
+ * press shows it, instead of the click; a tap anywhere closes it.
  */
 @Composable
 fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content: @Composable () -> Unit) {
@@ -421,6 +440,8 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content
   val hovered by interaction.collectIsHoveredAsState()
   var shown by remember { mutableStateOf(false) }
   var clicked by remember { mutableStateOf(false) }
+  // Shown by a long press
+  var held by remember { mutableStateOf(false) }
   var height by remember { mutableStateOf(0) }
   LaunchedEffect(hovered, clicked) {
     if (hovered && !clicked) {
@@ -434,16 +455,35 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content
   Box(
     Modifier.hoverable(interaction).onSizeChanged { height = it.height }.pointerInput(Unit) {
       // Seen before the button or dropdown handles it, without taking it away from them
-      awaitPointerEventScope {
-        while (true) {
-          if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Press) clicked = true
+      awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        clicked = true
+        if (down.type != PointerType.Touch) return@awaitEachGesture
+        // Lifted or moved (a scroll) before the long press: an ordinary tap
+        val tapped = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+          while (true) {
+            val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+          }
+          true
+        }
+        if (tapped == null) {
+          held = true
+          // The button never sees this press end, so it doesn't click
+          do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            event.changes.forEach { it.consume() }
+          } while (event.changes.any { it.pressed })
         }
       }
     }
   ) {
     content()
-    if (shown) {
-      AppPopup(offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }), onDismissRequest = { shown = false }) {
+    if (shown || held) {
+      AppPopup(
+        offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }),
+        onDismissRequest = { shown = false; held = false },
+      ) {
         TipCard(text, options)
       }
     }
@@ -470,6 +510,9 @@ fun AppPopup(
  */
 fun Modifier.hand(): Modifier = pointerHoverIcon(PointerIcon.Hand, overrideDescendants = true)
 
+/** Narrower than this (a phone): what sits side by side in a row goes one below the other. */
+internal val NARROW = 600.dp
+
 /** A clickable row that tints itself while hovered. */
 @Composable
 fun HoverRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
@@ -486,7 +529,24 @@ fun HoverRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Compo
   )
 }
 
-/** A compact dropdown: shows the selected option's label, lists all options in a popup. [minHeight]: e.g. a form's field height. */
+/** Lists longer than this get a search field on top. */
+private const val SEARCH_FROM = 10
+
+/**
+ * The search field on top of a dropdown's list: focused right away, except on a touch screen (its keyboard would
+ * cover the list).
+ */
+@Composable
+private fun DropdownSearch(query: String, onChange: (String) -> Unit) {
+  val focus = remember { FocusRequester() }
+  FilterField(query, onChange, "Search…", Modifier.fillMaxWidth().focusRequester(focus))
+  LaunchedEffect(Unit) { if (!Platform.touchScreen()) focus.requestFocus() }
+}
+
+/**
+ * A compact dropdown: shows the selected option's label, lists all options in a popup (with a search field when
+ * there are more than [SEARCH_FROM]). [minHeight]: e.g. a form's field height.
+ */
 @Composable
 fun <T> Select(
   options: List<Pair<T, String>>,
@@ -497,13 +557,16 @@ fun <T> Select(
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
+  var closedAt by remember { mutableLongStateOf(0L) }
+  var query by remember { mutableStateOf("") }
   var anchorHeight by remember { mutableStateOf(0) }
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
     Row(
       // Shaped like the buttons and text fields
       Modifier.heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
         .border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .hand().clickable { open = true }.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Txt(options.firstOrNull { it.first == selected }?.second ?: "", size = 12.5.sp, maxLines = 1,
@@ -512,27 +575,32 @@ fun <T> Select(
       DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
     }
     if (open) {
+      val searchable = options.size > SEARCH_FROM
+      val shown = options.filter { (_, label) -> !searchable || query.isBlank() || label.contains(query.trim(), ignoreCase = true) }
       AppPopup(
         offset = IntOffset(0, anchorHeight + 6),
-        onDismissRequest = { open = false },
+        onDismissRequest = { open = false; closedAt = Platform.now() },
         properties = PopupProperties(focusable = true),
       ) {
         Column(
-          Modifier.widthIn(min = 150.dp, max = 260.dp).heightIn(max = 320.dp)
-            .card(p, RoundedCornerShape(12.dp))
-            .verticalScroll(rememberScrollState()).padding(4.dp)
+          Modifier.widthIn(min = 150.dp, max = 260.dp).card(p, RoundedCornerShape(12.dp)).padding(4.dp),
+          verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-          options.forEach { (value, label) ->
-            val active = value == selected
-            Txt(
-              label, size = 13.sp, maxLines = 1,
-              weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-              color = if (active) p.accent else p.text,
-              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
-                .hand().clickable { onSelect(value); open = false }
-                .padding(horizontal = 12.dp, vertical = 7.dp),
-            )
+          if (searchable) DropdownSearch(query) { query = it }
+          Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+            if (shown.isEmpty()) Txt("Nothing found", size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
+            shown.forEach { (value, label) ->
+              val active = value == selected
+              Txt(
+                label, size = 13.sp, maxLines = 1,
+                weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (active) p.accent else p.text,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                  .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
+                  .hand().clickable { onSelect(value); open = false }
+                  .padding(horizontal = 12.dp, vertical = 7.dp),
+              )
+            }
           }
         }
       }
@@ -541,9 +609,9 @@ fun <T> Select(
 }
 
 /**
- * A dropdown with a search field on top of its list, for longer lists. [options]: value, label and a second line
- * (e.g. the game, shown as a game chip too unless [chip] is off); the search matches both. Long lists show the first
- * 300 matches: the search finds the rest.
+ * A dropdown with a second line per option, and a search field on top of its list when it has more than
+ * [SEARCH_FROM]. [options]: value, label and a second line (e.g. the game, shown as a game chip too unless [chip] is
+ * off); the search matches both. Long lists show the first 300 matches: the search finds the rest.
  */
 @Composable
 fun <T> SearchableSelect(
@@ -558,6 +626,7 @@ fun <T> SearchableSelect(
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
+  var closedAt by remember { mutableLongStateOf(0L) }
   var query by remember { mutableStateOf("") }
   var anchorHeight by remember { mutableStateOf(0) }
   val current = options.firstOrNull { it.first == selected }
@@ -565,7 +634,8 @@ fun <T> SearchableSelect(
     Row(
       Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
         .border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .hand().clickable { open = true; query = "" }.padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        .padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -578,20 +648,21 @@ fun <T> SearchableSelect(
       DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
     }
     if (open) {
-      val focus = remember { FocusRequester() }
+      val searchable = options.size > SEARCH_FROM
       val shown = options.filter { (_, label, detail) ->
-        query.isBlank() || label.contains(query.trim(), ignoreCase = true) || detail.contains(query.trim(), ignoreCase = true)
+        !searchable || query.isBlank() || label.contains(query.trim(), ignoreCase = true) ||
+          detail.contains(query.trim(), ignoreCase = true)
       }.take(300)
       AppPopup(
         offset = IntOffset(0, anchorHeight + 6),
-        onDismissRequest = { open = false },
+        onDismissRequest = { open = false; closedAt = Platform.now() },
         properties = PopupProperties(focusable = true),
       ) {
         Column(
           Modifier.widthIn(min = 220.dp, max = 320.dp).card(p, RoundedCornerShape(12.dp)).padding(6.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-          FilterField(query, { query = it }, "Search…", Modifier.fillMaxWidth().focusRequester(focus))
+          if (searchable) DropdownSearch(query) { query = it }
           Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
             if (shown.isEmpty()) Txt("Nothing found", size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label, detail) ->
@@ -614,11 +685,64 @@ fun <T> SearchableSelect(
             }
           }
         }
-        LaunchedEffect(Unit) { focus.requestFocus() }
       }
     }
   }
 }
+
+/**
+ * A slider over the whole numbers of [range]: tap the track or drag the knob. Each number is a dot on the track while
+ * there are few of them.
+ */
+@Composable
+fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  val change by rememberUpdatedState(onChange)
+  val steps = (range.last - range.first).coerceAtLeast(1)
+  val fraction = ((value - range.first).toFloat() / steps).coerceIn(0f, 1f)
+  BoxWithConstraints(
+    modifier.height(28.dp).hand().pointerInput(range.first, range.last) {
+      val knob = KNOB.toPx() / 2
+      fun pick(x: Float) {
+        val f = ((x - knob) / (size.width - 2 * knob)).coerceIn(0f, 1f)
+        change(range.first + (f * steps).roundToInt())
+      }
+      awaitEachGesture {
+        val down = awaitFirstDown()
+        down.consume()
+        pick(down.position.x)
+        while (true) {
+          val moved = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+          if (!moved.pressed) break
+          if (moved.positionChanged()) {
+            moved.consume()
+            pick(moved.position.x)
+          }
+        }
+      }
+    },
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    val travel = maxWidth - KNOB
+    Box(Modifier.padding(horizontal = KNOB / 2).fillMaxWidth().height(6.dp).clip(CircleShape).background(p.barBackground)) {
+      Box(Modifier.fillMaxWidth(fraction).height(6.dp).clip(CircleShape).background(p.brand))
+    }
+    if (steps <= 20) {
+      for (i in 0..steps) {
+        Box(
+          Modifier.offset(x = KNOB / 2 - 2.dp + travel * (i.toFloat() / steps)).size(4.dp).clip(CircleShape)
+            .background(if (i.toFloat() / steps <= fraction) Color.White.copy(alpha = 0.8f) else p.muted.copy(alpha = 0.6f))
+        )
+      }
+    }
+    Box(
+      Modifier.offset(x = travel * fraction).size(KNOB).shadow(2.dp, CircleShape).clip(CircleShape)
+        .background(Color.White).border(2.dp, p.accent, CircleShape)
+    )
+  }
+}
+
+private val KNOB = 20.dp
 
 @Composable
 fun FilterField(

@@ -147,8 +147,10 @@ class SessionAdmin(
 
     val locked = when (val open = request.options.openSlots) {
       null -> plans.values.filter { it.locked }.map { it.name }
-      else -> pickLocked(plans.keys.toList(), open, random)
+      else -> if (plans.values.any { it.random }) pickMixed(plans.values.toList(), open, random) else pickLocked(plans.keys.toList(), open, random)
     }
+    // Someone has to start: the keys are found in the open slots
+    if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, "At least one slot has to start open")
     logger.info("{} creates a session: {} slots, {} players, Archipelago {}", admin, plans.size, people.size, version)
     val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
     if (finished) {
@@ -241,12 +243,31 @@ class SessionAdmin(
  * open (or no key could ever be found), and there must be something to lock.
  */
 internal fun pickLocked(slots: List<String>, open: Int, random: Random): List<String> {
+  if (slots.size < 2) throw SessionProblem(HttpStatusCode.BadRequest, "Random locks need at least 2 slots")
   if (open < 1) throw SessionProblem(HttpStatusCode.BadRequest, "At least one slot has to start open")
   if (open >= slots.size) {
     throw SessionProblem(HttpStatusCode.BadRequest, "With ${slots.size} slots, at most ${slots.size - 1} can start open for random locks")
   }
   val openSlots = slots.shuffled(random).take(open).toSet()
   return slots.filter { it !in openSlots }
+}
+
+/**
+ * Mixed locks: the slots that aren't [WorldPlan.random] start open or locked as they say; of the random ones, as many
+ * start open as make [open] in all, picked at random, and the rest are locked. At least one slot starts open.
+ */
+internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<String> {
+  val sure = plans.count { !it.random && !it.locked }
+  val pool = plans.filter { it.random }.map { it.name }
+  val least = maxOf(1, sure)
+  if (open < least || open > sure + pool.size) {
+    throw SessionProblem(
+      HttpStatusCode.BadRequest,
+      "With $sure slots open for sure and ${pool.size} left to chance, between $least and ${sure + pool.size} can start open",
+    )
+  }
+  val picked = pool.shuffled(random).take(open - sure).toSet()
+  return plans.filter { if (it.random) it.name !in picked else it.locked }.map { it.name }
 }
 
 /** What to tell the admin when Generate.py made no seed: the games that may be the cause, then its output. */

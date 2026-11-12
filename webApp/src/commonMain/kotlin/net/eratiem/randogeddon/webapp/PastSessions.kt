@@ -39,7 +39,7 @@ fun PastSessionsSection(sessions: List<PastSession>, onOpen: (String) -> Unit) {
             Txt(session.title + if (session.current) " (current seed)" else "", size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1)
             Txt(
               listOfNotNull(
-                "Seed ${session.seedName}", "finished ${Platform.date(session.finishedAt)}", session.players.joinToString(", "),
+                "Seed ${session.seedName}", "finished ${Platform.date(session.finishedAt)}",
                 session.deletesAt?.let { "deleted on ${Platform.date(it)}" },
               ).filter { it.isNotEmpty() }.joinToString(" · "),
               size = 12.sp, color = p.muted, maxLines = 2,

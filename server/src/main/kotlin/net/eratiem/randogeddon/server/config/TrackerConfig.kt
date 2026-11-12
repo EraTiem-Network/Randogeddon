@@ -27,6 +27,8 @@ data class TrackerConfig(
   val internalToken: String,
   /** Past sessions are deleted this many days after they finished (unless kept); 0: never. */
   val sessionRetentionDays: Int = 90,
+  /** The login cookie is sent over HTTPS only; off just for a demo over plain HTTP in the local network. */
+  val cookieSecure: Boolean = true,
 ) {
   companion object {
     fun from(config: ApplicationConfig): TrackerConfig {
@@ -47,6 +49,7 @@ data class TrackerConfig(
         gameServerApi = value("server.gameServerApi").trimEnd('/'),
         internalToken = value("server.internalToken"),
         sessionRetentionDays = value("tracker.sessionRetentionDays").toInt().coerceAtLeast(0),
+        cookieSecure = flag(value("tracker.cookieSecure")),
       )
     }
   }

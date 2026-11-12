@@ -1,20 +1,30 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -27,21 +37,29 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.AdminSessionView
@@ -68,14 +86,20 @@ private val REMAINING_MODES = listOf("enabled", "disabled", "goal")
 private object Tips {
   const val PLAYERS = "Who plays this slot. A slot with several players is played together: they share it and its " +
     "slot password. A name without a login gets one when the session is created."
-  const val LOCKS = "A locked slot can't be played until its key is found, somewhere in another slot (World Locks)."
+  const val LOCKS = "A locked slot can't be played until its key is found, somewhere in another slot (World Locks). " +
+    "At least one slot starts open."
   val LOCK_MODES = listOf(
     "Choose" to "Tick \"starts locked\" for each slot that waits for its key.",
     "Random" to "The given number of slots, picked at random, start open; all others start locked.",
+    "Mixed" to "Each slot starts open, starts locked, or is left to chance (its switch: left, right, middle). The " +
+      "slider says how many slots start open in all.",
   )
-  const val OPEN_SLOTS = "How many slots start open; at least one, and at least one stays locked. Which ones is " +
+  const val OPEN_SLOTS = "How many slots start open in all; at least one. Which of the slots left to chance is " +
     "picked at random when the session is generated."
   const val STARTS_LOCKED = "This slot waits for its key, which lies somewhere in another slot."
+  const val LAST_OPEN = "The last slot that starts open: someone has to start, and the keys lie in the open slots."
+  const val LOCK_SWITCH = "Left: starts open. Middle: left to chance. Right: starts locked, as long as another slot " +
+    "can still start open."
   const val POINT_HINTS = "Players buy hints with !hint in their client and pay with points they earn by checking " +
     "locations. Off: !hint and !hint_location are refused; the server console can still give hints."
   const val AUTO_HINTS = "Games may create hints by themselves, e.g. a shop that shows whose item it sells. Off: " +
@@ -124,6 +148,12 @@ private object Tips {
   const val SPOILER = "The spoiler log shows where every item of the seed is, and the playthrough sphere by sphere. " +
     "Players see it once the session is finished."
 }
+
+/** How the locks of a new session are chosen. */
+private enum class LockMode(val label: String) { CHOOSE("Choose per slot"), RANDOM("Random"), MIXED("Mixed") }
+
+/** A slot's lock with mixed locks: the switch's three stops, left to right. */
+private enum class LockChoice(val label: String) { OPEN("open"), RANDOM("random"), LOCKED("locked") }
 
 /** POST without a body; the error message, or `null`. */
 private suspend fun post(path: String, body: String? = null): String? =
@@ -276,6 +306,7 @@ private fun Confirm(question: String, yes: String, danger: Boolean, onYes: () ->
 }
 
 /** The finished sessions that are no longer the current one: spoiler, reopen, auto-deletion, delete. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PastSessionsAdmin(
   sessions: List<PastSession>,
@@ -287,46 +318,127 @@ private fun PastSessionsAdmin(
   val p = LocalPalette.current
   // (seed, "delete" or "keep"): the question shown in place of that session's buttons
   var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
+  var overview by remember { mutableStateOf<PastSession?>(null) }
+  overview?.let { PastSessionOverview(it, onClose = { overview = null }) }
   Section("Past sessions", subtitle = "deleted automatically after a while, unless that is disabled", actions = {
     InfoTip(Tips.KEEP)
   }) {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      sessions.forEachIndexed { i, past ->
-        if (i > 0) Divider()
-        val seed = past.seedName
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Column(Modifier.weight(1f)) {
-            Txt("Seed $seed", size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
-            Txt(
-              listOfNotNull(
-                "finished ${Platform.date(past.finishedAt)}" + (past.finishedBy?.let { " by $it" } ?: ""),
-                "${oneDecimal(past.percent)}%",
-                past.players.joinToString(", ").ifEmpty { null },
-                deletion(past.deletesAt, past.keep),
-              ).joinToString(" · "),
-              size = 12.sp, color = p.muted, maxLines = 2,
+    BoxWithConstraints(Modifier.fillMaxWidth().card(p).padding(16.dp)) {
+      // A phone: the title, the details and the buttons one below the other
+      val stacked = maxWidth < NARROW
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        sessions.forEachIndexed { i, past ->
+          if (i > 0) Divider()
+          val seed = past.seedName
+          // A click shows the overview, with the players
+          val title: @Composable (Modifier) -> Unit = { modifier ->
+            HoverRow(onClick = { overview = past }, modifier = modifier) {
+              Column(Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 4.dp)) {
+                Txt("Seed $seed", size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                Txt(
+                  listOfNotNull(
+                    "finished ${Platform.date(past.finishedAt)}" + (past.finishedBy?.let { " by $it" } ?: ""),
+                    "${oneDecimal(past.percent)}%",
+                    deletion(past.deletesAt, past.keep),
+                  ).joinToString(" · "),
+                  size = 12.sp, color = p.muted, maxLines = if (stacked) 4 else 2,
+                )
+              }
+              Box(Modifier.padding(end = 4.dp).rotate(180f)) { DrawnIcon(Icon.BACK, p.muted, 14.dp) }
+            }
+          }
+          val buttons: @Composable () -> Unit = {
+            if (pending?.first != seed) {
+              if (reopenable(past.reopenUntil)) Tip(Tips.REOPEN) { SmallButton("Reopen", { onReopen(seed) }) }
+              Tip(Tips.SPOILER) { SmallButton("Spoiler log", { onSpoiler(seed) }) }
+              Tip(Tips.KEEP) {
+                SmallButton(if (past.keep) "Enable auto-deletion" else "Disable auto-deletion", { pending = seed to "keep" })
+              }
+              SmallButton("Delete", { pending = seed to "delete" })
+            }
+          }
+          if (stacked) {
+            title(Modifier.fillMaxWidth())
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { buttons() }
+          } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              title(Modifier.weight(1f))
+              buttons()
+            }
+          }
+          when (pending?.takeIf { it.first == seed }?.second) {
+            "delete" -> Confirm(
+              "Delete it for good? Its seed, save and history go; the logins stay.", "Yes, delete", danger = true,
+              onYes = { pending = null; onDelete(seed) }, onCancel = { pending = null },
+            )
+            "keep" -> Confirm(
+              if (past.keep) "Enable its auto-deletion again? Its time counts from now."
+              else "Disable its auto-deletion? It stays until an admin deletes it.",
+              if (past.keep) "Yes, enable" else "Yes, disable", danger = false,
+              onYes = { pending = null; onKeep(seed, !past.keep) }, onCancel = { pending = null },
             )
           }
-          if (pending?.first != seed) {
-            if (reopenable(past.reopenUntil)) Tip(Tips.REOPEN) { SmallButton("Reopen", { onReopen(seed) }) }
-            Tip(Tips.SPOILER) { SmallButton("Spoiler log", { onSpoiler(seed) }) }
-            Tip(Tips.KEEP) {
-              SmallButton(if (past.keep) "Enable auto-deletion" else "Disable auto-deletion", { pending = seed to "keep" })
-            }
-            SmallButton("Delete", { pending = seed to "delete" })
-          }
         }
-        when (pending?.takeIf { it.first == seed }?.second) {
-          "delete" -> Confirm(
-            "Delete it for good? Its seed, save and history go; the logins stay.", "Yes, delete", danger = true,
-            onYes = { pending = null; onDelete(seed) }, onCancel = { pending = null },
-          )
-          "keep" -> Confirm(
-            if (past.keep) "Enable its auto-deletion again? Its time counts from now."
-            else "Disable its auto-deletion? It stays until an admin deletes it.",
-            if (past.keep) "Yes, enable" else "Yes, disable", danger = false,
-            onYes = { pending = null; onKeep(seed, !past.keep) }, onCancel = { pending = null },
-          )
+      }
+    }
+  }
+}
+
+/** A past session at a glance, floating over the panel: how it went, when it finished, what happens to it, who played. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PastSessionOverview(past: PastSession, onClose: () -> Unit) {
+  val p = LocalPalette.current
+  Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    SelectionContainer {
+      Column(
+        Modifier.padding(16.dp).widthIn(max = 520.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp)),
+      ) {
+        Row(
+          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          Column(Modifier.weight(1f)) {
+            Txt(past.title, size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
+            Txt("Seed ${past.seedName}", size = 12.5.sp, color = p.muted, maxLines = 1)
+          }
+          Txt("${oneDecimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
+          IconButton(onClose, Icon.CLOSE)
+        }
+        Divider()
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          ProgressBar((past.percent / 100).toFloat())
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Fact("Slots", "${past.slots}")
+            Fact("Goals", "${past.goals} / ${past.slots}", if (past.goals > 0) p.ok else p.text)
+            Fact("Players", "${past.players.size}")
+          }
+          val until = past.reopenUntil
+          listOfNotNull(
+            past.createdAt?.let { "Created" to Platform.date(it) },
+            "Finished" to Platform.date(past.finishedAt) + (past.finishedBy?.let { " by $it" } ?: ", when every slot was done"),
+            "Reopen" to when {
+              until == null -> "not possible, it was completed"
+              reopenable(until) -> "possible until ${Platform.date(until)}"
+              else -> "no longer possible"
+            },
+            "Deletion" to (deletion(past.deletesAt, past.keep) ?: "not automatic"),
+          ).forEach { (label, value) ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+              Txt(label, size = 12.5.sp, color = p.muted, modifier = Modifier.width(72.dp))
+              Txt(value, size = 13.sp, modifier = Modifier.weight(1f))
+            }
+          }
+          Txt("PLAYERS", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          if (past.players.isEmpty()) Txt("Nobody was named for its slots.", size = 13.sp, color = p.muted)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            past.players.forEach { name ->
+              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Avatar(name, 26.dp)
+                Txt(name, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+              }
+            }
+          }
         }
       }
     }
@@ -427,6 +539,11 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
   var problems by remember { mutableStateOf<List<String>>(emptyList()) }
   val users = remember { mutableStateMapOf<String, List<String>>() }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
+  var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
+  // Mixed locks: each slot's switch (left to chance until moved)
+  val choices = remember { mutableStateMapOf<String, LockChoice>() }
+  // How many slots start open with random or mixed locks; `null`: about half
+  var openCount by remember { mutableStateOf<Int?>(null) }
   // Hints are off until switched on for the session
   var options by remember { mutableStateOf(SessionOptions(pointHints = false, autoHints = false)) }
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
@@ -434,11 +551,25 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
   var error by remember { mutableStateOf<String?>(null) }
   // The YAML to remove, asked once more; "": all of them
   var removing by remember { mutableStateOf<String?>(null) }
+  // Why the files just picked that aren't player YAMLs weren't taken
+  var refused by remember { mutableStateOf<List<String>>(emptyList()) }
 
-  fun inspect() = scope.launch {
+  fun inspect(): Job = scope.launch {
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
     when (val answer = call("POST", "api/admin/session/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
       is Answer.Ok -> {
+        val invalid = answer.value.invalid.toSet()
+        if (invalid.isNotEmpty()) {
+          // Not taken at all; the others are checked again without them
+          refused = refused + answer.value.problems.filter { problem -> invalid.any { problem.startsWith("$it: ") } }
+          yamls.removeAll { it.fileName in invalid }
+          if (yamls.isEmpty()) {
+            worlds = emptyList(); problems = emptyList()
+          } else {
+            inspect()
+          }
+          return@launch
+        }
         worlds = answer.value.worlds
         problems = answer.value.problems
         // A guess to start from: "Alice-HK" belongs to Alice, if she has a login or no one else is meant
@@ -457,6 +588,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
         val picked = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
         // Choosing again adds files; one with the same name replaces the earlier one
         picked.forEach { file -> yamls.removeAll { it.fileName == file.fileName }; yamls += file }
+        refused = emptyList()
         inspect()
       }
     }
@@ -471,7 +603,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
       removing = null
       if (file.isEmpty()) yamls.clear() else yamls.removeAll { it.fileName == file }
       if (yamls.isEmpty()) {
-        worlds = emptyList(); problems = emptyList(); users.clear(); locked.clear()
+        worlds = emptyList(); problems = emptyList(); users.clear(); locked.clear(); choices.clear()
       } else {
         inspect()
       }
@@ -487,6 +619,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
     }
   }
   removing?.takeIf { it.isNotEmpty() }?.let { ConfirmRemoval(it) }
+  refused.forEach { Txt("Not added: $it", size = 12.5.sp, color = p.trap) }
   problems.forEach { Txt(it, size = 12.5.sp, color = p.trap) }
   if (problems.any { it.startsWith("No APWorld for") }) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -496,7 +629,46 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
   }
 
   if (worlds.isNotEmpty()) {
-    val random = options.openSlots != null
+    // A single slot can't be locked; otherwise at least one slot starts open
+    val n = worlds.size
+    val lockable = n > 1
+    val mode = if (lockable) lockMode else LockMode.CHOOSE
+    // A switch left to chance whose outcome is already given by the others shows that outcome: e.g. of two slots,
+    // one open, the other has to be locked
+    val chosen = worlds.associate { it.name to (choices[it.name] ?: LockChoice.RANDOM) }
+    val settled = run {
+      val chance = chosen.values.count { it == LockChoice.RANDOM }
+      val sureLocked = chosen.values.count { it == LockChoice.LOCKED }
+      val sure = n - sureLocked - chance
+      val least = maxOf(1, sure)
+      val most = if (sureLocked == 0) minOf(sure + chance, n - 1) else sure + chance
+      val outcome = when {
+        chance == 0 || least < most -> null
+        least - sure == 0 -> LockChoice.LOCKED
+        least - sure == chance -> LockChoice.OPEN
+        else -> null
+      }
+      if (outcome == null) chosen else chosen.mapValues { (_, c) -> if (c == LockChoice.RANDOM) outcome else c }
+    }
+    fun choice(world: YamlWorld) = settled.getValue(world.name)
+    // Locked for sure, and how many are left to chance
+    val lockedNow = when (mode) {
+      LockMode.CHOOSE -> worlds.filter { lockable && locked[it.name] == true }
+      LockMode.RANDOM -> emptyList()
+      LockMode.MIXED -> worlds.filter { choice(it) == LockChoice.LOCKED }
+    }.map { it.name }.toSet()
+    val pool = when (mode) {
+      LockMode.CHOOSE -> 0
+      LockMode.RANDOM -> n
+      LockMode.MIXED -> worlds.count { choice(it) == LockChoice.RANDOM }
+    }
+    val sureOpen = n - lockedNow.size - pool
+    // How many start open in all: at least one; with nothing locked for sure, one of the random ones is. Nothing left
+    // to chance: every slot says open or locked, as when they are chosen
+    val openRange = if (pool == 0) null else maxOf(1, sureOpen)..(if (lockedNow.isEmpty()) minOf(sureOpen + pool, n - 1) else sureOpen + pool)
+    val open = openRange?.let { (openCount ?: (n / 2)).coerceIn(it) }
+    // A slot can be locked while another one can still start open
+    val canLock = n - lockedNow.size > 1
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       Txt("2. Who plays which slot", size = 13.sp, weight = FontWeight.SemiBold)
       InfoTip(Tips.PLAYERS)
@@ -506,29 +678,48 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
         "session is created.",
       size = 12.sp, color = p.muted,
     )
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (lockable) {
       Labeled("Locks", Tips.LOCKS, Tips.LOCK_MODES) {
-        Select(
-          listOf("choose" to "Choose per slot", "random" to "Random"), if (random) "random" else "choose",
-          { mode ->
-            options = options.copy(openSlots = if (mode == "random") (worlds.size / 2).coerceIn(1, maxOf(1, worlds.size - 1)) else null)
-          },
-          minHeight = FIELD_HEIGHT,
-        )
+        Select(LockMode.entries.map { it to it.label }, mode, { lockMode = it }, minHeight = FIELD_HEIGHT)
       }
-      options.openSlots?.let { open ->
-        NumberField("slots start open", open, Tips.OPEN_SLOTS) { options = options.copy(openSlots = it) }
-        if (open < 1 || open >= worlds.size) {
-          Txt("Between 1 and ${worlds.size - 1}", size = 12.5.sp, color = p.trap)
+      // On a line of its own: room for the slider on a phone
+      if (open != null && openRange != null) {
+        Row(
+          Modifier.widthIn(max = 480.dp).fillMaxWidth().heightIn(min = FIELD_HEIGHT),
+          verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Txt("Start open", size = 12.5.sp, color = p.muted, maxLines = 1)
+          InfoTip(Tips.OPEN_SLOTS)
+          if (openRange.first < openRange.last) {
+            // The slider's own ends, then what it is set to
+            Txt("${openRange.first}", size = 12.sp, color = p.muted, maxLines = 1)
+            StepSlider(open, openRange, { openCount = it }, Modifier.weight(1f))
+            Txt("${openRange.last}", size = 12.sp, color = p.muted, maxLines = 1)
+          } else {
+            Spacer(Modifier.weight(1f))
+          }
+          Txt("$open of $n slots", size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
         }
       }
     }
     worlds.forEach { world ->
+      val isLocked = world.name in lockedNow
       WorldRow(
-        world, users[world.name].orEmpty(), view.users, !random && locked[world.name] == true,
-        lockable = !random,
+        world, users[world.name].orEmpty(), view.users,
+        lock = {
+          when (mode) {
+            // The last open slot stays open
+            LockMode.CHOOSE -> if (lockable) {
+              val enabled = isLocked || canLock
+              Check("starts locked", isLocked, if (enabled) Tips.STARTS_LOCKED else Tips.LAST_OPEN, enabled = enabled) {
+                locked[world.name] = it
+              }
+            }
+            LockMode.RANDOM -> {}
+            LockMode.MIXED -> LockSwitch(choice(world), lockAllowed = isLocked || canLock) { choices[world.name] = it }
+          }
+        },
         onUsers = { users[world.name] = it },
-        onLocked = { locked[world.name] = it },
       )
     }
 
@@ -536,7 +727,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Check("Point hints", options.pointHints, Tips.POINT_HINTS) { options = options.copy(pointHints = it) }
       Check("Automatic hints", options.autoHints, Tips.AUTO_HINTS) { options = options.copy(autoHints = it) }
-      if (random || locked.values.any { it }) {
+      if (pool > 0 || lockedNow.isNotEmpty()) {
         Check("Keys early", options.earlyKeys, Tips.EARLY_KEYS) { options = options.copy(earlyKeys = it) }
       }
       Check("Cheat hints", options.cheatHints, Tips.CHEAT_HINTS) { options = options.copy(cheatHints = it) }
@@ -557,7 +748,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
       }
     }
     if (view.apVersions.isEmpty()) Txt("The gateway reports no Archipelago release.", size = 12.5.sp, color = p.trap)
-    val openOk = options.openSlots?.let { it in 1 until worlds.size } ?: true
+    val openOk = lockedNow.size < n
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
@@ -569,8 +760,10 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
         scope.launch {
           val request = CreateSessionRequest(
             yamls = yamls.toList(),
-            worlds = worlds.map { WorldPlan(it.name, users[it.name].orEmpty(), !random && locked[it.name] == true) },
-            options = options,
+            worlds = worlds.map {
+              WorldPlan(it.name, users[it.name].orEmpty(), it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM)
+            },
+            options = options.copy(openSlots = open),
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
@@ -602,8 +795,8 @@ private fun GenerationError(message: String) {
 }
 
 /**
- * One slot of the new session: its players (chips; type a name and Enter, or pick a suggestion) and the lock (unless
- * the locks are random: not [lockable]).
+ * One slot of the new session: its players (chips; type a name and Enter, or pick a suggestion) and its [lock] control
+ * (nothing with random locks, or a single slot).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -611,10 +804,8 @@ private fun WorldRow(
   world: YamlWorld,
   users: List<String>,
   known: List<String>,
-  locked: Boolean,
-  lockable: Boolean,
+  lock: @Composable () -> Unit,
   onUsers: (List<String>) -> Unit,
-  onLocked: (Boolean) -> Unit,
 ) {
   val p = LocalPalette.current
   var input by remember { mutableStateOf("") }
@@ -632,7 +823,7 @@ private fun WorldRow(
           Txt(world.name, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
           Txt("${world.game} · ${world.fileName}", size = 11.5.sp, color = p.muted, maxLines = 1)
         }
-        if (lockable) Check("starts locked", locked, Tips.STARTS_LOCKED, onLocked)
+        lock()
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { name ->
@@ -716,12 +907,77 @@ private fun NewLogins(logins: List<NewLogin>, locked: List<String>, onDone: () -
   }
 }
 
+/**
+ * A slot's lock with mixed locks: a switch with three stops, open, left to chance, locked. Tap a stop or drag the
+ * knob; locked only while [lockAllowed].
+ */
 @Composable
-private fun Check(label: String, checked: Boolean, tip: String? = null, onChange: (Boolean) -> Unit) {
+private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (LockChoice) -> Unit) {
+  val p = LocalPalette.current
+  val current by rememberUpdatedState(choice)
+  val change by rememberUpdatedState(onChange)
+  val color = when (choice) {
+    LockChoice.OPEN -> p.ok
+    LockChoice.RANDOM -> p.accent
+    LockChoice.LOCKED -> p.locked
+  }
+  val position by animateFloatAsState(choice.ordinal / 2f, tween(160))
+  Tip(Tips.LOCK_SWITCH) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt(choice.label, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
+      BoxWithConstraints(
+        Modifier.width(78.dp).height(28.dp).clip(CircleShape).background(color.copy(alpha = 0.16f))
+          .border(1.dp, color.copy(alpha = 0.5f), CircleShape).hand()
+          .pointerInput(lockAllowed) {
+            awaitEachGesture {
+              val down = awaitFirstDown()
+              down.consume()
+              var at = down.position.x
+              while (true) {
+                val moved = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                if (!moved.pressed) break
+                if (moved.positionChanged()) {
+                  moved.consume()
+                  at = moved.position.x
+                }
+              }
+              val picked = LockChoice.entries[(at / size.width * 3).toInt().coerceIn(0, 2)]
+              if (picked != LockChoice.LOCKED || lockAllowed || current == LockChoice.LOCKED) change(picked)
+            }
+          },
+        contentAlignment = Alignment.CenterStart,
+      ) {
+        val travel = maxWidth - 28.dp
+        // The stops; locked is faint while it can't be chosen
+        LockChoice.entries.forEach { stop ->
+          Box(
+            Modifier.offset(x = 4.dp + travel * (stop.ordinal / 2f) + 7.dp).size(6.dp).clip(CircleShape)
+              .background(p.muted.copy(alpha = if (stop == LockChoice.LOCKED && !lockAllowed) 0.2f else 0.6f))
+          )
+        }
+        Box(
+          Modifier.offset(x = 4.dp + travel * position).size(20.dp).clip(CircleShape).background(color),
+          contentAlignment = Alignment.Center,
+        ) {
+          when (choice) {
+            LockChoice.OPEN -> DrawnIcon(Icon.CHECK, Color.White, 12.dp)
+            LockChoice.RANDOM -> Txt("?", size = 12.sp, color = Color.White, weight = FontWeight.Bold, maxLines = 1)
+            LockChoice.LOCKED -> DrawnIcon(Icon.LOCK, Color.White, 12.dp)
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun Check(label: String, checked: Boolean, tip: String? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
   val p = LocalPalette.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     Row(
-      Modifier.clip(RoundedCornerShape(8.dp)).hand().clickable { onChange(!checked) }.padding(vertical = 2.dp, horizontal = 2.dp),
+      Modifier.clip(RoundedCornerShape(8.dp))
+        .then(if (enabled) Modifier.hand().clickable { onChange(!checked) } else Modifier.alpha(0.45f))
+        .padding(vertical = 2.dp, horizontal = 2.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
