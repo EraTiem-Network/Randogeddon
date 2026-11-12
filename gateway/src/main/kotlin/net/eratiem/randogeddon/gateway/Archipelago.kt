@@ -62,32 +62,31 @@ internal fun compareVersions(a: String, b: String): Int {
 }
 
 /**
- * Starts MultiServer for a seed with its session's Archipelago version and options (from the database; the session
- * was created in the admin panel). Seeds deployed with the CLI have no session there: they run on the newest release
- * with [defaults] (the `AP_*` environment variables).
+ * Starts MultiServer for a seed with its session's Archipelago version and options (from the database, as the admin
+ * panel created it). A seed from before without them runs on the newest release with the default options.
  */
 class Launcher(
   private val archipelago: Archipelago,
   private val setups: SessionSetupStore,
-  private val roomJson: Path,
-  private val port: Int,
-  private val defaults: SessionOptions,
   /** For `!admin` remote commands; empty: disabled. */
   private val adminPassword: String,
 ) {
-  /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py). */
-  fun prepare(seed: Path) {
+  /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]. */
+  fun prepare(seed: Path, roomJson: Path) {
     val proc = ProcessBuilder(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
       .directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
     val output = proc.inputStream.bufferedReader().readText()
     check(proc.waitFor() == 0) { "room_info.py failed: ${output.trim().lines().lastOrNull()}" }
   }
 
-  /** serve.py = MultiServer plus the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS in its environment). */
-  fun launch(seed: Path): Launch {
+  /**
+   * serve.py = MultiServer plus the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS in its environment), on [port]; the
+   * seed's name comes from [roomJson].
+   */
+  fun launch(seed: Path, roomJson: Path, port: Int): Launch {
     val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.of(name) } }
     val version = setup?.apVersion ?: archipelago.newest
-    val options = setup?.options?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: defaults
+    val options = setup?.options?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
     val command = buildList {
       addAll(listOf(archipelago.python, "serve.py", seed.absolutePathString(), "--host", "0.0.0.0", "--port", port.toString()))
       addAll(listOf("--hint_cost", options.hintCost.toString(), "--location_check_points", options.locationCheckPoints.toString()))
@@ -103,24 +102,25 @@ class Launcher(
 
 /**
  * Generates seeds with Archipelago's Generate.py: the uploaded YAMLs, plus a World Locks slot for the slots that
- * start locked. The new seed becomes the data directory's seed; the previous one goes to `old/` first, as
- * scripts/deploy-seed.sh does. One generation at a time, with the release's apworlds as they are now. When it fails,
- * the games that may be the cause come with the log.
+ * start locked. The new seed goes into its session's directory, which must not have one yet. One generation at a
+ * time, with the release's apworlds as they are now. When it fails, the games that may be the cause come with the log.
  */
-class Generator(private val archipelago: Archipelago, private val dataDir: Path, private val apworlds: Apworlds) {
+class Generator(private val archipelago: Archipelago, private val dirs: SessionDirs, private val apworlds: Apworlds) {
   private val mutex = Mutex()
 
-  suspend fun generate(request: GenerateRequest): GenerateResult = mutex.withLock {
+  /** Throws [IllegalStateException] if session [id] has a seed already. */
+  suspend fun generate(id: String, request: GenerateRequest): GenerateResult = mutex.withLock {
+    check(dirs.seed(id) == null) { "Session $id has a seed already" }
     val home = runCatching { archipelago.home(request.apVersion) }.getOrElse {
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
     val release = apworlds.release(request.apVersion)
-    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home) } }
+    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) } }
     if (result.seedName != null) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
-  private fun run(request: GenerateRequest, home: Path): GenerateResult {
+  private fun run(request: GenerateRequest, home: Path, target: Path): GenerateResult {
     val work = createTempDirectory("generate")
     try {
       val players = work.resolve("players").createDirectories()
@@ -146,9 +146,7 @@ class Generator(private val archipelago: Archipelago, private val dataDir: Path,
           .ifEmpty { listOf("Generate.py ended without a seed") },
       )
 
-      retire()
-      val target = dataDir.resolve(zip.name)
-      Files.move(zip, target, StandardCopyOption.REPLACE_EXISTING)
+      Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
       val seedName = zip.name.removePrefix("AP_").removeSuffix(".zip")
       logger.info("Generated seed {}", seedName)
       return GenerateResult(seedName = seedName, seedFile = zip.name, log = lines.takeLast(10))
@@ -156,9 +154,6 @@ class Generator(private val archipelago: Archipelago, private val dataDir: Path,
       work.toFile().deleteRecursively()
     }
   }
-
-  /** The data directory's seed, its save, room.json and session.yaml go to `old/` (deleting a session, a new seed). */
-  fun retire(): List<String> = SeedFiles(dataDir).retire()
 
   /**
    * Without any path, only letters, digits, dots, dashes and underscores; every file a `.yaml`, numbered so names
