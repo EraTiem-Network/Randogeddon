@@ -106,9 +106,12 @@ class AdminRepository(private val scope: CoroutineScope) {
   }
 }
 
-/** The admin panel: the session, the apworlds, the game server (state, start/stop/restart), its log and its console. */
+/**
+ * The admin panel: the session (and the past ones), cheats, the apworlds, the game server (state, start/stop/restart),
+ * its log and its console.
+ */
 @Composable
-fun AdminView(now: Long, onBack: () -> Unit) {
+fun AdminView(now: Long, onBack: () -> Unit, onSpoiler: (String) -> Unit) {
   val scope = rememberCoroutineScope()
   val repository = remember { AdminRepository(scope) }
   DisposableEffect(repository) {
@@ -127,7 +130,8 @@ fun AdminView(now: Long, onBack: () -> Unit) {
       IconButton(onBack, Icon.BACK)
       Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
     }
-    SessionSection(onChanged = { message = null })
+    SessionSection(onChanged = { message = null }, onSpoiler = onSpoiler)
+    CheatSection(state)
     ApworldsSection()
     ServerSection(state, problem, now, message, onAction = { action -> run { repository.control(action) } })
     LogSection(repository.log)
@@ -146,44 +150,47 @@ private fun ServerSection(
   val p = LocalPalette.current
   // Stop and restart end every running game: they ask once more
   var confirm by remember { mutableStateOf<String?>(null) }
-  Section("Game server", subtitle = state?.seed?.let { "Seed file $it" } ?: "MultiServer, run by the gateway") {
+  val status = state?.status
+  Section(
+    "Game server", subtitle = state?.seed?.let { "Seed file $it" } ?: "MultiServer, run by the gateway",
+    actions = {
+      // The uptime and the state right of the heading
+      state?.since?.let { Pill("up ${duration(now - it)}", p.muted) }
+      Pill(
+        when {
+          problem != null -> "gateway unreachable"
+          status == null -> "…"
+          else -> status.name.lowercase().replace('_', ' ')
+        },
+        when (status) {
+          GameServerStatus.RUNNING -> p.ok
+          GameServerStatus.STARTING -> p.useful
+          GameServerStatus.CRASHED -> p.trap
+          GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
+        },
+      )
+    },
+  ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        val status = state?.status
-        Pill(
-          when {
-            problem != null -> "gateway unreachable"
-            status == null -> "…"
-            else -> status.name.lowercase().replace('_', ' ')
-          },
-          when (status) {
-            GameServerStatus.RUNNING -> p.ok
-            GameServerStatus.STARTING -> p.useful
-            GameServerStatus.CRASHED -> p.trap
-            GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
-          },
-        )
-        val details = listOfNotNull(
-          state?.since?.let { "up ${duration(now - it)}" },
-          state?.lastExitCode?.let { "last exit code $it" },
-          state?.restarts?.takeIf { it > 0 }?.let { "$it ${if (it == 1) "restart" else "restarts"} after crashes" },
-        )
-        Txt(details.joinToString(" · "), size = 12.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-      }
+      val details = listOfNotNull(
+        state?.lastExitCode?.let { "last exit code $it" },
+        state?.restarts?.takeIf { it > 0 }?.let { "$it ${if (it == 1) "restart" else "restarts"} after crashes" },
+      )
+      if (details.isNotEmpty()) Txt(details.joinToString(" · "), size = 12.5.sp, color = p.muted, maxLines = 1)
       if (problem != null) Txt(problem, size = 12.5.sp, color = p.trap)
       val pending = confirm
       if (pending == null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           val running = state?.status == GameServerStatus.RUNNING || state?.status == GameServerStatus.STARTING
-          ActionButton("Start", enabled = !running) { onAction("start") }
-          ActionButton("Stop", enabled = running) { confirm = "stop" }
-          ActionButton("Restart", enabled = running) { confirm = "restart" }
-          InfoTip(
-            "Start: MultiServer serves the session's seed. Stop: it saves and ends; every player is disconnected and " +
-              "it stays stopped (the session time doesn't count) until started again. Restart: stop and start, " +
-              "e.g. after changing something by hand. A crashed server is started again by the gateway by itself.",
-            Modifier.align(Alignment.CenterVertically),
-          )
+          Tip("It serves the session's seed (not a paused or ended one: reopen that first). A crashed one is started again by the gateway by itself.") {
+            ActionButton("Start", enabled = !running) { onAction("start") }
+          }
+          Tip("It saves and ends; every player is disconnected. It stays stopped, and the session time doesn't count, until started again.") {
+            ActionButton("Stop", enabled = running) { confirm = "stop" }
+          }
+          Tip("Stop and start, e.g. after changing something by hand.") {
+            ActionButton("Restart", enabled = running) { confirm = "restart" }
+          }
         }
       } else {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -248,7 +255,7 @@ private fun ConsoleSection(onSend: (String) -> Unit) {
     actions = {
       InfoTip(
         "Archipelago's server console. Its commands say \"player\" for a slot: /send Alice-HK Mantis Claw gives the " +
-          "slot Alice-HK that item. Names with spaces in quotes. /help lists every command; the answers show in the log."
+          "slot Alice-HK that item. Names with spaces in quotes (/release and /collect take the rest of the line). /help lists every command; the answers show in the log."
       )
     },
   ) {
@@ -290,7 +297,7 @@ private fun ActionButton(text: String, enabled: Boolean = true, danger: Boolean 
     color = if (enabled) Color.White else p.muted,
     modifier = Modifier.clip(RoundedCornerShape(10.dp))
       .background(if (enabled) color else p.panelAlt)
-      .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+      .then(if (enabled) Modifier.hand().clickable(onClick = onClick) else Modifier)
       .padding(horizontal = 14.dp, vertical = 8.dp),
   )
 }

@@ -10,6 +10,9 @@ expect object Platform {
   /** Wall-clock time of [epochMillis] as `HH:mm` in the viewer's time zone. */
   fun clock(epochMillis: Long): String
 
+  /** Date and time of [epochMillis] in the viewer's locale and time zone, e.g. `13 Nov 2026, 20:15`. */
+  fun date(epochMillis: Long): String
+
   /** [method] [path] relative to the page, with a JSON [body]; `null` if the server can't be reached. */
   suspend fun request(method: String, path: String, body: String? = null): HttpResult?
 

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,7 +45,7 @@ fun PersonDialog(
   name: String,
   s: Summary,
   now: Long,
-  repository: TrackerRepository,
+  repository: SessionSource,
   onClose: () -> Unit,
 ) {
   val p = LocalPalette.current
@@ -74,108 +75,110 @@ fun PersonDialog(
   var openWorld by remember(name) { mutableStateOf<Int?>(null) }
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     openWorld?.let { slot ->
-      WorldDetail(slot, s.version, repository, onClose = { openWorld = null }, back = true)
+      SelectionContainer { WorldDetail(slot, s.version, repository, onClose = { openWorld = null }, back = true) }
       return@Dialog
     }
-    BoxWithConstraints(Modifier.padding(16.dp)) {
-      val twoColumns = maxWidth >= 760.dp
-      Column(Modifier.widthIn(max = 960.dp).fillMaxWidth().heightIn(max = maxHeight).card(p, RoundedCornerShape(20.dp))) {
-        Row(
-          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          Avatar(person.name, 44.dp)
-          Column(Modifier.weight(1f)) {
-            Txt(person.name, size = 18.sp, weight = FontWeight.Bold)
-            Txt(
-              "${worlds.size} slots · ${person.checked} / ${person.total} checks" +
-                if (person.online) " · online" else "",
-              size = 12.5.sp, color = if (person.online) p.ok else p.muted,
-            )
+    SelectionContainer {
+      BoxWithConstraints(Modifier.padding(16.dp)) {
+        val twoColumns = maxWidth >= 760.dp
+        Column(Modifier.widthIn(max = 960.dp).fillMaxWidth().heightIn(max = maxHeight).card(p, RoundedCornerShape(20.dp))) {
+          Row(
+            Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            Avatar(person.name, 44.dp)
+            Column(Modifier.weight(1f)) {
+              Txt(person.name, size = 18.sp, weight = FontWeight.Bold)
+              Txt(
+                "${worlds.size} slots · ${person.checked} / ${person.total} checks" +
+                  if (person.online) " · online" else "",
+                size = 12.5.sp, color = if (person.online) p.ok else p.muted,
+              )
+            }
+            Txt("${oneDecimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
+            IconButton(onClose, Icon.CLOSE)
           }
-          Txt("${oneDecimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
-          IconButton(onClose, Icon.CLOSE)
-        }
-        Divider()
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-          ProgressBar((person.percent / 100).toFloat())
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Fact("Played", duration(played))
-            Fact("Goals", "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
-            Fact("Locked", "${worlds.count { it.status == PlayerStatus.LOCKED }}")
-            if (s.hintSettings.pointHints) Fact("Hint points", "${worlds.sumOf { it.hintPoints ?: 0 }}")
-          }
+          Divider()
+          Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            ProgressBar((person.percent / 100).toFloat())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              Fact("Played", duration(played))
+              Fact("Goals", "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
+              Fact("Locked", "${worlds.count { it.status == PlayerStatus.LOCKED }}")
+              if (s.hintSettings.pointHints) Fact("Hint points", "${worlds.sumOf { it.hintPoints ?: 0 }}")
+            }
 
-          val left: @Composable ColumnScope.() -> Unit = {
-            Section("Slots")
-            worlds.forEach { w ->
-              HoverRow(onClick = { openWorld = w.slot }, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                  GameChip(w.game, dimmed = w.status == PlayerStatus.LOCKED)
-                  Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                      Txt(w.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
-                      Pill(statusLabel(w), statusColor(w.status))
+            val left: @Composable ColumnScope.() -> Unit = {
+              Section("Slots")
+              worlds.forEach { w ->
+                HoverRow(onClick = { openWorld = w.slot }, modifier = Modifier.fillMaxWidth()) {
+                  Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GameChip(w.game, dimmed = w.status == PlayerStatus.LOCKED)
+                    Column(Modifier.weight(1f)) {
+                      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Txt(w.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
+                        Pill(statusLabel(w), statusColor(w.status))
+                      }
+                      Txt("${w.checked} / ${w.total} · ${duration(playTime(w, now))} played" +
+                        (w.goalAt?.let { " · done ${Platform.clock(it)}" } ?: ""), size = 11.5.sp, color = p.muted, maxLines = 1)
+                      Spacer(Modifier.height(4.dp))
+                      ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                     }
-                    Txt("${w.checked} / ${w.total} · ${duration(playTime(w, now))} played" +
-                      (w.goalAt?.let { " · done ${Platform.clock(it)}" } ?: ""), size = 11.5.sp, color = p.muted, maxLines = 1)
-                    Spacer(Modifier.height(4.dp))
-                    ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                   }
                 }
               }
-            }
-            if (s.hintSettings.enabled || openHints.isNotEmpty()) {
-              Spacer(Modifier.height(10.dp))
-              Section("Open hints for ${person.name} (${openHints.size})")
-              if (openHints.isEmpty()) Txt("None.", size = 13.sp, color = p.muted)
-              openHints.forEach { h ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
-                    HintStatus(h)
+              if (s.hintSettings.enabled || openHints.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Section("Open hints for ${person.name} (${openHints.size})")
+                if (openHints.isEmpty()) Txt("None.", size = 13.sp, color = p.muted)
+                openHints.forEach { h ->
+                  Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                      Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
+                      HintStatus(h)
+                    }
+                    Txt("${h.locationName} · in ${h.finderName} · for ${h.receiverName}", size = 12.sp, color = p.muted)
                   }
-                  Txt("${h.locationName} · in ${h.finderName} · for ${h.receiverName}", size = 12.sp, color = p.muted)
+                  Divider()
+                }
+              }
+            }
+            val right: @Composable ColumnScope.() -> Unit = {
+              Section("Connections (${sessions.size})")
+              if (sessions.isEmpty()) Txt("No game client seen yet.", size = 13.sp, color = p.muted)
+              sessions.take(20).forEach { (world, c) ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Dot(if (c.end == null) p.ok else p.muted, 7.dp)
+                  Column(Modifier.weight(1f)) {
+                    Txt(world, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                    Txt(
+                      (if (c.implicit) "seen playing " else "") + Platform.clock(c.start) +
+                        (c.end?.let { " – ${Platform.clock(it)}" } ?: " – now"),
+                      size = 12.sp, color = p.muted,
+                    )
+                  }
+                  Txt(duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
                 }
                 Divider()
               }
-            }
-          }
-          val right: @Composable ColumnScope.() -> Unit = {
-            Section("Connections (${sessions.size})")
-            if (sessions.isEmpty()) Txt("No game client seen yet.", size = 13.sp, color = p.muted)
-            sessions.take(20).forEach { (world, c) ->
-              Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Dot(if (c.end == null) p.ok else p.muted, 7.dp)
-                Column(Modifier.weight(1f)) {
-                  Txt(world, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
-                  Txt(
-                    (if (c.implicit) "seen playing " else "") + Platform.clock(c.start) +
-                      (c.end?.let { " – ${Platform.clock(it)}" } ?: " – now"),
-                    size = 12.sp, color = p.muted,
-                  )
-                }
-                Txt(duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+              Spacer(Modifier.height(10.dp))
+              Section("Recent activity")
+              if (activity.isEmpty()) Txt("Nothing yet.", size = 13.sp, color = p.muted)
+              Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                activity.forEach { FeedRow(it) }
               }
-              Divider()
             }
-            Spacer(Modifier.height(10.dp))
-            Section("Recent activity")
-            if (activity.isEmpty()) Txt("Nothing yet.", size = 13.sp, color = p.muted)
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
-              activity.forEach { FeedRow(it) }
+            if (twoColumns) {
+              Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f), content = left)
+                Column(Modifier.weight(1f), content = right)
+              }
+            } else {
+              Column(content = left)
+              Column(content = right)
             }
-          }
-          if (twoColumns) {
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-              Column(Modifier.weight(1f), content = left)
-              Column(Modifier.weight(1f), content = right)
-            }
-          } else {
-            Column(content = left)
-            Column(content = right)
           }
         }
       }

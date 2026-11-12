@@ -1,5 +1,12 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -33,8 +40,8 @@ import net.eratiem.randogeddon.shared.ReleaseInfo
 import net.eratiem.randogeddon.shared.UploadedYaml
 
 private const val APWORLDS_TIP = "The games each Archipelago release of the gateway can generate and serve: the " +
-  "bundled ones, plus apworlds. Apworlds uploaded here are kept per release; ones put into the server's " +
-  "custom_worlds/ count for every release. An apworld uploaded for another release can be tried with this one, " +
+  "bundled ones, plus APWorlds. APWorlds uploaded here are kept per release; ones put into the server's " +
+  "custom_worlds/ count for every release. An APWorld uploaded for another release can be tried with this one, " +
   "it may or may not work."
 
 /**
@@ -101,7 +108,7 @@ fun ApworldsSection() {
   }
 
   val current = info
-  Section("apworlds", subtitle = "the games of each Archipelago release", actions = { InfoTip(APWORLDS_TIP) }) {
+  Section("APWorlds", subtitle = "the games of each Archipelago release", actions = { InfoTip(APWORLDS_TIP) }) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       busy?.let { Txt("$it Archipelago lists its games again; that takes a moment.", size = 12.5.sp, color = p.muted) }
@@ -137,43 +144,60 @@ private fun ReleaseBlock(
   onTry: (ApworldFile) -> Unit,
 ) {
   val p = LocalPalette.current
-  var showGames by remember { mutableStateOf(false) }
   var filter by remember { mutableStateOf("") }
+  // The supported games shown: true bundled, false from an apworld, null all
+  var source by remember { mutableStateOf<Boolean?>(null) }
+  // The file whose removal waits for a second click
+  var removing by remember { mutableStateOf<ApworldFile?>(null) }
   val own = files.filter { it.release == release.version }
   // Uploaded for another release and not in this one's library yet
   val others = files.filter { f -> f.release != release.version && f.source == GameSource.UPLOADED && own.none { it.file == f.file } }
     .distinctBy { it.file }
 
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-    Txt("Archipelago ${release.version}", size = 14.sp, weight = FontWeight.SemiBold)
-    Txt("${release.games.size} games", size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
-    if (enabled) SmallButton("Upload apworld…", onUpload)
+    Txt("Archipelago ${release.version}", size = 14.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    if (enabled) SmallButton("Upload APWorld…", onUpload)
   }
   release.error?.let { Txt(it, size = 12.5.sp, color = p.trap) }
 
-  own.forEach { file ->
-    val games = release.games.filter { it.apworld == file.file }.map { it.game }
+  // The library: one bubble per file with the games it brings; uploaded ones can be removed (asked once more)
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    SubHeading("Uploaded APWorlds")
+    InfoTip(
+      "Each file with the games it brings.",
+      options = listOf(
+        "gold" to "Loaded with this release.",
+        "orange" to "Uploaded for another release and tried here: untested.",
+        "red" to "No game loaded from it (see below why).",
+        "grey" to "Put into the server's custom_worlds/ by hand; it can't be removed here.",
+      ),
+    )
+  }
+  if (own.isEmpty()) Txt("None yet: upload one for a game that isn't bundled.", size = 12.5.sp, color = p.muted)
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    own.forEach { file ->
+      val games = release.games.filter { it.apworld == file.file }.map { it.game }
+      ApworldChip(
+        file, games,
+        onRemove = if (enabled && file.source == GameSource.UPLOADED) ({ removing = file }) else null,
+      )
+    }
+  }
+  removing?.takeIf { it.release == release.version }?.let { file ->
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Column(Modifier.weight(1f)) {
-        Txt(file.file, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
-        val origin = when {
-          file.source == GameSource.MANUAL -> "in the server's custom_worlds/"
-          file.from != null -> "from Archipelago ${file.from}, untested here"
-          else -> "uploaded"
-        }
-        Txt(
-          listOf(games.joinToString(", ").ifEmpty { "no game loaded" }, origin, size(file.size)).joinToString(" · "),
-          size = 11.5.sp, color = if (games.isEmpty()) p.trap else p.muted, maxLines = 2,
-        )
-      }
-      if (enabled && file.source == GameSource.UPLOADED) SmallButton("Remove", { onRemove(file) })
+      Txt(
+        "Remove ${file.file}? Its games can't be used for new sessions of Archipelago ${release.version} then.",
+        size = 13.sp, modifier = Modifier.weight(1f),
+      )
+      Button("Yes, remove", danger = true) { removing = null; onRemove(file) }
+      Button("Cancel") { removing = null }
     }
   }
   release.failed.forEach { failed ->
     Txt("Didn't load: ${failed.name}: ${failed.reason}", size = 12.sp, color = p.trap, maxLines = 4)
   }
   if (others.isNotEmpty()) {
-    Txt("From other releases", size = 12.5.sp, color = p.muted)
+    SubHeading("From other releases")
     others.forEach { file ->
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Txt("${file.file} (Archipelago ${file.release})", size = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
@@ -182,19 +206,72 @@ private fun ReleaseBlock(
     }
   }
 
+  // Everything the release can generate; the games of apworlds in their own colour
   if (release.games.isNotEmpty()) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      SmallButton(if (showGames) "Hide the games" else "Show the games", { showGames = !showGames })
-      if (showGames) FilterField(filter, { filter = it }, "Search…", Modifier.width(180.dp))
+      SubHeading("Supported games (${release.games.size})", Modifier.weight(1f))
+      FilterField(filter, { filter = it }, "Search…", Modifier.width(180.dp))
     }
-    if (showGames) {
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        release.games.filter { filter.isBlank() || it.game.contains(filter.trim(), ignoreCase = true) }.forEach { game ->
-          Pill(game.game, if (game.source == GameSource.BUNDLED) p.muted else p.accent)
-        }
+    // Click to show only those; again to show all
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      SourceFilter("bundled", p.muted, source == true) { source = if (source == true) null else true }
+      SourceFilter("from an APWorld", p.key, source == false) { source = if (source == false) null else false }
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      release.games.filter { filter.isBlank() || it.game.contains(filter.trim(), ignoreCase = true) }
+        .filter { source == null || (it.source == GameSource.BUNDLED) == source }
+        .forEach { game ->
+        Pill(game.game, if (game.source == GameSource.BUNDLED) p.muted else p.key)
       }
     }
   }
+}
+
+/** One of the supported games' sources as a toggle: [selected] shows only its games. */
+@Composable
+private fun SourceFilter(text: String, color: Color, selected: Boolean, onClick: () -> Unit) {
+  Txt(
+    text, size = 11.5.sp, weight = FontWeight.SemiBold, maxLines = 1,
+    color = if (selected) Color.White else color,
+    modifier = Modifier.clip(CircleShape).background(if (selected) color else color.copy(alpha = 0.15f))
+      .hand().clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 3.dp),
+  )
+}
+
+/** An apworld file as a bubble: its name and games, coloured by where it comes from; [onRemove]: its ×. */
+@Composable
+private fun ApworldChip(file: ApworldFile, games: List<String>, onRemove: (() -> Unit)?) {
+  val p = LocalPalette.current
+  val color = when {
+    games.isEmpty() -> p.trap
+    file.source == GameSource.MANUAL -> p.muted
+    file.from != null -> p.warn
+    else -> p.key
+  }
+  Row(
+    Modifier.clip(CircleShape).background(color.copy(alpha = 0.15f))
+      .padding(start = 10.dp, end = if (onRemove != null) 4.dp else 10.dp, top = 3.dp, bottom = 3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Txt(file.file, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
+    val details = listOfNotNull(
+      games.joinToString(", ").ifEmpty { "no game" },
+      file.from?.let { "from $it" },
+      size(file.size),
+    )
+    Txt(details.joinToString(" · "), size = 11.5.sp, color = color.copy(alpha = 0.8f), maxLines = 1)
+    if (onRemove != null) {
+      Box(Modifier.size(18.dp).clip(CircleShape).hand().clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+        DrawnIcon(Icon.CLOSE, color, 10.dp)
+      }
+    }
+  }
+}
+
+@Composable
+private fun SubHeading(text: String, modifier: Modifier = Modifier) {
+  Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = modifier.padding(top = 4.dp))
 }
 
 private fun size(bytes: Long): String = when {
