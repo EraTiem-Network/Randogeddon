@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Runs the demo session locally, to look at the dashboard:
-#   ./scripts/demo.sh        generate demo/players, deploy it locally, start the stack and the simulated players
-#   ./scripts/demo.sh loop   the same over and over: when every slot is done (100 %), the session finishes 2 minutes
-#                            later by itself; 2 minutes after that a new round starts (the finished one stays a past session)
+# Runs two demo sessions at once locally, to look at the dashboard:
+#   ./scripts/demo.sh        start the stack, create the sessions of demo/a and demo/b through the admin API, start
+#                            the simulated players of both
+#   ./scripts/demo.sh loop   the same over and over: when every slot of a session is done (100 %), it finishes 2 minutes
+#                            later by itself; once both are, a new round starts after a pause (with new session IDs;
+#                            the round before stays as finished sessions, older demo rounds are deleted; a new start
+#                            deletes every earlier demo session)
 #   ./scripts/demo.sh stop   stop the simulated players (the stack keeps running; `docker compose down` stops it)
 #
-# The demo replaces the seed in data/ (the previous one is moved to data/old/). Dashboard: http://localhost:8000
-# The simulated players connect through the gateway with their slot passwords, like real ones, and finish in about
-# DEMO_MINUTES (default 15). The logins of Alice, Bob and Carol are printed once, when they are created; new rounds keep
-# them (a new password: randogeddon logins --reset <name>). Alice is an admin (the admin panel in the header).
+# Dashboard: http://localhost:8000. The simulated players connect through the gateway with their slot passwords, like
+# real ones (ws://gateway:38281/<session>), and finish in about DEMO_MINUTES (default 15). Alice is the demo's admin:
+# her password is printed once, when her login is made, and kept in output/demo/admin.password for the next runs. The
+# other logins (Bob, Carol, Dave, Erin) are printed once, when the first session with them is created.
 #
 # For the loop, keep it running in the background:  nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &
 set -euo pipefail
@@ -21,72 +24,100 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]] && ! grep -qs '^POSTGRES_PASSWORD=.' .env; 
 if [[ -z "${INTERNAL_TOKEN:-}" ]] && ! grep -qs '^INTERNAL_TOKEN=.' .env; then export INTERNAL_TOKEN=demo-internal; fi
 AP_VERSION="${AP_VERSION:-0.6.8}"
 SIM=randogeddon-demo-sim
+GROUPS_=(a b)
 PAUSE=240 # seconds between the end of a round (100 %) and the next one: it finishes after 120, then shows that
-docker rm -f "$SIM" >/dev/null 2>&1 || true
+ADMIN=Alice
+PASSWORD_FILE=output/demo/admin.password
+for group in "${GROUPS_[@]}"; do docker rm -f "$SIM-$group" >/dev/null 2>&1 || true; done
 [[ "${1:-}" == "stop" ]] && { echo "Simulated players stopped."; exit 0; }
+mkdir -p output/demo
 
-# The gateway image has Archipelago (for generation and the simulated players) and runs the game server
+# The gateway image has Archipelago (and Python, for the simulated players and the admin calls)
 image="randogeddon-gateway:$AP_VERSION"
-# The native tracker and gateway (minutes the first time, then cached); deploy-seed.sh below builds quietly
+# The native tracker and gateway (minutes the first time, then cached)
 docker compose build tracker gateway
+docker compose up -d
+echo "Waiting for the tracker…"
+for _ in $(seq 1 90); do
+  curl -sf http://localhost:8000/healthz >/dev/null 2>&1 && break
+  sleep 2
+done
 
-# A new seed. About one in three random seeds of the demo can't be generated ("Game appears as unbeatable"): retry.
-generate() {
-  # World Locks is part of the gateway image; an old packed copy here would be loaded twice
-  rm -f custom_worlds/world_locks.apworld
-  mkdir -p output/demo
-  for attempt in 1 2 3 4 5; do
-    rm -f output/demo/AP_*.zip
-    if docker run --rm --user 0 --entrypoint ap-generate -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-      -v "$PWD/demo/players:/players:ro" -v "$PWD/output/demo:/output" \
-      -v "$PWD/custom_worlds:/opt/archipelago/$AP_VERSION/custom_worlds:ro" \
-      "$image" --spoiler 2 >/dev/null 2>&1 && ls output/demo/AP_*.zip >/dev/null 2>&1; then
-      ls -t output/demo/AP_*.zip | head -n1
-      return 0
-    fi
-    echo "Generation failed (attempt $attempt), trying another seed…" >&2
-  done
-  echo "No seed after 5 attempts." >&2
-  return 1
+# Alice's login as an admin: made once; if she exists already (an earlier demo) without a kept password, a new one
+admin_password() {
+  [[ -s "$PASSWORD_FILE" ]] && return 0
+  local out
+  if ! out="$(docker compose exec -T tracker randogeddon admins --create "$ADMIN" 2>/dev/null)"; then
+    out="$(docker compose exec -T tracker randogeddon logins --reset "$ADMIN")"
+    docker compose exec -T tracker randogeddon admins --grant "$ADMIN" >/dev/null
+  fi
+  echo "$out" | awk -v name="$ADMIN" '$1 == name { print $2; exit }' > "$PASSWORD_FILE"
+  chmod 600 "$PASSWORD_FILE"
+  echo "Admin login: $ADMIN / $(cat "$PASSWORD_FILE")"
 }
 
-# One round: a new seed deployed, the slot passwords read, the simulated players started
-round() {
-  local seed
-  seed="$(generate)"
-  echo "Seed: $seed"
-  SESSION_FILE=demo/session.yaml ./scripts/deploy-seed.sh "$seed" >/dev/null
-  echo "Waiting for the server…"
+# The demo's admin calls (demo/admin.py), in the compose network
+admin() {
+  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" \
+    -e DEMO_ADMIN="$ADMIN" -e DEMO_PASSWORD="$(cat "$PASSWORD_FILE")" --entrypoint python "$image" /demo/admin.py "$@"
+}
+
+admin_password
+# A kept password that no longer works (the database was reset): a new one
+if ! admin check >/dev/null 2>&1; then
+  rm -f "$PASSWORD_FILE"
+  admin_password
+fi
+
+# A new session of a group (admin.py tries another seed when one can't be generated)
+create() {
+  admin create "$1" "$2" || { echo "No session $1." >&2; return 1; }
+}
+
+# The simulated players of session $1 (group $2), with its slot passwords
+simulate() {
+  local id="$1" group="$2" finisher
+  # The gateway writes room.json when the game server starts; the slot passwords follow
+  rm -f "output/demo/$id.json"
   for _ in $(seq 1 60); do
-    docker compose logs gateway --since 2m 2>&1 | grep -q "server listening" && break
+    docker compose exec -T tracker randogeddon slots --json "$id" > "output/demo/$id.json" 2>/dev/null \
+      && grep -q '"Locks"' "output/demo/$id.json" && break
     sleep 2
   done
-  # The tracker creates the slot passwords as soon as it sees the new seed
-  rm -f output/demo/slots.json
-  for _ in $(seq 1 30); do
-    docker compose exec -T tracker randogeddon slots --json > output/demo/slots.json 2>/dev/null \
-      && grep -q '"Alice-HK"' output/demo/slots.json && break
-    sleep 2
+  finisher="$(sed -n 's/.*"finisher": *"\([^"]*\)".*/\1/p' "demo/$group/session.json")"
+  docker rm -f "$SIM-$group" >/dev/null 2>&1 || true
+  docker run -d --name "$SIM-$group" --network randogeddon_default -e DEMO_MINUTES="${DEMO_MINUTES:-15}" \
+    -e DEMO_FINISHER="$finisher" -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/slots:ro" \
+    --entrypoint python "$image" /demo/simulate.py "ws://gateway:38281/$id" "/slots/$id.json" >/dev/null
+}
+
+# One round: the older demo rounds deleted (the round before stays, as finished sessions; on the first round every
+# earlier demo session goes, also one left running), a new session per group, the simulated players started
+previous=()
+round() {
+  local stamp ids=()
+  admin prune "${previous[@]}" || true
+  stamp="$(date +%m%d-%H%M)"
+  for group in "${GROUPS_[@]}"; do
+    create "demo-$group-$stamp" "$group" || return 1
+    ids+=("demo-$group-$stamp")
   done
-  docker rm -f "$SIM" >/dev/null 2>&1 || true
-  docker run -d --name "$SIM" --network randogeddon_default -e DEMO_MINUTES="${DEMO_MINUTES:-15}" \
-    -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/slots:ro" \
-    --entrypoint python "$image" /demo/simulate.py ws://gateway:38281 /slots/slots.json >/dev/null
+  for i in "${!GROUPS_[@]}"; do simulate "${ids[$i]}" "${GROUPS_[$i]}"; done
+  previous=("${ids[@]}")
 }
 
 round
 echo
-docker compose exec -T tracker randogeddon logins || true
-# Alice sees the admin panel
-docker compose exec -T tracker randogeddon admins --grant Alice >/dev/null || true
-echo
-echo "Demo running: http://localhost:8000  (stop the players with ./scripts/demo.sh stop)"
+echo "Demo running: http://localhost:8000 as $ADMIN (password in $PASSWORD_FILE); stop the players with ./scripts/demo.sh stop"
 
 if [[ "${1:-}" == "loop" ]]; then
   while true; do
-    # The simulator exits when every slot is done (or when it crashes; then the next round starts all the same)
-    code="$(docker wait "$SIM" 2>/dev/null || echo 1)"
-    echo "$(date '+%F %T') Round over (simulator exit $code); next one in $((PAUSE / 60)) minutes"
+    # A simulator exits when every slot of its session is done (or when it crashes; the round goes on all the same)
+    for group in "${GROUPS_[@]}"; do
+      code="$(docker wait "$SIM-$group" 2>/dev/null || echo 1)"
+      echo "$(date '+%F %T') Session of group $group over (simulator exit $code)"
+    done
+    echo "$(date '+%F %T') Round over; next one in $((PAUSE / 60)) minutes"
     sleep "$PAUSE"
     round || { echo "$(date '+%F %T') Round failed; trying again in a minute"; sleep 60; }
   done

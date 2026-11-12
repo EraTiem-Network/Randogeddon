@@ -1,0 +1,13 @@
+{
+  "_comment": "Who plays which slot of group a (scripts/demo.sh): not everyone plays the same number, Bob and Carol play Risk of Rain 2 together. Three slots start locked; the simulated Team-RoR2 finishes early.",
+  "worlds": [
+    {"name": "Alice-HK", "users": ["Alice"]},
+    {"name": "Alice-Celeste", "users": ["Alice"], "locked": true},
+    {"name": "Alice-DLC", "users": ["Alice"], "locked": true},
+    {"name": "Bob-Timespinner", "users": ["Bob"]},
+    {"name": "Bob-Yacht", "users": ["Bob"], "locked": true},
+    {"name": "Team-RoR2", "users": ["Bob", "Carol"]}
+  ],
+  "options": {"pointHints": true, "autoHints": true, "earlyKeys": true, "cheatHints": true},
+  "finisher": "Team-RoR2"
+}
