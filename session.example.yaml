@@ -1,5 +1,0 @@
-# Copy to session.yaml: who plays which worlds; the names are the `name:` of the player YAMLs
-people:
-  Alice: [Alice-HK, Alice-Celeste]
-  Bob: [Bob-Timespinner, Bob-Yacht]
-  Carol: [Carol-RoR2, Carol-DLC]

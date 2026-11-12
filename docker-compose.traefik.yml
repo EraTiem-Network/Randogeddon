@@ -5,6 +5,9 @@ services:
   # MultiServer itself stays inside: game clients come in through the gateway
   gateway:
     networks: [default, traefik]
+    environment:
+      # Game clients connect to <session-id>.<BASE_DOMAIN>
+      BASE_DOMAIN: ${BASE_DOMAIN:-randogeddon.eratiem.net}
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
@@ -17,8 +20,8 @@ services:
   tracker:
     networks: [default, traefik]
     environment:
-      # Shown to logged-in players with their slot passwords
-      AP_PUBLIC_ADDRESS: ${SESSION_ID}.${BASE_DOMAIN:-randogeddon.eratiem.net}:443
+      # Shown to a session's players with their slot passwords ({id}: the session)
+      PUBLIC_ADDRESS: "{id}.${BASE_DOMAIN:-randogeddon.eratiem.net}:443"
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
