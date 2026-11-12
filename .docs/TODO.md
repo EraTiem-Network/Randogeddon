@@ -176,7 +176,41 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.
 
-## Phase 6: More Themes
+## Phase 6: Support and Watcher Accounts
+
+*People who don't play can follow a session, or help in it.*
+
+- [ ] Watchers: an account that follows a session without a slot
+    - Added to a session like a player, but plays no slot; it sees the session's dashboard, live feed and hints like
+      its players do, and finds the session under its past sessions later.
+    - No slot password, no *Your connection*, and it doesn't count for the session's people or progress.
+    - The spoiler log only once the session is finished, as for players.
+    - Open: whether a session can be shared with anyone who has the link (read-only, no login), e.g. for a stream.
+- [ ] Support accounts: help the players of a session without being an admin
+    - What they may do is decided in this phase. Candidates: see the spoiler log of a running session, give free
+      hints, look up where an item is for a player who is stuck; every action logged with their name and shown in
+      the live feed, like an admin's cheats.
+    - No access to the admin panel's sessions, APWorlds, logins or the game server.
+    - Open: whether support is a role of the account (every session) or given per session.
+- [ ] The admin panel shows who watches or supports a session, and adds or removes them while it runs
+
+## Phase 7: Multi-Language
+
+*Everyone reads the app in their language.*
+
+- [ ] Every text of the web app comes from one place per language instead of the code
+    - English stays the default and the fallback for a text a language doesn't have yet.
+    - The first other language: German. Open: which ones follow.
+- [ ] A language applies to every page: dashboard, person and world views, admin panel, settings, login
+    - Dates, times and numbers are formatted for the language (e.g. `12.11.2026`, `1.234`).
+    - Names from Archipelago (games, items, locations, slots) stay as they are; they come from the games.
+    - Messages from the server (errors, refusals, feed lines it builds) are translated too, so the server sends what
+      happened and the web app words it.
+- [ ] The language is a user setting, stored with the account (settings page from Phase 5)
+    - Before login the user isn't known: the login page follows the browser's language, or the language last used in
+      this browser.
+
+## Phase 8: More Themes
 
 *Everyone picks how the dashboard looks for them.*
 

@@ -24,6 +24,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   *Mixed* locks: a three-way switch per slot (open, left to chance, locked); a slider sets how many slots start open,
   as it does for *Random* locks.
 - Past sessions in the admin panel no longer list their players in the line: a click opens an overview with them.
+- Cheats offer only slots with locations left to check, and their pickers drop a location once it is checked. With
+  every check done (100 %) there is nothing to cheat, as without a session. The dashboard says "checks" where it
+  said "locations".
 - Dropdowns: a search field when they have more than 10 entries (not focused by itself on a phone, where its keyboard
   would cover the list); tapping a dropdown or an ⓘ again closes it. Tips on buttons show on a long press on a phone.
 - Phones: the top card (one line per detail), the past sessions and the spoiler log stack their parts. The full
