@@ -33,6 +33,7 @@ import kotlin.io.path.fileSize
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
+import kotlin.io.path.readBytes
 import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
@@ -132,18 +133,33 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   }
 
   /** Stores the file in the release's library, lists the release again and tells what the file brought. */
+  /**
+   * Stores [name] with [store] and lists the release's games again. A file that brings no game (it doesn't load, or
+   * the release can't list its games with it) is refused: what was there before is put back, and the answer says why.
+   */
   private suspend fun change(release: String, name: String, store: (Path) -> Unit): ApworldResult = mutex.withLock {
     withContext(Dispatchers.IO) {
-      store(library.resolve(release).createDirectories())
+      val dir = library.resolve(release).createDirectories()
+      val file = dir.resolve(name)
+      val marker = dir.resolve("$name.from")
+      val before = file.takeIf { it.exists() }?.readBytes()
+      val beforeFrom = marker.takeIf { it.exists() }?.readText()
+      store(dir)
       listed.remove(release)
       val info = list(release).also { listed[release] = it }
-      logger.info("Added {} to the library of Archipelago {}", name, release)
       val games = info.games.filter { it.apworld == name }.map { it.game }
       val failed = info.failed.firstOrNull { it.name == name.removeSuffix(".apworld") || name in it.reason }
-      ApworldResult(
-        name, games,
-        error = failed?.reason ?: info.error ?: if (games.isEmpty()) "No game loaded from it" else null,
-      )
+      val error = failed?.reason ?: info.error ?: if (games.isEmpty()) "No game loaded from it" else null
+      if (error == null) {
+        logger.info("Added {} to the library of Archipelago {}", name, release)
+        return@withContext ApworldResult(name, games)
+      }
+      if (before != null) file.writeBytes(before) else file.deleteIfExists()
+      if (beforeFrom != null) marker.writeText(beforeFrom) else marker.deleteIfExists()
+      listed.remove(release)
+      listed[release] = list(release)
+      logger.warn("Refused {} for Archipelago {}: {}", name, release, error)
+      ApworldResult(name, error = error)
     }
   }
 
