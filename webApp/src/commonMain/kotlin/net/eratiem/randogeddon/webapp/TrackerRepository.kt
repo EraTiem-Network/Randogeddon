@@ -42,11 +42,11 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   private val _me = MutableStateFlow<Me?>(null)
   val me: StateFlow<Me?> = _me.asStateFlow()
 
-  /** The sessions the user sees (all for admins), the newest first. */
-  private val _sessions = MutableStateFlow<List<SessionEntry>>(emptyList())
-  val sessions: StateFlow<List<SessionEntry>> = _sessions.asStateFlow()
+  /** The sessions the user sees (all for admins), the newest first; `null` until loaded. */
+  private val _sessions = MutableStateFlow<List<SessionEntry>?>(null)
+  val sessions: StateFlow<List<SessionEntry>?> = _sessions.asStateFlow()
 
-  /** The session the dashboard shows; `null` while there is none to show. */
+  /** The session the dashboard shows (the page's route picks it); `null` while there is none to show. */
   private val _selected = MutableStateFlow<String?>(null)
   val selected: StateFlow<String?> = _selected.asStateFlow()
 
@@ -74,20 +74,20 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     stop()
     _summary.value = null
     _me.value = null
-    _sessions.value = emptyList()
+    _sessions.value = null
     _selected.value = null
     _connection.value = null
     Platform.showLogin(null, ::checkLogin)
   }
 
-  /** Shows session [id] instead. */
-  fun select(id: String) {
+  /** Shows session [id] instead; `null`: none. */
+  fun select(id: String?) {
     if (id == _selected.value) return
     closeStream()
     _summary.value = null
     _connection.value = null
     _selected.value = id
-    openStream(id)
+    if (id != null) openStream(id)
   }
 
   override suspend fun player(slot: Int): PlayerDetail? {
@@ -99,24 +99,15 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
 
-  /** The sessions again (one was created, finished or deleted); keeps the selected one if it is still there. */
+  /** The sessions again (one was created, finished or deleted); one that is gone stops being shown. */
   suspend fun refreshSessions() {
     val list = Platform.request("GET", "api/sessions")?.takeIf { it.status == 200 }
       ?.let { runCatching { ApiJson.decodeFromString(ListSerializer(SessionEntry.serializer()), it.body) }.getOrNull() }
       ?: return
     _sessions.value = list
     val current = _selected.value
-    if (current == null || list.none { it.id == current }) pick(list)?.let(::select) ?: run {
-      closeStream()
-      _selected.value = null
-      _summary.value = null
-    }
+    if (current != null && list.none { it.id == current }) select(null)
   }
-
-  /** The one to show first: a running session the user plays in, else any running one, else the newest. */
-  private fun pick(list: List<SessionEntry>): String? = (
-    list.firstOrNull { it.mySlots.isNotEmpty() && it.status.running } ?: list.firstOrNull { it.status.running } ?: list.firstOrNull()
-  )?.id
 
   /** Asks the server who is logged in: loads the sessions, or shows the login form. Retries while unreachable. */
   private fun checkLogin() {

@@ -52,6 +52,15 @@ expect object Platform {
   /** The main pointer is a finger (a phone or tablet), not a mouse. */
   fun touchScreen(): Boolean
 
+  /** The URL's hash, e.g. `#/admin`; empty without one. */
+  fun hash(): String
+
+  /** Goes to [hash]: a new history entry (back returns), or in place of the current one with [replace]. */
+  fun setHash(hash: String, replace: Boolean)
+
+  /** Calls [onChange] with the new hash whenever it changes (back, forward, a link); returns a function that stops it. */
+  fun onHashChange(onChange: (String) -> Unit): () -> Unit
+
   /** Per-viewer settings; missing (or blocked storage) is `null`. */
   fun loadSetting(key: String): String?
   fun saveSetting(key: String, value: String?)

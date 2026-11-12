@@ -625,6 +625,8 @@ fun <T> SearchableSelect(
   /** E.g. as tall as the buttons next to it. */
   minHeight: Dp = 0.dp,
   heading: TextUnit? = null,
+  /** The label's colour with [heading] (e.g. white on the gradient); the text's otherwise. */
+  headingColor: Color? = null,
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
@@ -641,9 +643,10 @@ fun <T> SearchableSelect(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
+        val color = headingColor ?: p.text
         Txt(current?.second ?: placeholder, size = heading, weight = FontWeight.Bold, maxLines = 1,
-          color = if (current == null) p.muted else p.text, modifier = Modifier.weight(1f, fill = false))
-        DrawnIcon(Icon.CHEVRON, p.muted, 16.dp)
+          color = if (current == null) color.copy(alpha = 0.7f) else color, modifier = Modifier.weight(1f, fill = false))
+        DrawnIcon(Icon.CHEVRON, headingColor?.copy(alpha = 0.85f) ?: p.muted, 16.dp)
       }
     } else Row(
       Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)

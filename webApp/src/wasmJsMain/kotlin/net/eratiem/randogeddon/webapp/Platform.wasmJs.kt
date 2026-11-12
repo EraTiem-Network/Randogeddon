@@ -45,6 +45,15 @@ actual object Platform {
 
   actual fun touchScreen(): Boolean = jsTouchScreen()
 
+  actual fun hash(): String = jsHash()
+
+  actual fun setHash(hash: String, replace: Boolean) = jsSetHash(hash, replace)
+
+  actual fun onHashChange(onChange: (String) -> Unit): () -> Unit {
+    val listener = jsOnHashChange(onChange)
+    return { jsOffHashChange(listener) }
+  }
+
   actual fun loadSetting(key: String): String? = jsLoadSetting(key)
 
   actual fun saveSetting(key: String, value: String?) = jsSaveSetting(key, value)
@@ -124,3 +133,17 @@ private fun jsLoadSetting(key: String): String? =
 private fun jsSaveSetting(key: String, value: String?): Unit = js(
   """{ try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch (e) {} }"""
 )
+
+private fun jsHash(): String = js("window.location.hash")
+
+// replaceState: no new history entry (and no hashchange event; the caller has the route already)
+private fun jsSetHash(hash: String, replace: Boolean): Unit =
+  js("{ if (replace) history.replaceState(null, '', hash); else if (window.location.hash !== hash) window.location.hash = hash; }")
+
+private fun jsOnHashChange(onChange: (String) -> Unit): JsAny = js(
+  """{ const listener = () => onChange(window.location.hash);
+       window.addEventListener('hashchange', listener);
+       return listener; }"""
+)
+
+private fun jsOffHashChange(listener: JsAny): Unit = js("window.removeEventListener('hashchange', listener)")

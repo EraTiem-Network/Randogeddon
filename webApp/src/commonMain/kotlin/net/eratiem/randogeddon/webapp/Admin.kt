@@ -148,13 +148,20 @@ class AdminCache(private val scope: CoroutineScope) {
 }
 
 /**
- * The admin panel. On top, one page at a time, picked in the switch: a session ([initial]: the dashboard's, at first)
- * with its summary and actions, players, cheats, its game server (state, start/stop/restart), log and console; or a
- * new session. Below a line, what concerns every session: the finished ones (each with its actions, a click shows its
+ * The admin panel. In a frame on top, one page at a time, picked in the switch ([picked], from the URL; [onPage] goes
+ * to another): a running session with its state and control (its game server too), players, cheats, console and log;
+ * or a new session. Below it, what concerns every session: the finished ones (each with its actions, a click shows its
  * overview), the APWorlds.
  */
 @Composable
-fun AdminView(now: Long, initial: String?, onBack: () -> Unit, onSpoiler: (String) -> Unit) {
+fun AdminView(
+  now: Long,
+  picked: String?,
+  onPage: (String) -> Unit,
+  onBack: () -> Unit,
+  onSpoiler: (String) -> Unit,
+  onDashboard: (String) -> Unit,
+) {
   val scope = rememberCoroutineScope()
   val cache = remember { AdminCache(scope) }
   var overview by remember { mutableStateOf<AdminOverview?>(null) }
@@ -176,7 +183,6 @@ fun AdminView(now: Long, initial: String?, onBack: () -> Unit, onSpoiler: (Strin
       delay(15_000)
     }
   }
-  var picked by remember { mutableStateOf(initial) }
   val all = overview?.sessions.orEmpty()
   // A deleted (or finished) session's page goes to the newest running one (or to a new session, with none running)
   val page = when {
@@ -200,11 +206,13 @@ fun AdminView(now: Long, initial: String?, onBack: () -> Unit, onSpoiler: (Strin
         .border(1.dp, p.accent.copy(alpha = 0.3f), frame).padding(14.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      AdminSwitch(overview, page, onPage = { picked = it })
+      AdminSwitch(overview, page, onPage = onPage)
       when (page) {
         null -> {}
-        NEW_PAGE -> NewSessionSection(overview, onCreated = { picked = it.id; load() })
-        else -> key(page) { SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler) }
+        NEW_PAGE -> NewSessionSection(overview, onCreated = { onPage(it.id); load() })
+        else -> key(page) {
+          SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
+        }
       }
     }
     // What concerns every session
@@ -223,6 +231,7 @@ private fun SelectedSession(
   now: Long,
   onChanged: () -> Unit,
   onSpoiler: (String) -> Unit,
+  onDashboard: (String) -> Unit,
 ) {
   val scope = rememberCoroutineScope()
   val repository = remember(id) { cache.repository(id) }
@@ -242,7 +251,7 @@ private fun SelectedSession(
   // Until the stream's first state: the one of the sessions' list
   val server = state ?: overview?.sessions?.firstOrNull { it.id == id }?.server
   SessionSection(
-    id, overview, cache, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler,
+    id, overview, cache, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
   CheatSection(id, server, cache)
