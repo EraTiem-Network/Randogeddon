@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -115,38 +116,40 @@ fun CheatSection(server: GameServerState?) {
           val actions = CheatAction.entries.filter { current.cheatHints || it !in HINTS }
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
-          // One line: what, for which slot, which item or location, and the button; all as tall as the button
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          val choices = when (action) {
+            in WITH_ITEM -> names?.items
+            in WITH_LOCATION -> names?.locations
+            else -> null
+          }
+          val what: @Composable (Modifier) -> Unit = { modifier ->
             Tip(CHEAT_TIPS.getValue(action)) {
               SearchableSelect(
                 actions.map { Triple(it, CHEAT_LABELS.getValue(it), "") }, action, { action = it; value = null },
-                Modifier.width(170.dp), chip = false, minHeight = CONTROL_HEIGHT,
+                modifier, chip = false, minHeight = CONTROL_HEIGHT,
               )
             }
+          }
+          val forSlot: @Composable (Modifier) -> Unit = { modifier ->
             SearchableSelect(
               current.slots.map { Triple<String?, String, String>(it, it, "") }, slot, { slot = it },
-              Modifier.width(200.dp), chip = false, placeholder = "Slot…", minHeight = CONTROL_HEIGHT,
+              modifier, chip = false, placeholder = "Slot…", minHeight = CONTROL_HEIGHT,
             )
-            val choices = when (action) {
-              in WITH_ITEM -> names?.items
-              in WITH_LOCATION -> names?.locations
-              else -> null
-            }
-            if (action in WITH_ITEM || action in WITH_LOCATION) {
-              SearchableSelect(
-                choices.orEmpty().map { Triple<String?, String, String>(it, it, "") }, value, { value = it },
-                Modifier.weight(1f), chip = false, minHeight = CONTROL_HEIGHT,
-                placeholder = when {
-                  slot == null -> "Pick a slot first"
-                  choices == null -> "…"
-                  choices.isEmpty() -> if (action in WITH_ITEM) "No items" else "No open locations"
-                  action in WITH_ITEM -> "Item…"
-                  else -> "Location…"
-                },
-              )
-            } else {
-              Spacer(Modifier.weight(1f))
-            }
+          }
+          val needsValue = action in WITH_ITEM || action in WITH_LOCATION
+          val which: @Composable (Modifier) -> Unit = { modifier ->
+            SearchableSelect(
+              choices.orEmpty().map { Triple<String?, String, String>(it, it, "") }, value, { value = it },
+              modifier, chip = false, minHeight = CONTROL_HEIGHT,
+              placeholder = when {
+                slot == null -> "Pick a slot first"
+                choices == null -> "…"
+                choices.isEmpty() -> if (action in WITH_ITEM) "No items" else "No open locations"
+                action in WITH_ITEM -> "Item…"
+                else -> "Location…"
+              },
+            )
+          }
+          val send: @Composable () -> Unit = {
             Button(if (busy) "Sending…" else "Cheat", enabled = ready, danger = true) {
               busy = true
               outcome = null
@@ -158,6 +161,25 @@ fun CheatSection(server: GameServerState?) {
                 }
                 busy = false
                 load()
+              }
+            }
+          }
+          BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < NARROW) {
+              // A phone: what, the slot, the item or location one below the other, each as wide as the card
+              Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                what(Modifier.fillMaxWidth())
+                forSlot(Modifier.fillMaxWidth())
+                if (needsValue) which(Modifier.fillMaxWidth())
+                send()
+              }
+            } else {
+              // One line: what, for which slot, which item or location, and the button; all as tall as the button
+              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                what(Modifier.width(170.dp))
+                forSlot(Modifier.width(200.dp))
+                if (needsValue) which(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
+                send()
               }
             }
           }
