@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.server.admin
 import net.eratiem.randogeddon.server.session.PlayerYamls
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.Suspect
+import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
 import kotlin.random.Random
 import kotlin.test.Test
@@ -32,6 +33,31 @@ class SessionAdminTest {
     assertFailsWith<SessionProblem> { pickLocked(slots, 0, Random(1)) }
     assertFailsWith<SessionProblem> { pickLocked(slots, 5, Random(1)) }
     assertEquals(4, pickLocked(slots, 1, Random(1)).size)
+    // A single slot can't be locked at all
+    assertFailsWith<SessionProblem> { pickLocked(listOf("Solo"), 1, Random(1)) }
+  }
+
+  @Test
+  fun `mixed locks keep the fixed slots, and pick among the random ones`() {
+    val plans = listOf(
+      WorldPlan("Open"), WorldPlan("Locked", locked = true),
+      WorldPlan("R1", random = true), WorldPlan("R2", random = true), WorldPlan("R3", random = true),
+    )
+    repeat(50) { seed ->
+      val locked = pickMixed(plans, 2, Random(seed))
+      // "Open" and one of the random ones start open
+      assertTrue("Open" !in locked && "Locked" in locked, locked.toString())
+      assertEquals(3, locked.size)
+    }
+    assertEquals(listOf("Locked"), pickMixed(plans, 4, Random(1)))
+    assertEquals(listOf("Locked", "R1", "R2", "R3"), pickMixed(plans, 1, Random(1)))
+    // Fewer than the sure ones, or more than can be open
+    assertFailsWith<SessionProblem> { pickMixed(plans, 0, Random(1)) }
+    assertFailsWith<SessionProblem> { pickMixed(plans, 5, Random(1)) }
+    // Nothing open for sure: still one at least
+    val chance = listOf(WorldPlan("L", locked = true), WorldPlan("R", random = true))
+    assertFailsWith<SessionProblem> { pickMixed(chance, 0, Random(1)) }
+    assertEquals(listOf("L"), pickMixed(chance, 1, Random(1)))
   }
 
   @Test
