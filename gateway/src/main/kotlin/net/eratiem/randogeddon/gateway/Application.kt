@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
@@ -126,6 +127,7 @@ fun main() {
   val archipelago = options?.let { Archipelago(it.apRoot, it.python) }
   // The apworld library: uploads per release in the data directory, plus the hand-placed ones
   val apworlds = options?.let { Apworlds(archipelago!!, it.dataDir.resolve("apworlds"), it.customWorlds) }
+  val finishes = SessionFinishStore(database)
   val gameServer = options?.let {
     val launcher = Launcher(archipelago!!, SessionSetupStore(database), config.roomJson, it.port, it.defaults, it.adminPassword)
     GameServer(
@@ -136,6 +138,10 @@ fun main() {
         // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
         onRunning = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.started(seed) } } },
         onEnded = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.stopped(seed) } } },
+        // A finished session stays stopped, also after a gateway restart, until it is reopened
+        refuse = { seed ->
+          runBlocking { finishes.of(seedNameOf(seed)) }?.finishedAt?.let { "its session is finished (reopen it in the admin panel)" }
+        },
       ),
       background,
     )
@@ -188,7 +194,10 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       if (gameServer != null) port(config.internalPort) {
-        internalApi(config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir, apworlds!!), apworlds)
+        internalApi(
+          config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir, apworlds!!), apworlds,
+          SeedFiles(options.dataDir),
+        )
       }
     }
     monitor.subscribe(ApplicationStopping) {

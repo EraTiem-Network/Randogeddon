@@ -52,7 +52,7 @@ class GameServerTest {
     scope.cancel()
   }
 
-  private fun server(prepared: MutableList<String> = mutableListOf()) = GameServer(
+  private fun server(prepared: MutableList<String> = mutableListOf(), refuse: (Path) -> String? = { null }) = GameServer(
     GameServerConfig(
       dataDir = dir,
       launch = { seed -> Launch(listOf("sh", dir.resolve("fake.sh").toString(), seed.fileName.toString())) },
@@ -61,6 +61,7 @@ class GameServerTest {
       backoff = 50.milliseconds,
       maxBackoff = 200.milliseconds,
       stopTimeout = 2.seconds,
+      refuse = refuse,
     ),
     scope,
   )
@@ -71,6 +72,20 @@ class GameServerTest {
 
   private suspend fun GameServer.awaitLine(text: String) = withTimeout(5.seconds) {
     while (log(0).lines.none { text in it.text }) delay(20.milliseconds)
+  }
+
+  @Test
+  fun `a refused seed (its session is finished) stays stopped, and is asked about on every start`() = runBlocking {
+    var finished = true
+    val server = server(refuse = { if (finished) "its session is finished" else null })
+    dir.resolve("AP_1.zip").createFile()
+    server.start()
+    server.awaitLine("Not starting AP_1.zip: its session is finished")
+    server.awaitStatus(GameServerStatus.STOPPED)
+    finished = false
+    server.start()
+    server.awaitStatus(GameServerStatus.RUNNING)
+    server.stop()
   }
 
   @Test
