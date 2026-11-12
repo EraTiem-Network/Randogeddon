@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +63,7 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
@@ -70,8 +72,11 @@ import net.eratiem.randogeddon.shared.CreateSessionResult
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.NewLogin
-import net.eratiem.randogeddon.shared.PastSession
+import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.KeepRequest
+import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionIds
+import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.UploadedYaml
@@ -135,14 +140,16 @@ private object Tips {
     "it. Which games it has is listed under APWorlds."
   const val CHEAT_HINTS = "Admins may give free hints from the admin panel's cheats. Every one is logged and shown in " +
     "the live feed. Giving items and checks works without this."
+  const val SESSION_ID = "The session's name in the links, and its address for game clients (<ID>.<domain>). " +
+    "Lowercase letters, digits and -, starting with a letter; it can't be changed later."
   const val PAUSE = "Pausing stops the game server: the session is read-only, the dashboard shows how far it got, " +
     "and its players see the spoiler log. It can be reopened within 14 days."
   const val END = "Every check is done. Ending stops the game server for good: the dashboard keeps showing how it " +
     "ended, and its players see the spoiler log. A completed session can't be reopened. It also ends by itself 2 " +
     "minutes after every slot is done."
   const val REOPEN = "A finished session can be reopened within 14 days, unless it was completed (100 %): the game " +
-    "server serves it again. Reopening a past session archives the current one, which has to be finished."
-  const val KEEP = "A past session is deleted by itself some time after it finished (SESSION_RETENTION_DAYS, 90 by " +
+    "server serves it again, if one is free."
+  const val KEEP = "A finished session is deleted by itself some time after it finished (SESSION_RETENTION_DAYS, 90 by " +
     "default). With its auto-deletion disabled it stays until an admin deletes it; enabled again, the time counts " +
     "from then."
   const val SPOILER = "The spoiler log shows where every item of the seed is, and the playthrough sphere by sphere. " +
@@ -173,152 +180,171 @@ internal suspend fun <T> call(method: String, path: String, body: String?, decod
 }
 
 /**
- * The admin panel's session: without one, the form to create it (YAMLs, who plays which slot, locks, options);
- * with one, what it is and a delete button. [onChanged] after creating or deleting (the game server restarts).
+ * Session [id] as the admin panel shows it: how it stands ([overview]: also how many game servers are in use), its
+ * actions, its game server ([server]); who plays which slot below. Kept in [cache].
  */
 @Composable
-fun SessionSection(onChanged: () -> Unit, onSpoiler: (String) -> Unit) {
+fun SessionSection(
+  id: String,
+  overview: AdminOverview?,
+  cache: AdminCache,
+  onChanged: () -> Unit,
+  onSpoiler: (String) -> Unit,
+  server: @Composable () -> Unit = {},
+) {
   val p = LocalPalette.current
   val scope = rememberCoroutineScope()
-  var view by remember { mutableStateOf<AdminSessionView?>(null) }
+  // The last one loaded at once, loaded again behind
+  val view = cache.views[id]
   var problem by remember { mutableStateOf<String?>(null) }
-  // The logins of a session just created: shown once
-  var created by remember { mutableStateOf<CreateSessionResult?>(null) }
+  var gone by remember { mutableStateOf(false) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/session", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
-      is Answer.Ok -> { view = answer.value; problem = null }
+    when (val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
+      is Answer.Ok -> { cache.views[id] = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
   }
   LaunchedEffect(Unit) { load() }
-
-  // The finished sessions, for reopening and deleting them
-  var past by remember { mutableStateOf(emptyList<PastSession>()) }
-  fun loadPast() = scope.launch {
-    (call("GET", "api/sessions", null) { ApiJson.decodeFromString(ListSerializer(PastSession.serializer()), it) } as? Answer.Ok)
-      ?.let { past = it.value }
-  }
-  LaunchedEffect(Unit) { loadPast() }
   fun act(path: String, body: String? = null) = scope.launch {
-    problem = post(path, body)
+    problem = post("api/admin/sessions/$id/$path", body)
     load()
-    loadPast()
     onChanged()
   }
 
-  val current = view
-  val session = current?.session
-  Section("Session", subtitle = session?.let(::sessionDetails) ?: "No session yet") {
+  val session = view?.session
+  Section("State and Control", subtitle = session?.let(::sessionDetails) ?: "…") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
-      created?.let { result ->
-        NewLogins(result.logins, result.locked, onDone = { created = null })
-      }
-      val onCreated: (CreateSessionResult) -> Unit = { result ->
-        created = result
-        load()
-        loadPast()
-        onChanged()
-      }
-      when {
-        current == null -> Txt("…", color = p.muted)
-        session != null -> {
-          SessionSummary(
-            session,
-            onDelete = {
-              scope.launch {
-                when (val answer = call("DELETE", "api/admin/session", null) { }) {
-                  is Answer.Ok -> { load(); loadPast(); onChanged() }
-                  is Answer.Failed -> problem = answer.message
-                }
-              }
-            },
-            onFinish = { act("api/admin/session/finish") },
-            onCancelFinish = { act("api/admin/session/finish/cancel") },
-            onReopen = { act("api/admin/sessions/${session.seedName}/reopen") },
-            onKeep = { keep ->
-              act("api/admin/sessions/${session.seedName}/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
-            },
-            onSpoiler = { onSpoiler(session.seedName) },
-          )
-          // A finished session makes way for the next one
-          if (session.finishedAt != null) {
-            Divider()
-            Txt("The next session", size = 14.sp, weight = FontWeight.SemiBold)
-            Txt("Creating it keeps this one as a past session.", size = 12.sp, color = p.muted)
-            CreateSession(current, onCreated)
-          }
+      val entry = overview?.sessions?.firstOrNull { it.id == id }
+      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        stateLines(entry, overview).forEachIndexed { i, line ->
+          Txt(line, size = if (i == 0) 13.5.sp else 12.sp, weight = if (i == 0) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (i == 0) p.text else p.muted)
         }
-        else -> CreateSession(current, onCreated)
+      }
+      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      when {
+        gone -> Txt("Deleted.", color = p.muted)
+        session == null -> Txt("…", color = p.muted)
+        else -> SessionSummary(
+          session,
+          onDelete = {
+            scope.launch {
+              when (val answer = call("DELETE", "api/admin/sessions/$id", null) { }) {
+                is Answer.Ok -> { gone = true; onChanged() }
+                is Answer.Failed -> problem = answer.message
+              }
+            }
+          },
+          onFinish = { act("finish") },
+          onCancelFinish = { act("finish/cancel") },
+          onReopen = { act("reopen") },
+          onKeep = { keep -> act("keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep))) },
+          onSpoiler = { onSpoiler(id) },
+        )
+      }
+      if (!gone) server()
+    }
+  }
+  if (session != null && !gone) PlayersAdmin(session.worlds)
+}
+
+/** Who plays in a session, each with their slots; slots nobody plays at the end. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlayersAdmin(worlds: List<WorldPlan>) {
+  val p = LocalPalette.current
+  val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
+  val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
+  Section("Players", subtitle = "${players.size} players, ${worlds.size} slots") {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      if (players.isEmpty() && nobody.isEmpty()) Txt("Nobody is named for its slots.", size = 13.sp, color = p.muted)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots) }
+      }
+      if (nobody.isNotEmpty()) {
+        Txt("Nobody plays", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          nobody.forEach { Pill(it, p.muted) }
+        }
       }
     }
   }
-  val older = past.filter { !it.current }
-  if (older.isNotEmpty()) {
-    PastSessionsAdmin(
-      older,
-      onReopen = { act("api/admin/sessions/$it/reopen") },
-      onKeep = { seed, keep ->
-        act("api/admin/sessions/$seed/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
-      },
-      onDelete = { seed ->
-        scope.launch {
-          problem = (call("DELETE", "api/admin/sessions/$seed", null) { } as? Answer.Failed)?.message
-          loadPast()
-        }
-      },
-      onSpoiler = onSpoiler,
-    )
-  }
 }
 
-/** Archipelago release, when it was created, the main options: the session section's subtitle. */
-private fun sessionDetails(session: SessionInfo): String = listOfNotNull(
-  session.apVersion?.let { "Archipelago $it" } ?: "deployed with the CLI",
-  session.createdAt?.let { "created ${Platform.date(it)}" },
-  session.options?.let { o ->
-    listOfNotNull(
-      if (o.pointHints) "point hints (${o.hintCost} %)" else null,
-      if (o.autoHints) "automatic hints" else null,
-      "release ${o.releaseMode}",
-    ).joinToString(", ")
-  },
-).joinToString(" · ")
-
-/** When a finished session is deleted by itself, or that it isn't. */
-private fun deletion(deletesAt: Long?, keep: Boolean): String? = when {
-  keep -> "auto-deletion disabled"
-  deletesAt != null -> "deleted automatically on ${Platform.date(deletesAt)}"
-  else -> null
-}
-
-/** Reopening is possible until [until]; `null`: not at all (it was completed). */
-private fun reopenable(until: Long?): Boolean = until != null && Platform.now() < until
-
-/** A question before something is done, in place of the buttons: Yes (red if [danger]) or Cancel. */
+/** A player as a pill in their colour: avatar, name, their slots. */
 @Composable
-private fun Confirm(question: String, yes: String, danger: Boolean, onYes: () -> Unit, onCancel: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Txt(question, size = 13.sp, modifier = Modifier.weight(1f))
-    Button(yes, danger = danger) { onYes() }
-    Button("Cancel") { onCancel() }
+private fun PlayerPill(name: String, slots: List<String>) {
+  val hue = LocalPalette.current.hue(name)
+  Row(
+    Modifier.clip(CircleShape).background(hue.copy(alpha = 0.15f)).padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Avatar(name, 22.dp)
+    Txt(name, size = 12.5.sp, weight = FontWeight.SemiBold, color = hue, maxLines = 1)
+    Txt(slots.joinToString(", "), size = 11.5.sp, color = hue.copy(alpha = 0.8f), maxLines = 1)
   }
 }
 
-/** The finished sessions that are no longer the current one: spoiler, reopen, auto-deletion, delete. */
+/** The admin panel's page besides the sessions; no session ID looks like it. */
+internal const val NEW_PAGE = "+new"
+
+/** The admin panel's headings (the session's, the general part's), a little bigger than the sections' below them. */
+internal val ADMIN_HEADING = 20.sp
+
+/**
+ * The admin panel's heading: "Session" and the running session shown below, picked in it (the newest first, each with
+ * how it stands and its game server), and the new session's button on the right.
+ */
+@Composable
+fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Unit) {
+  val sessions = overview?.sessions.orEmpty().filter { it.status.running }
+  Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Txt("Session", size = ADMIN_HEADING, weight = FontWeight.Bold)
+    SearchableSelect(
+      sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(it)) },
+      page?.takeIf { id -> sessions.any { it.id == id } }, { id -> id?.let(onPage) },
+      Modifier.weight(1f), chip = false, heading = ADMIN_HEADING,
+      placeholder = if (overview != null && sessions.isEmpty()) "none running" else "pick one…",
+    )
+    PageButton("New session", page == NEW_PAGE) { onPage(NEW_PAGE) }
+  }
+}
+
+/** How [session] stands (in the switch's list too), and how many of the gateway's game servers are in use. */
+private fun stateLines(session: SessionEntry?, overview: AdminOverview?): List<String> {
+  val all = overview?.sessions.orEmpty()
+  return listOfNotNull(
+    session?.let(::switchDetails)?.replaceFirstChar { it.uppercase() },
+    overview?.let {
+      "${all.count { s -> s.status.running }} sessions running · ${all.count { s -> s.server?.status in RUNNING }} of " +
+        "${it.capacity} game servers in use (a finished session doesn't take one)"
+    },
+  )
+}
+
+/**
+ * The finished sessions, the newest first: spoiler log, reopen, auto-deletion, delete; a click shows a session's
+ * overview, floating over the panel. [onChanged] after an action.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PastSessionsAdmin(
-  sessions: List<PastSession>,
-  onReopen: (String) -> Unit,
-  onKeep: (String, Boolean) -> Unit,
-  onDelete: (String) -> Unit,
-  onSpoiler: (String) -> Unit,
-) {
+fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpoiler: (String) -> Unit) {
   val p = LocalPalette.current
-  // (seed, "delete" or "keep"): the question shown in place of that session's buttons
+  val scope = rememberCoroutineScope()
+  var problem by remember { mutableStateOf<String?>(null) }
+  fun act(method: String, path: String, body: String? = null) = scope.launch {
+    problem = (call(method, path, body) { } as? Answer.Failed)?.message
+    onChanged()
+  }
+  val onReopen: (String) -> Unit = { act("POST", "api/admin/sessions/$it/reopen") }
+  val onKeep: (String, Boolean) -> Unit = { id, keep ->
+    act("POST", "api/admin/sessions/$id/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
+  }
+  val onDelete: (String) -> Unit = { act("DELETE", "api/admin/sessions/$it") }
+  // (session, "delete" or "keep"): the question shown in place of that session's buttons
   var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
-  var overview by remember { mutableStateOf<PastSession?>(null) }
+  var overview by remember { mutableStateOf<SessionEntry?>(null) }
   overview?.let { PastSessionOverview(it, onClose = { overview = null }) }
   Section("Past sessions", subtitle = "deleted automatically after a while, unless that is disabled", actions = {
     InfoTip(Tips.KEEP)
@@ -327,17 +353,22 @@ private fun PastSessionsAdmin(
       // A phone: the title, the details and the buttons one below the other
       val stacked = maxWidth < NARROW
       Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+        if (sessions.isEmpty()) Txt("None yet.", size = 13.sp, color = p.muted)
         sessions.forEachIndexed { i, past ->
           if (i > 0) Divider()
-          val seed = past.seedName
+          val seed = past.id
           // A click shows the overview, with the players
           val title: @Composable (Modifier) -> Unit = { modifier ->
             HoverRow(onClick = { overview = past }, modifier = modifier) {
               Column(Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 4.dp)) {
-                Txt("Seed $seed", size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Txt(seed, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                  StatusPill(past.status)
+                }
                 Txt(
                   listOfNotNull(
-                    "finished ${Platform.date(past.finishedAt)}" + (past.finishedBy?.let { " by $it" } ?: ""),
+                    past.finishedAt?.let { "finished ${Platform.date(it)}" + (past.finishedBy?.let { by -> " by $by" } ?: "") },
                     "${oneDecimal(past.percent)}%",
                     deletion(past.deletesAt, past.keep),
                   ).joinToString(" · "),
@@ -387,7 +418,7 @@ private fun PastSessionsAdmin(
 /** A past session at a glance, floating over the panel: how it went, when it finished, what happens to it, who played. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PastSessionOverview(past: PastSession, onClose: () -> Unit) {
+private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
   val p = LocalPalette.current
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     SelectionContainer {
@@ -399,7 +430,7 @@ private fun PastSessionOverview(past: PastSession, onClose: () -> Unit) {
           horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
           Column(Modifier.weight(1f)) {
-            Txt(past.title, size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
+            Txt(past.id, size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
             Txt("Seed ${past.seedName}", size = 12.5.sp, color = p.muted, maxLines = 1)
           }
           Txt("${oneDecimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
@@ -416,7 +447,8 @@ private fun PastSessionOverview(past: PastSession, onClose: () -> Unit) {
           val until = past.reopenUntil
           listOfNotNull(
             past.createdAt?.let { "Created" to Platform.date(it) },
-            "Finished" to Platform.date(past.finishedAt) + (past.finishedBy?.let { " by $it" } ?: ", when every slot was done"),
+            "Finished" to (past.finishedAt?.let { Platform.date(it) } ?: "not yet") +
+              (past.finishedBy?.let { " by $it" } ?: ", when every slot was done"),
             "Reopen" to when {
               until == null -> "not possible, it was completed"
               reopenable(until) -> "possible until ${Platform.date(until)}"
@@ -445,6 +477,122 @@ private fun PastSessionOverview(past: PastSession, onClose: () -> Unit) {
   }
 }
 
+/** A session in the switch's list: how it stands, how far it got, its game server, who is online. */
+private fun switchDetails(session: SessionEntry): String = listOfNotNull(
+  when (session.status) {
+    SessionStatus.LIVE -> "live"
+    SessionStatus.FINISHING -> "ending"
+    SessionStatus.PAUSED -> "paused"
+    SessionStatus.ENDED -> "ended"
+  },
+  "${oneDecimal(session.percent)}%",
+  session.server?.status?.let {
+    when (it) {
+      GameServerStatus.RUNNING -> "server running"
+      GameServerStatus.STARTING -> "server starting"
+      GameServerStatus.CRASHED -> "server crashed"
+      GameServerStatus.STOPPED -> "server stopped"
+      GameServerStatus.NO_SEED -> "no seed"
+    }
+  },
+  session.online.takeIf { it > 0 }?.let { "$it online" },
+  session.finishedAt?.let { "finished ${Platform.date(it)}" },
+).joinToString(" · ")
+
+/** A button of the switch; the page that is shown is filled. */
+@Composable
+private fun PageButton(text: String, active: Boolean, onClick: () -> Unit) {
+  val p = LocalPalette.current
+  Txt(
+    text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
+    color = if (active) Color.White else p.accent,
+    modifier = Modifier.heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp))
+      .background(if (active) p.accent else p.accent.copy(alpha = 0.1f))
+      .hand().clickable(onClick = onClick)
+      .padding(horizontal = 14.dp, vertical = 8.dp),
+  )
+}
+
+/** The game server states that take one of the gateway's ports. */
+private val RUNNING = setOf(GameServerStatus.STARTING, GameServerStatus.RUNNING, GameServerStatus.CRASHED)
+
+/**
+ * A new session: its ID (a suggestion to start with; checked as it is typed) and the form (YAMLs, who plays which
+ * slot, locks, options). Its logins are shown once it is created.
+ */
+@Composable
+fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult) -> Unit) {
+  val p = LocalPalette.current
+  var id by remember { mutableStateOf<String?>(null) }
+  var created by remember { mutableStateOf<CreateSessionResult?>(null) }
+  // A new form (and a new suggestion) after each session
+  var round by remember { mutableStateOf(0) }
+  val suggested = overview?.suggestedId.orEmpty()
+  val chosen = id ?: suggested
+  val taken = overview?.sessions?.any { it.id == chosen } == true
+  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen) ?: if (taken) "Taken" else null
+  val full = overview != null && overview.sessions.count { it.server?.status in RUNNING } >= overview.capacity
+  Section("New session", subtitle = "as many run at once as the gateway has game servers (${overview?.capacity ?: "…"})") {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      created?.let { result ->
+        NewLogins(result.logins, result.locked, onDone = { created = null })
+      }
+      if (full) Txt("Every game server is in use: finish or stop a session first.", size = 12.5.sp, color = p.trap)
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Txt("Session ID", size = 13.sp, weight = FontWeight.SemiBold)
+        InfoTip(Tips.SESSION_ID)
+        FilterField(chosen, { id = it.lowercase().trim() }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+        idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      }
+      if (overview != null) key(round) {
+        CreateSession(
+          AdminSessionView(apVersions = overview.apVersions, users = overview.users), chosen,
+          ready = idProblem == null && chosen.isNotEmpty() && !full,
+          onCreated = { result ->
+            created = result
+            id = null
+            round++
+            onCreated(result)
+          },
+        )
+      }
+    }
+  }
+}
+
+/** Archipelago release, when it was created, the main options: the session section's subtitle. */
+private fun sessionDetails(session: SessionInfo): String = listOfNotNull(
+  session.apVersion?.let { "Archipelago $it" } ?: "deployed with the CLI",
+  session.createdAt?.let { "created ${Platform.date(it)}" },
+  session.options?.let { o ->
+    listOfNotNull(
+      if (o.pointHints) "point hints (${o.hintCost} %)" else null,
+      if (o.autoHints) "automatic hints" else null,
+      "release ${o.releaseMode}",
+    ).joinToString(", ")
+  },
+).joinToString(" · ")
+
+/** When a finished session is deleted by itself, or that it isn't. */
+private fun deletion(deletesAt: Long?, keep: Boolean): String? = when {
+  keep -> "auto-deletion disabled"
+  deletesAt != null -> "deleted automatically on ${Platform.date(deletesAt)}"
+  else -> null
+}
+
+/** Reopening is possible until [until]; `null`: not at all (it was completed). */
+private fun reopenable(until: Long?): Boolean = until != null && Platform.now() < until
+
+/** A question before something is done, in place of the buttons: Yes (red if [danger]) or Cancel. */
+@Composable
+private fun Confirm(question: String, yes: String, danger: Boolean, onYes: () -> Unit, onCancel: () -> Unit) {
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Txt(question, size = 13.sp, modifier = Modifier.weight(1f))
+    Button(yes, danger = danger) { onYes() }
+    Button("Cancel") { onCancel() }
+  }
+}
+
 /**
  * The current session: who plays which slot, how it stands (it ends by itself soon, or it is paused or ended), and one
  * line of actions: pause or end it (reopen it), its auto-deletion, delete it, and on the right its spoiler log. What
@@ -463,12 +611,6 @@ private fun SessionSummary(
   val p = LocalPalette.current
   // "finish", "spoiler", "delete" or "keep": the question shown instead of the actions
   var pending by remember { mutableStateOf<String?>(null) }
-  session.worlds.forEach { world ->
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt(world.name, size = 13.sp, weight = FontWeight.SemiBold, modifier = Modifier.width(180.dp), maxLines = 1)
-      Txt(world.users.joinToString(", ").ifEmpty { "nobody" }, size = 13.sp, color = if (world.users.isEmpty()) p.muted else p.text)
-    }
-  }
   val finishedAt = session.finishedAt
   val finishesAt = session.finishesAt
   val complete = session.percent >= 100.0
@@ -500,7 +642,9 @@ private fun SessionSummary(
       onYes = { pending = null; onSpoiler() }, onCancel = { pending = null },
     )
     "delete" -> Confirm(
-      "Delete it? The game server stops; the seed and its save go to data/old. The logins stay.", "Yes, delete", danger = true,
+      if (finishedAt != null) "Delete it for good? Its seed, save and history go; the logins stay."
+      else "Delete it? The game server stops; the seed and its save go to data/old. The logins stay.",
+      "Yes, delete", danger = true,
       onYes = { pending = null; onDelete() }, onCancel = { pending = null },
     )
     "keep" -> Confirm(
@@ -531,7 +675,7 @@ private fun SessionSummary(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResult) -> Unit) {
+private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, onCreated: (CreateSessionResult) -> Unit) {
   val p = LocalPalette.current
   val scope = rememberCoroutineScope()
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
@@ -556,7 +700,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
 
   fun inspect(): Job = scope.launch {
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
-    when (val answer = call("POST", "api/admin/session/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
+    when (val answer = call("POST", "api/admin/sessions/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
       is Answer.Ok -> {
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
@@ -753,12 +897,13 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
         if (busy) "Generating…" else "Generate and start",
-        enabled = !busy && problems.isEmpty() && view.apVersions.isNotEmpty() && openOk,
+        enabled = ready && !busy && problems.isEmpty() && view.apVersions.isNotEmpty() && openOk,
       ) {
         busy = true
         error = null
         scope.launch {
           val request = CreateSessionRequest(
+            id = id,
             yamls = yamls.toList(),
             worlds = worlds.map {
               WorldPlan(it.name, users[it.name].orEmpty(), it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM)
@@ -767,7 +912,7 @@ private fun CreateSession(view: AdminSessionView, onCreated: (CreateSessionResul
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          when (val answer = call("POST", "api/admin/session", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
+          when (val answer = call("POST", "api/admin/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
             is Answer.Ok -> onCreated(answer.value)
             is Answer.Failed -> error = answer.message
           }

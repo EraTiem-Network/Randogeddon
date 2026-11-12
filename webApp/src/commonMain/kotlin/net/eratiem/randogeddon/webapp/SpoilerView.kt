@@ -53,16 +53,16 @@ import net.eratiem.randogeddon.shared.Sphere
 import net.eratiem.randogeddon.shared.Spoiler
 
 /**
- * A seed's spoiler log: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
- * step makes reachable), and the full log, searchable. [onBack]: closes it.
+ * A session's spoiler log: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
+ * step makes reachable), and the full log, searchable. [id]: the session. [onBack]: closes it.
  */
 @Composable
-fun SpoilerView(seed: String, onBack: () -> Unit) {
+fun SpoilerView(id: String, onBack: () -> Unit) {
   val p = LocalPalette.current
-  var spoiler by remember(seed) { mutableStateOf<Spoiler?>(null) }
-  var problem by remember(seed) { mutableStateOf<String?>(null) }
-  LaunchedEffect(seed) {
-    val result = Platform.request("GET", "api/spoiler/$seed")
+  var spoiler by remember(id) { mutableStateOf<Spoiler?>(null) }
+  var problem by remember(id) { mutableStateOf<String?>(null) }
+  LaunchedEffect(id) {
+    val result = Platform.request("GET", "api/sessions/$id/spoiler")
     when {
       result == null -> problem = "The server can't be reached"
       result.status == 200 -> spoiler = runCatching { ApiJson.decodeFromString(Spoiler.serializer(), result.body) }.getOrNull()
@@ -79,7 +79,10 @@ fun SpoilerView(seed: String, onBack: () -> Unit) {
         IconButton(onBack, Icon.BACK)
         Column(Modifier.weight(1f)) {
           Txt("Spoiler log", size = 20.sp, weight = FontWeight.Bold)
-          Txt("Seed $seed" + (spoiler?.let { " · ${it.spheres.size} spheres" } ?: ""), size = 12.5.sp, color = p.muted)
+          Txt(
+            listOfNotNull(id, spoiler?.let { "Seed ${it.seedName}" }, spoiler?.let { "${it.spheres.size} spheres" }).joinToString(" · "),
+            size = 12.5.sp, color = p.muted,
+          )
         }
       }
       problem?.let { Txt(it, size = 13.sp, color = p.trap) }
