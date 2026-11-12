@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,9 +39,10 @@ import net.eratiem.randogeddon.shared.PlayerDetail
 
 /** One world as a dialog; see [WorldDetail]. */
 @Composable
-fun PlayerDialog(slot: Int, version: Long, repository: TrackerRepository, onClose: () -> Unit) {
+fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit) {
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-    WorldDetail(slot, version, repository, onClose, back = false)
+    // A dialog is its own window: its text needs its own selection
+    SelectionContainer { WorldDetail(slot, version, repository, onClose, back = false) }
   }
 }
 
@@ -49,7 +51,7 @@ fun PlayerDialog(slot: Int, version: Long, repository: TrackerRepository, onClos
  * while it is shown. [back]: shown inside another view (a person), so the button goes back instead of closing.
  */
 @Composable
-fun WorldDetail(slot: Int, version: Long, repository: TrackerRepository, onClose: () -> Unit, back: Boolean) {
+fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean) {
   val p = LocalPalette.current
   var detail by remember(slot) { mutableStateOf<PlayerDetail?>(null) }
   var query by remember(slot) { mutableStateOf("") }
@@ -89,7 +91,7 @@ fun WorldDetail(slot: Int, version: Long, repository: TrackerRepository, onClose
             Fact("Played", duration(played))
             Fact("Sessions", "${d.sessions.size}")
             Fact("Status", if (open != null) "online" else "offline", if (open != null) p.ok else p.muted)
-            if (repository.summary.value?.hintSettings?.pointHints != false) d.hintPoints?.let { Fact("Hint points", "$it") }
+            if (repository.pointHints) d.hintPoints?.let { Fact("Hint points", "$it") }
           }
           val items: @Composable ColumnScope.() -> Unit = {
             Section("Received items (${d.items.size})")

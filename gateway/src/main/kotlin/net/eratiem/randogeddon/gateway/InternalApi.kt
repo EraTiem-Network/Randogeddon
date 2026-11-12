@@ -1,9 +1,11 @@
 package net.eratiem.randogeddon.gateway
 
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.delete
@@ -39,7 +41,14 @@ val InternalAuth = createRouteScopedPlugin("InternalAuth", ::InternalAuthConfig)
  * The tracker's control of the game server: state, start/stop/restart, log, console; of the sessions: the
  * Archipelago releases, generating a seed, deleting the current one; and of the apworld library of each release.
  */
-fun Route.internalApi(token: String, server: GameServer, archipelago: Archipelago, generator: Generator, apworlds: Apworlds) {
+fun Route.internalApi(
+  token: String,
+  server: GameServer,
+  archipelago: Archipelago,
+  generator: Generator,
+  apworlds: Apworlds,
+  seeds: SeedFiles,
+) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
     get("/versions") { call.respond(archipelago.versions()) }
@@ -63,6 +72,35 @@ fun Route.internalApi(token: String, server: GameServer, archipelago: Archipelag
       val moved = generator.retire()
       server.start()
       call.respond(moved)
+    }
+    // A finished session makes way for a new one: its seed and save go to data/sessions/<seed>; the archived seed
+    route("/sessions") {
+      post("/archive") {
+        server.stop()
+        val seed = seeds.archive()
+        server.start()
+        call.respond(listOfNotNull(seed))
+      }
+      // Reopening an archived session: its files come back (the data directory must hold no seed), and it is served
+      post("/{seed}/activate") {
+        server.stop()
+        val ok = runCatching { seeds.activate(call.parameters["seed"]!!) }
+        server.start()
+        when {
+          ok.isFailure -> call.respond(HttpStatusCode.Conflict, ApiError(ok.exceptionOrNull()?.message ?: "Not possible"))
+          ok.getOrThrow() -> call.respond(HttpStatusCode.NoContent)
+          else -> call.respond(HttpStatusCode.NotFound, ApiError("No archived session ${call.parameters["seed"]}"))
+        }
+      }
+      delete("/{seed}") {
+        if (seeds.delete(call.parameters["seed"]!!)) call.respond(HttpStatusCode.NoContent)
+        else call.respond(HttpStatusCode.NotFound)
+      }
+      get("/{seed}/spoiler") {
+        val text = seeds.spoiler(call.parameters["seed"]!!)
+        if (text == null) call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this seed"))
+        else call.respondText(text, ContentType.Text.Plain)
+      }
     }
     route("/server") {
       get { call.respond(server.state) }

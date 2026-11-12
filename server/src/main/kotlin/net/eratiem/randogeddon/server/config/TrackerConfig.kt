@@ -25,6 +25,8 @@ data class TrackerConfig(
   /** The gateway's internal API, which runs the game server (admin panel). */
   val gameServerApi: String,
   val internalToken: String,
+  /** Past sessions are deleted this many days after they finished (unless kept); 0: never. */
+  val sessionRetentionDays: Int = 90,
 ) {
   companion object {
     fun from(config: ApplicationConfig): TrackerConfig {
@@ -44,6 +46,7 @@ data class TrackerConfig(
         database = DatabaseConfig(value("database.url"), value("database.user"), value("database.password")),
         gameServerApi = value("server.gameServerApi").trimEnd('/'),
         internalToken = value("server.internalToken"),
+        sessionRetentionDays = value("tracker.sessionRetentionDays").toInt().coerceAtLeast(0),
       )
     }
   }

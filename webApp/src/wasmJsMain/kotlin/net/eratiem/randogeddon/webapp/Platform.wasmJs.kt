@@ -35,6 +35,8 @@ actual object Platform {
 
   actual fun hideLogin() = jsHideLogin()
 
+  actual fun date(epochMillis: Long): String = jsDate(epochMillis.toDouble())
+
   actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
 
   actual fun copy(text: String) = jsCopy(text)
@@ -47,6 +49,9 @@ actual object Platform {
 }
 
 private fun jsNow(): Double = js("Date.now()")
+
+private fun jsDate(ms: Double): String =
+  js("new Date(ms).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")
 
 private fun jsClock(ms: Double): String =
   js("new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")

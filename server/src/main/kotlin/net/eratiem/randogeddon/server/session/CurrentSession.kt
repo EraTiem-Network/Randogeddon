@@ -3,6 +3,8 @@ package net.eratiem.randogeddon.server.session
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.eratiem.randogeddon.database.FinishState
+import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetup
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTime
@@ -14,9 +16,9 @@ import org.koin.core.annotation.Single
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The session of the seed the game server serves (room.json): its session time as the gateway counts it, and, for a
- * session created in the admin panel, its setup (who plays which world, the options). Read every 10 s, and right
- * away after the admin panel changed something ([refresh]).
+ * The session of the seed the game server serves (room.json): its session time as the gateway counts it, whether it
+ * is finished or about to, and, for a session created in the admin panel, its setup (who plays which slot, the
+ * options). Read every 10 s, and right away after the admin panel changed something ([refresh]).
  */
 @Single
 class CurrentSession(
@@ -24,7 +26,17 @@ class CurrentSession(
   private val times: SessionTimeStore,
   private val setups: SessionSetupStore,
   private val sessionFile: SessionFileWatcher,
+  private val finishes: SessionFinishStore,
 ) {
+  /** The seed of room.json, as of the last [refresh]. */
+  @Volatile
+  var seedName: String? = null
+    private set
+
+  @Volatile
+  var finish: FinishState? = null
+    private set
+
   @Volatile
   var time: SessionTime? = null
     private set
@@ -51,8 +63,10 @@ class CurrentSession(
 
   suspend fun refresh() {
     val seed = Room.read(config.roomJson)?.seedName
+    seedName = seed
     time = seed?.let { runCatching { times.of(it) }.getOrNull() }
     setup = seed?.let { runCatching { setups.of(it) }.getOrNull() }
+    finish = seed?.let { runCatching { finishes.of(it) }.getOrNull() }
   }
 
   fun watch(scope: CoroutineScope) = scope.launch {

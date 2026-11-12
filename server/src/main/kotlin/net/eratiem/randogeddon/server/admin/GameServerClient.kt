@@ -111,6 +111,36 @@ class GameServerClient(private val config: TrackerConfig) {
     http.post("${config.gameServerApi}/internal/session/delete") { auth() }
   }.let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
 
+  /** A finished session makes way: its seed and save go to the gateway's archive (data/sessions/<seed>). */
+  suspend fun archiveSession() {
+    call { http.post("${config.gameServerApi}/internal/sessions/archive") { auth() } }
+  }
+
+  /** An archived session's files come back and are served (reopening it). */
+  suspend fun activate(seed: String) {
+    val response = request { http.post("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}/activate") { auth() } }
+    if (!response.status.isSuccess()) {
+      val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
+      throw SessionProblem(HttpStatusCode.Conflict, message ?: "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Deletes an archived session's files for good; `false` if the gateway has none. */
+  suspend fun deleteArchived(seed: String): Boolean {
+    val response = request { http.delete("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}") { auth() } }
+    return response.status.isSuccess()
+  }
+
+  /** The seed's spoiler log; `null` if there is none (generated without one, or its files are gone). */
+  suspend fun spoiler(seed: String): String? {
+    val response = request { http.get("${config.gameServerApi}/internal/sessions/${seed.encodeURLPathPart()}/spoiler") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> response.bodyAsText()
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
   /** `false` if no game server is running to take it. */
   suspend fun command(line: String): Boolean {
     val response = request {

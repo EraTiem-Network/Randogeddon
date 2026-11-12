@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +53,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -65,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
@@ -247,15 +255,16 @@ fun GameChip(game: String, dimmed: Boolean = false, size: Dp = 34.dp) {
 @Composable
 fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, tint: Color? = null, background: Color? = null) {
   val p = LocalPalette.current
-  Box(
-    modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(background ?: p.panelAlt).clickable(onClick = onClick),
+  // 34 dp unless [modifier] gives a size; the icon is about half of it
+  BoxWithConstraints(
+    modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(background ?: p.panelAlt).hand().clickable(onClick = onClick),
     contentAlignment = Alignment.Center,
   ) {
-    DrawnIcon(icon, tint ?: p.text, 16.dp)
+    DrawnIcon(icon, tint ?: p.text, minOf(16.dp, maxWidth * 0.47f))
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN }
+enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -272,6 +281,11 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawLine(color, Offset(w * .2f, w * .2f), Offset(w * .8f, w * .8f), stroke, StrokeCap.Round)
         drawLine(color, Offset(w * .8f, w * .2f), Offset(w * .2f, w * .8f), stroke, StrokeCap.Round)
       }
+
+      Icon.CHECK -> drawPath(
+        Path().apply { moveTo(w * .18f, w * .52f); lineTo(w * .42f, w * .76f); lineTo(w * .84f, w * .28f) },
+        color, style = Stroke(stroke * 1.4f, cap = StrokeCap.Round),
+      )
 
       Icon.CHEVRON -> drawPath(
         Path().apply { moveTo(w * .2f, w * .38f); lineTo(w * .5f, w * .68f); lineTo(w * .8f, w * .38f) },
@@ -344,17 +358,17 @@ fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
   val p = LocalPalette.current
   Txt(
     text, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1,
-    modifier = modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).clickable(onClick = onClick)
+    modifier = modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).hand().clickable(onClick = onClick)
       .padding(horizontal = 10.dp, vertical = 4.dp),
   )
 }
 
 /**
  * A small "i" next to an option or button: what it does, on hover, or on tap on a phone (tap again or anywhere else
- * to close).
+ * to close). [options]: the choices of the option (name, what it means), each below a divider.
  */
 @Composable
-fun InfoTip(text: String, modifier: Modifier = Modifier) {
+fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<String, String>> = emptyList()) {
   val p = LocalPalette.current
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
@@ -362,20 +376,99 @@ fun InfoTip(text: String, modifier: Modifier = Modifier) {
   Box(
     modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (hovered || tapped) p.accent else p.muted, CircleShape)
       .hoverable(interaction)
-      .clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+      .hand().clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
     contentAlignment = Alignment.Center,
   ) {
     Txt("i", size = 10.sp, color = if (hovered || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
     if (hovered || tapped) {
-      Popup(offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
-        Txt(
-          text, size = 12.sp,
-          modifier = Modifier.widthIn(max = 320.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
-        )
+      AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+        TipCard(text, options)
       }
     }
   }
 }
+
+/** What a tip says: the text, then each choice (name, meaning) below a divider. */
+@Composable
+private fun TipCard(text: String, options: List<Pair<String, String>>) {
+  val p = LocalPalette.current
+  Column(
+    Modifier.widthIn(max = 340.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Txt(text, size = 12.sp)
+    options.forEach { (name, meaning) ->
+      Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Txt(name, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent, modifier = Modifier.width(84.dp))
+        Txt(meaning, size = 12.sp, modifier = Modifier.weight(1f))
+      }
+    }
+  }
+}
+
+/** How long the pointer rests on something before its tip shows. */
+private const val TIP_DELAY_MS = 600L
+
+/**
+ * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it. A click
+ * hides it until the pointer comes back (a dropdown's list opens there). Phones have no hover; there the session
+ * form's "i" tips remain.
+ */
+@Composable
+fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content: @Composable () -> Unit) {
+  val interaction = remember { MutableInteractionSource() }
+  val hovered by interaction.collectIsHoveredAsState()
+  var shown by remember { mutableStateOf(false) }
+  var clicked by remember { mutableStateOf(false) }
+  var height by remember { mutableStateOf(0) }
+  LaunchedEffect(hovered, clicked) {
+    if (hovered && !clicked) {
+      delay(TIP_DELAY_MS)
+      shown = true
+    } else {
+      shown = false
+      if (!hovered) clicked = false
+    }
+  }
+  Box(
+    Modifier.hoverable(interaction).onSizeChanged { height = it.height }.pointerInput(Unit) {
+      // Seen before the button or dropdown handles it, without taking it away from them
+      awaitPointerEventScope {
+        while (true) {
+          if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Press) clicked = true
+        }
+      }
+    }
+  ) {
+    content()
+    if (shown) {
+      AppPopup(offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }), onDismissRequest = { shown = false }) {
+        TipCard(text, options)
+      }
+    }
+  }
+}
+
+/**
+ * A popup (dropdown, tip) that stays out of the page's text selection: it is a window of its own, and selection
+ * across windows can make the whole page hang.
+ */
+@Composable
+fun AppPopup(
+  offset: IntOffset,
+  onDismissRequest: () -> Unit,
+  properties: PopupProperties = PopupProperties(),
+  content: @Composable () -> Unit,
+) {
+  Popup(offset = offset, onDismissRequest = onDismissRequest, properties = properties) { DisableSelection(content) }
+}
+
+/**
+ * The hand pointer over something clickable, also over its text (which the page's selection would show the text
+ * cursor for).
+ */
+fun Modifier.hand(): Modifier = pointerHoverIcon(PointerIcon.Hand, overrideDescendants = true)
 
 /** A clickable row that tints itself while hovered. */
 @Composable
@@ -387,22 +480,30 @@ fun HoverRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Compo
     modifier.clip(RoundedCornerShape(12.dp))
       .background(if (hovered) p.panelAlt else Color.Transparent)
       .hoverable(interaction)
-      .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+      .hand().clickable(interactionSource = interaction, indication = null, onClick = onClick),
     verticalAlignment = Alignment.CenterVertically,
     content = content,
   )
 }
 
-/** A compact dropdown: shows the selected option's label, lists all options in a popup. */
+/** A compact dropdown: shows the selected option's label, lists all options in a popup. [minHeight]: e.g. a form's field height. */
 @Composable
-fun <T> Select(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+fun <T> Select(
+  options: List<Pair<T, String>>,
+  selected: T,
+  onSelect: (T) -> Unit,
+  modifier: Modifier = Modifier,
+  minHeight: Dp = 0.dp,
+) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
   var anchorHeight by remember { mutableStateOf(0) }
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
     Row(
-      Modifier.clip(CircleShape).background(p.panelAlt).border(1.dp, p.border, CircleShape)
-        .clickable { open = true }.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+      // Shaped like the buttons and text fields
+      Modifier.heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+        .border(1.dp, p.border, RoundedCornerShape(10.dp))
+        .hand().clickable { open = true }.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Txt(options.firstOrNull { it.first == selected }?.second ?: "", size = 12.5.sp, maxLines = 1,
@@ -411,7 +512,7 @@ fun <T> Select(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Uni
       DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
     }
     if (open) {
-      Popup(
+      AppPopup(
         offset = IntOffset(0, anchorHeight + 6),
         onDismissRequest = { open = false },
         properties = PopupProperties(focusable = true),
@@ -429,7 +530,7 @@ fun <T> Select(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Uni
               color = if (active) p.accent else p.text,
               modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
                 .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
-                .clickable { onSelect(value); open = false }
+                .hand().clickable { onSelect(value); open = false }
                 .padding(horizontal = 12.dp, vertical = 7.dp),
             )
           }
@@ -441,7 +542,8 @@ fun <T> Select(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Uni
 
 /**
  * A dropdown with a search field on top of its list, for longer lists. [options]: value, label and a second line
- * (e.g. the game); the search matches both.
+ * (e.g. the game, shown as a game chip too unless [chip] is off); the search matches both. Long lists show the first
+ * 300 matches: the search finds the rest.
  */
 @Composable
 fun <T> SearchableSelect(
@@ -449,6 +551,10 @@ fun <T> SearchableSelect(
   selected: T,
   onSelect: (T) -> Unit,
   modifier: Modifier = Modifier,
+  chip: Boolean = true,
+  placeholder: String = "",
+  /** E.g. as tall as the buttons next to it. */
+  minHeight: Dp = 0.dp,
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
@@ -457,15 +563,17 @@ fun <T> SearchableSelect(
   val current = options.firstOrNull { it.first == selected }
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
     Row(
-      Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.panelAlt).border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .clickable { open = true; query = "" }.padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+        .border(1.dp, p.border, RoundedCornerShape(10.dp))
+        .hand().clickable { open = true; query = "" }.padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      if (current != null) GameChip(current.third, size = 24.dp)
+      if (current != null && chip) GameChip(current.third, size = 24.dp)
       Column(Modifier.weight(1f)) {
-        Txt(current?.second ?: "", size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
-        if (current != null) Txt(current.third, size = 11.5.sp, color = p.muted, maxLines = 1)
+        Txt(current?.second ?: placeholder, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
+          color = if (current == null) p.muted else p.text)
+        if (current != null && current.third.isNotEmpty()) Txt(current.third, size = 11.5.sp, color = p.muted, maxLines = 1)
       }
       DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
     }
@@ -473,8 +581,8 @@ fun <T> SearchableSelect(
       val focus = remember { FocusRequester() }
       val shown = options.filter { (_, label, detail) ->
         query.isBlank() || label.contains(query.trim(), ignoreCase = true) || detail.contains(query.trim(), ignoreCase = true)
-      }
-      Popup(
+      }.take(300)
+      AppPopup(
         offset = IntOffset(0, anchorHeight + 6),
         onDismissRequest = { open = false },
         properties = PopupProperties(focusable = true),
@@ -491,16 +599,16 @@ fun <T> SearchableSelect(
               Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
                   .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
-                  .clickable { onSelect(value); open = false }
+                  .hand().clickable { onSelect(value); open = false }
                   .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
               ) {
-                GameChip(detail, size = 24.dp)
+                if (chip) GameChip(detail, size = 24.dp)
                 Column {
-                  Txt(label, size = 13.sp, maxLines = 1, weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                  Txt(label, size = 13.sp, maxLines = 2, weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (active) p.accent else p.text)
-                  Txt(detail, size = 11.5.sp, color = p.muted, maxLines = 1)
+                  if (detail.isNotEmpty()) Txt(detail, size = 11.5.sp, color = p.muted, maxLines = 1)
                 }
               }
             }
@@ -513,7 +621,13 @@ fun <T> SearchableSelect(
 }
 
 @Composable
-fun FilterField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
+fun FilterField(
+  value: String,
+  onChange: (String) -> Unit,
+  placeholder: String,
+  modifier: Modifier = Modifier,
+  minHeight: Dp = 0.dp,
+) {
   val p = LocalPalette.current
   BasicTextField(
     value = value,
@@ -524,8 +638,9 @@ fun FilterField(value: String, onChange: (String) -> Unit, placeholder: String, 
     modifier = modifier,
     decorationBox = { inner ->
       Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp)
+        Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+        contentAlignment = Alignment.CenterStart,
       ) {
         if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
         inner()

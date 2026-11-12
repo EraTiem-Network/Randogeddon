@@ -50,6 +50,32 @@ class SessionStateTest {
   }
 
   @Test
+  fun `the session is done once every slot reached its goal or was released`() {
+    val s = makeState()
+    assertFalse(SessionState().allDone()) // nothing known yet
+    assertFalse(s.allDone())
+    s.onPrintJson(json("""{"cmd":"PrintJSON","type":"Goal","slot":1}"""))
+    assertFalse(s.allDone())
+    s.onPrintJson(json("""{"cmd":"PrintJSON","type":"Release","slot":2}"""))
+    assertTrue(s.allDone())
+  }
+
+  @Test
+  fun `cheats from the panel are feed lines, and know the slot's items and open locations`() {
+    val s = makeState()
+    s.onCheat("Ada gave Sword to Alice", now = 7)
+    val event = s.summary("t", null).events.last()
+    assertEquals(EventType.CHEAT, event.type)
+    assertEquals("Ada gave Sword to Alice", event.message)
+    assertTrue(event.cheat)
+    val names = s.cheatNames("Alice")!!
+    assertEquals(listOf("Key", "Sword"), names.items)
+    assertEquals(listOf("Boss", "Chest B", "Chest C"), names.locations)
+    assertEquals(listOf("Alice", "Bob"), s.cheatSlots())
+    assertEquals(null, s.cheatNames("Nobody"))
+  }
+
+  @Test
   fun `players and groups`() {
     val s = makeState()
     assertEquals(setOf(1, 2), s.players.keys) // the group slot is not a player card

@@ -229,7 +229,7 @@ internal fun checkApworld(bytes: ByteArray): String? {
         entries++
         val name = entry.name.replace('\\', '/')
         if (name.startsWith("/") || name.split('/').any { it == ".." } || Regex("^[A-Za-z]:").containsMatchIn(name)) {
-          return "an entry leads out of the apworld ($name)"
+          return "an entry leads out of the APWorld ($name)"
         }
         if (Regex("^[^/]+/__init__\\.py$").matches(name)) world = true
       }
@@ -239,7 +239,7 @@ internal fun checkApworld(bytes: ByteArray): String? {
   }
   return when {
     entries == 0 -> "not a valid zip"
-    !world -> "no world inside (an apworld holds a folder with an __init__.py)"
+    !world -> "no world inside (an APWorld holds a folder with an __init__.py)"
     else -> null
   }
 }
@@ -264,9 +264,9 @@ internal fun suspects(games: List<String>, log: List<String>, release: ReleaseIn
     val file = info?.apworld?.let { name -> files.firstOrNull { it.file == name && it.release == release.version } }
     when {
       info == null && release.error == null ->
-        Suspect(game, "Archipelago ${release.version} has no apworld for it") to 0
+        Suspect(game, "Archipelago ${release.version} has no APWorld for it") to 0
       named(game, info) -> Suspect(game, "named in the error", info?.apworld, file?.from) to 1
-      file?.from != null -> Suspect(game, "its apworld is from Archipelago ${file.from}, untested here", file.file, file.from) to 2
+      file?.from != null -> Suspect(game, "its APWorld is from Archipelago ${file.from}, untested here", file.file, file.from) to 2
       else -> null
     }
   }.sortedBy { it.second }.map { it.first }

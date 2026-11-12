@@ -32,6 +32,10 @@ data class Summary(
   val sessionTimeMs: Long = 0,
   /** Epoch milliseconds the count runs from while the game server runs; `null` while it is stopped. */
   val sessionRunningSince: Long? = null,
+  /** Every slot is done: the session finishes by itself at this time (epoch ms), unless an admin cancels it. */
+  val finishesAt: Long? = null,
+  /** The session is finished (read-only from then on); epoch ms. */
+  val finishedAt: Long? = null,
   /** Increases with every change of the session state. */
   val version: Long,
   val totals: Totals,
@@ -168,6 +172,8 @@ enum class EventType {
   @SerialName("countdown") COUNTDOWN,
   /** A world's key was found; [FeedEvent.slot] is the unlocked world, [FeedEvent.sender] who found it. */
   @SerialName("unlock") UNLOCK,
+  /** An admin cheated from the admin panel; [FeedEvent.message] says who and what. */
+  @SerialName("cheat") CHEAT,
 }
 
 /**
@@ -259,6 +265,8 @@ data class Me(
   val slots: List<MySlot> = emptyList(),
   /** Sees and reaches the admin panel. */
   val admin: Boolean = false,
+  /** Part of the current session; `false`: only of past sessions (or an admin outside it). */
+  val inSession: Boolean = true,
 )
 
 @Serializable
@@ -322,6 +330,8 @@ data class SessionOptions(
    * chosen per slot ([WorldPlan.locked]).
    */
   val openSlots: Int? = null,
+  /** Admins may give free hints from the admin panel (cheats). */
+  val cheatHints: Boolean = false,
 )
 
 /** A player YAML as uploaded in the admin panel. */
@@ -378,7 +388,100 @@ data class SessionInfo(
   val createdAt: Long? = null,
   val options: SessionOptions? = null,
   val worlds: List<WorldPlan> = emptyList(),
+  /** It finishes by itself then (every slot is done); epoch ms. */
+  val finishesAt: Long? = null,
+  val finishedAt: Long? = null,
+  /** A finished session can be reopened until then; `null`: it can't (completed, or not finished). */
+  val reopenUntil: Long? = null,
+  /** Its auto-deletion is disabled. */
+  val keep: Boolean = false,
+  /** Once it is a past session, it is deleted then; `null`: never (kept, or no auto-deletion). */
+  val deletesAt: Long? = null,
+  /** How far its slots got, live (or as it finished). */
+  val percent: Double = 0.0,
 )
+
+/** A finished session, for the list of past sessions. */
+@Serializable
+data class PastSession(
+  val seedName: String,
+  val title: String,
+  val createdAt: Long? = null,
+  val finishedAt: Long,
+  /** Who finished it by hand; `null`: by itself. */
+  val finishedBy: String? = null,
+  val players: List<String> = emptyList(),
+  val slots: Int = 0,
+  val percent: Double = 0.0,
+  val goals: Int = 0,
+  /** Still the game server's seed (nothing newer was created). */
+  val current: Boolean = false,
+  /** It can be reopened until then; `null`: it can't (it was completed). */
+  val reopenUntil: Long? = null,
+  /** Its auto-deletion is disabled. */
+  val keep: Boolean = false,
+  /** It is deleted then; `null`: never (kept, or no auto-deletion). The current seed only once a newer one exists. */
+  val deletesAt: Long? = null,
+)
+
+/** A finished session as it was when it finished: the dashboard's summary and every slot's details. */
+@Serializable
+data class ArchivedSession(
+  val summary: Summary,
+  val details: List<PlayerDetail> = emptyList(),
+  val finishedBy: String? = null,
+)
+
+/** `POST /api/admin/sessions/{seed}/keep`: [keep] disables the session's auto-deletion. */
+@Serializable
+data class KeepRequest(val keep: Boolean)
+
+/** One sphere of the spoiler's playthrough: what is reachable (and needed) at that step, "Location (Slot): Item (Slot)". */
+@Serializable
+data class Sphere(val number: Int, val entries: List<String>)
+
+/** `GET /api/spoiler/{seed}`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
+@Serializable
+data class Spoiler(val seedName: String, val spheres: List<Sphere> = emptyList(), val text: String)
+
+/** What an admin can cheat. */
+@Serializable
+enum class CheatAction {
+  /** Gives the slot an item (`/send`). */
+  @SerialName("item") ITEM,
+  /** Checks a location of the slot (`/send_location`): its item goes to whoever it belongs to. */
+  @SerialName("location") LOCATION,
+  /** Sends the slot's remaining items to their owners (`/release`). */
+  @SerialName("release") RELEASE,
+  /** Gives the slot its items that are still in other slots (`/collect`). */
+  @SerialName("collect") COLLECT,
+  /** A free hint for one of the slot's items (`/hint`), if the session allows cheat hints. */
+  @SerialName("hint") HINT,
+  /** A free hint for what is at one of the slot's locations (`/hint_location`), likewise. */
+  @SerialName("hint_location") HINT_LOCATION,
+}
+
+/** `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. */
+@Serializable
+data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null)
+
+/** One cheat, as logged. */
+@Serializable
+data class CheatLogEntry(val ts: Long, val admin: String, val action: CheatAction, val slot: String, val value: String? = null)
+
+/** `GET /api/admin/cheat`: the slots to cheat for, whether hints are allowed, and the session's cheats so far. */
+@Serializable
+data class CheatView(
+  val slots: List<String> = emptyList(),
+  val cheatHints: Boolean = false,
+  /** The game server runs and the session isn't finished. */
+  val available: Boolean = false,
+  val log: List<CheatLogEntry> = emptyList(),
+)
+
+/** `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. */
+@Serializable
+data class CheatNames(val items: List<String> = emptyList(), val locations: List<String> = emptyList())
 
 /** `GET /api/admin/session`: the session (if any), what a new one can use, and who has a login. */
 @Serializable

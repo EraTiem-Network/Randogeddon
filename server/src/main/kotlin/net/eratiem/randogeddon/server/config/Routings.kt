@@ -14,18 +14,18 @@ import io.ktor.server.routing.routing
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.ap.TrackerService
+import net.eratiem.randogeddon.server.admin.Cheats
+import net.eratiem.randogeddon.server.admin.SessionLifecycle
+import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.CurrentSession
-import net.eratiem.randogeddon.database.SessionTime
-import net.eratiem.randogeddon.shared.ApiJson
-import net.eratiem.randogeddon.shared.SessionOptions
-import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.server.session.PastSessions
+import net.eratiem.randogeddon.server.session.Spoilers
+import net.eratiem.randogeddon.server.session.Summaries
 import org.koin.ktor.ext.inject
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -40,8 +40,13 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val slotPasswords by inject<SlotPasswords>()
   val gameServer by inject<GameServerClient>()
   val sessionAdmin by inject<SessionAdmin>()
+  val summaries by inject<Summaries>()
   val currentSession by inject<CurrentSession>()
-  val summaries = SummaryCache(tracker, currentSession, trackerConfig)
+  val archives by inject<Archives>()
+  val past by inject<PastSessions>()
+  val spoilers by inject<Spoilers>()
+  val lifecycle by inject<SessionLifecycle>()
+  val cheats by inject<Cheats>()
 
   routing {
     loginRoutes(logins)
@@ -49,9 +54,10 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     // Everything about the session needs a login (login and logout above are outside this branch)
     route("/api") {
       install(RequireLogin) { this.logins = logins }
-      sessionRoutes(tracker, summaries)
+      sessionRoutes(tracker, summaries, currentSession, archives)
       meRoute(trackerConfig, slotPasswords)
-      adminRoutes(gameServer, sessionAdmin)
+      pastRoutes(past, archives, spoilers)
+      adminRoutes(gameServer, sessionAdmin, lifecycle, cheats, currentSession)
     }
 
     // Nothing about the session: open for the container's healthcheck
@@ -77,78 +83,48 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   }
 }
 
-/** Under `/api`: the session's summary (once and as a live stream) and the details of one world. */
-private fun Route.sessionRoutes(tracker: TrackerService, summaries: SummaryCache) {
-  get("/state") {
-    call.respondText(summaries.json(), ContentType.Application.Json)
+/**
+ * Under `/api`: the session's summary (once and as a live stream) and the details of one slot; of a finished session
+ * as they were when it finished.
+ */
+private fun Route.sessionRoutes(tracker: TrackerService, summaries: Summaries, session: CurrentSession, archives: Archives) {
+  // Only for the session's players and admins
+  route("/state") {
+    install(RequireSessionMember)
+    get { call.respondText(summaries.json(), ContentType.Application.Json) }
   }
-  get("/player/{slot}") {
-    val slot = call.parameters["slot"]?.toIntOrNull()
-      ?: return@get call.respond(HttpStatusCode.BadRequest)
-    val detail = tracker.read { playerDetail(slot) }
-      ?: return@get call.respond(HttpStatusCode.NotFound)
-    call.respond(detail)
+  route("/player/{slot}") {
+    install(RequireSessionMember)
+    get {
+      val slot = call.parameters["slot"]?.toIntOrNull()
+        ?: return@get call.respond(HttpStatusCode.BadRequest)
+      val seed = session.seedName
+      val archived = if (session.finish?.finishedAt != null && seed != null) archives.read(seed) else null
+      val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else tracker.read { playerDetail(slot) })
+        ?: return@get call.respond(HttpStatusCode.NotFound)
+      call.respond(detail)
+    }
   }
   // Pushes the whole summary whenever the state changes. Polled and therefore debounced: a burst of item sends (e.g.
   // a release) becomes one update.
-  sse("/stream") {
-    var sentVersion = -1L
-    var idle = 0.milliseconds
-    while (true) {
-      val version = summaries.version()
-      if (version != sentVersion) {
-        sentVersion = version
-        send(ServerSentEvent(data = summaries.json(), event = "state"))
-        idle = 0.milliseconds
-      } else if (idle >= KEEPALIVE) {
-        send(ServerSentEvent(comments = "keepalive"))
-        idle = 0.milliseconds
+  route("/stream") {
+    install(RequireSessionMember)
+    sse {
+      var sentVersion = -1L
+      var idle = 0.milliseconds
+      while (true) {
+        val version = summaries.version()
+        if (version != sentVersion) {
+          sentVersion = version
+          send(ServerSentEvent(data = summaries.json(), event = "state"))
+          idle = 0.milliseconds
+        } else if (idle >= KEEPALIVE) {
+          send(ServerSentEvent(comments = "keepalive"))
+          idle = 0.milliseconds
+        }
+        delay(POLL_INTERVAL)
+        idle += POLL_INTERVAL
       }
-      delay(POLL_INTERVAL)
-      idle += POLL_INTERVAL
     }
-  }
-}
-
-/** The serialized summary, built at most once per state version however many dashboards are open. */
-private class SummaryCache(
-  private val tracker: TrackerService,
-  private val session: CurrentSession,
-  private val config: TrackerConfig,
-) {
-  private val mutex = Mutex()
-  private var version = -1L
-  private var people: Map<String, List<String>> = emptyMap()
-  private var time: SessionTime? = null
-  private var options: SessionOptions? = null
-  private var json = ""
-
-  /** Changes with the session state, with its people and options, and with the session time's count. */
-  suspend fun version(): Long = tracker.read { version } + session.people().hashCode().toLong().shl(32) +
-    (session.time to session.options).hashCode().toLong().shl(16)
-
-  suspend fun json(): String = mutex.withLock {
-    val currentPeople = session.people()
-    val currentTime = session.time
-    // A session from the admin panel brings its hint switches; a CLI-deployed seed uses the environment's
-    val options = session.options
-    val summary: Summary? = tracker.read {
-      if (version == this@SummaryCache.version && currentPeople == people && currentTime == time && options == this@SummaryCache.options) null
-      else summary(
-        config.title, tracker.lastError, currentPeople,
-        options?.pointHints ?: config.pointHints, options?.autoHints ?: config.autoHints,
-      ).copy(
-        sessionTimeMs = currentTime?.runTimeMs ?: 0,
-        sessionRunningSince = currentTime?.countedUntil?.toEpochMilli(),
-      )
-    }
-    people = currentPeople
-    time = currentTime
-    this.options = options
-    if (summary != null) {
-      version = summary.version
-      json = ApiJson.encodeToString(Summary.serializer(), summary)
-    }
-    json
   }
 }

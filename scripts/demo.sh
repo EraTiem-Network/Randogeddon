@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the demo session locally, to look at the dashboard:
 #   ./scripts/demo.sh        generate demo/players, deploy it locally, start the stack and the simulated players
-#   ./scripts/demo.sh loop   the same over and over: when every slot is done (100 %), wait 2 minutes, start a new round
+#   ./scripts/demo.sh loop   the same over and over: when every slot is done (100 %), the session finishes 2 minutes
+#                            later by itself; 2 minutes after that a new round starts (the finished one stays a past session)
 #   ./scripts/demo.sh stop   stop the simulated players (the stack keeps running; `docker compose down` stops it)
 #
 # The demo replaces the seed in data/ (the previous one is moved to data/old/). Dashboard: http://localhost:8000
@@ -20,7 +21,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" ]] && ! grep -qs '^POSTGRES_PASSWORD=.' .env; 
 if [[ -z "${INTERNAL_TOKEN:-}" ]] && ! grep -qs '^INTERNAL_TOKEN=.' .env; then export INTERNAL_TOKEN=demo-internal; fi
 AP_VERSION="${AP_VERSION:-0.6.8}"
 SIM=randogeddon-demo-sim
-PAUSE=120 # seconds between the end of a round (100 %) and the next one
+PAUSE=240 # seconds between the end of a round (100 %) and the next one: it finishes after 120, then shows that
 docker rm -f "$SIM" >/dev/null 2>&1 || true
 [[ "${1:-}" == "stop" ]] && { echo "Simulated players stopped."; exit 0; }
 

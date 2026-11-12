@@ -158,15 +158,7 @@ class Generator(private val archipelago: Archipelago, private val dataDir: Path,
   }
 
   /** The data directory's seed, its save, room.json and session.yaml go to `old/` (deleting a session, a new seed). */
-  fun retire(): List<String> {
-    val old = dataDir.resolve("old").createDirectories()
-    val moved = dataDir.listDirectoryEntries().filter { f ->
-      f.name.endsWith(".archipelago") || (f.name.startsWith("AP_") && f.name.endsWith(".zip")) ||
-        f.name.endsWith(".apsave") || f.name == "room.json" || f.name == "session.yaml"
-    }
-    moved.forEach { Files.move(it, old.resolve(it.name), StandardCopyOption.REPLACE_EXISTING) }
-    return moved.map { it.name }
-  }
+  fun retire(): List<String> = SeedFiles(dataDir).retire()
 
   /**
    * Without any path, only letters, digits, dots, dashes and underscores; every file a `.yaml`, numbered so names

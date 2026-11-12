@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.database
 
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
@@ -219,4 +220,110 @@ class SlotPasswordStore(private val db: RandogeddonDatabase) {
   private fun passwords(sessionId: Uuid): Map<String, String> =
     SlotPasswordsTable.selectAll().where { SlotPasswordsTable.sessionId eq sessionId }
       .associate { it[SlotPasswordsTable.slotName] to it[SlotPasswordsTable.password] }
+}
+
+/**
+ * Whether a session is finished ([finishedAt], and by whom: `null` by itself), when it finishes by itself ([dueAt]:
+ * every slot is done), whether its auto-deletion is disabled ([keep]), and since when its retention counts
+ * ([retainedSince], once that was enabled again; `null`: since it finished).
+ */
+data class FinishState(
+  val finishedAt: Instant?,
+  val finishedBy: String?,
+  val dueAt: Instant?,
+  val keep: Boolean,
+  val retainedSince: Instant? = null,
+)
+
+data class FinishedSession(
+  val seedName: String,
+  val createdAt: Instant,
+  val finishedAt: Instant,
+  val finishedBy: String?,
+  val keep: Boolean,
+  val retainedSince: Instant? = null,
+)
+
+/** Finishing and reopening sessions; the tracker decides when, the gateway only asks whether one is finished. */
+class SessionFinishStore(private val db: RandogeddonDatabase) {
+  suspend fun of(seedName: String): FinishState? = db.query {
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.let {
+      FinishState(
+        it[SessionsTable.finishedAt], it[SessionsTable.finishedBy], it[SessionsTable.finishDueAt], it[SessionsTable.keep],
+        it[SessionsTable.retainedSince],
+      )
+    }
+  }
+
+  /** The session finishes by itself at [at]; `null`: not (any more). */
+  suspend fun setDue(seedName: String, at: Instant?) = db.query {
+    SessionsTable.update({ SessionsTable.seedName eq seedName }) { it[finishDueAt] = at }
+    Unit
+  }
+
+  suspend fun finish(seedName: String, by: String?, now: Instant = Instant.now()) = db.query {
+    SessionsTable.update({ SessionsTable.seedName eq seedName }) {
+      it[finishedAt] = now
+      it[finishedBy] = by
+      it[finishDueAt] = null
+    }
+    Unit
+  }
+
+  suspend fun reopen(seedName: String) = db.query {
+    SessionsTable.update({ SessionsTable.seedName eq seedName }) {
+      it[finishedAt] = null
+      it[finishedBy] = null
+      it[finishDueAt] = null
+    }
+    Unit
+  }
+
+  /** [keep]: its auto-deletion is disabled. Enabling it again starts its retention anew, at [now]. */
+  suspend fun setKeep(seedName: String, keep: Boolean, now: Instant = Instant.now()): Boolean = db.query {
+    SessionsTable.update({ SessionsTable.seedName eq seedName }) {
+      it[SessionsTable.keep] = keep
+      if (!keep) it[retainedSince] = now
+    } > 0
+  }
+
+  /** Every finished session, the newest first. */
+  suspend fun finished(): List<FinishedSession> = db.query {
+    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNotNull() }
+      .orderBy(SessionsTable.finishedAt, SortOrder.DESC)
+      .map {
+        FinishedSession(
+          it[SessionsTable.seedName], it[SessionsTable.createdAt], it[SessionsTable.finishedAt]!!,
+          it[SessionsTable.finishedBy], it[SessionsTable.keep], it[SessionsTable.retainedSince],
+        )
+      }
+  }
+}
+
+/** One cheat of an admin; [value]: the item or location, if the action has one. */
+data class CheatEntry(val at: Instant, val admin: String, val action: String, val slotName: String, val value: String?)
+
+/** Every cheat from the admin panel, per session, with the admin's name at the time. */
+class CheatLogStore(private val db: RandogeddonDatabase) {
+  suspend fun add(seedName: String, entry: CheatEntry) = db.query {
+    val id = sessionId(seedName, entry.at)
+    CheatLogTable.insert {
+      it[sessionId] = id
+      it[at] = entry.at
+      it[admin] = entry.admin
+      it[action] = entry.action
+      it[slotName] = entry.slotName
+      it[value] = entry.value?.take(255)
+    }
+    Unit
+  }
+
+  /** The newest first. */
+  suspend fun of(seedName: String, limit: Int = 50): List<CheatEntry> = db.query {
+    (CheatLogTable innerJoin SessionsTable).selectAll().where { SessionsTable.seedName eq seedName }
+      .orderBy(CheatLogTable.at, SortOrder.DESC).limit(limit)
+      .map {
+        CheatEntry(it[CheatLogTable.at], it[CheatLogTable.admin], it[CheatLogTable.action], it[CheatLogTable.slotName], it[CheatLogTable.value])
+      }
+  }
 }

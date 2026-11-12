@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -61,6 +63,7 @@ import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.FeedEvent
 import net.eratiem.randogeddon.shared.HintView
 import net.eratiem.randogeddon.shared.ItemFlags
+import net.eratiem.randogeddon.shared.PastSession
 import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
@@ -134,12 +137,33 @@ fun App() {
   var detailPerson by remember { mutableStateOf<String?>(null) }
   // The admin panel instead of the dashboard (admins only; the server checks every call too)
   var adminOpen by remember { mutableStateOf(false) }
+  // A past session, or a spoiler log, instead of the dashboard (or the admin panel)
+  var pastSeed by remember { mutableStateOf<String?>(null) }
+  var spoilerSeed by remember { mutableStateOf<String?>(null) }
+  // The past session's archive: its view, and the header card while it is shown
+  var pastArchive by remember { mutableStateOf<ArchiveSource?>(null) }
+  var pastMissing by remember { mutableStateOf(false) }
+  LaunchedEffect(pastSeed) {
+    pastArchive = null
+    pastMissing = false
+    val seed = pastSeed ?: return@LaunchedEffect
+    val archived = repository.pastSession(seed)
+    pastArchive = archived?.let(::ArchiveSource)
+    pastMissing = archived == null
+  }
   LaunchedEffect(me) {
     if (me == null) {
       detailSlot = null
       detailPerson = null
       adminOpen = false
+      pastSeed = null
+      spoilerSeed = null
     }
+  }
+  // Loaded again when a session finishes or another one starts
+  var pastSessions by remember { mutableStateOf(emptyList<PastSession>()) }
+  LaunchedEffect(me, summary?.seedName, summary?.finishedAt, adminOpen) {
+    pastSessions = if (me == null) emptyList() else repository.pastSessions()
   }
 
   // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
@@ -170,68 +194,96 @@ fun App() {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
       ) {
-        Column(Modifier.widthIn(max = 1400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GAP)) {
-          val s = summary
-          val user = me ?: run {
-            // Before the login is known: either the login form of index.html covers the page, or the server is away
-            if (unreachable) Txt(
-              "Can't reach the server – trying again…", color = LocalPalette.current.muted,
-              modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
-            )
-            return@Column
-          }
-          Hero(
-            s, streamOpen,
-            onToggleTheme = {
-              themeSetting = if (dark) "light" else "dark"
-              Platform.saveSetting(THEME_KEY, themeSetting)
-            },
-            feedVisible = feedVisible,
-            onToggleFeed = { setFeedVisible(!feedVisible) },
-            onLogout = { scope.launch { repository.logout() } },
-            onAdmin = if (user.admin) ({ adminOpen = !adminOpen }) else null,
-            adminOpen = adminOpen,
-          )
-          if (adminOpen && user.admin) {
-            AdminView(now, onBack = { adminOpen = false })
-            return@Column
-          }
-          if (s == null) return@Column
-          val error = s.error
-          if (!s.connected && error != null) Banner(error)
-          if (wide) {
-            // The tiles and the connection share a row and its height
-            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
-              Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-              ConnectionSection(user, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+        // Text can be selected (and copied) anywhere on the page
+        SelectionContainer {
+          Column(Modifier.widthIn(max = 1400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GAP)) {
+            val s = summary
+            val user = me ?: run {
+              // Before the login is known: either the login form of index.html covers the page, or the server is away
+              if (unreachable) Txt(
+                "Can't reach the server – trying again…", color = LocalPalette.current.muted,
+                modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
+              )
+              return@Column
             }
-          } else {
-            ConnectionSection(user, s, Modifier.fillMaxWidth())
-            Stats(s, now, contentWidth)
-          }
-          val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
-            Feed(s, modifier, feedPosition, fillHeight, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
-          }
-          val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
-          if (side) {
-            // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
-            SideBySide(
-              sideFirst = feedPosition == FeedPosition.LEFT,
-              sideWidth = FEED_WIDTH,
-              main = {
-                Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
-                  People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-                  if (showHints(s)) Hints(s, compact = false)
-                }
+            Hero(
+              pastArchive?.archived?.summary?.takeIf { pastSeed != null } ?: s, streamOpen,
+              onToggleTheme = {
+                themeSetting = if (dark) "light" else "dark"
+                Platform.saveSetting(THEME_KEY, themeSetting)
               },
-              side = { feed(Modifier.fillMaxSize(), true) },
+              feedVisible = feedVisible,
+              onToggleFeed = { setFeedVisible(!feedVisible) },
+              onLogout = { scope.launch { repository.logout() } },
+              onAdmin = if (user.admin) ({ adminOpen = !adminOpen; pastSeed = null; spoilerSeed = null }) else null,
+              adminOpen = adminOpen,
             )
-          } else {
-            // Narrow screens: left/right means right after the players, "below" at the very end
-            People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-            if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
-            if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-            if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+            spoilerSeed?.let { seed ->
+              SpoilerView(seed, onBack = { spoilerSeed = null })
+              return@Column
+            }
+            pastSeed?.let { seed ->
+              PastSessionView(seed, pastArchive, pastMissing, contentWidth, onBack = { pastSeed = null }, onSpoiler = { spoilerSeed = seed })
+              return@Column
+            }
+            if (adminOpen && user.admin) {
+              AdminView(now, onBack = { adminOpen = false }, onSpoiler = { spoilerSeed = it })
+              return@Column
+            }
+            val past = pastSessions.filter { !it.current }
+            if (!user.inSession && !user.admin) {
+              // Only of past sessions: those, not the current one
+              Txt(
+                "You aren't part of the current session." + if (past.isNotEmpty()) " Your past sessions:" else "",
+                color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
+              )
+              if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
+              return@Column
+            }
+            if (s == null) return@Column
+            val error = s.error
+            if (!s.connected && error != null && s.finishedAt == null) Banner(error)
+            FinishBanner(
+              s, user.admin,
+              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/session/finish") } },
+              onCancel = { scope.launch { Platform.request("POST", "api/admin/session/finish/cancel") } },
+              onSpoiler = { s.seedName?.let { spoilerSeed = it } },
+            )
+            if (wide) {
+              // The tiles and the connection share a row and its height
+              Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
+                Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+                ConnectionSection(user, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+              }
+            } else {
+              ConnectionSection(user, s, Modifier.fillMaxWidth())
+              Stats(s, now, contentWidth)
+            }
+            val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
+              Feed(s, modifier, feedPosition, fillHeight, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
+            }
+            val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
+            if (side) {
+              // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
+              SideBySide(
+                sideFirst = feedPosition == FeedPosition.LEFT,
+                sideWidth = FEED_WIDTH,
+                main = {
+                  Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
+                    People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+                    if (showHints(s)) Hints(s, compact = false)
+                  }
+                },
+                side = { feed(Modifier.fillMaxSize(), true) },
+              )
+            } else {
+              // Narrow screens: left/right means right after the players, "below" at the very end
+              People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+              if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+              if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
+              if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+            }
+            if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
           }
         }
       }
@@ -283,8 +335,9 @@ private fun Hero(
         ).joinToString("  ·  ")
         Txt(meta.ifEmpty { "Connecting to the tracker…" }, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
       }
+      // As tall as the buttons next to it
       Row(
-        Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp, vertical = 5.dp),
+        Modifier.height(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
@@ -292,6 +345,7 @@ private fun Hero(
         Txt(
           when {
             !streamOpen -> "reconnecting…"
+            summary?.finishedAt != null -> "finished"
             summary?.connected == true -> "live"
             else -> "server offline"
           }, size = 12.5.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 1
@@ -373,7 +427,7 @@ private fun Grid(
 private data class Tile(val label: String, val value: String, val sub: String, val color: Color, val icon: Icon?)
 
 @Composable
-private fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
+internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
   val p = LocalPalette.current
   val t = s.totals
   val open = s.hints.count { !it.found }
@@ -421,14 +475,14 @@ private fun StatTile(tile: Tile, modifier: Modifier) {
   }
 }
 
-private enum class PeopleSort(val label: String) { SESSION("Sort: session"), PROGRESS("Sort: progress"), ACTIVITY("Sort: last activity") }
+private enum class PeopleSort(val label: String) { PLAYER("Sort: player"), PROGRESS("Sort: progress"), ACTIVITY("Sort: last activity") }
 
 @Composable
-private fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOpenPerson: (String) -> Unit) {
+internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOpenPerson: (String) -> Unit) {
   val p = LocalPalette.current
-  var sort by remember { mutableStateOf(PeopleSort.SESSION) }
+  var sort by remember { mutableStateOf(PeopleSort.PLAYER) }
   val people = when (sort) {
-    PeopleSort.SESSION -> s.people
+    PeopleSort.PLAYER -> s.people.sortedBy { it.name.lowercase() }
     PeopleSort.PROGRESS -> s.people.sortedByDescending { it.percent }
     PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
   }
@@ -522,12 +576,12 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
     modifier.width(34.dp).heightIn(min = 18.dp).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.18f))
       .hoverable(interaction)
       // Its own click: a tap shows the text instead of opening the world
-      .clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+      .hand().clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
     contentAlignment = Alignment.Center,
   ) {
     DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, color, 11.dp)
     if (hovered || tapped) {
-      Popup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+      AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
         Txt(
           when {
             lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${ago(it, now)}" } ?: "")
@@ -617,7 +671,7 @@ private enum class HintState(val label: String, val matches: (HintView) -> Boole
 }
 
 @Composable
-private fun Hints(s: Summary, compact: Boolean) {
+internal fun Hints(s: Summary, compact: Boolean) {
   val p = LocalPalette.current
   var person by remember { mutableStateOf<String?>(null) }
   var world by remember { mutableStateOf<String?>(null) }
@@ -726,15 +780,17 @@ private enum class FeedKind(val label: String) {
   ALL("All events"), PROGRESSION("Progression"), ITEMS("Items"), KEYS("Keys & goals"), HINTS("Hints"), OTHER("Connections & chat")
 }
 
+/** The live feed; [onPosition] and [onHide] `null`: without the buttons to place or hide it (a past session). */
 @Composable
-private fun Feed(
+internal fun Feed(
   s: Summary,
   modifier: Modifier,
   position: FeedPosition,
   /** Beside players and hints: the given height is filled and the list scrolls inside. */
   fillHeight: Boolean,
-  onPosition: (FeedPosition) -> Unit,
-  onHide: () -> Unit,
+  onPosition: ((FeedPosition) -> Unit)?,
+  onHide: (() -> Unit)?,
+  title: String = "Live feed",
 ) {
   val p = LocalPalette.current
   var who by remember { mutableStateOf<Int?>(null) }
@@ -747,12 +803,20 @@ private fun Feed(
         FeedKind.ITEMS -> e.type == EventType.ITEM
         FeedKind.KEYS -> e.type in setOf(EventType.UNLOCK, EventType.GOAL, EventType.RELEASE, EventType.COLLECT)
         FeedKind.HINTS -> e.type == EventType.HINT
-        FeedKind.OTHER -> e.type in setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN)
+        FeedKind.OTHER -> e.type in setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN, EventType.CHEAT)
       }
   }
-  Section("Live feed", modifier, subtitle = "newest first", actions = {
-    Select(FeedPosition.entries.map { it to it.label }, position, onPosition)
-    IconButton(onHide, Icon.CLOSE)
+  // The position picker's height, so the close button next to it is as tall
+  var pickerHeight by remember { mutableStateOf(26.dp) }
+  val density = LocalDensity.current
+  Section(title, modifier, subtitle = "newest first", actions = {
+    if (onPosition != null) {
+      Select(
+        FeedPosition.entries.map { it to it.label }, position, onPosition,
+        Modifier.onSizeChanged { pickerHeight = with(density) { it.height.toDp() } },
+      )
+    }
+    if (onHide != null) IconButton(onHide, Icon.CLOSE, Modifier.size(pickerHeight))
   }) {
     Column(Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p)) {
       Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -783,6 +847,7 @@ internal fun FeedRow(e: FeedEvent) {
     EventType.GOAL -> p.ok to Icon.FLAG
     EventType.HINT -> p.progression to null
     EventType.RELEASE, EventType.COLLECT -> p.progression to null
+    EventType.CHEAT -> p.trap to null
     else -> p.muted to null
   }
   val highlight = e.type == EventType.UNLOCK || e.type == EventType.GOAL
@@ -821,6 +886,11 @@ private fun FeedLine(e: FeedEvent) {
         }
       }
 
+      EventType.CHEAT -> {
+        withStyle(SpanStyle(color = p.trap, fontWeight = FontWeight.SemiBold)) { append("Cheat: ") }
+        append(e.message ?: "")
+      }
+
       EventType.UNLOCK -> {
         withStyle(bold) { append(e.senderName ?: "") }
         append(" found the key: ")
@@ -849,6 +919,8 @@ private fun FeedLine(e: FeedEvent) {
       EventType.CHAT -> { withStyle(bold) { append(e.playerName ?: "") }; append(": ${e.message ?: ""}") }
       EventType.COUNTDOWN -> withStyle(SpanStyle(color = p.ok, fontWeight = FontWeight.Bold)) { append(e.message ?: "") }
     }
+    // An item a client took with !getitem: Archipelago marks it as a cheat
+    if (e.cheat && e.type != EventType.CHEAT) withStyle(SpanStyle(color = p.trap, fontWeight = FontWeight.SemiBold)) { append(" · cheat") }
   }, size = 13.5.sp)
   val location = e.locationName
   if ((e.type == EventType.ITEM || e.type == EventType.UNLOCK) && !location.isNullOrEmpty()) {
@@ -861,7 +933,7 @@ fun playTime(world: PlayerSummary, now: Long): Long =
   world.playTimeMs + (world.onlineSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
 
 /** Hints are shown when a hint system is in play, or when the host handed some out anyway (/hint). */
-private fun showHints(s: Summary): Boolean = s.hintSettings.enabled || s.hints.isNotEmpty()
+internal fun showHints(s: Summary): Boolean = s.hintSettings.enabled || s.hints.isNotEmpty()
 
 private fun hintModeLabel(s: Summary): String {
   val h = s.hintSettings

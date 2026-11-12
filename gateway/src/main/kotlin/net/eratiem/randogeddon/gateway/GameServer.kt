@@ -50,6 +50,8 @@ class GameServerConfig(
   val onRunning: (seed: String) -> Unit = {},
   /** It ended (stopped, crashed or killed) after it had been running. */
   val onEnded: (seed: String) -> Unit = {},
+  /** Why this seed must not be served (its session is finished); `null`: it may. Asked before every start. */
+  val refuse: (seed: Path) -> String? = { null },
 )
 
 /**
@@ -119,6 +121,13 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
         state = state.copy(status = GameServerStatus.NO_SEED, seed = null, since = null)
         delay(config.seedPoll)
         continue
+      }
+      val refusal = runCatching { config.refuse(seed) }.getOrNull()
+      if (refusal != null) {
+        // Stays stopped, as after a stop by an admin; a start asks again
+        note("Not starting ${seed.name}: $refusal")
+        state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
+        return
       }
       state = state.copy(status = GameServerStatus.STARTING, seed = seed.name, since = System.currentTimeMillis())
       val started = System.currentTimeMillis()

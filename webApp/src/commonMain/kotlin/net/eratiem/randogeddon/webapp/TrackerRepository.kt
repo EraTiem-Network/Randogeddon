@@ -8,16 +8,34 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiError
+import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ArchivedSession
 import net.eratiem.randogeddon.shared.Me
+import net.eratiem.randogeddon.shared.PastSession
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.Summary
+
+/** Where the slot and player views get a slot's details: the live session, or a past session's archive. */
+interface SessionSource {
+  suspend fun player(slot: Int): PlayerDetail?
+
+  /** Point hints are (or were) in play: the slot view shows hint points then. */
+  val pointHints: Boolean
+}
+
+/** A past session, as it was when it finished. */
+class ArchiveSource(val archived: ArchivedSession) : SessionSource {
+  override suspend fun player(slot: Int): PlayerDetail? = archived.details.firstOrNull { it.slot == slot }
+
+  override val pointHints: Boolean get() = archived.summary.hintSettings.pointHints
+}
 
 /**
  * The dashboard's view of the tracker server: who is logged in, and the latest summary, pushed over the live stream.
  * Nothing about the session is loaded before the login; logging out drops all of it from memory.
  */
-class TrackerRepository(private val scope: CoroutineScope) {
+class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   private val _summary = MutableStateFlow<Summary?>(null)
   val summary: StateFlow<Summary?> = _summary.asStateFlow()
 
@@ -48,9 +66,21 @@ class TrackerRepository(private val scope: CoroutineScope) {
     Platform.showLogin(null, ::checkLogin)
   }
 
-  suspend fun player(slot: Int): PlayerDetail? = Platform.request("GET", "api/player/$slot")
+  override suspend fun player(slot: Int): PlayerDetail? = Platform.request("GET", "api/player/$slot")
     ?.takeIf { it.status == 200 }
     ?.let { runCatching { ApiJson.decodeFromString(PlayerDetail.serializer(), it.body) }.getOrNull() }
+
+  override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
+
+  /** The finished sessions this user may see, the newest first; empty if they can't be loaded. */
+  suspend fun pastSessions(): List<PastSession> = Platform.request("GET", "api/sessions")
+    ?.takeIf { it.status == 200 }
+    ?.let { runCatching { ApiJson.decodeFromString(ListSerializer(PastSession.serializer()), it.body) }.getOrNull() }
+    .orEmpty()
+
+  suspend fun pastSession(seed: String): ArchivedSession? = Platform.request("GET", "api/sessions/$seed")
+    ?.takeIf { it.status == 200 }
+    ?.let { runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), it.body) }.getOrNull() }
 
   /** Asks the server who is logged in: opens the stream, or shows the login form. Retries while unreachable. */
   private fun checkLogin() {
@@ -61,9 +91,11 @@ class TrackerRepository(private val scope: CoroutineScope) {
         _unreachable.value = result == null || result.status >= 500
         when (result?.status) {
           200 -> {
-            _me.value = runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()
+            val me = runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()
+            _me.value = me
             Platform.hideLogin()
-            openStream()
+            // A player of past sessions only sees those: the live session isn't theirs
+            if (me == null || me.inSession || me.admin) openStream()
             return@launch
           }
           401, 403 -> {
@@ -110,9 +142,18 @@ class TrackerRepository(private val scope: CoroutineScope) {
 
   private fun accept(json: String) {
     val summary = runCatching { ApiJson.decodeFromString(Summary.serializer(), json) }.getOrNull() ?: return
+    val previous = _summary.value
     // The initial fetch can arrive after a newer pushed state
-    if (summary.version >= (_summary.value?.version ?: -1) || summary.seedName != _summary.value?.seedName) {
+    if (summary.version >= (previous?.version ?: -1) || summary.seedName != previous?.seedName) {
       _summary.value = summary
     }
+    // Another session: other slots and slot passwords (or none) for this user
+    if (previous != null && summary.seedName != previous.seedName) scope.launch { refreshMe() }
+  }
+
+  /** Who is logged in, again: their slots change with the session. */
+  private suspend fun refreshMe() {
+    val result = Platform.request("GET", "api/me")?.takeIf { it.status == 200 } ?: return
+    runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()?.let { _me.value = it }
   }
 }

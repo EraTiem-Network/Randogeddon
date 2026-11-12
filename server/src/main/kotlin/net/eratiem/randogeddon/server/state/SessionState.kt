@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.ConnectionSession
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.FeedEvent
@@ -411,6 +412,13 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
+  /** An admin cheated from the admin panel: a feed line saying who and what ([message], e.g. "Alice gave …"). */
+  fun onCheat(message: String, now: Long = clock()) {
+    events.addLast(event(now, EventType.CHEAT, message = message, cheat = true))
+    while (events.size > MAX_EVENTS) events.removeFirst()
+    touch()
+  }
+
   private fun event(
     ts: Long, type: EventType, slot: Int? = null, sender: Int? = null, receiver: Int? = null, finder: Int? = null,
     item: Long? = null, location: Long? = null, flags: Int = 0, found: Boolean = false, cheat: Boolean = false,
@@ -421,6 +429,24 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   )
 
   // -------------------------------------------------------------------------------------------------------- names
+
+  /**
+   * Every slot (the World Locks slot aside) has reached its goal or was released: the session can finish. `false`
+   * while no slot is known yet.
+   */
+  fun allDone(): Boolean {
+    val slots = players.values.filter { it.game != WORLD_LOCKS_GAME }
+    return slots.isNotEmpty() && slots.all { it.status == ClientStatus.GOAL || it.released }
+  }
+
+  /** The slot names an admin can cheat for (not the World Locks slot). */
+  fun cheatSlots(): List<String> = players.values.filter { it.game != WORLD_LOCKS_GAME }.map { it.name }
+
+  /** For cheats: every item of the slot's game, and the slot's locations not checked yet; `null` for an unknown slot. */
+  fun cheatNames(slotName: String): CheatNames? {
+    val p = players.values.firstOrNull { it.name == slotName && it.game != WORLD_LOCKS_GAME } ?: return null
+    return CheatNames(itemNames[p.game]?.values?.sorted().orEmpty(), p.missing.map { locationName(it, p.slot) }.sorted())
+  }
 
   /** Slots of the World Locks game: they hold keys, they are not worlds anyone plays. */
   fun lockSlots(): Set<Int> = players.values.filter { it.game == WORLD_LOCKS_GAME }.mapTo(mutableSetOf()) { it.slot }
