@@ -108,11 +108,15 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
 2. **Create the session** (admin panel, *Session*, only while there is none): *Add YAMLs…*, then for every slot who
    plays it (one or more players: a slot with several players is played together; new names get a login); the locks
-   (tick the slots that start locked, or *Random*: a number of slots picked at random start open, all others start
-   locked); the hint and release options; *Generate and start*. Every option has an ⓘ that says what it does. The
-   gateway generates the seed with the chosen Archipelago release and starts the game server on it. A game the release
-   has no APWorld for is flagged before generating; if Generate.py fails, the panel names the games that may be the
-   cause (one the error mentions, or one whose APWorld comes from another release) above its output.
+   (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
+   all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
+   start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
+   *Generate and start*. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   long press on a phone. The gateway generates the seed with the chosen
+   Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
+   name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
+   before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
+   or one whose APWorld comes from another release) above its output.
 3. **Hand out the new logins**: the panel shows each new player's password **once** (and, with random locks, which
    slots start locked). Players who already had a login keep it.
 4. **Players log in** at `https://randogeddon.eratiem.net`. Under *Your connection* they find the server
@@ -138,10 +142,10 @@ session at a time: a new one can be created once the current one is finished (it
   for its seed and save, `/state/sessions/<seed>.json` in the tracker's volume for what the dashboard showed). Its
   players see it under *Past sessions* on the dashboard, admins see all; it is kept until an admin deletes it in the
   admin panel, or automatically `SESSION_RETENTION_DAYS` after it finished (90 by default, `0`: never; the date shows
-  in the lists). *Disable auto-deletion* (asked once more) keeps it until an admin deletes it; enabled again, the days count from
+  in the lists). In the admin panel a click on one shows its overview and its players. *Disable auto-deletion* (asked once more) keeps it until an admin deletes it; enabled again, the days count from
   then. Someone who is in no current session but in a past one can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  searchable. Admins can open it at any time (behind a warning: it is a full spoiler); the players of a session see it
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). Admins can open it at any time (behind a warning: it is a full spoiler); the players of a session see it
   once it is finished.
 
 ### APWorlds
@@ -151,9 +155,10 @@ and its APWorld library:
 
 - **Upload APWorld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
   checks that it is an APWorld (a zip with one world folder), loads the release's worlds again and says which game it
-  brought, or why it didn't load (e.g. it needs a newer Archipelago). *Remove* takes it out again.
+  brought. One that doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have
+  replaced stays, and the panel says why. *Remove* takes one out again.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
-  copied and marked "untested here". If generating fails, such APWorlds are among the suspects.
+  copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
   panel).
 
@@ -273,8 +278,9 @@ seed, not just of the dashboard: the `World Locks` APWorld (`apworlds/world_lock
 adds one key item per locked slot and tells the generator that nothing in that slot is reachable without its key. So
 every seed stays completable, chains included (a key inside a slot that is itself locked).
 
-In the admin panel, tick *starts locked* per slot, or choose *Random* locks with the number of slots that start open
-(at least one; the others are locked). For the CLI, add one extra YAML to `players/` (nobody plays this slot):
+In the admin panel, tick *starts locked* per slot, choose *Random* locks with the number of slots that start open
+(at least one; the others are locked), or *Mixed*: per slot open, locked or left to chance, and how many start open in
+all. For the CLI, add one extra YAML to `players/` (nobody plays this slot):
 
 ```yaml
 name: Locks
