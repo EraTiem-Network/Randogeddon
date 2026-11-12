@@ -27,7 +27,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Kotlin tracker (Ktor) following the room over the AP protocol, one Tracker connection per slot
 - [x] Compose Multiplatform web dashboard (Kotlin/Wasm), installable as a PWA on Android and iOS
 - [x] People and their worlds (`session.yaml`), play time, connection log, person and world views
-- [x] World Locks apworld: worlds locked until their key is found, seeds stay completable
+- [x] World Locks APWorld: worlds locked until their key is found, seeds stay completable
 - [x] Hint switches (point hints, automatic hints), hint points per world, hint filters
 - [x] Demo session with simulated players
 - [x] Renamed to Randogeddon; dashboard at `randogeddon.eratiem.net`, the session's game server at
@@ -80,31 +80,33 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The gateway generates the seed; the game server starts on it.
     - Words: a player is a person (a user with a login), a slot is one YAML, the game only its title.
 - [x] Random locks: a number of slots, picked at random, start open; all others start locked
-- [x] apworlds: the gateway reports each release's games; admins upload apworlds into a library per release, remove
+- [x] APWorlds: the gateway reports each release's games; admins upload APWorlds into a library per release, remove
   them, and try ones made for another release
     - A YAML whose game the release lacks is flagged before generating; a failed generation names the games that may
-      be the cause (named in the error, or with an untested apworld).
+      be the cause (named in the error, or with an untested APWorld).
 - [x] Every option in the admin panel explains itself (an info tip on hover or tap)
 - [x] Control the session: start, stop and restart the server, see its log, run server commands
     - Stop and restart ask once more; the log is live; the console keeps a command history.
 - [x] Delete a session: stop the server, remove the seed, save and slot passwords
     - The logins stay: they belong to people, who will play again (see Phase 5).
 - [x] Only one session at a time (creating a second one is refused until the first is deleted)
-- [ ] Optimal path: the spoiler playthrough rendered as a route (sphere by sphere)
+- [x] Optimal path: the spoiler playthrough rendered as a route (sphere by sphere)
     - Hidden by default (it is a full spoiler). Admins can reveal it at any time; all players of the session see it
       once the session is finished.
-- [ ] Finish a session
+- [x] Finish a session
     - Automatically 2 minutes after every slot has reached its goal or was released, with a countdown on the
       dashboard that admins can cancel; an admin can also finish it by hand earlier (e.g. someone dropped out), and
-      reopen it within 14 days if it was a mistake (or at any time, if flagged so).
+      reopen it within 14 days if it was a mistake (not once it was completed, 100 %).
+    - Past sessions are deleted automatically after `SESSION_RETENTION_DAYS` (90 by default); an admin can disable
+      that per session.
     - A finished session no longer blocks a new one: it becomes a past session, viewable from a list.
     - Finishing stops the game server, makes the session read-only history, reveals the optimal path to its players
       and starts the auto-deletion timer of its users (Phase 5).
     - Finished sessions are kept until an admin deletes them; their players and the admins can see them. Automatic
       deletion can come with the auto-deletion of users (Phase 5).
-- [ ] Cheats: give items (`/send`), checks (`/send_location`), release and collect, from the panel
+- [x] Cheats: give items (`/send`), checks (`/send_location`), release and collect, from the panel
     - Every cheat is logged with who did it, and shown in the live feed as a cheat.
-- [ ] Cheat hints, if enabled for the session: admins give free hints (`/hint`, `/hint_location`)
+- [x] Cheat hints, if enabled for the session: admins give free hints (`/hint`, `/hint_location`)
 - Two-factor login moved to Phase 5 (proper user management).
 - [x] The **gateway** runs the game servers itself (not the tracker: so a tracker restart or update never drops
   the players; the gateway already sits in front of MultiServer)
@@ -118,7 +120,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] A session keeps the Archipelago version it was generated with
     - The gateway runs and generates only the releases it has; one release in the image for now, a second one is
       added next to it when an update comes.
-    - Saved with the session, together with the apworlds it used (custom worlds, World Locks).
+    - Saved with the session, together with the APWorlds it used (custom worlds, World Locks).
     - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
       update never breaks a running session. Releases no session uses any more can be dropped.
 

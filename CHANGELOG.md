@@ -4,17 +4,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-### apworlds, random locks, tooltips (Phase 3, part 3)
+### Finishing, past sessions, spoiler log, cheats (Phase 3, part 4)
+- A session ends by itself 2 minutes after every slot reached its goal or was released, with a countdown on the
+  dashboard (admins: end now, or cancel). Admins can pause it by hand (not every check done) or end it (100 %). A finished session is read-only: the
+  game server stops (the gateway refuses to start it, also after a restart) and the dashboard shows how it ended.
+- Reopening within 14 days, unless the session was completed (100 %); also a past one, once the current session is
+  finished. Past sessions are deleted automatically `SESSION_RETENTION_DAYS` after they finished (90 by default, `0`:
+  never), unless an admin disabled that for one (enabled again, the days count from then); the lists show the date.
+- Past sessions: a finished session no longer blocks a new one. Creating the next one archives it (seed and save in
+  `data/sessions/<seed>/`, the dashboard's view in the tracker's volume); its players see it under *Past sessions*,
+  admins see all and delete them. A player of past sessions only can still log in to see them.
+- The spoiler log: the playthrough sphere by sphere and the whole log, searchable. Admins see it any time (behind a
+  warning), the players once the session is finished.
+- Cheats in the admin panel: give items, check locations, release, collect; free hints if the session was created
+  with cheat hints. Every cheat is stored with the admin's name and shown in the live feed.
+- Migration V5 (finish state, cheat log). The demo loop waits 4 minutes after a round: it finishes after 2.
+
+### APWorlds, random locks, tooltips (Phase 3, part 3)
 - The same words everywhere: a **player** is a person with a login, a **slot** is one YAML (one game in the
   multiworld, played by one or more players), the **game** is its title. The dashboard and the admin panel say
   "slot" where they said "world".
 - Random locks: instead of ticking the locked slots, set how many slots start open; that many, picked at random,
   start open and all others start locked. The panel shows which ones it picked.
-- apworlds in the admin panel: every Archipelago release of the gateway lists its games; admins upload apworlds into
-  a release's library (`data/apworlds/<release>/`), remove them, and try one uploaded for another release. Apworlds in
+- APWorlds in the admin panel: every Archipelago release of the gateway lists its games; admins upload APWorlds into
+  a release's library (`data/apworlds/<release>/`), remove them, and try one uploaded for another release. APWorlds in
   the server's `custom_worlds/` count for every release (compose mounts it at `/custom_worlds` now).
 - A YAML whose game the release doesn't have is flagged before generating. When generating fails, the panel names
-  the games that may be the cause (named in the error, or with an apworld from another release) above the output.
+  the games that may be the cause (named in the error, or with an APWorld from another release) above the output.
 - Every option of the session form, the server buttons and the console have an ⓘ that says what they do.
 
 ### Sessions in the admin panel (Phase 3, part 2)
@@ -86,7 +102,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The tracker image is built from the Gradle build; the Nexus credentials are passed in as a BuildKit secret.
 
 ### Locked worlds and people
-- `World Locks` apworld: worlds that start locked until their key is found elsewhere; the generator knows about the
+- `World Locks` APWorld: worlds that start locked until their key is found elsewhere; the generator knows about the
   locks, so seeds stay completable. Option `early_keys` to make the keys reachable from the start.
 - `session.yaml` groups worlds by person; the dashboard shows each person with their worlds, their state and, for
   locked worlds, who found the key or where it was hinted. Key finds are highlighted in the live feed.

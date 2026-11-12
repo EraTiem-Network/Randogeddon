@@ -44,14 +44,14 @@ API on 8001 are not published). A tracker restart or update doesn't drop the pla
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
-| `apworlds/world_locks/` | Our own apworld: slots that start locked until their key is found (part of the gateway image) |
+| `apworlds/world_locks/` | Our own APWorld: slots that start locked until their key is found (part of the gateway image) |
 | `session.yaml` | Who plays which slots, only for seeds deployed with the CLI (copy `session.example.yaml`; gitignored) |
 | `demo/` | An example session (YAMLs, `session.yaml`, simulated players) — see *Demo* below |
 | `kotlin.Dockerfile` | Builds the tracker image and the gateway image (native, plus the pinned Archipelago release) |
 | `players/` | One YAML per slot (gitignored) |
 | `custom_worlds/` | Extra `.apworld` files for games that aren't bundled, for every release (gitignored); or upload them in the admin panel |
 | `output/` | Generated `AP_<seed>.zip` (gitignored, contains the spoiler) |
-| `data/` | Server side: active seed, `.apsave` savegame, `room.json`, the uploaded apworlds in `apworlds/<release>/` (gitignored) |
+| `data/` | Server side: active seed, `.apsave` savegame, `room.json`, the uploaded APWorlds in `apworlds/<release>/` (gitignored) |
 | `scripts/generate.sh` | Generate a seed locally |
 | `scripts/deploy-seed.sh` | Push a seed to the server (or install it locally) and restart |
 
@@ -106,13 +106,13 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
-2. **Create the session** (admin panel, *Session*, only while there is none): *Choose YAMLs…*, then for every slot who
+2. **Create the session** (admin panel, *Session*, only while there is none): *Add YAMLs…*, then for every slot who
    plays it (one or more players: a slot with several players is played together; new names get a login); the locks
    (tick the slots that start locked, or *Random*: a number of slots picked at random start open, all others start
    locked); the hint and release options; *Generate and start*. Every option has an ⓘ that says what it does. The
    gateway generates the seed with the chosen Archipelago release and starts the game server on it. A game the release
-   has no apworld for is flagged before generating; if Generate.py fails, the panel names the games that may be the
-   cause (one the error mentions, or one whose apworld comes from another release) above its output.
+   has no APWorld for is flagged before generating; if Generate.py fails, the panel names the games that may be the
+   cause (one the error mentions, or one whose APWorld comes from another release) above its output.
 3. **Hand out the new logins**: the panel shows each new player's password **once** (and, with random locks, which
    slots start locked). Players who already had a login keep it.
 4. **Players log in** at `https://randogeddon.eratiem.net`. Under *Your connection* they find the server
@@ -120,20 +120,41 @@ docker compose exec tracker randogeddon admins --grant <person>    # --revoke ta
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
 
 Patch files for ROM-based games are in the seed: `data/AP_<seed>.zip` on the server. **Deleting** the session (admin
-panel) stops the game server and moves the seed and its save to `data/old/`; the logins stay. Only one session at a
-time: a new one can be created once the current one is deleted.
+panel) stops the game server and moves the seed and its save to `data/old/`; the logins stay. Only one running
+session at a time: a new one can be created once the current one is finished (it stays a past session) or deleted.
 
-### apworlds
+### Finishing, past sessions and the spoiler log
+
+- **Ending and pausing:** 2 minutes after every slot has reached its goal or was released, the session ends by
+  itself. Meanwhile the dashboard shows a countdown; admins can *End now* or *Cancel* (it then doesn't start again
+  until a slot is no longer done). An admin can also end it by hand: *Pause session* while not every check is done
+  (e.g. when someone drops out), *End session* once it is at 100 %. Either way the game server stops (the gateway
+  refuses to start that seed, also after a restart), and the dashboard keeps showing how far it got: the session is
+  read-only from then on.
+- **Reopening:** within 14 days of the finish (*Reopen*), unless the session was completed (100 %). A past session
+  can be reopened too, once the current one is finished; the current one is archived then. Its history comes back
+  with it.
+- **Past sessions:** creating a new session over a finished one archives the finished one (`data/sessions/<seed>/`
+  for its seed and save, `/state/sessions/<seed>.json` in the tracker's volume for what the dashboard showed). Its
+  players see it under *Past sessions* on the dashboard, admins see all; it is kept until an admin deletes it in the
+  admin panel, or automatically `SESSION_RETENTION_DAYS` after it finished (90 by default, `0`: never; the date shows
+  in the lists). *Disable auto-deletion* (asked once more) keeps it until an admin deletes it; enabled again, the days count from
+  then. Someone who is in no current session but in a past one can still log in and see those.
+- **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
+  searchable. Admins can open it at any time (behind a warning: it is a full spoiler); the players of a session see it
+  once it is finished.
+
+### APWorlds
 
 The admin panel's *apworlds* lists, for every Archipelago release of the gateway, the games it can generate and serve,
-and its apworld library:
+and its APWorld library:
 
-- **Upload apworld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
-  checks that it is an apworld (a zip with one world folder), loads the release's worlds again and says which game it
+- **Upload APWorld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
+  checks that it is an APWorld (a zip with one world folder), loads the release's worlds again and says which game it
   brought, or why it didn't load (e.g. it needs a newer Archipelago). *Remove* takes it out again.
-- **From other releases:** an apworld uploaded for another release can be tried with this one (*Try with …*); it is
-  copied and marked "untested here". If generating fails, such apworlds are among the suspects.
-- Apworlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
+- **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
+  copied and marked "untested here". If generating fails, such APWorlds are among the suspects.
+- APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
   panel).
 
 The gateway puts exactly these files into each release's `custom_worlds/` before it lists the games or generates.
@@ -189,7 +210,13 @@ every player is disconnected), shows its log live, and has the server console:
 Archipelago's commands say `<player>` for a slot.
 
 Up and down in the console bring back earlier commands. Every action is logged with the admin's name in the tracker's
-log. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
+log.
+
+**Cheats** (admin panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
+the slot and the item or location from searchable lists. Free hints (`/hint`, `/hint_location`) only if the session
+was created with *Cheat hints*. Every cheat is stored with the admin's name and shown in the live feed ("Cheat: Alice
+gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
+marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
 admin stays stopped until started again.
 
 Players can also use `!hint <item>`, `!remaining`, `!release`, `!collect` and `!countdown 10` from their
@@ -242,7 +269,7 @@ instead of the ones in `.env`.
 ## Locked slots
 
 Some slots can start locked and open only when their key is found in another slot. This is part of the generated
-seed, not just of the dashboard: the `World Locks` apworld (`apworlds/world_locks/`, installed in the gateway image)
+seed, not just of the dashboard: the `World Locks` APWorld (`apworlds/world_locks/`, installed in the gateway image)
 adds one key item per locked slot and tells the generator that nothing in that slot is reachable without its key. So
 every seed stays completable, chains included (a key inside a slot that is itself locked).
 
@@ -295,7 +322,8 @@ Known limitations:
 
 API: `POST /api/login` (JSON with `username` and `password`, sets the cookie), `POST /api/logout`; with a login:
 `GET /api/me` (name, server, own slots and passwords), `GET /api/state` (summary JSON), `GET /api/player/<slot>`,
-`GET /api/stream` (SSE). Without a login these answer 401. `GET /healthz` is open and says nothing about the session.
+`GET /api/stream` (SSE), `GET /api/sessions` (past sessions), `GET /api/sessions/<seed>`, `GET /api/spoiler/<seed>`.
+Without a login these answer 401. `GET /healthz` is open and says nothing about the session.
 
 The login form is a plain HTML form in `index.html` rather than part of the Compose app, so password managers can
 save and fill the generated passwords.
@@ -325,7 +353,9 @@ Carol, Risk of Rain 2, which they play together (a shared slot: on both cards, b
 simulator (`demo/simulate.py`) checks locations quickly for half a minute and then evenly until the end, finds the key
 of Alice's Celeste after ~25 s, of her DLCQuest after ~75 s and of Bob's Yacht Dice after ~3 minutes
 (hinted before). Every slot reaches its goal within about `DEMO_MINUTES` (default 15); then the simulator ends, which
-the loop takes as the end of a round. The simulated players connect through the gateway with their slot passwords. It
+the loop takes as the end of a round. 2 minutes later the session finishes by itself (the countdown shows meanwhile);
+another 2 minutes later the next round starts, and the finished one is listed under *Past sessions* (seeds deployed
+with the CLI go to `data/old/`; they can be reopened from there too). The simulated players connect through the gateway with their slot passwords. It
 replaces the seed in `data/` (the old one goes to `data/old/`); about one in three random seeds can't be generated
 ("unbeatable"), so it retries with another one.
 
@@ -406,6 +436,6 @@ it doesn't have can't be started (the admin panel and the gateway's log say so).
 (`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the admin panel offers what it has.
 
 To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
-of the old release is running (delete it first). Everyone's client and apworld versions should be compatible with
-the release. The new release starts with an empty apworld library: the apworlds of the old one show under *From
+of the old release is running (delete it first). Everyone's client and APWorld versions should be compatible with
+the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
 other releases* (*apworlds* in the admin panel) and can be tried with it, or upload versions made for the new release.
