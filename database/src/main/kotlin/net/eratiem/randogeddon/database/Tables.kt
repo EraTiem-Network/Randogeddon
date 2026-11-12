@@ -25,6 +25,8 @@ object LoginSessionsTable : Table("login_sessions") {
 
 object SessionsTable : Table("sessions") {
   val id = uuid("id")
+  /** The session's ID: its address and its name in links (V6); unique. */
+  val publicId = varchar("public_id", 40)
   val seedName = varchar("seed_name", 64)
   val createdAt = timestamp("created_at")
   val runTimeMs = long("run_time_ms").default(0)
