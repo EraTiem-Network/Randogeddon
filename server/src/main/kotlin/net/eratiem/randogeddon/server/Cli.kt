@@ -6,6 +6,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
@@ -73,7 +74,8 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
 
 /** The people and setup of the current seed, as the running tracker sees them. */
 private suspend fun currentSession(config: TrackerConfig, db: RandogeddonDatabase) =
-  CurrentSession(config, SessionTimeStore(db), SessionSetupStore(db), SessionFileWatcher(config)).apply { refresh() }
+  CurrentSession(config, SessionTimeStore(db), SessionSetupStore(db), SessionFileWatcher(config), SessionFinishStore(db))
+    .apply { refresh() }
 
 private fun usage(): Int {
   System.err.println(USAGE)

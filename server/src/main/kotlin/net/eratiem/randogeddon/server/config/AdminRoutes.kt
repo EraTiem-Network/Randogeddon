@@ -12,19 +12,24 @@ import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
 import kotlinx.coroutines.delay
+import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
+import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
+import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.InspectRequest
+import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.LogLines
 import java.lang.invoke.MethodHandles
 import kotlin.time.Duration.Companion.milliseconds
@@ -39,7 +44,13 @@ private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
  * Under the protected `/api` branch: the admin panel's control of the game server, which the gateway runs. Every
  * action is logged with the admin's name.
  */
-fun Route.adminRoutes(gameServer: GameServerClient, sessions: SessionAdmin) {
+fun Route.adminRoutes(
+  gameServer: GameServerClient,
+  sessions: SessionAdmin,
+  lifecycle: SessionLifecycle,
+  cheats: Cheats,
+  session: CurrentSession,
+) {
   route("/admin") {
     install(RequireAdmin)
     route("/session") {
@@ -50,6 +61,56 @@ fun Route.adminRoutes(gameServer: GameServerClient, sessions: SessionAdmin) {
       delete {
         gatewayCall {
           sessions.delete(call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+      // Finishing the current session now, or stopping its countdown
+      post("/finish") {
+        gatewayCall {
+          lifecycle.finishNow(call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+      post("/finish/cancel") {
+        gatewayCall {
+          lifecycle.cancel(call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+    }
+    // Finished sessions (the current one, or past ones): reopen, keep for good (or not), delete for good
+    route("/sessions/{seed}") {
+      post("/reopen") {
+        gatewayCall {
+          lifecycle.reopen(call.parameters["seed"]!!, call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+      post("/keep") {
+        val keep = call.receive<KeepRequest>().keep
+        gatewayCall {
+          sessions.setKeep(call.parameters["seed"]!!, keep, call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+      delete {
+        gatewayCall {
+          sessions.deletePast(call.parameters["seed"]!!, call.loggedIn.user.name)
+          call.respond(HttpStatusCode.NoContent)
+        }
+      }
+    }
+    // Cheats: logged with the admin's name, shown in the live feed
+    route("/cheat") {
+      get { gatewayCall { call.respond(cheats.view()) } }
+      get("/names") {
+        val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+        gatewayCall { call.respond(cheats.names(slot)) }
+      }
+      post {
+        val request = call.receive<CheatRequest>()
+        gatewayCall {
+          cheats.run(request, call.loggedIn.user.name)
           call.respond(HttpStatusCode.NoContent)
         }
       }
@@ -82,6 +143,9 @@ fun Route.adminRoutes(gameServer: GameServerClient, sessions: SessionAdmin) {
     post("/server/{action}") {
       val action = call.parameters["action"]
       if (action !in setOf("start", "stop", "restart")) return@post call.respond(HttpStatusCode.NotFound)
+      if (action != "stop" && session.finish?.finishedAt != null) {
+        return@post call.respond(HttpStatusCode.Conflict, ApiError("The session is finished; reopen it to start the game server"))
+      }
       logger.info("{} asked to {} the game server", call.loggedIn.user.name, action)
       gatewayCall { call.respond(gameServer.control(action!!)) }
     }

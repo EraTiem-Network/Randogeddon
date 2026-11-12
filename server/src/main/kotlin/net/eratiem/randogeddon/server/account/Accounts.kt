@@ -12,6 +12,7 @@ import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.CurrentSession
+import net.eratiem.randogeddon.server.session.PastSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
 import org.koin.core.annotation.Single
@@ -31,8 +32,11 @@ val LOGIN_DURATION = 30.days
 interface LoginCheck {
   suspend fun userOf(token: String): User?
 
-  /** The person of `session.yaml` this user is; `null`: not part of the session. */
+  /** The player of the current session this user is; `null`: not part of it. */
   fun personOf(user: User): String?
+
+  /** Outside the current session, the user still gets in: an admin, or a player of a past session (to see it). */
+  suspend fun mayEnter(user: User): Boolean
 }
 
 /** Logging in and out, and who of the logged-in users is part of the session. */
@@ -41,6 +45,7 @@ class LoginService(
   private val users: UserStore,
   private val logins: LoginSessionStore,
   private val session: CurrentSession,
+  private val past: PastSessions,
 ) : LoginCheck {
   /** The token for the session cookie, or `null` if the name or password is wrong. */
   suspend fun login(name: String, password: String): String? {
@@ -60,6 +65,8 @@ class LoginService(
 
   /** Same name as the person, without regard to case. */
   override fun personOf(user: User): String? = session.people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
+
+  override suspend fun mayEnter(user: User): Boolean = user.admin || past.playedIn(user)
 
   /** Removes expired logins every few hours, for as long as [scope] runs. */
   fun cleanUp(scope: CoroutineScope) = scope.launch {

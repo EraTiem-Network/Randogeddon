@@ -42,7 +42,7 @@ class SessionAdminTest {
         suspects = listOf(Suspect("Celeste", "named in the error", "celeste.apworld", "0.6.7")),
       )
     )
-    assertTrue(message.startsWith("Generation failed, possibly because of:\n• Celeste (apworld celeste.apworld, from Archipelago 0.6.7): named in the error"), message)
+    assertTrue(message.startsWith("Generation failed, possibly because of:\n• Celeste (APWorld celeste.apworld, from Archipelago 0.6.7): named in the error"), message)
     assertTrue(message.endsWith("Generate.py said:\nKeyError: 'Dash'"), message)
     assertTrue(failure(GenerateResult(log = listOf("boom"))).contains("isn't supported by this Archipelago release"))
   }

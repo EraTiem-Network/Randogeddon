@@ -12,6 +12,9 @@ randogeddon:
     statePath: "$STATE_PATH:/state/tracker.json"
     # Where game clients connect (the gateway), shown to logged-in players with their slot passwords
     publicAddress: "$AP_PUBLIC_ADDRESS:localhost:38281"
+    # A finished session that isn't the current one is deleted this many days after it finished, unless an admin
+    # disabled its auto-deletion; 0: never
+    sessionRetentionDays: "$SESSION_RETENTION_DAYS:90"
   server:
     # MultiServer, as seen from the tracker (inside compose: the gateway runs it on a port only the tracker reaches)
     url: "$AP_SERVER:ws://localhost:38282"

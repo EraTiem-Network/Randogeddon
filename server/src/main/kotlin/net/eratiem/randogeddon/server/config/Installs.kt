@@ -17,6 +17,8 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.CheatLogStore
+import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
@@ -25,6 +27,8 @@ import net.eratiem.randogeddon.server.RandogeddonTracker
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.ap.TrackerService
+import net.eratiem.randogeddon.server.admin.SessionAdmin
+import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.session.CurrentSession
 import net.eratiem.randogeddon.shared.ApiJson
 import org.koin.dsl.module
@@ -46,6 +50,8 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { SlotPasswordStore(get()) }
       single { SessionTimeStore(get()) }
       single { SessionSetupStore(get()) }
+      single { SessionFinishStore(get()) }
+      single { CheatLogStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
@@ -87,6 +93,12 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   logins.cleanUp(this)
   val currentSession by inject<CurrentSession>()
   currentSession.watch(this)
+  // Finishes the session 2 minutes after every slot is done
+  val lifecycle by inject<SessionLifecycle>()
+  lifecycle.watch(this)
+  // Deletes past sessions whose time has come (SESSION_RETENTION_DAYS)
+  val sessionAdmin by inject<SessionAdmin>()
+  sessionAdmin.cleanUp(this)
 }
 
 val LOGIN_RATE_LIMIT = RateLimitName("login")

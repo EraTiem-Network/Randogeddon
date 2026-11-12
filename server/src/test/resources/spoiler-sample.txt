@@ -1,0 +1,31 @@
+﻿Archipelago Version 0.6.8  -  Seed: 70397239287022485190
+
+Filling Algorithm:               balanced
+Players:                         7
+Total Location Count:            728
+Plando Options:                  connections, texts, bosses
+
+Locations:
+
+ Some Location (Alice-HK): Some Item (Bob-Yacht)
+
+Playthrough:
+
+0: {
+  Air Dash (Alice-Celeste)
+  Category Choice (Bob-Yacht)
+  Category Inverse Choice (Bob-Yacht)
+  Climb (Alice-Celeste)
+}
+1: {
+  Can_Replenish_Geo (Alice-HK): Can_Replenish_Geo (Alice-HK)
+  Fury_of_the_Fallen (Alice-HK): Queen's_Gardens_Stag (Alice-HK)
+  Lifeblood_Cocoon-King's_Pass (Alice-HK): World Key 3 (Locks)
+  Tutorial_01[right1] (Alice-HK): Town[left1] (Alice-HK)
+}
+2: {
+  Town (Alice-HK): Town (Alice-HK)
+  Tutorial_01[top2] (Alice-HK): Cliffs_02[bot1] (Alice-HK)
+  Lake Desolation (Lower): Not so secret room (Bob-Timespinner): Tram_Pass (Alice-HK)
+  Lake Desolation: Kitty Boss (Bob-Timespinner): Strawberry (Alice-Celeste)
+}

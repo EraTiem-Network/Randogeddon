@@ -38,6 +38,9 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -114,6 +117,24 @@ class TrackerService(private val config: TrackerConfig) {
     update { clear() }
     runCatching { config.statePath.toFile().delete() }
   }
+
+  /**
+   * A reopened session's history ([saved], a copy of the history file from when it finished) comes back: it becomes
+   * the history file and is applied once the tracker is connected to the seed again.
+   */
+  suspend fun restore(saved: Path) {
+    update {
+      clear()
+      runCatching { Files.copy(saved, config.statePath, StandardCopyOption.REPLACE_EXISTING) }
+      load(config.statePath)
+    }
+  }
+
+  /** Writes the history file now (a session finishes and is archived). */
+  suspend fun saveNow() = mutex.withLock { save() }
+
+  /** A cheat from the admin panel, for the live feed. */
+  suspend fun cheat(message: String) = update { onCheat(message) }
 
   fun close() {
     http.close()
