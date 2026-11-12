@@ -63,7 +63,6 @@ import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.FeedEvent
 import net.eratiem.randogeddon.shared.HintView
 import net.eratiem.randogeddon.shared.ItemFlags
-import net.eratiem.randogeddon.shared.PastSession
 import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
@@ -119,6 +118,9 @@ fun App() {
   // null until logged in; the login form of index.html covers the page meanwhile
   val me by repository.me.collectAsState()
   val unreachable by repository.unreachable.collectAsState()
+  val sessions by repository.sessions.collectAsState()
+  val selected by repository.selected.collectAsState()
+  val connection by repository.connection.collectAsState()
 
   var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
   val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
@@ -137,34 +139,23 @@ fun App() {
   var detailPerson by remember { mutableStateOf<String?>(null) }
   // The admin panel instead of the dashboard (admins only; the server checks every call too)
   var adminOpen by remember { mutableStateOf(false) }
-  // A past session, or a spoiler log, instead of the dashboard (or the admin panel)
-  var pastSeed by remember { mutableStateOf<String?>(null) }
-  var spoilerSeed by remember { mutableStateOf<String?>(null) }
-  // The past session's archive: its view, and the header card while it is shown
-  var pastArchive by remember { mutableStateOf<ArchiveSource?>(null) }
-  var pastMissing by remember { mutableStateOf(false) }
-  LaunchedEffect(pastSeed) {
-    pastArchive = null
-    pastMissing = false
-    val seed = pastSeed ?: return@LaunchedEffect
-    val archived = repository.pastSession(seed)
-    pastArchive = archived?.let(::ArchiveSource)
-    pastMissing = archived == null
-  }
+  // A session's spoiler log instead of the dashboard (or the admin panel)
+  var spoilerId by remember { mutableStateOf<String?>(null) }
   LaunchedEffect(me) {
     if (me == null) {
       detailSlot = null
       detailPerson = null
       adminOpen = false
-      pastSeed = null
-      spoilerSeed = null
+      spoilerId = null
     }
   }
-  // Loaded again when a session finishes or another one starts
-  var pastSessions by remember { mutableStateOf(emptyList<PastSession>()) }
-  LaunchedEffect(me, summary?.seedName, summary?.finishedAt, adminOpen) {
-    pastSessions = if (me == null) emptyList() else repository.pastSessions()
+  // Another session: its own slots and people
+  LaunchedEffect(selected) {
+    detailSlot = null
+    detailPerson = null
   }
+  // The admin panel may have created, finished or deleted one
+  LaunchedEffect(adminOpen) { if (me != null) repository.refreshSessions() }
 
   // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
   var feedVisible by remember { mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false") }
@@ -208,7 +199,7 @@ fun App() {
               return@Column
             }
             Hero(
-              pastArchive?.archived?.summary?.takeIf { pastSeed != null } ?: s, streamOpen,
+              s, streamOpen,
               onToggleTheme = {
                 themeSetting = if (dark) "light" else "dark"
                 Platform.saveSetting(THEME_KEY, themeSetting)
@@ -216,49 +207,45 @@ fun App() {
               feedVisible = feedVisible,
               onToggleFeed = { setFeedVisible(!feedVisible) },
               onLogout = { scope.launch { repository.logout() } },
-              onAdmin = if (user.admin) ({ adminOpen = !adminOpen; pastSeed = null; spoilerSeed = null }) else null,
+              onAdmin = if (user.admin) ({ adminOpen = !adminOpen; spoilerId = null }) else null,
               adminOpen = adminOpen,
               stacked = narrow,
             )
-            spoilerSeed?.let { seed ->
-              SpoilerView(seed, onBack = { spoilerSeed = null })
-              return@Column
-            }
-            pastSeed?.let { seed ->
-              PastSessionView(seed, pastArchive, pastMissing, contentWidth, onBack = { pastSeed = null }, onSpoiler = { spoilerSeed = seed })
+            spoilerId?.let { id ->
+              SpoilerView(id, onBack = { spoilerId = null })
               return@Column
             }
             if (adminOpen && user.admin) {
-              AdminView(now, onBack = { adminOpen = false }, onSpoiler = { spoilerSeed = it })
+              AdminView(now, selected, onBack = { adminOpen = false }, onSpoiler = { spoilerId = it })
               return@Column
             }
-            val past = pastSessions.filter { !it.current }
-            if (!user.inSession && !user.admin) {
-              // Only of past sessions: those, not the current one
+            // Only the user's own sessions (an admin sees the others in the admin panel)
+            val others = sessions.filter { it.id != selected && it.mySlots.isNotEmpty() }
+            if (selected == null) {
               Txt(
-                "You aren't part of the current session." + if (past.isNotEmpty()) " Your past sessions:" else "",
+                if (user.admin) "No session yet. Create one in the admin panel." else "You aren't part of a session yet.",
                 color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
               )
-              if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
               return@Column
             }
             if (s == null) return@Column
+            val mine = sessions.firstOrNull { it.id == selected }?.mySlots?.isNotEmpty() == true
             val error = s.error
             if (!s.connected && error != null && s.finishedAt == null) Banner(error)
             FinishBanner(
               s, user.admin,
-              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/session/finish") } },
-              onCancel = { scope.launch { Platform.request("POST", "api/admin/session/finish/cancel") } },
-              onSpoiler = { s.seedName?.let { spoilerSeed = it } },
+              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish") } },
+              onCancel = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish/cancel") } },
+              onSpoiler = { spoilerId = selected },
             )
             if (wide) {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
                 Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-                ConnectionSection(user, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+                ConnectionSection(user.name, connection, mine, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
               }
             } else {
-              ConnectionSection(user, s, Modifier.fillMaxWidth())
+              ConnectionSection(user.name, connection, mine, s, Modifier.fillMaxWidth())
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
@@ -285,7 +272,7 @@ fun App() {
               if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
               if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             }
-            if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
+            if (others.isNotEmpty()) SessionsSection(others, onOpen = { repository.select(it) })
           }
         }
       }
@@ -335,6 +322,7 @@ private fun Hero(
       Column(modifier) {
         Txt(summary?.title ?: "Randogeddon", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
         val meta = listOfNotNull(
+          summary?.sessionId,
           summary?.seedName?.let { "Seed $it" },
           summary?.serverVersion?.let { "AP $it" },
           summary?.let { hintModeLabel(it) },

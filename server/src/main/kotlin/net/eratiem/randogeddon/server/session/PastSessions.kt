@@ -1,9 +1,10 @@
 package net.eratiem.randogeddon.server.session
 
-import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.FinishState
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.config.TrackerConfig
-import net.eratiem.randogeddon.shared.PastSession
+import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionStatus
 import org.koin.core.annotation.Single
 import java.time.Instant
 import kotlin.time.Duration.Companion.days
@@ -27,48 +28,56 @@ fun deletesAt(finishedAt: Instant, keep: Boolean, days: Int, since: Instant? = n
 /** Every check of every slot is done. */
 fun completed(percent: Double?): Boolean = (percent ?: 0.0) >= 100.0
 
+/** Running (about to end by itself: every slot is done), or finished: paused before it was complete, ended after. */
+fun statusOf(finish: FinishState?, percent: Double): SessionStatus = when {
+  finish?.finishedAt == null -> if (finish?.dueAt != null) SessionStatus.FINISHING else SessionStatus.LIVE
+  completed(percent) -> SessionStatus.ENDED
+  else -> SessionStatus.PAUSED
+}
+
 /**
- * The finished sessions, kept until an admin deletes them or their auto-deletion ([TrackerConfig.sessionRetentionDays]
- * after they finished, unless disabled). Their players see them (and their spoiler log), admins see all. Who played
- * one comes from its archive, so it stays right when the logins change later.
+ * The sessions a user sees: those they play in, every session for admins. Finished ones are kept until an admin
+ * deletes them or their auto-deletion ([TrackerConfig.sessionRetentionDays] after they finished, unless disabled).
  */
 @Single
-class PastSessions(
-  private val config: TrackerConfig,
-  private val finishes: SessionFinishStore,
-  private val archives: Archives,
-) {
+class SessionList(private val config: TrackerConfig, private val sessions: LiveSessions) {
   /** What [user] may see, the newest first. */
-  suspend fun visibleTo(user: User): List<PastSession> {
-    val current = Room.read(config.roomJson)?.seedName
-    return finishes.finished().mapNotNull { f ->
-      if (!user.admin && user.name.lowercase() !in archives.players(f.seedName)) return@mapNotNull null
-      val s = archives.read(f.seedName)?.summary
-      PastSession(
-        seedName = f.seedName,
-        title = s?.title ?: config.title,
-        createdAt = f.createdAt.toEpochMilli(),
-        finishedAt = f.finishedAt.toEpochMilli(),
-        finishedBy = f.finishedBy,
-        players = s?.people.orEmpty().map { it.name },
-        slots = s?.totals?.players ?: 0,
-        percent = s?.totals?.percent ?: 0.0,
-        goals = s?.totals?.goals ?: 0,
-        current = f.seedName == current,
-        reopenUntil = reopenUntil(f.finishedAt, completed(s?.totals?.percent))?.toEpochMilli(),
-        keep = f.keep,
-        deletesAt = deletesAt(f.finishedAt, f.keep, config.sessionRetentionDays, f.retainedSince)?.toEpochMilli(),
-      )
-    }
+  suspend fun visibleTo(user: User): List<SessionEntry> = sessions.all().mapNotNull { live ->
+    val person = live.personOf(user)
+    if (person == null && !user.admin) null else entry(live, person, admin = user.admin)
   }
 
-  /** [user] may see the finished session [seed]: an admin, or one of its players. */
-  suspend fun canSee(user: User, seed: String): Boolean {
-    if (finishes.of(seed)?.finishedAt == null) return user.admin
-    return user.admin || user.name.lowercase() in archives.players(seed)
+  /** [live] as the lists show it; [person]: who asks, in it; [admin]: with its game server. */
+  suspend fun entry(live: LiveSession, person: String?, admin: Boolean): SessionEntry {
+    val s = runCatching { live.summary() }.getOrNull()
+    val finish = live.finish
+    val finishedAt = finish?.finishedAt
+    val percent = s?.totals?.percent ?: 0.0
+    val people = live.people()
+    return SessionEntry(
+      id = live.id,
+      seedName = live.seedName,
+      title = s?.title ?: config.title,
+      status = statusOf(finish, percent),
+      createdAt = live.record.createdAt.toEpochMilli(),
+      finishedAt = finishedAt?.toEpochMilli(),
+      finishedBy = finish?.finishedBy,
+      players = people.keys.toList(),
+      mySlots = person?.let { people[it] }.orEmpty(),
+      slots = s?.totals?.players ?: 0,
+      percent = percent,
+      goals = s?.totals?.goals ?: 0,
+      online = s?.totals?.online ?: 0,
+      reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },
+      keep = finish?.keep == true,
+      deletesAt = finishedAt?.let { deletesAt(it, finish.keep, config.sessionRetentionDays, finish.retainedSince)?.toEpochMilli() },
+      server = if (admin) live.server?.state else null,
+    )
   }
 
-  /** [user] played in some finished session (and may log in to see it). */
-  suspend fun playedIn(user: User): Boolean =
-    finishes.finished().any { user.name.lowercase() in archives.players(it.seedName) }
+  /** [user] may see session [id]: an admin, or one of its players. */
+  fun canSee(user: User, id: String): Boolean = user.admin || sessions.get(id)?.personOf(user) != null
+
+  /** [user] plays in some session (and may log in to see it). */
+  fun playsIn(user: User): Boolean = sessions.all().any { it.personOf(user) != null }
 }

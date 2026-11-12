@@ -19,7 +19,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import net.eratiem.randogeddon.shared.Me
+import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.MySlot
 import net.eratiem.randogeddon.shared.Summary
 
@@ -31,11 +31,20 @@ import net.eratiem.randogeddon.shared.Summary
  * fills the height the section is given (next to the overview).
  */
 @Composable
-fun ConnectionSection(me: Me, summary: Summary, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
+fun ConnectionSection(
+  name: String,
+  connection: Connection?,
+  /** [name] plays in this session (an admin may not). */
+  mine: Boolean,
+  summary: Summary,
+  modifier: Modifier = Modifier,
+  fillHeight: Boolean = false,
+) {
   val p = LocalPalette.current
   var picked by remember { mutableStateOf<String?>(null) }
+  val slots = connection?.slots.orEmpty()
   val worlds = summary.players.associateBy { it.name }
-  val lastPlayed = me.slots.maxByOrNull { slot ->
+  val lastPlayed = slots.maxByOrNull { slot ->
     val world = worlds[slot.name]
     when {
       world == null -> -1
@@ -43,17 +52,18 @@ fun ConnectionSection(me: Me, summary: Summary, modifier: Modifier = Modifier, f
       else -> world.lastActivity ?: 0
     }
   }
-  val slot = me.slots.firstOrNull { it.name == picked } ?: lastPlayed
-  Section("Your connection", modifier, subtitle = "Logged in as ${me.name}") {
+  val slot = slots.firstOrNull { it.name == picked } ?: lastPlayed
+  Section("Your connection", modifier, subtitle = "Logged in as $name") {
     Column(
       Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Field("Server", me.server)
+      Field("Server", connection?.server ?: "…")
       when {
+        !mine -> Txt("You don't play in this session.", size = 13.sp, color = p.muted)
         slot == null -> Txt("Your slots appear here once the seed is running.", size = 13.sp, color = p.muted)
-        me.slots.size > 1 -> SearchableSelect(
-          me.slots.map { Triple(it.name, shortSlotName(it.name, me.name), it.game) }, slot.name, { picked = it },
+        slots.size > 1 -> SearchableSelect(
+          slots.map { Triple(it.name, shortSlotName(it.name, name), it.game) }, slot.name, { picked = it },
           Modifier.fillMaxWidth(),
         )
         else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

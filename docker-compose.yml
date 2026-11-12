@@ -2,9 +2,9 @@
 #   server (Traefik):  COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml   (set in .env)
 #   local test:        COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
 #
-# The gateway is the game host: it runs MultiServer and is the game clients' only way in, checking the slot passwords.
-# The dashboard (tracker) needs a login and controls the game server through the gateway (admin panel). Both keep
-# their data in PostgreSQL.
+# The gateway is the game host: it runs one MultiServer per running session and is the game clients' only way in,
+# checking the slot passwords. The dashboard (tracker) needs a login and controls the sessions' game servers through
+# the gateway (admin panel). Both keep their data in PostgreSQL.
 name: randogeddon
 
 # Built from kotlin.Dockerfile: the native Kotlin apps (one Gradle build for both) and Archipelago for the gateway
@@ -21,7 +21,7 @@ x-database: &database
   DB_USER: randogeddon
   DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
-# Between tracker and gateway (the admin panel's control of the game server)
+# Between tracker and gateway (the admin panel's control of the game servers)
 x-internal-token: &internal-token ${INTERNAL_TOKEN:?set INTERNAL_TOKEN in .env}
 
 services:
@@ -55,16 +55,13 @@ services:
       <<: *database
       INTERNAL_TOKEN: *internal-token
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
-      AP_HINT_COST: ${AP_HINT_COST:-10}
-      AP_LOCATION_CHECK_POINTS: ${AP_LOCATION_CHECK_POINTS:-1}
-      AP_RELEASE_MODE: ${AP_RELEASE_MODE:-auto}
-      AP_COLLECT_MODE: ${AP_COLLECT_MODE:-auto}
-      AP_REMAINING_MODE: ${AP_REMAINING_MODE:-goal}
-      AP_COUNTDOWN_MODE: ${AP_COUNTDOWN_MODE:-auto}
-      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
-      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
+      # One MultiServer per running session, each on one of these ports (inside compose only): as many run at once
+      AP_PORTS: ${AP_PORTS:-38300-38303}
+      # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
+      # it, for <id>.<BASE_DOMAIN>
+      BASE_DOMAIN: ""
     volumes:
-      - ./data:/data                  # seeds, saves, uploaded apworlds; room.json is written here
+      - ./data:/data                  # sessions/<id>/ (seed, save, room.json), old/, uploaded apworlds
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   tracker:
@@ -80,36 +77,20 @@ services:
         condition: service_started
     environment:
       <<: *database
-      # MultiServer inside the gateway; port 38282 is not published, only the tracker connects there directly
-      AP_SERVER: ws://gateway:38282
+      # The gateway runs the sessions' MultiServers; their ports are not published, only the tracker connects there
+      GATEWAY_HOST: gateway
       GAME_SERVER_API: http://gateway:8001
       INTERNAL_TOKEN: *internal-token
-      # Shown to logged-in players; the Traefik overlay sets the public host name
-      AP_PUBLIC_ADDRESS: ${AP_PUBLIC_ADDRESS:-localhost:38281}
+      # Shown to a session's players ({id}: the session); the Traefik overlay sets the public host names
+      PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-ws://localhost:38281/{id}}
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
       # Past sessions are deleted this many days after they finished (unless kept); 0: never
       SESSION_RETENTION_DAYS: ${SESSION_RETENTION_DAYS:-90}
       # The login cookie only over HTTPS; the local overlay can switch that off (see there)
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      # The same hint switches, so the dashboard shows what is in play
-      AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
-      AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}
     volumes:
-      - ./data:/data:ro              # reads room.json written by the gateway
-      - tracker-state:/state         # event history survives restarts
-
-  # One-shot seed generation (run locally):  ./scripts/generate.sh
-  generate:
-    image: randogeddon-gateway:${AP_VERSION:-0.6.8}
-    profiles: ["tools"]
-    # As root, so it can hand the output to the host user (HOST_UID)
-    user: "0"
-    entrypoint: ["ap-generate"]
-    volumes:
-      - ./players:/players:ro
-      - ./output:/output
-      - ./custom_worlds:/opt/archipelago/${AP_VERSION:-0.6.8}/custom_worlds:ro
-      - ./roms:/roms:ro
+      - ./data:/data:ro              # reads each session's room.json, written by the gateway
+      - tracker-state:/state         # each session's event history and archive survive restarts
 
 volumes:
   tracker-state:

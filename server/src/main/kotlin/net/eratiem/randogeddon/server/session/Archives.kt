@@ -1,9 +1,14 @@
 package net.eratiem.randogeddon.server.session
 
+import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.state.string
+import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ArchivedSession
+import net.eratiem.randogeddon.shared.SessionIds
 import org.koin.core.annotation.Single
+import java.lang.invoke.MethodHandles
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -11,62 +16,84 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
-private val SEED_NAME = Regex("[A-Za-z0-9_-]{1,64}")
+private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /**
- * The finished sessions as they were when they finished, next to the tracker's history (`/state/sessions/`): the
- * dashboard's summary with every slot's details (`<seed>.json`, what a past session shows), and a copy of the
- * tracker's history file (`<seed>.tracker.json`, brought back when the session is reopened).
+ * The tracker's files of each session, `sessions/<id>/` in its state directory: the history of the live tracker
+ * (`tracker.json`), and once the session finished, what the dashboard showed then (`archive.json`: the summary with
+ * every slot's details). Reopening drops the archive; the history goes on from where it was.
  */
 @Single
 class Archives(private val config: TrackerConfig) {
   private val cache = ConcurrentHashMap<String, ArchivedSession>()
 
-  private val dir: Path get() = config.statePath.toAbsolutePath().parent.resolve("sessions")
+  fun dir(id: String): Path {
+    require(SessionIds.valid(id)) { "Not a session ID: $id" }
+    return config.stateDir.resolve("sessions").resolve(id)
+  }
 
-  fun write(seed: String, archived: ArchivedSession) {
-    val file = file(seed, ".json")
-    file.parent.createDirectories()
+  /** The live tracker's history of session [id]. */
+  fun history(id: String): Path = dir(id).resolve("tracker.json")
+
+  fun write(id: String, archived: ArchivedSession) {
+    val file = dir(id).createDirectories().resolve("archive.json")
     val tmp = Files.createTempFile(file.parent, ".archive-", ".json")
     tmp.writeText(ApiJson.encodeToString(ArchivedSession.serializer(), archived))
     Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    cache[seed] = archived
+    cache[id] = archived
   }
 
-  fun read(seed: String): ArchivedSession? {
-    if (!SEED_NAME.matches(seed)) return null
-    cache[seed]?.let { return it }
-    val file = file(seed, ".json").takeIf { it.exists() } ?: return null
+  fun read(id: String): ArchivedSession? {
+    if (!SessionIds.valid(id)) return null
+    cache[id]?.let { return it }
+    val file = dir(id).resolve("archive.json").takeIf { it.exists() } ?: return null
     return runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), file.readText()) }.getOrNull()
-      ?.also { cache[seed] = it }
+      ?.also { cache[id] = it }
   }
 
-  /** The names of the session's players, without regard to case. */
-  fun players(seed: String): Set<String> = read(seed)?.summary?.people.orEmpty().map { it.name.lowercase() }.toSet()
-
-  /** Keeps a copy of the tracker's history file for [seed]. */
-  fun keepHistory(seed: String) {
-    val source = config.statePath
-    if (!source.exists()) return
-    val target = file(seed, ".tracker.json")
-    target.parent.createDirectories()
-    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+  /** The session is reopened: it is live again. */
+  fun forget(id: String) {
+    cache.remove(id)
+    if (SessionIds.valid(id)) dir(id).resolve("archive.json").deleteIfExists()
   }
 
-  fun history(seed: String): Path? = file(seed, ".tracker.json").takeIf { it.exists() }
-
-  fun delete(seed: String) {
-    cache.remove(seed)
-    if (!SEED_NAME.matches(seed)) return
-    file(seed, ".json").deleteIfExists()
-    file(seed, ".tracker.json").deleteIfExists()
+  /** The session is deleted: its history and archive go. */
+  fun delete(id: String) {
+    cache.remove(id)
+    if (SessionIds.valid(id)) dir(id).toFile().deleteRecursively()
   }
 
-  private fun file(seed: String, suffix: String): Path {
-    require(SEED_NAME.matches(seed)) { "Not a seed name: $seed" }
-    return dir.resolve(seed + suffix)
+  /**
+   * Brings the files of one session at a time into `sessions/<id>/`, once: the tracker's history (`tracker.json` next
+   * to `sessions/`) and each finished session's `sessions/<seed>.json` and `<seed>.tracker.json`. [idOf]: a seed's
+   * session ID. Nothing that is there already is overwritten.
+   */
+  fun migrate(idOf: (seed: String) -> String) {
+    val root = config.stateDir.resolve("sessions")
+    fun move(from: Path, seed: String, name: String) {
+      val target = dir(idOf(seed)).resolve(name)
+      if (target.exists()) return logger.warn("Not moving {} to {}: it exists already", from, target)
+      target.parent.createDirectories()
+      Files.move(from, target)
+      logger.info("Moved {} to {}", from, target)
+    }
+    val current = config.stateDir.resolve("tracker.json")
+    if (current.exists()) {
+      val seed = runCatching { ApiJson.parseToJsonElement(current.readText()).jsonObject.string("seedName") }.getOrNull()
+      if (seed != null) move(current, seed, "tracker.json")
+    }
+    if (!root.isDirectory()) return
+    for (file in root.listDirectoryEntries().filter { !it.isDirectory() }) {
+      when {
+        file.name.endsWith(".tracker.json") -> move(file, file.name.removeSuffix(".tracker.json"), "tracker.json")
+        file.name.endsWith(".json") -> move(file, file.name.removeSuffix(".json"), "archive.json")
+      }
+    }
   }
 }

@@ -1,10 +1,14 @@
 package net.eratiem.randogeddon.webapp
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +23,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,12 +45,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import net.eratiem.randogeddon.shared.AdminOverview
+import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GameServerStatus
@@ -53,8 +63,8 @@ import net.eratiem.randogeddon.shared.LogLines
 
 private const val MAX_LOG_LINES = 2000
 
-/** The admin panel's view of the game server: its state and log over one stream, and the actions. */
-class AdminRepository(private val scope: CoroutineScope) {
+/** The admin panel's view of session [id]'s game server: its state and log over one stream, and the actions. */
+class AdminRepository(private val scope: CoroutineScope, private val id: String) {
   private val _state = MutableStateFlow<GameServerState?>(null)
   val state: StateFlow<GameServerState?> = _state.asStateFlow()
 
@@ -67,7 +77,7 @@ class AdminRepository(private val scope: CoroutineScope) {
 
   fun start() {
     if (close != null) return
-    close = Platform.events("api/admin/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
+    close = Platform.events("api/admin/sessions/$id/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
   }
 
   fun stop() {
@@ -76,10 +86,10 @@ class AdminRepository(private val scope: CoroutineScope) {
   }
 
   /** [action]: start, stop or restart; the error message, or `null`. */
-  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/admin/server/$action"))
+  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/admin/sessions/$id/server/$action"))
 
   suspend fun command(line: String): String? = answer(
-    Platform.request("POST", "api/admin/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
+    Platform.request("POST", "api/admin/sessions/$id/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
   )
 
   private fun answer(result: HttpResult?): String? = when {
@@ -107,13 +117,115 @@ class AdminRepository(private val scope: CoroutineScope) {
 }
 
 /**
- * The admin panel: the session (and the past ones), cheats, the apworlds, the game server (state, start/stop/restart),
- * its log and its console.
+ * What the admin panel loaded per session, kept while it is open: switching to a session shows its last state at once
+ * (its sections load it again behind). The running sessions are loaded ahead, so the first switch doesn't wait either;
+ * only a game server's log starts with its stream.
+ */
+class AdminCache(private val scope: CoroutineScope) {
+  val views = mutableStateMapOf<String, AdminSessionView>()
+  val cheats = mutableStateMapOf<String, CheatView>()
+  private val repositories = mutableMapOf<String, AdminRepository>()
+
+  /** Session [id]'s game server; its stream runs while it is shown, its state and log stay after. */
+  fun repository(id: String): AdminRepository = repositories.getOrPut(id) { AdminRepository(scope, id) }
+
+  /** Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone. */
+  fun prefetch(ids: List<String>) {
+    (views.keys - ids.toSet()).forEach { views.remove(it) }
+    (cheats.keys - ids.toSet()).forEach { cheats.remove(it) }
+    (repositories.keys - ids.toSet()).forEach { repositories.remove(it)?.stop() }
+    ids.forEach { id ->
+      if (id !in views) scope.launch {
+        val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
+        if (answer is Answer.Ok && id !in views) views[id] = answer.value
+      }
+      if (id !in cheats) scope.launch {
+        val answer = call("GET", "api/admin/sessions/$id/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
+        if (answer is Answer.Ok && id !in cheats) cheats[id] = answer.value
+      }
+    }
+  }
+}
+
+/**
+ * The admin panel. On top, one page at a time, picked in the switch: a session ([initial]: the dashboard's, at first)
+ * with its summary and actions, players, cheats, its game server (state, start/stop/restart), log and console; or a
+ * new session. Below a line, what concerns every session: the finished ones (each with its actions, a click shows its
+ * overview), the APWorlds.
  */
 @Composable
-fun AdminView(now: Long, onBack: () -> Unit, onSpoiler: (String) -> Unit) {
+fun AdminView(now: Long, initial: String?, onBack: () -> Unit, onSpoiler: (String) -> Unit) {
   val scope = rememberCoroutineScope()
-  val repository = remember { AdminRepository(scope) }
+  val cache = remember { AdminCache(scope) }
+  var overview by remember { mutableStateOf<AdminOverview?>(null) }
+  var loadProblem by remember { mutableStateOf<String?>(null) }
+  fun load() = scope.launch {
+    when (val answer = call("GET", "api/admin/sessions", null) { ApiJson.decodeFromString(AdminOverview.serializer(), it) }) {
+      is Answer.Ok -> {
+        overview = answer.value
+        loadProblem = null
+        cache.prefetch(answer.value.sessions.filter { it.status.running }.map { it.id })
+      }
+      is Answer.Failed -> loadProblem = answer.message
+    }
+  }
+  // The game servers' states move on by themselves
+  LaunchedEffect(Unit) {
+    while (true) {
+      load()
+      delay(15_000)
+    }
+  }
+  var picked by remember { mutableStateOf(initial) }
+  val all = overview?.sessions.orEmpty()
+  // A deleted (or finished) session's page goes to the newest running one (or to a new session, with none running)
+  val page = when {
+    picked == NEW_PAGE -> NEW_PAGE
+    picked != null && all.any { it.id == picked && it.status.running } -> picked!!
+    overview == null -> null
+    else -> all.firstOrNull { it.status.running }?.id ?: NEW_PAGE
+  }
+
+  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      IconButton(onBack, Icon.BACK)
+      Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
+    }
+    loadProblem?.let { Txt(it, size = 12.5.sp, color = LocalPalette.current.trap) }
+    // The session's space: framed and tinted, apart from what concerns every session below it
+    val p = LocalPalette.current
+    val frame = RoundedCornerShape(20.dp)
+    Column(
+      Modifier.fillMaxWidth().clip(frame).background(p.accent.copy(alpha = 0.05f))
+        .border(1.dp, p.accent.copy(alpha = 0.3f), frame).padding(14.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+      AdminSwitch(overview, page, onPage = { picked = it })
+      when (page) {
+        null -> {}
+        NEW_PAGE -> NewSessionSection(overview, onCreated = { picked = it.id; load() })
+        else -> key(page) { SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler) }
+      }
+    }
+    // What concerns every session
+    Txt("General", size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+    PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
+    ApworldsSection()
+  }
+}
+
+/** One session's sections: its state and actions with its game server, players, cheats, console and log. */
+@Composable
+private fun SelectedSession(
+  id: String,
+  overview: AdminOverview?,
+  cache: AdminCache,
+  now: Long,
+  onChanged: () -> Unit,
+  onSpoiler: (String) -> Unit,
+) {
+  val scope = rememberCoroutineScope()
+  val repository = remember(id) { cache.repository(id) }
   DisposableEffect(repository) {
     repository.start()
     onDispose { repository.stop() }
@@ -122,25 +234,26 @@ fun AdminView(now: Long, onBack: () -> Unit, onSpoiler: (String) -> Unit) {
   val problem by repository.problem.collectAsState()
   var message by remember { mutableStateOf<String?>(null) }
   fun run(block: suspend () -> String?) {
-    scope.launch { message = block() }
-  }
-
-  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      IconButton(onBack, Icon.BACK)
-      Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
+    scope.launch {
+      message = block()
+      onChanged()
     }
-    SessionSection(onChanged = { message = null }, onSpoiler = onSpoiler)
-    CheatSection(state)
-    ApworldsSection()
-    ServerSection(state, problem, now, message, onAction = { action -> run { repository.control(action) } })
-    LogSection(repository.log)
-    ConsoleSection(onSend = { line -> run { repository.command(line) } })
   }
+  // Until the stream's first state: the one of the sessions' list
+  val server = state ?: overview?.sessions?.firstOrNull { it.id == id }?.server
+  SessionSection(
+    id, overview, cache, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler,
+    server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
+  )
+  CheatSection(id, server, cache)
+  ConsoleSection(onSend = { line -> run { repository.command(line) } })
+  LogSection(repository.log)
 }
 
+/** The session's game server, in its State and Control: how it runs, start, stop, restart. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ServerSection(
+private fun ServerControls(
   state: GameServerState?,
   problem: String?,
   now: Long,
@@ -151,11 +264,15 @@ private fun ServerSection(
   // Stop and restart end every running game: they ask once more
   var confirm by remember { mutableStateOf<String?>(null) }
   val status = state?.status
-  Section(
-    "Game server", subtitle = state?.seed?.let { "Seed file $it" } ?: "MultiServer, run by the gateway",
-    actions = {
-      // The uptime and the state right of the heading
-      state?.since?.let { Pill("up ${duration(now - it)}", p.muted) }
+  Divider()
+  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    FlowRow(
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+      Txt("Game server", size = 14.sp, weight = FontWeight.SemiBold)
+      // Its state and uptime next to it
       Pill(
         when {
           problem != null -> "gateway unreachable"
@@ -169,14 +286,15 @@ private fun ServerSection(
           GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
         },
       )
-    },
-  ) {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      state?.since?.let { Pill("up ${duration(now - it)}", p.muted) }
+    }
+    run {
       val details = listOfNotNull(
+        state?.seed?.let { "seed file $it" } ?: "MultiServer, run by the gateway",
         state?.lastExitCode?.let { "last exit code $it" },
         state?.restarts?.takeIf { it > 0 }?.let { "$it ${if (it == 1) "restart" else "restarts"} after crashes" },
       )
-      if (details.isNotEmpty()) Txt(details.joinToString(" · "), size = 12.5.sp, color = p.muted, maxLines = 1)
+      Txt(details.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)
       if (problem != null) Txt(problem, size = 12.5.sp, color = p.trap)
       val pending = confirm
       if (pending == null) {
@@ -211,16 +329,21 @@ private fun ServerSection(
 private fun LogSection(log: List<LogLine>) {
   val p = LocalPalette.current
   val scroll = rememberScrollState()
-  // Follows new lines while at the bottom; scrolled up, it stays where it is
+  // Shows new lines while at the top; scrolled down, it stays on the lines it shows
   var follow by remember { mutableStateOf(true) }
-  LaunchedEffect(scroll.value, scroll.maxValue) { follow = scroll.maxValue - scroll.value < 40 }
-  LaunchedEffect(log.size) { if (follow) scroll.scrollTo(scroll.maxValue) }
-  Section("Log", subtitle = "the game server's output, newest at the bottom") {
+  var lastMax by remember { mutableStateOf(0) }
+  LaunchedEffect(scroll.value) { follow = scroll.value < 40 }
+  LaunchedEffect(scroll.maxValue) {
+    val grown = scroll.maxValue - lastMax
+    lastMax = scroll.maxValue
+    if (!follow && grown > 0) scroll.scrollBy(grown.toFloat())
+  }
+  Section("Log", subtitle = "the game server's output, newest on top") {
     Box(Modifier.fillMaxWidth().card(p).height(420.dp)) {
       SelectionContainer {
         Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
           if (log.isEmpty()) Txt("Nothing yet.", size = 13.sp, color = p.muted)
-          log.forEach { line ->
+          log.asReversed().forEach { line ->
             BasicText(
               line.text,
               style = TextStyle(

@@ -54,11 +54,9 @@ sourceSets {
   }
 }
 
-// `./gradlew :gateway:run`: only relays, to a MultiServer on localhost:38282 (GAME_SERVER=true to run one, with
-// AP_HOME pointing to an Archipelago checkout)
+// `./gradlew :gateway:run`: the sessions of ./data, with the Archipelago releases under AP_ROOT (one directory per
+// release, with the files of archipelago/ next to MultiServer.py)
 tasks.named<JavaExec>("run") {
   workingDir = rootDir
-  environment("ROOM_JSON", System.getenv("ROOM_JSON") ?: "data/room.json")
-  environment("GAME_SERVER", System.getenv("GAME_SERVER") ?: "false")
   environment("DATA_DIR", System.getenv("DATA_DIR") ?: "data")
 }

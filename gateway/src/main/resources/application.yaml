@@ -1,37 +1,26 @@
 gateway:
-  # Port game clients connect to (behind Traefik: <session-id>.<BASE_DOMAIN>:443)
+  # Port game clients connect to (behind Traefik: <session-id>.<BASE_DOMAIN>:443; without: ws://host:38281/<session-id>)
   port: "$PORT:38281"
-  # MultiServer, run by this gateway (gameServer below) on a port only reachable inside compose
-  upstream: "$AP_UPSTREAM:ws://localhost:38282"
-  # Names the seed MultiServer serves; written before each start
-  roomJson: "$ROOM_JSON:/data/room.json"
+  # The domain under which each session has its host name; empty: sessions are named by the path only
+  baseDomain: "$BASE_DOMAIN:"
   internal:
-    # The tracker controls the game server here; never published or routed by Traefik
+    # The tracker controls the game servers here; never published or routed by Traefik
     port: "$INTERNAL_PORT:8001"
     # Shared with the tracker; without it the internal API refuses every call
     token: "$INTERNAL_TOKEN:"
   gameServer:
-    # false: MultiServer runs elsewhere (development), the gateway only relays to upstream
-    enabled: "$GAME_SERVER:true"
     # The Archipelago releases, one directory each (e.g. /opt/archipelago/0.6.8) with serve.py, room_info.py and
     # list_games.py
     apRoot: "$AP_ROOT:/opt/archipelago"
     python: "$PYTHON:python"
-    # Seeds (the newest is served), saves, and the apworlds uploaded in the admin panel (apworlds/<release>/)
+    # The sessions (sessions/<id>/: seed, save, room.json), deleted ones (old/), and the apworlds uploaded in the admin
+    # panel (apworlds/<release>/)
     dataDir: "$DATA_DIR:/data"
     # Apworlds put on the server by hand; every release gets them
     customWorlds: "$CUSTOM_WORLDS:/custom_worlds"
-    port: "$AP_PORT:38282"
-    # MultiServer's options for seeds deployed with the CLI (see .env.example); sessions from the admin panel bring
-    # their own
-    pointHints: "$AP_POINT_HINTS:true"
-    autoHints: "$AP_AUTO_HINTS:true"
-    hintCost: "$AP_HINT_COST:10"
-    locationCheckPoints: "$AP_LOCATION_CHECK_POINTS:1"
-    releaseMode: "$AP_RELEASE_MODE:auto"
-    collectMode: "$AP_COLLECT_MODE:auto"
-    remainingMode: "$AP_REMAINING_MODE:goal"
-    countdownMode: "$AP_COUNTDOWN_MODE:auto"
+    # One MultiServer per running session, each on one of these ports (only reachable inside compose): as many
+    # sessions can run at once
+    ports: "$AP_PORTS:38300-38303"
     adminPassword: "$AP_ADMIN_PASSWORD:"
   database:
     # PostgreSQL: the slot passwords (created by the tracker)

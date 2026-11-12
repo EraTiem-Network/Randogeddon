@@ -147,11 +147,19 @@ data class SessionSetup(
 
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
-  /** Records [seedName]'s session; [worlds]: slot name -> the users who play it. */
-  suspend fun create(seedName: String, apVersion: String, options: String, worlds: Map<String, List<Uuid>>, now: Instant = Instant.now()) =
+  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it. */
+  suspend fun create(
+    publicId: String,
+    seedName: String,
+    apVersion: String,
+    options: String,
+    worlds: Map<String, List<Uuid>>,
+    now: Instant = Instant.now(),
+  ) =
     db.query {
-      val id = sessionId(seedName, now)
+      val id = sessionId(seedName, now, publicId)
       SessionsTable.update({ SessionsTable.id eq id }) {
+        it[SessionsTable.publicId] = publicId
         it[SessionsTable.apVersion] = apVersion
         it[SessionsTable.optionsJson] = options
       }
@@ -180,16 +188,55 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
   }
 }
 
-/** The id of [seedName]'s session, created if it doesn't exist yet (inside a transaction). */
-internal fun sessionId(seedName: String, now: Instant): Uuid =
+/**
+ * The ID a session of [seedName] gets when nothing names it otherwise (a seed from before Phase 4): `s-<seed>`, as
+ * migration V6 gives them.
+ */
+fun legacySessionId(seedName: String): String =
+  "s-" + seedName.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(38)
+
+/** The id of [seedName]'s session, created as [publicId] if it doesn't exist yet (inside a transaction). */
+internal fun sessionId(seedName: String, now: Instant, publicId: String = legacySessionId(seedName)): Uuid =
   SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
     ?: Uuid.random().also { id ->
       SessionsTable.insert {
         it[SessionsTable.id] = id
+        it[SessionsTable.publicId] = publicId
         it[SessionsTable.seedName] = seedName
         it[createdAt] = now
       }
     }
+
+/** A session by its ID: its seed, when it was created and finished, its Archipelago release. */
+data class SessionRecord(
+  val id: String,
+  val seedName: String,
+  val createdAt: Instant,
+  val apVersion: String?,
+  val finishedAt: Instant?,
+)
+
+/** The sessions by their IDs (see `SessionIds` in the shared module). */
+class SessionStore(private val db: RandogeddonDatabase) {
+  /** Every session, the newest first. */
+  suspend fun all(): List<SessionRecord> = db.query {
+    SessionsTable.selectAll().orderBy(SessionsTable.createdAt, SortOrder.DESC).map(::record)
+  }
+
+  suspend fun byId(id: String): SessionRecord? = db.query {
+    SessionsTable.selectAll().where { SessionsTable.publicId eq id }.singleOrNull()?.let(::record)
+  }
+
+  /** The ID of [seedName]'s session; `null` if there is none. */
+  suspend fun idOf(seedName: String): String? = db.query {
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.publicId)
+  }
+
+  private fun record(row: ResultRow) = SessionRecord(
+    row[SessionsTable.publicId], row[SessionsTable.seedName], row[SessionsTable.createdAt], row[SessionsTable.apVersion],
+    row[SessionsTable.finishedAt],
+  )
+}
 
 /** The game passwords of each seed's slots. */
 class SlotPasswordStore(private val db: RandogeddonDatabase) {

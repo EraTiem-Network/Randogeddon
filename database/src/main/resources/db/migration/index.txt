@@ -4,3 +4,4 @@ V2__admins.sql
 V3__session_time.sql
 V4__session_setup.sql
 V5__finish.sql
+V6__session_ids.sql

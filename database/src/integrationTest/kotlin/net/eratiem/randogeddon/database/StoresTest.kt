@@ -116,7 +116,7 @@ class StoresTest {
     val alice = users.create("Alice", "hash")
     val bob = users.create("Bob", "hash")
     setups.create(
-      "seed1", "0.6.8", """{"hintCost":5}""",
+      "friday-chaos", "seed1", "0.6.8", """{"hintCost":5}""",
       mapOf("Alice-HK" to listOf(alice.id), "Couch-Coop" to listOf(alice.id, bob.id), "Solo" to emptyList()),
     )
     SlotPasswordStore(db).ensure("seed1", listOf("Alice-HK", "Couch-Coop"), { "pw" })
@@ -127,7 +127,11 @@ class StoresTest {
     assertEquals(listOf("Alice"), setup.worlds["Alice-HK"])
     assertEquals(setOf("Alice", "Bob"), setup.worlds["Couch-Coop"]?.toSet())
 
+    assertEquals("friday-chaos", SessionStore(db).idOf("seed1"))
+    assertEquals("seed1", SessionStore(db).byId("friday-chaos")?.seedName)
+
     assertTrue(setups.delete("seed1"))
+    assertNull(SessionStore(db).byId("friday-chaos"))
     assertNull(setups.of("seed1"))
     assertEquals(emptyMap(), SlotPasswordStore(db).passwords("seed1"))
     assertEquals(setOf("Alice", "Bob"), users.active().map { it.name }.toSet())
@@ -175,6 +179,22 @@ class StoresTest {
     SessionSetupStore(db).delete("111")
     assertEquals(emptyList(), log.of("111"))
     assertEquals(1, log.of("222").size)
+  }
+
+  @Test
+  fun `sessions have IDs, each one once, and a seed from before gets s-seed`() = runBlocking {
+    val sessions = SessionStore(db)
+    val t0 = Instant.parse("2026-11-13T20:00:00Z")
+    // Seen first by the gateway (a seed from before Phase 4)
+    SessionTimeStore(db).started("12345", t0)
+    assertEquals("s-12345", sessions.idOf("12345"))
+    SessionSetupStore(db).create("brave-otter", "678", "0.6.8", "{}", emptyMap(), now = t0.plusSeconds(60))
+    assertEquals(listOf("brave-otter", "s-12345"), sessions.all().map { it.id })
+    assertEquals("0.6.8", sessions.byId("brave-otter")?.apVersion)
+    assertNull(sessions.byId("nobody"))
+    // An ID is taken once
+    assertFailsWith<Exception> { SessionSetupStore(db).create("brave-otter", "999", "0.6.8", "{}", emptyMap()) }
+    assertEquals("s-ab-c", legacySessionId("AB_c"))
   }
 
   @Test

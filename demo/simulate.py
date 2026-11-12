@@ -1,4 +1,4 @@
-"""Plays the demo session (demo/players) against a running server, so the dashboard has something to show.
+"""Plays a demo session (demo/a or demo/b) against a running server, so the dashboard has something to show.
 
 Fake game clients connect to every world that is open, check locations (quickly at first, then slowly, so the
 dashboard keeps moving), chat a little, finish one world and find the keys of the locked worlds on a schedule:
@@ -8,9 +8,11 @@ round.
 
 Locked worlds are only played once their key has been found, just like the real session.
 
-Run inside the gateway image (it has Archipelago and aiohttp):
+Run inside the gateway image (it has Archipelago and aiohttp), with the session's slot passwords
+(`randogeddon slots --json <session>`) and its world that finishes early (DEMO_FINISHER):
     docker run --rm --network randogeddon_default -v $PWD/demo:/demo:ro -v $PWD/output/demo:/slots:ro \
-        --entrypoint python randogeddon-gateway:0.6.8 /demo/simulate.py ws://gateway:38281 /slots/slots.json
+        -e DEMO_FINISHER=Team-RoR2 --entrypoint python randogeddon-gateway:0.6.8 /demo/simulate.py \
+        ws://gateway:38281/<session> /slots/<session>.json
 """
 import asyncio
 import json
@@ -170,8 +172,17 @@ async def play(name: str, game: str, finisher: bool):
 async def main():
     global start, lock_player
     start = loop().time()
-    # Learn the slots from the Locks slot's Connected packet
-    http, ws, recv, connected = await session(LOCK_SLOT, "", tags=("Tracker",))
+    # Learn the slots from the Locks slot's Connected packet. The game server may still be starting (the gateway
+    # closes the connection until it listens): try again for a minute
+    for attempt in range(30):
+        try:
+            http, ws, recv, connected = await session(LOCK_SLOT, "", tags=("Tracker",))
+            break
+        except (ConnectionError, aiohttp.ClientError):
+            if attempt == 29:
+                raise
+            await asyncio.sleep(2)
+    start = loop().time()
     slots = {int(s): info for s, info in connected["slot_info"].items()}
     lock_player = next(s for s, info in slots.items() if info["game"] == "World Locks")
     await ws.close()
@@ -182,8 +193,8 @@ async def main():
         await asyncio.sleep(0.2)
 
     worlds = [(info["name"], info["game"]) for s, info in sorted(slots.items()) if info["game"] != "World Locks"]
-    # The world that finishes during the demo: the smallest one that starts open
-    finisher = "Team-RoR2"
+    # The world that finishes during the demo: a small one that starts open
+    finisher = os.environ.get("DEMO_FINISHER", "Team-RoR2")
     tasks = [asyncio.create_task(play(name, game, name == finisher)) for name, game in worlds]
     print(f"Playing {len(worlds)} worlds in about {END / 60:.0f} minutes; locked: {', '.join(key_of)}", flush=True)
     await asyncio.gather(*tasks)

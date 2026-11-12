@@ -128,9 +128,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 *Several groups play at the same time on the same server.*
 
-- [ ] More than one session at the same time, each with its own MultiServer, seed, save and tracker state
+- [x] More than one session at the same time, each with its own MultiServer, seed, save and tracker state
+    - As many run at once as the gateway has ports for (`AP_PORTS`); a finished session doesn't take one.
 - [ ] The dashboard lists the sessions a user is part of; the session is chosen after login
-- [ ] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
+- [x] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
   Phase 2)
 - [ ] Admins see and control all sessions
 - [ ] Each session's server is reachable from outside
@@ -145,7 +146,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       game clients only take host:port.
     - The gateway (Phase 2) already sees each connection's host name, so it can route to the session's MultiServer
       itself instead of one Traefik router per session.
-    - Open: the session ID format (random like `k7f3q9` or readable like `friday-chaos`), decided in this phase.
+    - The session ID: the admin picks it when creating the session, prefilled with a free readable suggestion
+      (`friday-chaos`); a DNS label that starts with a letter, 3 to 40 characters.
+    - The gateway routes by the host name (the first label), or by the path without a domain
+      (`ws://localhost:38281/<session-id>`, local use and the demo).
 
 ## Phase 5: Proper User Management
 

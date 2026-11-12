@@ -39,11 +39,11 @@ FROM runtime AS tracker
 RUN mkdir -p /state && chown randogeddon /state
 COPY --from=build /src/server/build/native/nativeCompile/randogeddon /src/server/build/native/nativeCompile/*.so /app/
 COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /app/web
-# `docker compose exec tracker randogeddon logins` finds the binary on the PATH
+# `docker compose exec tracker randogeddon admins` finds the binary on the PATH
 RUN ln -s /app/randogeddon /usr/local/bin/randogeddon
 ENV WEB_DIR=/app/web \
-    STATE_PATH=/state/tracker.json \
-    ROOM_JSON=/data/room.json
+    STATE_DIR=/state \
+    DATA_DIR=/data
 USER randogeddon
 EXPOSE 8000
 # No curl in the image: a plain HTTP request through bash
@@ -84,10 +84,7 @@ RUN useradd --uid 1000 --create-home randogeddon \
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
-# Seed generation: `docker compose run --rm generate` (see docker-compose.yml)
-COPY archipelago/entrypoint.sh /usr/local/bin/ap-generate
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
-ENV ROOM_JSON=/data/room.json
 USER randogeddon
 EXPOSE 38281
 CMD ["/app/randogeddon-gateway"]

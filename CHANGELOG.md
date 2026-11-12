@@ -4,6 +4,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Several sessions at once (Phase 4, part 1)
+- Sessions have an ID (a DNS label, chosen when the session is created, a free suggestion like `brave-otter` prefilled):
+  the game server's address `<id>.<domain>` and the session's name in the API. Migration V6 gives the sessions from
+  before `s-<seed>`.
+- The gateway runs one MultiServer per running session, each on a port of `AP_PORTS` (default `38300-38303`, four at
+  once), and relays each game client by the host name it connected to, or by the path without a domain
+  (`ws://localhost:38281/<id>`). Each session's files are in `data/sessions/<id>/`; the files of before are moved
+  there on the first start. Deleting a running session moves them to `data/old/<id>-<time>/`, a finished one's are
+  deleted.
+- The tracker follows every running session with a connection of its own, keeps each one's history and archive in
+  `/state/sessions/<id>/`, and finishes, reopens and deletes them one by one. A new session can be created while others
+  run, as long as a game server is free; reopening needs a free one too.
+- API per session: `/api/sessions/<id>/state`, `stream`, `player/<slot>`, `connection`, `archive`, `spoiler`; the
+  admin panel's under `/api/admin/sessions/<id>/…`. A player sees the sessions they play in, admins see all.
+- Dashboard: the user's running session, the others below it (finished ones as they ended). Admin panel: every
+  session (pick one, its sections follow), a new session with its ID, the game server per session.
+- The CLI deploy is gone (`deploy-seed.sh`, `generate.sh`, the `generate` service, `session.yaml`, the `AP_*` hint and
+  release options in `.env`): sessions are created in the admin panel. `randogeddon admins --create <name>` makes the
+  first admin; `randogeddon slots <id>` and `randogeddon sessions` replace the commands for the one session.
+- The demo runs two sessions at once, created through the admin API (`demo/a`, `demo/b`, one with mixed locks).
+
 ### Finishing, past sessions, spoiler log, cheats (Phase 3, part 4)
 - A session ends by itself 2 minutes after every slot reached its goal or was released, with a countdown on the
   dashboard (admins: end now, or cancel). Admins can pause it by hand (not every check done) or end it (100 %). A finished session is read-only: the
