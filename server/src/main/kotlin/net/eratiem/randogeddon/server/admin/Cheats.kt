@@ -67,6 +67,7 @@ class Cheats(
     val running = runCatching { gameServer.state().status == GameServerStatus.RUNNING }.getOrDefault(false)
     return CheatView(
       slots = tracker.read { cheatSlots() },
+      done = tracker.read { everyCheckDone() },
       cheatHints = session.options?.cheatHints == true,
       available = running && session.finish?.finishedAt == null,
       log = log.of(seed).map {
@@ -85,6 +86,9 @@ class Cheats(
       throw SessionProblem(HttpStatusCode.Forbidden, "This session doesn't allow cheat hints")
     }
     val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, "No slot ${request.slot}")
+    if (request.slot !in tracker.read { cheatSlots() }) {
+      throw SessionProblem(HttpStatusCode.Conflict, "${request.slot} has checked every location already")
+    }
     val value = request.value?.trim()?.takeIf { it.isNotEmpty() }
     if (request.action in NEEDS_VALUE) {
       val known = if (request.action == CheatAction.ITEM || request.action == CheatAction.HINT) names.items else names.locations

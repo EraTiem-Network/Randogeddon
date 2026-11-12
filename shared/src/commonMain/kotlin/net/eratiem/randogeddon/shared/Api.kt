@@ -483,10 +483,15 @@ data class CheatRequest(val action: CheatAction, val slot: String, val value: St
 @Serializable
 data class CheatLogEntry(val ts: Long, val admin: String, val action: CheatAction, val slot: String, val value: String? = null)
 
-/** `GET /api/admin/cheat`: the slots to cheat for, whether hints are allowed, and the session's cheats so far. */
+/**
+ * `GET /api/admin/cheat`: the slots to cheat for (those with locations left to check), whether hints are allowed, and
+ * the session's cheats so far.
+ */
 @Serializable
 data class CheatView(
   val slots: List<String> = emptyList(),
+  /** Every slot has checked all its locations (100 %): nothing is left to cheat. */
+  val done: Boolean = false,
   val cheatHints: Boolean = false,
   /** The game server runs and the session isn't finished. */
   val available: Boolean = false,
