@@ -89,6 +89,8 @@ services:
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
       # Past sessions are deleted this many days after they finished (unless kept); 0: never
       SESSION_RETENTION_DAYS: ${SESSION_RETENTION_DAYS:-90}
+      # The login cookie only over HTTPS; the local overlay can switch that off (see there)
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       # The same hint switches, so the dashboard shows what is in play
       AP_POINT_HINTS: ${AP_POINT_HINTS:-true}
       AP_AUTO_HINTS: ${AP_AUTO_HINTS:-true}

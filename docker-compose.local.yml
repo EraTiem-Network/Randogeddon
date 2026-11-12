@@ -8,3 +8,7 @@ services:
   tracker:
     ports:
       - "8000:8000"
+    environment:
+      # Plain HTTP: without this, browsers on other devices (http://<pc-ip>:8000) drop the login cookie. Browsers
+      # accept it over HTTP on localhost anyway; behind Traefik (HTTPS) it stays secure
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
