@@ -4,6 +4,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Proper user management (Phase 5)
+Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
+two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox
+`randogeddon@example.net`; existing logins stay (they add an e-mail address under *Your account*), admins set up
+two-factor login at their next login. The parts:
+
 ### Two-factor login (Phase 5, part 3)
 - TOTP (RFC 6238, any authenticator app): after the password, the code (or one of 10 recovery codes, each usable once;
   `autocomplete="one-time-code"`). A code works once; the step before and after count too.

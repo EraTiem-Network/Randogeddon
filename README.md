@@ -159,6 +159,11 @@ certificate is checked against `MAIL_HOST`; if the server's public address leads
 same host as the mail server), `MAIL_ADDRESS` names its internal one. Without `MAIL_HOST` the mails, links included,
 only go to the tracker's log.
 
+**Updating to the accounts of Phase 5** (migrations V7 and V8 run by themselves): set `MAIL_*` (and `MAIL_ADDRESS`
+if needed) and `TOTP_KEY` in `.env`, and create the `randogeddon@example.net` mailbox. Existing logins stay, without
+an e-mail address: each person adds theirs under *Your account*. Admins set up two-factor login at their next login;
+until then the admin panel is closed to them.
+
 ## Session day
 
 ### In the admin panel
