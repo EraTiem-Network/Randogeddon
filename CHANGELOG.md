@@ -4,6 +4,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Patch file downloads in the web app (Phase 7, part 2)
+- *Your connection*: the shown slot's files (name, size) with *Download*, and how to patch with the Archipelago
+  Launcher on its ⓘ.
+- The panel's *Players*: every slot's files, for Session-Managers and Administrators.
+
 ### Patch file downloads (Phase 7, part 1)
 - The seed's files of a slot (ROM patches like `.apsm` or `.aplttp`, Factorio's mod zip, other per-slot output) at
   `GET /api/sessions/<id>/files` and `.../files/<name>` (an attachment): each player those of their own slots (a

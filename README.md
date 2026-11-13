@@ -201,7 +201,10 @@ create sessions).
    `#/manage/<session-id>` the panel (`#/admin` still works), `#/watch/<token>` a share link. Under *Your connection*
    they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
-   slot names and each slot's password. Phones can install the dashboard as an app (see below).
+   slot names and each slot's password, and for a ROM-based game (or one that needs a mod) the slot's file from the
+   seed to download: a patch is opened with the Archipelago Launcher (*Open Patch*) and their own ROM. Session-Managers
+   and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
+   app (see below).
 
 Patch files for ROM-based games are in the seed: `data/sessions/<id>/AP_<seed>.zip` on the server. **Deleting** a
 running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
