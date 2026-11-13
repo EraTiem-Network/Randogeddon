@@ -1,8 +1,9 @@
 """The demo's admin, through the admin API like the admin panel (scripts/demo.sh runs it in the gateway image).
 
-    admin.py create <id> <group>   creates session <id> from demo/<group>/ (its YAMLs and session.json); prints the
-                                   new logins. About one in three random demo seeds can't be generated ("Game appears
-                                   as unbeatable"): up to 5 attempts, then exit 3
+    admin.py create <id> <group>   creates session <id> from demo/<group>/ (its YAMLs and session.json); its players
+                                   need a login already (scripts/demo.sh makes them). About one in three random demo
+                                   seeds can't be generated ("Game appears as unbeatable"): up to 5 attempts, then
+                                   exit 3
     admin.py prune <id>...         deletes the demo sessions (demo-...) other than these, finished or not (one left
                                    running by an earlier demo has no players any more)
     admin.py check                 only logs in (exit 1 if that fails)
@@ -49,7 +50,17 @@ def create(id_: str, group: str):
     directory = pathlib.Path("/demo") / group
     setup = json.loads((directory / "session.json").read_text())
     yamls = [{"fileName": f.name, "content": f.read_text()} for f in sorted(directory.glob("*.yaml"))]
-    request = {"id": id_, "yamls": yamls, "worlds": setup["worlds"], "options": setup.get("options", {})}
+    # session.json names the players; the API takes their account IDs
+    status, users = call("GET", "/api/admin/users")
+    if status != 200:
+        sys.exit(f"{id_}: the accounts: {status} {users}")
+    ids = {u["name"].lower(): u["id"] for u in users if u.get("name")}
+    missing = sorted({n for w in setup["worlds"] for n in w.get("users", []) if n.lower() not in ids})
+    if missing:
+        sys.exit(f"{id_}: no login for {', '.join(missing)} (randogeddon logins --create <name>)")
+    worlds = [{**{k: v for k, v in w.items() if k != "users"}, "userIds": [ids[n.lower()] for n in w.get("users", [])]}
+              for w in setup["worlds"]]
+    request = {"id": id_, "yamls": yamls, "worlds": worlds, "options": setup.get("options", {})}
     for attempt in range(1, 6):
         status, answer = call("POST", "/api/admin/sessions", request, timeout=12 * 60)
         if status != 422:
@@ -60,8 +71,6 @@ def create(id_: str, group: str):
     if status != 200:
         sys.exit(f"{id_}: {status} {answer}")
     print(f"Session {id_} (seed {answer['seedName']}); locked: {', '.join(answer['locked']) or 'none'}")
-    for new in answer.get("logins", []):
-        print(f"  new login  {new['name']:<8}  {new['password']}")
 
 
 def prune(keep: list[str]):
