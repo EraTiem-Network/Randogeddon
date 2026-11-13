@@ -58,6 +58,9 @@ expect object Platform {
   /** The main pointer is a finger (a phone or tablet), not a mouse. */
   fun touchScreen(): Boolean
 
+  /** The page's address without its hash, e.g. `https://randogeddon.eratiem.net/` (for links to share). */
+  fun pageUrl(): String
+
   /** The URL's hash, e.g. `#/admin`; empty without one. */
   fun hash(): String
 

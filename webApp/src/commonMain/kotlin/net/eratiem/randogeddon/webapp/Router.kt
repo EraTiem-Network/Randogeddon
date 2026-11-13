@@ -2,10 +2,10 @@ package net.eratiem.randogeddon.webapp
 
 /**
  * Where the page is, kept in the URL's hash so a view survives a reload and can be linked: `#/` the sessions,
- * `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/admin` the admin panel, `#/admin/<id>` a session
- * in it, `#/admin/new` a new session, `#/admin/<id>/spoiler` a spoiler log opened from it, `#/settings` the user's
- * account; `#/invite/<token>` and `#/email/<token>` are the links of the mails. No session ID is one of these words
- * (they are reserved).
+ * `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/manage` the panel (`#/admin` before),
+ * `#/manage/<id>` a session in it, `#/manage/new` a new session, `#/manage/<id>/spoiler` a spoiler log opened from it,
+ * `#/settings` the user's account; `#/invite/<token>` and `#/email/<token>` are the links of the mails, `#/watch/<token>`
+ * a share link (without a login). No session ID is one of these words (they are reserved).
  */
 sealed interface Route {
   /** The sessions to pick from. */
@@ -28,12 +28,15 @@ sealed interface Route {
   /** The link of the mail confirming a new e-mail address. */
   data class ConfirmEmail(val token: String) : Route
 
+  /** A session's share link: its dashboard without a login, read-only. */
+  data class Watch(val token: String) : Route
+
   companion object {
     fun parse(hash: String): Route {
       val parts = hash.removePrefix("#").trim('/').split('/').filter { it.isNotEmpty() }
       return when {
         parts.isEmpty() -> Home
-        parts[0] == "admin" -> when {
+        parts[0] == "manage" || parts[0] == "admin" -> when {
           parts.size == 1 -> Admin(null)
           parts[1] == "new" -> Admin(NEW_PAGE)
           parts.size >= 3 && parts[2] == "spoiler" -> Spoiler(parts[1], fromAdmin = true)
@@ -42,6 +45,7 @@ sealed interface Route {
         parts[0] == "settings" -> Settings
         parts[0] == "invite" && parts.size >= 2 -> Invite(parts[1])
         parts[0] == "email" && parts.size >= 2 -> ConfirmEmail(parts[1])
+        parts[0] == "watch" && parts.size >= 2 -> Watch(parts[1])
         parts.size >= 2 && parts[1] == "spoiler" -> Spoiler(parts[0], fromAdmin = false)
         else -> Dashboard(parts[0])
       }
@@ -54,13 +58,14 @@ val Route.hash: String
   get() = when (this) {
     Route.Home -> "#/"
     is Route.Dashboard -> "#/$id"
-    is Route.Spoiler -> if (fromAdmin) "#/admin/$id/spoiler" else "#/$id/spoiler"
+    is Route.Spoiler -> if (fromAdmin) "#/manage/$id/spoiler" else "#/$id/spoiler"
     is Route.Admin -> when (page) {
-      null -> "#/admin"
-      NEW_PAGE -> "#/admin/new"
-      else -> "#/admin/$page"
+      null -> "#/manage"
+      NEW_PAGE -> "#/manage/new"
+      else -> "#/manage/$page"
     }
     Route.Settings -> "#/settings"
     is Route.Invite -> "#/invite/$token"
     is Route.ConfirmEmail -> "#/email/$token"
+    is Route.Watch -> "#/watch/$token"
   }

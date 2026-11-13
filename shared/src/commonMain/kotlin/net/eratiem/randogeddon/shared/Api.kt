@@ -20,7 +20,7 @@ object SessionIds {
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
   /** Words the API and the dashboard's links use themselves. */
-  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "new", "sessions", "settings", "www")
+  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "manage", "new", "sessions", "settings", "watch", "www")
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
@@ -583,19 +583,26 @@ data class AdminSessionView(
 )
 
 /**
- * `GET /api/admin/sessions`: every session with its game server, what a new one can use, who has a login, and how many
- * game servers can run at once ([capacity]; finished sessions don't count).
+ * `GET /api/manage` (`/api/admin/sessions` for Administrators): the sessions the user manages (an Administrator: every
+ * session) with their game servers, what a new one can use, who has a login, and how many game servers can run at once
+ * ([capacity]; finished sessions don't count).
  */
 @Serializable
 data class AdminOverview(
   val sessions: List<SessionEntry> = emptyList(),
   val apVersions: List<String> = emptyList(),
   val users: List<String> = emptyList(),
-  /** The accounts a new session can be played by, invited ones too. */
+  /** The accounts a new session can be played by: by name (Administrators also see invited ones, by address). */
   val people: List<UserRef> = emptyList(),
   val capacity: Int = 0,
   /** A free ID for the next session, e.g. `friday-chaos`. */
   val suggestedId: String = "",
+  /** Every session ID in use, also of sessions the user doesn't see. */
+  val taken: List<String> = emptyList(),
+  /** How many game servers run, of every session. */
+  val inUse: Int = 0,
+  /** How many more running sessions the user may create; `null`: no limit (an Administrator). */
+  val left: Int? = null,
 )
 
 /** Tracker → gateway: generate a seed from these YAMLs; World Locks is added from [locked]. */

@@ -20,11 +20,13 @@ import net.eratiem.randogeddon.shared.SessionRole
 import kotlin.uuid.Uuid
 
 /**
- * Under the protected `/api` branch, for every user: what a new session can use (`/sessions/new`), its YAMLs checked,
- * someone new invited for it, and creating it (`POST /sessions`); the creator becomes its Session-Manager. How many
- * running sessions a user may manage at once is the Administrators' setting.
+ * Under the protected `/api` branch, for every user: the sessions they manage (`/manage`), what a new session can use
+ * (`/sessions/new`), its YAMLs checked, someone new invited for it, and creating it (`POST /sessions`); the creator
+ * becomes its Session-Manager. How many running sessions a user may manage at once is the Administrators' setting.
  */
 fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
+  // The panel: the sessions the user manages (an Administrator: every session), and what a new one can use
+  get("/manage") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
   route("/sessions/new") {
     get { gatewayCall { call.respond(admin.newSession(call.loggedIn.user)) } }
     // The slots of the uploaded YAMLs, before the players are assigned; games the release lacks are problems

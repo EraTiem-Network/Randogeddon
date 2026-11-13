@@ -166,12 +166,13 @@ until then the admin panel is closed to them.
 
 ## Session day
 
-### In the admin panel
+### In the panel (*Manage*)
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
-2. **Create the session** (admin panel, *New session*): its *Session ID* (prefilled with a free suggestion like
+2. **Create the session** (the gear button, *Manage*, then *New session*; every user can, as many running ones at
+   once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
    `brave-otter`; lowercase letters, digits and `-`, starting with a letter; it becomes the game server's host name,
    so it can't be changed later), *Add YAMLs…*, then for every slot who
    plays it (one or more players, picked from the accounts, invited ones too: a slot with several players is played
@@ -185,13 +186,14 @@ until then the admin panel is closed to them.
    name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
    before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
    or one whose APWorld comes from another release) above its output.
-3. **New players are invited** beforehand, by e-mail (admin panel, *Users*): they get a link, valid for 7 days, and
-   choose their name and password themselves. Until they sign up, the session shows them by the name the admin
-   suggested.
+3. **New players are invited** by e-mail, right in a slot's player field (only an address that has no account; someone
+   who has one is picked by name), or beforehand by an Administrator (*Users*): they get a link, valid for 7 days,
+   and choose their name and password themselves. Until they sign up, the session shows them by the suggested name.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
-   has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/admin` and
-   `#/admin/<session-id>` the admin panel. Under *Your connection* they find the server
+   has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
+   `#/manage/<session-id>` the panel (`#/admin` still works), `#/watch/<token>` a share link. Under *Your connection*
+   they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
 
@@ -236,11 +238,13 @@ and its APWorld library:
 
 The gateway puts exactly these files into each release's `custom_worlds/` before it lists the games or generates.
 
-### Admin panel: the game server and its console
+### The panel: the game server and its console
 
-Admins get a gear button in the dashboard's header. The admin panel lists every session (how far it is, its game
-server); a click picks one. For that session it shows who plays which slot and its actions (pause or end, reopen,
-auto-deletion, delete, spoiler log), the cheats, its game server's state (running, starting, stopped, crashed), lets
+Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
+(an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
+who plays which slot and its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People**
+(everyone with a part, with role and slots; add a Session-Manager, support or a watcher by name, or invite a new
+address; remove them; the share link), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
 and has the server console:
 
@@ -263,6 +267,15 @@ was created with *Cheat hints*. Every cheat is stored with the admin's name and 
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
 admin stays stopped until started again.
+
+Below the finished sessions, Administrators find *General*: *Users*, *APWorlds* and *Settings* (how many running
+sessions one user may manage at once).
+
+**On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
+spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
+address, remove watchers, and the share link. Watchers see a *Watching* pill in place of their slots. A **share
+link** (`#/watch/<token>`) opens the session's dashboard without a login, read-only: progress, tiles, players, hints
+and the live feed, no passwords and no spoiler; turned off or replaced, it says so.
 
 Players can also use `!hint <item>`, `!remaining`, `!release`, `!collect` and `!countdown 10` from their
 client, depending on the session's options. `AP_ADMIN_PASSWORD` enables `!admin` for remote server commands.
@@ -395,9 +408,9 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
-`/api/sessions/new` and `POST /api/sessions` (creating one, for everyone), a session's management under
-`/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The panel's are under
+`/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
+everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
 `.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
 the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
 Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
