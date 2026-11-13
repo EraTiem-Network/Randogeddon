@@ -150,3 +150,29 @@ data class InviteRequest(val email: String, val suggestedName: String? = null)
 /** `PUT /api/admin/users/{id}/email`: another address for an invited user (a new link goes there). */
 @Serializable
 data class EmailRequest(val email: String)
+
+/** `GET /api/account`: the logged-in user's own account, for the settings page. */
+@Serializable
+data class AccountView(
+  val id: String,
+  val name: String,
+  val email: String? = null,
+  /** A new address waiting for its confirmation (the link went there). */
+  val pendingEmail: String? = null,
+  val autoDelete: AutoDelete = AutoDelete.NEVER,
+  /** When the account will be deleted by itself, as of now; `null`: not planned (never, or a session runs). */
+  val deletesAt: Long? = null,
+  val admin: Boolean = false,
+)
+
+/** `PUT /api/account/name`. */
+@Serializable
+data class NameRequest(val name: String)
+
+/** `PUT /api/account/password`: the current password, and the new one. The other logins end. */
+@Serializable
+data class PasswordChangeRequest(val current: String, val password: String)
+
+/** `PUT /api/account/auto-delete`. */
+@Serializable
+data class AutoDeleteRequest(val autoDelete: AutoDelete)
