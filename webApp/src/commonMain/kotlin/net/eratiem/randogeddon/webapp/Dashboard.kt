@@ -38,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +74,7 @@ import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
 
@@ -113,8 +115,20 @@ private fun SideBySide(sideFirst: Boolean, sideWidth: Dp, main: @Composable () -
   }
 }
 
+/** The page: a share link's dashboard without a login ([WatchApp]), or the tracker for the logged-in user. */
 @Composable
 fun App() {
+  var watching by remember { mutableStateOf((Route.parse(Platform.hash()) as? Route.Watch)?.token) }
+  DisposableEffect(Unit) {
+    val stop = Platform.onHashChange { watching = (Route.parse(it) as? Route.Watch)?.token }
+    onDispose { stop() }
+  }
+  val token = watching
+  if (token != null) WatchApp(token) else TrackerApp()
+}
+
+@Composable
+private fun TrackerApp() {
   val scope = rememberCoroutineScope()
   val repository = remember { TrackerRepository(scope) }
   DisposableEffect(repository) {
@@ -231,7 +245,7 @@ fun App() {
             // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
             // the admin panel keeps the dashboard's session in it, a spoiler log its own
             val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { adminOpen }
-            val switchable = sessions.filter { it.mySlots.isNotEmpty() || it.id == shown }
+            val switchable = sessions.filter { it.myRole != null || it.id == shown }
             Headline()
             Hero(
               s.takeIf { dashboard != null || r is Route.Spoiler || adminOpen }, streamOpen,
@@ -247,7 +261,7 @@ fun App() {
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
-              onAdmin = if (user.administrator) ({ go(if (adminOpen) back(selected) else Route.Admin(selected)) }) else null,
+              onAdmin = { go(if (adminOpen) back(selected) else Route.Admin(selected?.takeIf { it in user.manages || user.administrator })) },
               adminOpen = adminOpen,
               stacked = narrow,
             )
@@ -257,11 +271,11 @@ fun App() {
                 return@Column
               }
               is Route.Admin -> {
-                if (user.administrator) AdminView(
-                  now, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
+                AdminView(
+                  now, user.administrator, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
                   onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
                   onDashboard = { go(Route.Dashboard(it)) },
-                ) else Txt("The admin panel is for admins.", color = p.muted)
+                )
                 return@Column
               }
               Route.Settings -> {
@@ -272,6 +286,8 @@ fun App() {
                 ConfirmEmailView(r.token, onSettings = { go(Route.Settings) })
                 return@Column
               }
+              // [App] shows it
+              is Route.Watch -> return@Column
               is Route.Invite -> {
                 // Signing up happens logged out (index.html's form); this browser is someone's already
                 Txt(
@@ -286,7 +302,7 @@ fun App() {
               }
               Route.Home -> {
                 if (loadedSessions != null) {
-                  SessionPicker(sessions.filter { it.mySlots.isNotEmpty() }, user.administrator, onOpen = { go(Route.Dashboard(it)) })
+                  SessionPicker(sessions.filter { it.myRole != null }, user.administrator, onOpen = { go(Route.Dashboard(it)) })
                 }
                 return@Column
               }
@@ -297,11 +313,13 @@ fun App() {
               }
             }
             if (s == null || selected == null) return@Column
-            val mine = sessions.firstOrNull { it.id == selected }?.mySlots?.isNotEmpty() == true
+            val entry = sessions.firstOrNull { it.id == selected }
+            val mine = entry?.mySlots?.isNotEmpty() == true
+            val role = entry?.myRole
             val error = s.error
             if (!s.connected && error != null && s.finishedAt == null) Banner(error)
             FinishBanner(
-              s, user.administrator,
+              s, user.administrator || role == SessionRole.MANAGER,
               onFinishNow = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish") } },
               onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
               onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
@@ -310,10 +328,10 @@ fun App() {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
                 Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-                ConnectionSection(user.name, connection, mine, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+                ConnectionSection(user.name, connection, mine, role, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
               }
             } else {
-              ConnectionSection(user.name, connection, mine, s, Modifier.fillMaxWidth())
+              ConnectionSection(user.name, connection, mine, role, s, Modifier.fillMaxWidth())
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
@@ -340,6 +358,10 @@ fun App() {
               if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
               if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             }
+            // By the role in it: support helps the players, players add watchers
+            val id = selected
+            if (role == SessionRole.SUPPORT && id != null) key(id) { SupportSection(id, onSpoiler = { go(Route.Spoiler(id, fromAdmin = false)) }) }
+            if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
           }
         }
       }
@@ -357,7 +379,7 @@ fun App() {
 
 /** "Randogeddon" above the top card, centred, in the brand's gradient. */
 @Composable
-private fun Headline() {
+internal fun Headline() {
   val p = LocalPalette.current
   Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
     BasicText(
@@ -392,7 +414,7 @@ private fun Hero(
   /** The user's account; [settingsOpen] while it is shown. */
   onSettings: () -> Unit,
   settingsOpen: Boolean,
-  /** Only for admins. */
+  /** The panel: the sessions the user manages (Administrators: every session), a new session. */
   onAdmin: (() -> Unit)?,
   adminOpen: Boolean,
   stacked: Boolean,

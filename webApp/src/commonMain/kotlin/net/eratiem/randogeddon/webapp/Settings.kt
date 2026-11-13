@@ -218,7 +218,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
   Section("Two-factor login", subtitle = subtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       if (a.administrator && !a.twoFactor) {
-        Txt("The admin panel opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
+        Txt("What only Administrators do opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
       }
       codes?.let { list ->
         Txt("Your recovery codes", size = 13.5.sp, weight = FontWeight.SemiBold)

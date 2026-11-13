@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.MySlot
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.Summary
 
 /**
@@ -34,8 +35,10 @@ import net.eratiem.randogeddon.shared.Summary
 fun ConnectionSection(
   name: String,
   connection: Connection?,
-  /** [name] plays in this session (an admin may not). */
+  /** [name] plays in this session (an Administrator, support or a watcher doesn't). */
   mine: Boolean,
+  /** What [name] is in it; `null`: an Administrator without a part. */
+  role: SessionRole?,
   summary: Summary,
   modifier: Modifier = Modifier,
   fillHeight: Boolean = false,
@@ -53,14 +56,31 @@ fun ConnectionSection(
     }
   }
   val slot = slots.firstOrNull { it.name == picked } ?: lastPlayed
-  Section("Your connection", modifier, subtitle = "Logged in as $name") {
+  Section(
+    "Your connection", modifier, subtitle = "Logged in as $name",
+    actions = {
+      when (role) {
+        SessionRole.WATCHER -> Pill("Watching", p.muted)
+        SessionRole.SUPPORT -> Pill("Support", p.useful)
+        SessionRole.MANAGER -> Pill("Session-Manager", p.accent)
+        else -> {}
+      }
+    },
+  ) {
     Column(
       Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       Field("Server", connection?.server ?: "…")
       when {
-        !mine -> Txt("You don't play in this session.", size = 13.sp, color = p.muted)
+        !mine -> Txt(
+          when (role) {
+            SessionRole.WATCHER -> "You watch this session: no slots, the spoiler log once it is finished."
+            SessionRole.SUPPORT -> "You support this session: you help its players below."
+            else -> "You don't play in this session."
+          },
+          size = 13.sp, color = p.muted,
+        )
         slot == null -> Txt("Your slots appear here once the seed is running.", size = 13.sp, color = p.muted)
         slots.size > 1 -> SearchableSelect(
           slots.map { Triple(it.name, shortSlotName(it.name, name), it.game) }, slot.name, { picked = it },

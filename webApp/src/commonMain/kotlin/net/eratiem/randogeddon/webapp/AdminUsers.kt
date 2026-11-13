@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.AccountState
 import net.eratiem.randogeddon.shared.AdminUser
+import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.EmailAddresses
@@ -38,8 +39,13 @@ internal suspend fun invite(email: String, suggestedName: String? = null): Answe
   ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), suggestedName?.trim()?.takeIf { it.isNotEmpty() })),
 ) { ApiJson.decodeFromString(AdminUser.serializer(), it) }
 
-/** [this] as a choice of the new-session form. */
-internal fun AdminUser.ref() = UserRef(id, name, email.takeIf { name == null })
+/**
+ * Invites [email] to play in a new session (anyone creating one): only an address without an account; the account as a
+ * choice of the form, or why not.
+ */
+internal suspend fun inviteForSession(email: String): Answer<UserRef> = call(
+  "POST", "api/sessions/new/invite", ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), null)),
+) { ApiJson.decodeFromString(UserRef.serializer(), it) }
 
 /**
  * The accounts: who signed up, who is invited (and until when the link works); invite someone by e-mail, send an
@@ -151,5 +157,45 @@ private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
       }
     }
     state?.let { Txt(it, size = 12.sp, color = p.muted) }
+  }
+}
+
+/** What Administrators set for everyone: how many running sessions one user may manage at once (0: none). */
+@Composable
+fun AppSettingsSection() {
+  val p = LocalPalette.current
+  val scope = rememberCoroutineScope()
+  var saved by remember { mutableStateOf<AppSettings?>(null) }
+  var perUser by remember { mutableStateOf("") }
+  var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+  LaunchedEffect(Unit) {
+    when (val r = call("GET", "api/admin/settings", null) { ApiJson.decodeFromString(AppSettings.serializer(), it) }) {
+      is Answer.Ok -> { saved = r.value; perUser = r.value.sessionsPerUser.toString() }
+      is Answer.Failed -> state = false to r.message
+    }
+  }
+  val value = perUser.trim().toIntOrNull()?.takeIf { it in 0..20 }
+  Section("Settings", subtitle = "for everyone") {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Txt("Sessions per user", size = 13.sp, weight = FontWeight.SemiBold)
+        InfoTip(
+          "How many running sessions one user may create and manage at once (0 to 20; 0: only Administrators create " +
+            "sessions). Administrators have no limit; the game servers' number applies to everyone."
+        )
+        FilterField(perUser, { perUser = it; state = null }, "1", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
+        Button("Save", enabled = value != null && value != saved?.sessionsPerUser) {
+          scope.launch {
+            val settings = AppSettings(value!!)
+            state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), settings)) { }) {
+              is Answer.Ok -> { saved = settings; true to "Saved." }
+              is Answer.Failed -> false to r.message
+            }
+          }
+        }
+      }
+      if (value == null && perUser.isNotBlank()) Txt("0 to 20", size = 12.5.sp, color = p.trap)
+      state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
+    }
   }
 }

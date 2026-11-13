@@ -47,6 +47,8 @@ actual object Platform {
 
   actual fun touchScreen(): Boolean = jsTouchScreen()
 
+  actual fun pageUrl(): String = jsPageUrl()
+
   actual fun hash(): String = jsHash()
 
   actual fun setHash(hash: String, replace: Boolean) = jsSetHash(hash, replace)
@@ -140,6 +142,8 @@ private fun jsSaveSetting(key: String, value: String?): Unit = js(
 )
 
 private fun jsHash(): String = js("window.location.hash")
+
+private fun jsPageUrl(): String = js("window.location.origin + window.location.pathname")
 
 // replaceState: no new history entry (and no hashchange event; the caller has the route already)
 private fun jsSetHash(hash: String, replace: Boolean): Unit =
