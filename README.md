@@ -173,6 +173,44 @@ create sessions).
 **Updating to the patch file downloads of Phase 7:** nothing to set, no migration; the downloads work for the
 sessions that exist already, finished ones too.
 
+## The live server
+
+The live Randogeddon runs on the live VM (`<internal-ip>`, behind the Proxmox host example.org and its Traefik). It holds
+only what runs; the images are built on a PC (WSL) and come from the registry `img.example.org` (Zot, the registry VM):
+
+| What | Where |
+|---|---|
+| `.env`, `docker-compose.yml`, `docker-compose.proxy.yml` | `/srv/randogeddon/` (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml`) |
+| `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
+| the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
+| dumps (each update's, a daily one kept 14 days) | `/srv/backups/` |
+| the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
+
+Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
+`IMAGE_REGISTRY=img.example.org/`, `IMAGE_TAG` and `GATEWAY_TAG` (the running commit), `PREVIOUS_IMAGE_TAG` and
+`PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,
+but the compose file names the build's secret).
+
+**Updating** (in WSL, from a committed state):
+
+```sh
+./scripts/deploy.sh             # build, push as <commit>, dump, switch, check (healthz, schema version)
+./scripts/deploy.sh --rollback  # back to the previous tag (code only; a migration that ran needs its dump)
+```
+
+It needs once: `docker login img.example.org` with the `deploy` account (its password is in `<registry-dir>/.secrets`
+on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see the script's head). The
+server itself is logged in to the registry with the read-only `randogeddon-live` account.
+
+**Restoring a dump** (the stack's database replaced by the dump; the tracker and gateway stopped meanwhile):
+
+```sh
+cd /srv/randogeddon && docker compose stop tracker gateway
+docker compose exec -T postgres psql -U randogeddon -d postgres -c 'DROP DATABASE randogeddon' -c 'CREATE DATABASE randogeddon OWNER randogeddon'
+gunzip -c /srv/backups/<dump>.sql.gz | docker compose exec -T postgres psql -U randogeddon -d randogeddon
+docker compose up -d
+```
+
 ## Session day
 
 ### In the panel (*Manage*)

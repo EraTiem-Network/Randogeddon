@@ -4,6 +4,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### The live server (Phase 8, part 1)
+- The build infrastructure of example.org, its compose files in `infra/`: Zot at `img.example.org` (the registry VM) for
+  the images, Authentik at `auth.example.org` (the auth VM) with Zot's login through it (`infra/auth/setup.py` makes its
+  groups and applications).
+- `scripts/deploy.sh`: builds, pushes the images tagged with the commit, dumps the database, switches the server to
+  the new tag and checks it; `--rollback` goes back to the tag before. The compose file takes the images from
+  `IMAGE_REGISTRY` with `IMAGE_TAG` and `GATEWAY_TAG` (locally unchanged).
+- A daily database dump on the server (`scripts/backup.sh`, `randogeddon-backup.timer`), kept 14 days, and how to
+  restore one (README, "The live server"). The server holds only what runs.
+
 ### Patch file downloads (Phase 7)
 Players download their slots' files from the seed (ROM patches, mods) under *Your connection*; Session-Managers and
 Administrators every slot's in the panel. Nothing that shows the way (the spoiler, readable text), and nothing for
