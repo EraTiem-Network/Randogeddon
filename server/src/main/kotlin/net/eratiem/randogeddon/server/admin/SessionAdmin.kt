@@ -100,17 +100,25 @@ class SessionAdmin(
   private val roles: SessionRoleStore,
   private val settings: AppSettingsStore,
 ) {
-  /** Every session with its game server, and what a new one needs. */
-  suspend fun overview(): AdminOverview {
+  /**
+   * The sessions [user] manages with their game servers (an Administrator: every session), and what a new one needs.
+   * Only Administrators get the invited accounts (by address) and the users' names.
+   */
+  suspend fun overview(user: User): AdminOverview {
     sessions.refresh()
     val taken = takenIds()
+    val all = sessions.all()
+    val managed = if (user.administrator) all else all.filter { user.id in it.managers() }
     return AdminOverview(
-      sessions = sessions.all().map { list.entry(it, person = null, admin = true) },
+      sessions = managed.map { list.entry(it, it.personOf(user), admin = true, role = it.roleOf(user)) },
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
-      users = users.active().map { it.name }.sorted(),
-      people = people(),
+      users = if (user.administrator) users.active().map { it.name }.sorted() else emptyList(),
+      people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
       capacity = sessions.capacity,
       suggestedId = suggestId(random) { it in taken },
+      taken = taken.sorted(),
+      inUse = all.count { it.server?.port != null },
+      left = if (user.administrator) null else (sessionsPerUser(settings) - roles.runningManagedBy(user.id)).coerceAtLeast(0),
     )
   }
 

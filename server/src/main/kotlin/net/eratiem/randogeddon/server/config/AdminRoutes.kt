@@ -52,7 +52,7 @@ fun Route.adminRoutes(gameServer: GameServerClient, admin: SessionAdmin, setting
   route("/admin") {
     install(RequireAdministrator)
     // Every session with its game server, and what a new one needs (releases, logins, a free ID)
-    get("/sessions") { gatewayCall { call.respond(admin.overview()) } }
+    get("/sessions") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
     route("/settings") {
       get { call.respond(AppSettings(sessionsPerUser(settings))) }
       put {
