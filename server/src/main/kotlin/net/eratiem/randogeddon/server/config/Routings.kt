@@ -44,6 +44,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     route("/api") {
       install(RequireLogin) { this.logins = logins }
       meRoute()
+      accountRoutes(accounts, trackerConfig.cookieSecure)
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers)
       adminRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions)
       adminUserRoutes(accounts)

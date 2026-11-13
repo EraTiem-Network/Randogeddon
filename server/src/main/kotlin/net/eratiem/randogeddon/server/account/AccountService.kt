@@ -4,12 +4,15 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.database.Account
+import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
+import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.AccountState
+import net.eratiem.randogeddon.shared.AccountView
 import net.eratiem.randogeddon.shared.AdminUser
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.EmailAddresses
@@ -30,6 +33,9 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 /** How long an invitation link works. */
 val INVITATION_VALID = 7.days
 
+/** How long the confirmation link for a new e-mail address works. */
+val EMAIL_CONFIRMATION_VALID = 2.days
+
 /** Why an account action can't be done; answered with [status] and the message. */
 class AccountProblem(val status: HttpStatusCode, message: String) : Exception(message)
 
@@ -42,6 +48,7 @@ class AccountProblem(val status: HttpStatusCode, message: String) : Exception(me
 class AccountService(
   private val users: UserStore,
   private val invitations: InvitationStore,
+  private val emailChanges: EmailChangeStore,
   private val logins: LoginService,
   private val mailer: Mailer,
   private val sessions: LiveSessions,
@@ -114,6 +121,77 @@ class AccountService(
     val user = users.findActive(invitation.userId) ?: throw AccountProblem(HttpStatusCode.Gone, "The account is gone")
     return logins.start(user)
   }
+
+  /** [user]'s own account, for the settings page. */
+  suspend fun view(user: User, now: Instant = Instant.now()): AccountView {
+    val activity = users.activity().firstOrNull { it.user.id == user.id }
+    return AccountView(
+      id = user.id.toString(),
+      name = user.name,
+      email = user.email,
+      pendingEmail = emailChanges.pending(user.id, now),
+      autoDelete = AutoDelete.of(user.autoDelete),
+      deletesAt = activity?.let { deletesAt(it, now) }?.toEpochMilli(),
+      admin = user.admin,
+    )
+  }
+
+  /** A new name: unique among active accounts; the running sessions show it, the finished ones keep the old one. */
+  suspend fun rename(user: User, name: String) {
+    val clean = name.trim()
+    UserNames.problem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, "Name: $it") }
+    if (clean == user.name) return
+    users.findActive(clean)?.takeIf { it.id != user.id }?.let {
+      throw AccountProblem(HttpStatusCode.Conflict, "The name $clean is taken")
+    }
+    runCatching { users.rename(user.id, clean) }
+      .getOrElse { throw AccountProblem(HttpStatusCode.Conflict, "The name $clean is taken") }
+    sessions.refresh()
+    logger.info("{} is called {} now", user.name, clean)
+  }
+
+  /** A new password after the current one; every login ends, this one gets a new token (for the cookie). */
+  suspend fun changePassword(user: User, current: String, password: String): String {
+    val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(current, user.passwordHash) }
+    if (!valid) throw AccountProblem(HttpStatusCode.Forbidden, "The current password is wrong")
+    PasswordRules.problem(password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, "Password: $it") }
+    users.setPassword(user.id, withContext(Dispatchers.Default) { PasswordHasher.hash(password) })
+    logger.info("{} has a new password", user.name)
+    return logins.start(user)
+  }
+
+  /** A new e-mail address: a confirmation link goes there; until it's opened, the old address stays. */
+  suspend fun requestEmail(user: User, email: String) {
+    val address = address(email)
+    if (address.equals(user.email, ignoreCase = true)) {
+      throw AccountProblem(HttpStatusCode.BadRequest, "That's your address already")
+    }
+    users.accountByEmail(address)?.let { throw AccountProblem(HttpStatusCode.Conflict, "$address belongs to another account") }
+    val token = newToken()
+    emailChanges.create(tokenHash(token), user.id, address, Instant.now().plus(EMAIL_CONFIRMATION_VALID.toJavaDuration()))
+    val link = "${config.publicUrl}/#/email/$token"
+    try {
+      mailer.send(Mails.emailConfirmation(address, user.name, link, EMAIL_CONFIRMATION_VALID.inWholeDays.toInt()))
+    } catch (e: IOException) {
+      logger.warn("Could not send the address confirmation to {}: {}", address, e.message)
+      throw AccountProblem(HttpStatusCode.BadGateway, "The mail to $address couldn't be sent (${e.message}); try again")
+    }
+  }
+
+  /** The link of a confirmation mail: its address becomes the account's; the address, for the answer. */
+  suspend fun confirmEmail(token: String, now: Instant = Instant.now()): String {
+    val change = emailChanges.take(tokenHash(token), now)
+      ?: throw AccountProblem(HttpStatusCode.Gone, "This link doesn't work (any more): ask for a new one in your settings")
+    users.accountByEmail(change.email)?.takeIf { it.id != change.userId }?.let {
+      throw AccountProblem(HttpStatusCode.Conflict, "${change.email} belongs to another account now")
+    }
+    users.account(change.userId) ?: throw AccountProblem(HttpStatusCode.Gone, "The account is gone")
+    users.setEmail(change.userId, change.email)
+    logger.info("An account's address is {} now", change.email)
+    return change.email
+  }
+
+  suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) = users.setAutoDelete(user.id, autoDelete.code)
 
   /** Every account for the admin panel, invited ones too. */
   suspend fun list(now: Instant = Instant.now()): List<AdminUser> {

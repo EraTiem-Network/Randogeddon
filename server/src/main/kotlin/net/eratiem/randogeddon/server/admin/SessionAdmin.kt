@@ -120,7 +120,10 @@ class SessionAdmin(
       createdAt = live.record.createdAt.toEpochMilli(),
       options = live.options,
       worlds = live.people().flatMap { (person, slots) -> slots.map { it to person } }
-        .groupBy({ it.first }, { it.second }).map { (slot, names) -> WorldPlan(slot, names) },
+        .groupBy({ it.first }, { it.second }).map { (slot, names) ->
+          val ids = setup?.members?.entries?.associate { (id, name) -> name to id.toString() }.orEmpty()
+          WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] })
+        },
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finishedAt?.toEpochMilli(),
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },

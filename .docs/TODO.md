@@ -154,28 +154,28 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 *Accounts belong to people, not to a session.*
 
-- [ ] When creating a session: select existing users, or add new ones by e-mail address
-- [ ] New users get an invitation mail with a link to choose their username and password
+- [x] When creating a session: select existing users, or add new ones by e-mail address
+- [x] New users get an invitation mail with a link to choose their username and password
     - The link is single-use and expires.
     - No open sign-up: an account can only be created with the link from an invitation mail, for the address the
       admin entered.
     - Mail via SMTP on `mail.example.net`, sender `randogeddon@example.net`, credentials in `.env`. The host is
       configurable: if the TLS certificate is issued for `mail.example.org`, connect by that name.
-- [ ] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
-- [ ] Automatic account deletion, chosen when signing up
+- [x] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
+- [x] Automatic account deletion, chosen when signing up
     - Delete after a time span (weeks, months or years, from a fixed list) or never.
     - The time counts from the end of the user's last session (when it was finished, Phase 3).
     - The user is told before the deletion happens.
     - Deleting removes only the account (login, e-mail address, settings). Sessions stay viewable: they keep the user's
       UUID and the name the user had in that session, saved with the session.
-- [ ] Display names are unique among active accounts
+- [x] Display names are unique among active accounts
     - Checked without regard to case ("Alice" and "alice" can't both exist), at sign-up and when renaming; a deleted
       account frees its name.
     - The UI shows only the name; the UUID appears only when hovering over it (e.g. to tell a deleted user's name in
       an old session from a new account with the same name).
 - [ ] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
     - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else.
-- [ ] User settings page: change username, password, e-mail address and the auto-deletion setting
+- [x] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.
 

@@ -271,7 +271,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK }
+enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -344,6 +344,13 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
             Offset(center.x + dx * w * .44f, center.y + dy * w * .44f), stroke * 1.5f, StrokeCap.Butt,
           )
         }
+      }
+
+      // A head and shoulders
+      Icon.USER -> {
+        drawCircle(color, radius = w * .17f, center = Offset(w / 2, w * .33f), style = Stroke(stroke))
+        drawArc(color, 200f, 140f, useCenter = false, topLeft = Offset(w * .16f, w * .58f), size = Size(w * .68f, w * .6f),
+          style = Stroke(stroke, cap = StrokeCap.Round))
       }
 
       // A door frame open to the right, an arrow leaving through it

@@ -272,8 +272,9 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 
-- **Accounts** belong to people, not to a session. An admin invites someone by e-mail; the link (single use, 7
-  days, a new one replaces it) leads to the sign-up page, where they choose their name (3–32 characters, no `@`,
+- **Accounts** belong to people, not to a session. An admin invites someone by e-mail (admin panel, *Users*, or right
+  in a new session's player field); the link (single use, 7 days, a new one replaces it) leads to the sign-up page,
+  where they choose their name (3–32 characters, no `@`,
   unique without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
   account deletes itself (2 or 4 weeks, 3 or 6 months, 1 year after the end of their last session, or never; a mail
   warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
@@ -282,6 +283,10 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
   other; admins see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
+- **Your account** (the person button on the top card): change the name, the password (the other logins end), the
+  e-mail address (a link to the new address confirms it; until then the old one stays) and the deletion period. A
+  name's tip shows its account's ID, which tells a deleted account's name in an old session from a new account with
+  the same name.
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
@@ -359,7 +364,9 @@ Known limitations:
 - The event history keeps the last 500 events per session, stored in the `tracker-state` volume.
 
 API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`, sets the cookie),
-`POST /api/logout`, `GET /api/invitations/<token>` and `POST /api/signup` (the sign-up page); with a login:
+`POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
+(a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
+`POST .../email` (the settings),
 `GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
 own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under

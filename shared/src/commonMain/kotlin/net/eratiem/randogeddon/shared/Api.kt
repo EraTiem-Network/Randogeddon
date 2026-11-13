@@ -20,7 +20,7 @@ object SessionIds {
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
   /** Words the API and the dashboard's links use themselves. */
-  private val RESERVED = setOf("admin", "api", "inspect", "new", "sessions", "www")
+  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "new", "sessions", "settings", "www")
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
@@ -134,6 +134,7 @@ data class HintSettings(
 /** One person and their worlds. */
 @Serializable
 data class PersonSummary(
+  /** The name the person has in this session (the one of then, once it is finished). */
   val name: String,
   /** Slots of [PlayerSummary.slot], in the order of `session.yaml`. */
   val slots: List<Int>,
@@ -145,6 +146,10 @@ data class PersonSummary(
   val lastActivity: Long? = null,
   /** Sum of the worlds' finished sessions; add `now - onlineSince` of the online worlds. */
   val playTimeMs: Long = 0,
+  /** Their account's UUID (tells two people of the same name apart); `null` for a session from before accounts. */
+  val userId: String? = null,
+  /** Their account is deleted; the session keeps the name. */
+  val deleted: Boolean = false,
 )
 
 @Serializable

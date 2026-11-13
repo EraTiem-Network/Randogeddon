@@ -61,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -244,6 +245,8 @@ fun App() {
               feedVisible = feedVisible,
               onToggleFeed = { setFeedVisible(!feedVisible) },
               onLogout = { scope.launch { repository.logout() } },
+              onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
+              settingsOpen = r == Route.Settings,
               onAdmin = if (user.admin) ({ go(if (adminOpen) back(selected) else Route.Admin(selected)) }) else null,
               adminOpen = adminOpen,
               stacked = narrow,
@@ -259,6 +262,26 @@ fun App() {
                   onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
                   onDashboard = { go(Route.Dashboard(it)) },
                 ) else Txt("The admin panel is for admins.", color = p.muted)
+                return@Column
+              }
+              Route.Settings -> {
+                SettingsView(onBack = { go(back(selected)) }, onRenamed = { scope.launch { repository.reloadMe() } })
+                return@Column
+              }
+              is Route.ConfirmEmail -> {
+                ConfirmEmailView(r.token, onSettings = { go(Route.Settings) })
+                return@Column
+              }
+              is Route.Invite -> {
+                // Signing up happens logged out (index.html's form); this browser is someone's already
+                Txt(
+                  "You're logged in as ${user.name}. To sign up with this invitation, log out and open its link again.",
+                  color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                  SmallButton("Log out", { scope.launch { repository.logout() } })
+                  SmallButton("All your sessions", { go(Route.Home) })
+                }
                 return@Column
               }
               Route.Home -> {
@@ -366,6 +389,9 @@ private fun Hero(
   feedVisible: Boolean,
   onToggleFeed: () -> Unit,
   onLogout: () -> Unit,
+  /** The user's account; [settingsOpen] while it is shown. */
+  onSettings: () -> Unit,
+  settingsOpen: Boolean,
   /** Only for admins. */
   onAdmin: (() -> Unit)?,
   adminOpen: Boolean,
@@ -432,6 +458,9 @@ private fun Hero(
       // Brighter while the admin panel is open
       if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = Color.White,
         background = Color.White.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+      // The user's account; brighter while it is open
+      IconButton(onSettings, Icon.USER, tint = Color.White,
+        background = Color.White.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
       IconButton(onLogout, Icon.LOGOUT, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
     }
     if (stacked) {
@@ -600,6 +629,23 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
   }
 }
 
+/**
+ * A person's name, with their account's ID as a tip (it tells a deleted account's name in an old session from a new
+ * account of the same name); a deleted account is marked so.
+ */
+@Composable
+internal fun PersonName(name: String, userId: String?, deleted: Boolean, size: TextUnit, color: Color? = null) {
+  val p = LocalPalette.current
+  val text = if (deleted) "$name (deleted)" else name
+  if (userId == null) {
+    Txt(text, size = size, weight = FontWeight.Bold, color = color ?: p.text, maxLines = 1)
+  } else {
+    Tip("Account $userId${if (deleted) " (deleted)" else ""}") {
+      Txt(text, size = size, weight = FontWeight.Bold, color = color ?: if (deleted) p.muted else p.text, maxLines = 1)
+    }
+  }
+}
+
 @Composable
 private fun PersonCard(
   person: PersonSummary,
@@ -625,7 +671,7 @@ private fun PersonCard(
         }
       }
       Column(Modifier.weight(1f)) {
-        Txt(person.name, size = 16.sp, weight = FontWeight.Bold, maxLines = 1)
+        PersonName(person.name, person.userId, person.deleted, size = 16.sp)
         val played = worlds.sumOf { playTime(it, now) }
         val parts = listOfNotNull(
           "${worlds.size} ${if (worlds.size == 1) "slot" else "slots"}",

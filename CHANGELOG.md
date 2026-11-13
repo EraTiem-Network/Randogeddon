@@ -4,6 +4,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Sign-up, users, settings (Phase 5, part 2)
+- The invitation's link opens the sign-up: name, password (twice) and the deletion period, as a plain form like the
+  login, so password managers save the new account. A link that was used, has expired or was replaced says so.
+- Admin panel, *Users*: every account (invited ones with until when their link works), invite by e-mail with a
+  suggested name, send an invited one's link again or to another address. The new-session form invites an address
+  typed in a slot's player field right there.
+- *Your account* (the person button on the top card, `#/settings`): the name (unique; the running sessions show the new
+  one), the password (a form of its own for the password manager; the other logins end), the e-mail address (a link
+  to the new one confirms it, `#/email/<token>`), the deletion period with the date it would happen.
+- Names show their account's ID as a tip, and a deleted account's name in an old session is marked so.
+- The login field takes the name or the e-mail address. `settings`, `invite` and `email` can't be session IDs.
+
 ### Accounts of people (Phase 5, part 1)
 - Accounts belong to people, not to a session. Admins invite people by e-mail (`/api/admin/users`); the link (single
   use, valid 7 days, a new one replaces the old) leads to the sign-up, where they choose their name, password and when

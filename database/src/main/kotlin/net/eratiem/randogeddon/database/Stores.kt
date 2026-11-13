@@ -389,7 +389,7 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
 /**
  * A session as the admin panel set it up: the Archipelago version, the options (JSON), and which users play which
  * world ([worlds]: slot name -> the names they have in this session, in the order they were given; [members]: user
- * ID -> that name).
+ * ID -> that name; [deleted]: the members whose account is deleted).
  */
 data class SessionSetup(
   val seedName: String,
@@ -398,6 +398,7 @@ data class SessionSetup(
   val createdAt: Instant,
   val worlds: Map<String, List<String>>,
   val members: Map<Uuid, String> = emptyMap(),
+  val deleted: Set<Uuid> = emptySet(),
 )
 
 /** The sessions the admin panel creates and deletes. */
@@ -453,7 +454,11 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     fun name(r: ResultRow) = r[SessionWorldsTable.userName] ?: r[UsersTable.name] ?: r[SessionWorldsTable.userId].toString().take(8)
     val worlds = rows.groupBy({ it[SessionWorldsTable.slotName] }, ::name)
     val members = rows.associate { it[SessionWorldsTable.userId] to name(it) }
-    SessionSetup(seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members)
+    val deleted = rows.filter { it[UsersTable.deletedAt] != null }.map { it[SessionWorldsTable.userId] }.toSet()
+    SessionSetup(
+      seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
+      deleted,
+    )
   }
 
   /** Removes the session with its slot passwords, world assignments and session time; the users stay. */
