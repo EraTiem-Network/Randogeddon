@@ -53,6 +53,9 @@ expect object Platform {
   /** Puts [text] on the clipboard. */
   fun copy(text: String)
 
+  /** The browser saves the file at [path] (an API path; the login cookie goes along, same origin). */
+  fun download(path: String)
+
   fun systemDarkMode(): Boolean
 
   /** The main pointer is a finger (a phone or tablet), not a mouse. */

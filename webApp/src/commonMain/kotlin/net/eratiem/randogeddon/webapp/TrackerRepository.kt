@@ -15,6 +15,8 @@ import net.eratiem.randogeddon.shared.Me
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionStatus
+import net.eratiem.randogeddon.shared.SlotFile
+import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.Summary
 
 /** Where the slot and player views get a slot's details. */
@@ -54,6 +56,10 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   private val _connection = MutableStateFlow<Connection?>(null)
   val connection: StateFlow<Connection?> = _connection.asStateFlow()
 
+  /** The seed's files of the user's slots in the selected session (patches, mods), to download. */
+  private val _files = MutableStateFlow<List<SlotFile>>(emptyList())
+  val files: StateFlow<List<SlotFile>> = _files.asStateFlow()
+
   /** The server can't be reached before the login is known (offline, or restarting); the page says so. */
   private val _unreachable = MutableStateFlow(false)
   val unreachable: StateFlow<Boolean> = _unreachable.asStateFlow()
@@ -77,6 +83,7 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     _sessions.value = null
     _selected.value = null
     _connection.value = null
+    _files.value = emptyList()
     Platform.showLogin(null, ::checkLogin)
   }
 
@@ -86,6 +93,7 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     closeStream()
     _summary.value = null
     _connection.value = null
+    _files.value = emptyList()
     _selected.value = id
     if (id != null) openStream(id)
   }
@@ -179,6 +187,11 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     val connection = Platform.request("GET", "api/sessions/$id/connection")?.takeIf { it.status == 200 }
       ?.let { runCatching { ApiJson.decodeFromString(Connection.serializer(), it.body) }.getOrNull() }
     if (_selected.value == id) _connection.value = connection
+    // Only the user's own slots here, also for a Session-Manager (the panel has every slot's)
+    val mine = connection?.slots.orEmpty().map { it.name }.toSet()
+    val files = Platform.request("GET", "api/sessions/$id/files")?.takeIf { it.status == 200 }
+      ?.let { runCatching { ApiJson.decodeFromString(SlotFiles.serializer(), it.body).files }.getOrNull() }
+    if (_selected.value == id && files != null) _files.value = files.filter { it.slotName in mine }
   }
 
   private fun closeStream() {

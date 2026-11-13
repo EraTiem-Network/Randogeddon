@@ -34,6 +34,23 @@ fun duration(millis: Long): String {
 /** `12,345` with a thin grouping, readable in every locale. */
 fun grouped(value: Int): String = value.toString().reversed().chunked(3).joinToString(",").reversed()
 
+/** A file's size: `840 B`, `88.5 KB`, `4.2 MB`. */
+fun fileSize(bytes: Long): String = when {
+  bytes < 1024 -> "$bytes B"
+  bytes < 1024 * 1024 -> "${oneDecimal(bytes / 1024.0)} KB"
+  else -> "${oneDecimal(bytes / (1024.0 * 1024))} MB"
+}
+
+/** For a URL's path or query: letters and digits as they are, everything else percent-encoded (UTF-8). */
+fun String.percentEncoded(): String = encodeToByteArray().joinToString("") { b ->
+  val c = b.toInt() and 0xff
+  if (c < 128 && (c.toChar().isLetterOrDigit() || c.toChar() in "-_.~")) c.toChar().toString()
+  else "%" + c.toString(16).uppercase().padStart(2, '0')
+}
+
+/** The API path to download one of session [id]'s slot files. */
+fun slotFilePath(id: String, name: String): String = "api/sessions/$id/files/${name.percentEncoded()}"
+
 /**
  * A slot name without its person's name in front, where the person is clear anyway: "Alice-HK" of Alice is "HK".
  * Only with a separator after the name (`-`, `_`, space, `.`); otherwise, and if nothing would be left, the full name.

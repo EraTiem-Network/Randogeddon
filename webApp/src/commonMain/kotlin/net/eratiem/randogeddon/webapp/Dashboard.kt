@@ -144,6 +144,7 @@ private fun TrackerApp() {
   val sessions = loadedSessions.orEmpty()
   val selected by repository.selected.collectAsState()
   val connection by repository.connection.collectAsState()
+  val files by repository.files.collectAsState()
 
   var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
   val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
@@ -328,10 +329,13 @@ private fun TrackerApp() {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
                 Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-                ConnectionSection(user.name, connection, mine, role, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+                ConnectionSection(
+                  user.name, connection, selected.orEmpty(), files, mine, role, s,
+                  Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true,
+                )
               }
             } else {
-              ConnectionSection(user.name, connection, mine, role, s, Modifier.fillMaxWidth())
+              ConnectionSection(user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth())
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
