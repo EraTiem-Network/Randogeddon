@@ -35,9 +35,8 @@ private val LOGGED_IN = AttributeKey<LoggedIn>("LoggedIn")
 val ApplicationCall.loggedIn: LoggedIn get() = attributes[LOGGED_IN]
 
 /**
- * Lets a call through only with a valid login of someone who plays in a session (running or finished): 401 without
- * (the web app then shows the login), 403 for a user who is in none. Admins always get through. A session's own
- * routes check [RequireSessionMember] on top.
+ * Lets a call through only with a valid login: 401 without (the web app then shows the login). A session's own routes
+ * check [RequireSessionMember] on top, the admin panel's [RequireAdmin].
  */
 class RequireLoginConfig {
   lateinit var logins: LoginCheck
@@ -49,10 +48,6 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
     val user = call.request.cookies[SESSION_COOKIE]?.let { logins.userOf(it) }
     if (user == null) {
       call.respond(HttpStatusCode.Unauthorized, ApiError("Not logged in"))
-      return@onCall
-    }
-    if (!logins.mayEnter(user)) {
-      call.respond(HttpStatusCode.Forbidden, ApiError("${user.name} is not part of any session"))
       return@onCall
     }
     call.attributes.put(LOGGED_IN, LoggedIn(user))
@@ -93,10 +88,6 @@ fun Route.loginRoutes(logins: LoginService, secure: Boolean = true) {
         // Slows down guessing on top of the rate limit
         delay(1.seconds)
         return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong name or password"))
-      }
-      if (!logins.mayEnter(user)) {
-        logins.logout(token)
-        return@post call.respond(HttpStatusCode.Forbidden, ApiError("${user.name} is not part of any session"))
       }
       call.response.cookies.append(sessionCookie(token, LOGIN_DURATION.inWholeSeconds, secure))
       call.respond(HttpStatusCode.NoContent)
