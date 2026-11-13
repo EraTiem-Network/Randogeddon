@@ -7,12 +7,42 @@ import org.jetbrains.exposed.v1.javatime.timestamp
 
 object UsersTable : Table("users") {
   val id = uuid("id")
-  val name = varchar("name", 64)
-  val passwordHash = varchar("password_hash", 255)
+  /** `null` while invited (V7). */
+  val name = varchar("name", 64).nullable()
+  /** `null` while invited, and once deleted. */
+  val passwordHash = varchar("password_hash", 255).nullable()
   val createdAt = timestamp("created_at")
   val deletedAt = timestamp("deleted_at").nullable()
   val isAdmin = bool("is_admin").default(false)
+  val email = varchar("email", 254).nullable()
+  /** When they chose their name and password; `null` while invited. */
+  val signedUpAt = timestamp("signed_up_at").nullable()
+  /** The shared AutoDelete's code. */
+  val autoDelete = varchar("auto_delete", 8).default("never")
+  val deleteWarnedAt = timestamp("delete_warned_at").nullable()
   override val primaryKey = PrimaryKey(id)
+}
+
+/** Invitation links, by the SHA-256 of their token; a new one replaces the user's older ones. */
+object InvitationsTable : Table("invitations") {
+  val tokenHash = varchar("token_hash", 64)
+  val userId = uuid("user_id") references UsersTable.id
+  val email = varchar("email", 254)
+  val suggestedName = varchar("suggested_name", 64).nullable()
+  val createdAt = timestamp("created_at")
+  val expiresAt = timestamp("expires_at")
+  val usedAt = timestamp("used_at").nullable()
+  override val primaryKey = PrimaryKey(tokenHash)
+}
+
+/** New e-mail addresses waiting for their confirmation. */
+object EmailChangesTable : Table("email_changes") {
+  val tokenHash = varchar("token_hash", 64)
+  val userId = uuid("user_id") references UsersTable.id
+  val email = varchar("email", 254)
+  val createdAt = timestamp("created_at")
+  val expiresAt = timestamp("expires_at")
+  override val primaryKey = PrimaryKey(tokenHash)
 }
 
 object LoginSessionsTable : Table("login_sessions") {
@@ -50,6 +80,8 @@ object SessionWorldsTable : Table("session_worlds") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)
   val userId = uuid("user_id") references UsersTable.id
+  /** The name the user had in the session (V7): follows a rename while it runs, stays once it is finished. */
+  val userName = varchar("user_name", 64).nullable()
   override val primaryKey = PrimaryKey(sessionId, slotName, userId)
 }
 

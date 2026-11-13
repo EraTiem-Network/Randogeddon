@@ -5,45 +5,93 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.inSubQuery
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.lowerCase
+import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 import kotlin.uuid.Uuid
 
-data class User(val id: Uuid, val name: String, val passwordHash: String, val admin: Boolean = false)
+/** A user who signed up: they have a name and a password. */
+data class User(
+  val id: Uuid,
+  val name: String,
+  val passwordHash: String,
+  val admin: Boolean = false,
+  val email: String? = null,
+  /** The shared AutoDelete's code. */
+  val autoDelete: String = "never",
+)
 
-/** The accounts. Names are compared without regard to case, like the unique index in the schema. */
+/** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
+data class Account(
+  val id: Uuid,
+  val name: String?,
+  val email: String?,
+  val admin: Boolean,
+  val createdAt: Instant,
+  /** `null` while invited. */
+  val signedUpAt: Instant?,
+  val autoDelete: String,
+)
+
+/** What the automatic deletion of [user]'s account goes by. */
+data class AccountActivity(
+  val user: Account,
+  /** The end of their last finished session; `null`: none finished. */
+  val lastSessionEnd: Instant?,
+  /** They play in a session that isn't finished: no deletion while it runs. */
+  val playing: Boolean,
+  val warnedAt: Instant?,
+)
+
+/**
+ * The accounts. Names and e-mail addresses are compared without regard to case, like the unique indexes in the schema.
+ * Deleting keeps the row (its UUID stays in the sessions) and clears the rest.
+ */
 class UserStore(private val db: RandogeddonDatabase) {
+  /** The users who signed up and aren't deleted. */
   suspend fun active(): List<User> = db.query {
-    UsersTable.selectAll().where { UsersTable.deletedAt.isNull() }.map(::user)
+    UsersTable.selectAll().where { signedUp() }.mapNotNull(::user)
   }
 
   suspend fun findActive(name: String): User? = db.query {
-    UsersTable.selectAll()
-      .where { (UsersTable.name.lowerCase() eq name.lowercase()) and UsersTable.deletedAt.isNull() }
+    UsersTable.selectAll().where { (UsersTable.name.lowerCase() eq name.lowercase()) and signedUp() }
       .singleOrNull()?.let(::user)
   }
 
-  suspend fun findActive(id: Uuid): User? = db.query {
-    UsersTable.selectAll().where { (UsersTable.id eq id) and UsersTable.deletedAt.isNull() }.singleOrNull()?.let(::user)
+  /** The user who logs in as [nameOrEmail]: an address if it has an `@` (names can't), a name otherwise. */
+  suspend fun findLogin(nameOrEmail: String): User? = db.query {
+    val column = if ('@' in nameOrEmail) UsersTable.email.lowerCase() else UsersTable.name.lowerCase()
+    UsersTable.selectAll().where { (column eq nameOrEmail.lowercase()) and signedUp() }.singleOrNull()?.let(::user)
   }
 
-  suspend fun create(name: String, passwordHash: String, now: Instant = Instant.now()): User = db.query {
-    val id = Uuid.random()
-    UsersTable.insert {
-      it[UsersTable.id] = id
-      it[UsersTable.name] = name
-      it[UsersTable.passwordHash] = passwordHash
-      it[createdAt] = now
-    }
-    User(id, name, passwordHash)
+  suspend fun findActive(id: Uuid): User? = db.query {
+    UsersTable.selectAll().where { (UsersTable.id eq id) and signedUp() }.singleOrNull()?.let(::user)
   }
+
+  /** A signed-up user right away (the host's commands, tests); the others are [invite]d. */
+  suspend fun create(name: String, passwordHash: String, now: Instant = Instant.now(), email: String? = null): User =
+    db.query {
+      val id = Uuid.random()
+      UsersTable.insert {
+        it[UsersTable.id] = id
+        it[UsersTable.name] = name
+        it[UsersTable.passwordHash] = passwordHash
+        it[UsersTable.email] = email
+        it[createdAt] = now
+        it[signedUpAt] = now
+      }
+      User(id, name, passwordHash, email = email)
+    }
 
   /** Admins reach the admin panel. */
   suspend fun setAdmin(id: Uuid, admin: Boolean) = db.query {
@@ -57,8 +105,213 @@ class UserStore(private val db: RandogeddonDatabase) {
     LoginSessionsTable.deleteWhere { userId eq id }
   }
 
-  private fun user(row: ResultRow) =
-    User(row[UsersTable.id], row[UsersTable.name], row[UsersTable.passwordHash], row[UsersTable.isAdmin])
+  /** Every account that isn't deleted, invited ones too. */
+  suspend fun accounts(): List<Account> = db.query {
+    UsersTable.selectAll().where { UsersTable.deletedAt.isNull() }.map(::account)
+  }
+
+  suspend fun account(id: Uuid): Account? = db.query {
+    UsersTable.selectAll().where { (UsersTable.id eq id) and UsersTable.deletedAt.isNull() }.singleOrNull()?.let(::account)
+  }
+
+  /** The active account with [email] (signed up or invited). */
+  suspend fun accountByEmail(email: String): Account? = db.query {
+    UsersTable.selectAll().where { (UsersTable.email.lowerCase() eq email.lowercase()) and UsersTable.deletedAt.isNull() }
+      .singleOrNull()?.let(::account)
+  }
+
+  /** A new account for [email], without a name and password until its user signs up. */
+  suspend fun invite(email: String, now: Instant = Instant.now()): Account = db.query {
+    val id = Uuid.random()
+    UsersTable.insert {
+      it[UsersTable.id] = id
+      it[UsersTable.email] = email
+      it[createdAt] = now
+    }
+    Account(id, null, email, false, now, null, "never")
+  }
+
+  /**
+   * The invited user [id] chose their name and password; `false` if they had signed up already (or were deleted).
+   * Their name goes into the sessions they were put in meanwhile.
+   */
+  suspend fun signUp(id: Uuid, name: String, passwordHash: String, autoDelete: String, now: Instant = Instant.now()): Boolean =
+    db.query {
+      val updated = UsersTable.update({ (UsersTable.id eq id) and UsersTable.signedUpAt.isNull() and UsersTable.deletedAt.isNull() }) {
+        it[UsersTable.name] = name
+        it[UsersTable.passwordHash] = passwordHash
+        it[UsersTable.autoDelete] = autoDelete
+        it[signedUpAt] = now
+      }
+      if (updated > 0) nameInRunningSessions(id, name)
+      updated > 0
+    }
+
+  /** A new name: it shows in the sessions that aren't finished; finished ones keep the old one. */
+  suspend fun rename(id: Uuid, name: String) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[UsersTable.name] = name }
+    nameInRunningSessions(id, name)
+  }
+
+  suspend fun setEmail(id: Uuid, email: String?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[UsersTable.email] = email }
+    Unit
+  }
+
+  /** A new deletion period; a warning sent for the old one doesn't count any more. */
+  suspend fun setAutoDelete(id: Uuid, autoDelete: String) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[UsersTable.autoDelete] = autoDelete
+      it[deleteWarnedAt] = null
+    }
+    Unit
+  }
+
+  suspend fun markWarned(id: Uuid, at: Instant?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[deleteWarnedAt] = at }
+    Unit
+  }
+
+  /**
+   * Deletes the account: its password, e-mail address and settings go, its logins, invitations and pending addresses
+   * too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
+   * is free again.
+   */
+  suspend fun delete(id: Uuid, now: Instant = Instant.now()) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[passwordHash] = null
+      it[email] = null
+      it[isAdmin] = false
+      it[autoDelete] = "never"
+      it[deleteWarnedAt] = null
+      it[deletedAt] = now
+    }
+    LoginSessionsTable.deleteWhere { userId eq id }
+    InvitationsTable.deleteWhere { userId eq id }
+    EmailChangesTable.deleteWhere { userId eq id }
+    Unit
+  }
+
+  /** The signed-up accounts with an auto-deletion period, and what it counts from. */
+  suspend fun activity(): List<AccountActivity> = db.query {
+    val users = UsersTable.selectAll().where { signedUp() and (UsersTable.autoDelete neq "never") }.toList()
+    if (users.isEmpty()) return@query emptyList()
+    val played = (SessionWorldsTable innerJoin SessionsTable).selectAll()
+      .where { SessionWorldsTable.userId inList users.map { it[UsersTable.id] } }
+      .groupBy({ it[SessionWorldsTable.userId] }, { it[SessionsTable.finishedAt] })
+    users.map { row ->
+      val ends = played[row[UsersTable.id]].orEmpty()
+      AccountActivity(account(row), ends.filterNotNull().maxOrNull(), ends.any { it == null }, row[UsersTable.deleteWarnedAt])
+    }
+  }
+
+  private fun nameInRunningSessions(id: Uuid, name: String) {
+    val running = SessionsTable.select(SessionsTable.id).where { SessionsTable.finishedAt.isNull() }
+    SessionWorldsTable.update({ (SessionWorldsTable.userId eq id) and (SessionWorldsTable.sessionId inSubQuery running) }) {
+      it[userName] = name
+    }
+  }
+
+  private fun signedUp() = UsersTable.deletedAt.isNull() and UsersTable.signedUpAt.isNotNull()
+
+  private fun user(row: ResultRow): User? {
+    val name = row[UsersTable.name] ?: return null
+    val hash = row[UsersTable.passwordHash] ?: return null
+    return User(row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete])
+  }
+
+  private fun account(row: ResultRow) = Account(
+    row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
+    row[UsersTable.signedUpAt], row[UsersTable.autoDelete],
+  )
+}
+
+/** An invitation link: whose, to which address, and how long it works. */
+data class Invitation(
+  val userId: Uuid,
+  val email: String,
+  val suggestedName: String?,
+  val expiresAt: Instant,
+  val usedAt: Instant?,
+)
+
+/** The invitation links, by the SHA-256 of their token. A user has at most one: a new one replaces it. */
+class InvitationStore(private val db: RandogeddonDatabase) {
+  suspend fun create(
+    tokenHash: String,
+    userId: Uuid,
+    email: String,
+    suggestedName: String?,
+    expiresAt: Instant,
+    now: Instant = Instant.now(),
+  ) = db.query {
+    InvitationsTable.deleteWhere { InvitationsTable.userId eq userId }
+    InvitationsTable.insert {
+      it[InvitationsTable.tokenHash] = tokenHash
+      it[InvitationsTable.userId] = userId
+      it[InvitationsTable.email] = email
+      it[InvitationsTable.suggestedName] = suggestedName
+      it[createdAt] = now
+      it[InvitationsTable.expiresAt] = expiresAt
+    }
+    Unit
+  }
+
+  /** The invitation of [tokenHash], used or expired ones too; `null`: no such link (or replaced). */
+  suspend fun find(tokenHash: String): Invitation? = db.query {
+    InvitationsTable.selectAll().where { InvitationsTable.tokenHash eq tokenHash }.singleOrNull()?.let(::invitation)
+  }
+
+  /** [userId]'s current invitation. */
+  suspend fun of(userId: Uuid): Invitation? = db.query {
+    InvitationsTable.selectAll().where { InvitationsTable.userId eq userId }.singleOrNull()?.let(::invitation)
+  }
+
+  /** Marks the link used; `false` if it was used already (a second sign-up with it at the same time). */
+  suspend fun use(tokenHash: String, now: Instant = Instant.now()): Boolean = db.query {
+    InvitationsTable.update({ (InvitationsTable.tokenHash eq tokenHash) and InvitationsTable.usedAt.isNull() }) {
+      it[usedAt] = now
+    } > 0
+  }
+
+  private fun invitation(row: ResultRow) = Invitation(
+    row[InvitationsTable.userId], row[InvitationsTable.email], row[InvitationsTable.suggestedName],
+    row[InvitationsTable.expiresAt], row[InvitationsTable.usedAt],
+  )
+}
+
+/** A new e-mail address of [userId], waiting for the confirmation link in a mail to it. */
+data class EmailChange(val userId: Uuid, val email: String, val expiresAt: Instant)
+
+/** New e-mail addresses waiting for their confirmation; a user has at most one. */
+class EmailChangeStore(private val db: RandogeddonDatabase) {
+  suspend fun create(tokenHash: String, userId: Uuid, email: String, expiresAt: Instant, now: Instant = Instant.now()) =
+    db.query {
+      EmailChangesTable.deleteWhere { EmailChangesTable.userId eq userId }
+      EmailChangesTable.insert {
+        it[EmailChangesTable.tokenHash] = tokenHash
+        it[EmailChangesTable.userId] = userId
+        it[EmailChangesTable.email] = email
+        it[createdAt] = now
+        it[EmailChangesTable.expiresAt] = expiresAt
+      }
+      Unit
+    }
+
+  /** The change of [tokenHash] if it hasn't expired; it's gone afterwards (a link works once). */
+  suspend fun take(tokenHash: String, now: Instant = Instant.now()): EmailChange? = db.query {
+    val row = EmailChangesTable.selectAll().where { EmailChangesTable.tokenHash eq tokenHash }.singleOrNull()
+      ?: return@query null
+    EmailChangesTable.deleteWhere { EmailChangesTable.tokenHash eq tokenHash }
+    EmailChange(row[EmailChangesTable.userId], row[EmailChangesTable.email], row[EmailChangesTable.expiresAt])
+      .takeIf { it.expiresAt > now }
+  }
+
+  /** [userId]'s address waiting for confirmation. */
+  suspend fun pending(userId: Uuid, now: Instant = Instant.now()): String? = db.query {
+    EmailChangesTable.selectAll().where { (EmailChangesTable.userId eq userId) and (EmailChangesTable.expiresAt greater now) }
+      .singleOrNull()?.get(EmailChangesTable.email)
+  }
 }
 
 /** Logged-in browsers, by the SHA-256 of their cookie token. */
@@ -135,7 +388,8 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
 
 /**
  * A session as the admin panel set it up: the Archipelago version, the options (JSON), and which users play which
- * world ([worlds]: slot name -> user names, in the order they were given).
+ * world ([worlds]: slot name -> the names they have in this session, in the order they were given; [members]: user
+ * ID -> that name).
  */
 data class SessionSetup(
   val seedName: String,
@@ -143,6 +397,7 @@ data class SessionSetup(
   val options: String?,
   val createdAt: Instant,
   val worlds: Map<String, List<String>>,
+  val members: Map<Uuid, String> = emptyMap(),
 )
 
 /** The sessions the admin panel creates and deletes. */
@@ -163,23 +418,42 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
         it[SessionsTable.apVersion] = apVersion
         it[SessionsTable.optionsJson] = options
       }
+      val names = names(worlds.values.flatten().distinct())
       for ((slot, users) in worlds) {
         for (user in users.distinct()) {
           SessionWorldsTable.insert {
             it[sessionId] = id
             it[slotName] = slot
             it[userId] = user
+            it[userName] = names[user]
           }
         }
       }
     }
 
+  /**
+   * What [users] are called in a new session: their name, or for an invited user the name the admin suggested (or
+   * their address's local part) until they sign up.
+   */
+  private fun names(users: List<Uuid>): Map<Uuid, String> {
+    if (users.isEmpty()) return emptyMap()
+    val suggested = InvitationsTable.selectAll().where { InvitationsTable.userId inList users }
+      .associate { it[InvitationsTable.userId] to it[InvitationsTable.suggestedName] }
+    return UsersTable.selectAll().where { UsersTable.id inList users }.associate { row ->
+      val id = row[UsersTable.id]
+      id to (row[UsersTable.name] ?: suggested[id] ?: row[UsersTable.email]?.substringBefore('@') ?: id.toString().take(8))
+    }
+  }
+
   suspend fun of(seedName: String): SessionSetup? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
-    val worlds = (SessionWorldsTable innerJoin UsersTable).selectAll()
-      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }
-      .groupBy({ it[SessionWorldsTable.slotName] }, { it[UsersTable.name] })
-    SessionSetup(seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds)
+    val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
+      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }.toList()
+    // The name of then; rows from before V7 without one: the current name
+    fun name(r: ResultRow) = r[SessionWorldsTable.userName] ?: r[UsersTable.name] ?: r[SessionWorldsTable.userId].toString().take(8)
+    val worlds = rows.groupBy({ it[SessionWorldsTable.slotName] }, ::name)
+    val members = rows.associate { it[SessionWorldsTable.userId] to name(it) }
+    SessionSetup(seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members)
   }
 
   /** Removes the session with its slot passwords, world assignments and session time; the users stay. */
