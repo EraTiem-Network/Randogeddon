@@ -20,7 +20,20 @@ object UsersTable : Table("users") {
   /** The shared AutoDelete's code. */
   val autoDelete = varchar("auto_delete", 8).default("never")
   val deleteWarnedAt = timestamp("delete_warned_at").nullable()
+  /** The TOTP secret, encrypted (V8); set while it is being set up, counts once [totpEnabledAt] is. */
+  val totpSecret = varchar("totp_secret", 255).nullable()
+  val totpEnabledAt = timestamp("totp_enabled_at").nullable()
+  /** The newest 30-second step a code was accepted for: no code works twice. */
+  val totpLastStep = long("totp_last_step").nullable()
   override val primaryKey = PrimaryKey(id)
+}
+
+/** One-time codes for a lost authenticator, by their SHA-256. */
+object RecoveryCodesTable : Table("recovery_codes") {
+  val userId = uuid("user_id") references UsersTable.id
+  val codeHash = varchar("code_hash", 64)
+  val usedAt = timestamp("used_at").nullable()
+  override val primaryKey = PrimaryKey(userId, codeHash)
 }
 
 /** Invitation links, by the SHA-256 of their token; a new one replaces the user's older ones. */

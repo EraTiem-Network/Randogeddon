@@ -18,6 +18,7 @@ import net.eratiem.randogeddon.shared.MySlot
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.time.Instant
+import kotlin.uuid.Uuid
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -50,17 +51,21 @@ class LoginService(
    * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited
    * users who haven't signed up have no password and can't log in.
    */
-  suspend fun login(nameOrEmail: String, password: String): String? {
+  suspend fun login(nameOrEmail: String, password: String): String? = verify(nameOrEmail, password)?.let { start(it) }
+
+  /** The user whose name (or address) and password these are; `null` if either is wrong. */
+  suspend fun verify(nameOrEmail: String, password: String): User? {
     val user = users.findLogin(nameOrEmail.trim())
     // Argon2 is CPU work; an unknown name is checked against a dummy hash so it takes as long as a wrong password
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(password, user?.passwordHash ?: PasswordHasher.dummyHash) }
-    if (user == null || !valid) return null
-    logger.info("{} logged in", user.name)
-    return start(user)
+    return user.takeIf { valid }
   }
+
+  suspend fun user(id: Uuid): User? = users.findActive(id)
 
   /** A new login of [user] (after the password, or right after signing up); its token for the cookie. */
   suspend fun start(user: User): String {
+    logger.info("{} logged in", user.name)
     val token = newToken()
     logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()))
     return token

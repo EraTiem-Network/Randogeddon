@@ -23,12 +23,16 @@ import kotlin.uuid.Uuid
 class RequireLoginTest {
   private val alice = User(Uuid.random(), "alice", "hash")
   private val mallory = User(Uuid.random(), "Mallory", "hash")
-  private val ada = User(Uuid.random(), "Ada", "hash", admin = true)
+  private val ada = User(Uuid.random(), "Ada", "hash", admin = true, twoFactor = true)
+  private val grace = User(Uuid.random(), "Grace", "hash", admin = true)
   private val pete = User(Uuid.random(), "Pete", "hash")
 
-  /** Alice plays in brave-otter, Pete only in quiet-fox, Mallory has a login but is in none; Ada is an admin. */
+  /**
+   * Alice plays in brave-otter, Pete only in quiet-fox, Mallory has a login but is in none; Ada is an admin, Grace one
+   * without two-factor login.
+   */
   private val check = object : LoginCheck {
-    override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada, "p" to pete)[token]
+    override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada, "g" to grace, "p" to pete)[token]
     private val members = mapOf("brave-otter" to setOf(alice), "quiet-fox" to setOf(pete))
     override fun maySee(user: User, id: String) = user.admin || user in members[id].orEmpty()
   }
@@ -111,6 +115,10 @@ class RequireLoginTest {
   fun `the admin routes are for admins only`() = test { handled ->
     assertEquals(HttpStatusCode.Unauthorized, client.get("/api/admin/sessions").status)
     assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "a") }.status)
+    // An admin without two-factor login sets it up first
+    val grace = client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "g") }
+    assertEquals(HttpStatusCode.Forbidden, grace.status)
+    assertTrue("two-factor" in grace.bodyAsText())
     assertFalse(handled())
     assertEquals("all sessions", client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
     assertTrue(handled())

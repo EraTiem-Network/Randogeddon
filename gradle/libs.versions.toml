@@ -39,6 +39,8 @@ postgresql = "42.7.14"
 hikari = "7.1.0"
 # https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk18on
 bouncycastle = "1.86"
+# https://mvnrepository.com/artifact/io.nayuki/qrcodegen
+qrcodegen = "1.8.0"
 # https://mvnrepository.com/artifact/org.testcontainers/testcontainers
 testcontainers = "2.0.5"
 
@@ -119,6 +121,7 @@ flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-p
 postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
 hikari = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikari" }
 bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
+qrcodegen = { group = "io.nayuki", name = "qrcodegen", version.ref = "qrcodegen" }
 testcontainers-postgresql = { group = "org.testcontainers", name = "testcontainers-postgresql", version.ref = "testcontainers" }
 
 slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j-api" }

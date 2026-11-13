@@ -13,12 +13,15 @@ import io.ktor.server.routing.route
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
+import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.AutoDeleteRequest
+import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
 import net.eratiem.randogeddon.shared.NameRequest
 import net.eratiem.randogeddon.shared.PasswordChangeRequest
+import net.eratiem.randogeddon.shared.RecoveryCodeList
 import net.eratiem.randogeddon.shared.SignupRequest
 import net.eratiem.randogeddon.shared.TokenRequest
 import kotlin.uuid.Uuid
@@ -47,8 +50,26 @@ fun Route.signupRoutes(accounts: AccountService, secure: Boolean = true) {
 }
 
 /** Under the protected `/api` branch: the logged-in user's own account (the settings page). */
-fun Route.accountRoutes(accounts: AccountService, secure: Boolean = true) {
+fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: Boolean = true) {
   route("/account") {
+    // Two-factor login; rate-limited, since each takes a code
+    rateLimit(LOGIN_RATE_LIMIT) {
+      route("/2fa") {
+        post("/setup") { accountCall { call.respond(twoFactor.setUp(call.loggedIn.user)) } }
+        post("/enable") {
+          accountCall { call.respond(RecoveryCodeList(twoFactor.enable(call.loggedIn.user, call.receive<CodeRequest>().code))) }
+        }
+        post("/disable") {
+          accountCall {
+            twoFactor.disable(call.loggedIn.user, call.receive<CodeRequest>().code)
+            call.respond(HttpStatusCode.NoContent)
+          }
+        }
+        post("/codes") {
+          accountCall { call.respond(RecoveryCodeList(twoFactor.newCodes(call.loggedIn.user, call.receive<CodeRequest>().code))) }
+        }
+      }
+    }
     get { call.respond(accounts.view(call.loggedIn.user)) }
     put("/name") {
       accountCall {
@@ -110,8 +131,8 @@ private fun RoutingContext.userId(): Uuid =
   call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
     ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
 
-/** Answers what's wrong with an account request (400, 404, 409, 410, 502) instead of failing it. */
-private suspend fun RoutingContext.accountCall(block: suspend () -> Unit) {
+/** Answers what's wrong with an account request (400, 403, 404, 409, 410, 502) instead of failing it. */
+internal suspend fun RoutingContext.accountCall(block: suspend () -> Unit) {
   try {
     block()
   } catch (e: AccountProblem) {

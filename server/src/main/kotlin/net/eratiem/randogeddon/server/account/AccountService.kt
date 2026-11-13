@@ -49,6 +49,7 @@ class AccountService(
   private val users: UserStore,
   private val invitations: InvitationStore,
   private val emailChanges: EmailChangeStore,
+  private val twoFactor: TwoFactor,
   private val logins: LoginService,
   private val mailer: Mailer,
   private val sessions: LiveSessions,
@@ -133,6 +134,8 @@ class AccountService(
       autoDelete = AutoDelete.of(user.autoDelete),
       deletesAt = activity?.let { deletesAt(it, now) }?.toEpochMilli(),
       admin = user.admin,
+      twoFactor = user.twoFactor,
+      recoveryCodesLeft = twoFactor.codesLeft(user),
     )
   }
 
