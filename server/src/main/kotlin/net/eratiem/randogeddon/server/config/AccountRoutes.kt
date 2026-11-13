@@ -14,9 +14,13 @@ import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.AutoDeleteRequest
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
+import net.eratiem.randogeddon.shared.NameRequest
+import net.eratiem.randogeddon.shared.PasswordChangeRequest
 import net.eratiem.randogeddon.shared.SignupRequest
+import net.eratiem.randogeddon.shared.TokenRequest
 import kotlin.uuid.Uuid
 
 /**
@@ -32,6 +36,43 @@ fun Route.signupRoutes(accounts: AccountService, secure: Boolean = true) {
       accountCall {
         val token = accounts.signUp(call.receive<SignupRequest>())
         call.response.cookies.append(sessionCookie(token, LOGIN_DURATION.inWholeSeconds, secure))
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    // The link of the confirmation mail to a new address (the token proves it reached that address)
+    post("/api/email/confirm") {
+      accountCall { call.respond(EmailRequest(accounts.confirmEmail(call.receive<TokenRequest>().token))) }
+    }
+  }
+}
+
+/** Under the protected `/api` branch: the logged-in user's own account (the settings page). */
+fun Route.accountRoutes(accounts: AccountService, secure: Boolean = true) {
+  route("/account") {
+    get { call.respond(accounts.view(call.loggedIn.user)) }
+    put("/name") {
+      accountCall {
+        accounts.rename(call.loggedIn.user, call.receive<NameRequest>().name)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/password") {
+      accountCall {
+        val request = call.receive<PasswordChangeRequest>()
+        val token = accounts.changePassword(call.loggedIn.user, request.current, request.password)
+        call.response.cookies.append(sessionCookie(token, LOGIN_DURATION.inWholeSeconds, secure))
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    post("/email") {
+      accountCall {
+        accounts.requestEmail(call.loggedIn.user, call.receive<EmailRequest>().email)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/auto-delete") {
+      accountCall {
+        accounts.setAutoDelete(call.loggedIn.user, call.receive<AutoDeleteRequest>().autoDelete)
         call.respond(HttpStatusCode.NoContent)
       }
     }
