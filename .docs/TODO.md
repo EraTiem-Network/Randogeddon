@@ -183,23 +183,42 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.
 
-## Phase 6: Support and Watcher Accounts
+## Phase 6: Roles: Administrators, Session-Managers, Support and Watchers (done)
 
-*People who don't play can follow a session, or help in it.*
+*Sessions belong to whoever creates them; people who don't play can follow a session, or help in it.*
 
-- [ ] Watchers: an account that follows a session without a slot
-    - Added to a session like a player, but plays no slot; it sees the session's dashboard, live feed and hints like
-      its players do, and finds the session under its past sessions later.
-    - No slot password, no *Your connection*, and it doesn't count for the session's people or progress.
+- [x] Administrators: the admins of before (`users.is_admin`), account-wide
+    - They reach everything: every session, the APWorlds, the users, the settings. Two-factor login stays required for
+      them only.
+    - Players and Session-Managers can't give them a part in a session (they see every session anyway).
+- [x] Every user can create sessions, and is the Session-Manager of the ones they create
+    - How many running sessions one user may manage at once is the Administrators' setting (default 1, 0 to 20; 0:
+      only Administrators create sessions). The game servers' number still applies to everyone.
+    - A Session-Manager manages their session: state, finish, reopen, keep, delete, the game server, console and log,
+      the cheats, the spoiler log while it runs, and its people.
+    - Co-managers: Session-Managers (and Administrators) make others Session-Managers of the session. A session keeps
+      at least one, unless an Administrator takes the last one away. Sessions from before have none until an
+      Administrator adds one.
+    - Every cheat is logged with the role it was done as ("Bob (Session-Manager) gave …").
+- [x] Support: helps the players of a session, given per session by its Session-Managers
+    - Sees the spoiler log while the session runs; gives free hints (also without the session's cheat hints), gives
+      items and checks locations. No release or collect, game server or console.
+    - Every action is logged with their name and shown in the live feed ("Erin (support) gave …").
+- [x] Watchers: an account that follows a session without a slot
+    - Sees the session's dashboard, live feed and hints like its players do, and finds the session under their
+      sessions later. No slot password, not in the people or progress.
     - The spoiler log only once the session is finished, as for players.
-    - Open: whether a session can be shared with anyone who has the link (read-only, no login), e.g. for a stream.
-- [ ] Support accounts: help the players of a session without being an admin
-    - What they may do is decided in this phase. Candidates: see the spoiler log of a running session, give free
-      hints, look up where an item is for a player who is stuck; every action logged with their name and shown in
-      the live feed, like an admin's cheats.
-    - No access to the admin panel's sessions, APWorlds, logins or the game server.
-    - Open: whether support is a role of the account (every session) or given per session.
-- [ ] The admin panel shows who watches or supports a session, and adds or removes them while it runs
+    - Added by the session's Session-Managers and by its players: by name, or an invitation for an address that has
+      no account. Players take away watchers, not support or Session-Managers.
+- [x] Share links: anyone with the link follows the session without a login, read-only (e.g. for a stream)
+    - Made and turned off by the session's players and Session-Managers; a new link replaces the old one. Shown once,
+      stored only as SHA-256; rate-limited.
+    - The players' summary only: no passwords, no spoiler, no accounts, no connection.
+- [x] Who sees which accounts: only Administrators see the user list with e-mail addresses (*Users*). Everyone else
+      picks people by name and invites by e-mail only an address that has no account.
+- [x] Nobody gets a second part in a session (one role besides playing; a Session-Manager may also play)
+- [x] The panel (*Manage*) is everyone's: the sessions they manage with their people (who watches, supports or
+      co-manages, added or removed while it runs); *General* is the Administrators'
 
 ## Phase 7: Multi-Language
 
