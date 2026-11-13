@@ -26,6 +26,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
   at `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (rate-limited; no passwords, spoiler or accounts).
   A new link replaces the old one; stored only as SHA-256. Migration V10.
 
+### The web app for every role (Phase 6, part 3)
+- **The panel** (gear button, *Manage*, `#/manage`; `#/admin` still works) is everyone's: the sessions they manage
+  (`GET /api/manage`; an Administrator's: every session), *New session* with their limit, and per session its
+  **People** (Session-Managers, support, watchers by name or a new address; the share link). *General* (*Users*,
+  *APWorlds*, *Settings*: sessions per user) is the Administrators'.
+- **Dashboard by role:** support's *Support* section (items, checks, free hints, the spoiler log), players'
+  *Watchers* (and the share link), a *Watching* pill for watchers. The session lists show every session one has a
+  part in.
+- **Share link page** `#/watch/<token>`: the dashboard without a login, read-only.
+- New players are invited from the new-session form for an address without an account; `manage` and `watch` are
+  reserved session IDs.
+
 ### Proper user management (Phase 5)
 Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
 two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox
