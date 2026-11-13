@@ -4,6 +4,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Administrators and Session-Managers (Phase 6, part 1)
+- The admins are **Administrators** now: they reach everything (every session, the APWorlds, the users, the settings)
+  and log in with two-factor login, as before.
+- **Every user can create a session** and is its **Session-Manager**: they manage it (state, finish, reopen, keep,
+  delete, game server, console, log, cheats, the spoiler log while it runs) and give others a part in it:
+  Session-Managers, support or watchers (by account, or a new address invited). A session keeps one Session-Manager.
+- How many running sessions one user may manage at once: the Administrators' setting (`/api/admin/settings`, default
+  1).
+- Routes: creating moves to `/api/sessions/new` and `POST /api/sessions`, a session's management to
+  `/api/sessions/<id>/manage/…`, its people to `.../people`; `/api/admin` is the Administrators'.
+- Watchers and support see the session; support and Session-Managers its spoiler log while it runs. Every cheat is
+  logged with the role it was done as. Migration V9 (roles per session, settings).
+
 ### Proper user management (Phase 5)
 Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
 two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox

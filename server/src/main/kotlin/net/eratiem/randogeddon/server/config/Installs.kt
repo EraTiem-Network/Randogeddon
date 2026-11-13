@@ -17,7 +17,9 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.database.CheatLogStore
+import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.SessionFinishStore
@@ -60,6 +62,8 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { InvitationStore(get()) }
       single { EmailChangeStore(get()) }
       single { TwoFactorStore(get()) }
+      single { SessionRoleStore(get()) }
+      single { AppSettingsStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }

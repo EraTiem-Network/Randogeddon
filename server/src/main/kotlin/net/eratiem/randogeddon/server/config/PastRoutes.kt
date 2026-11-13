@@ -21,6 +21,7 @@ import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Connection
+import net.eratiem.randogeddon.shared.SessionRole
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -69,10 +70,12 @@ fun Route.sessionRoutes(
         call.respond(archived)
       }
     }
-    // A full spoiler: before a session is finished only admins see it
+    // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it
     get("/spoiler") {
       session(sessions) { live ->
-        if (!call.loggedIn.user.admin && !live.finished) {
+        val user = call.loggedIn.user
+        val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
+        if (!helps && !live.finished) {
           return@session call.respond(HttpStatusCode.Forbidden, ApiError("The spoiler log is shown once the session is finished"))
         }
         try {

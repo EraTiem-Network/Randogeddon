@@ -105,12 +105,35 @@ object SlotPasswordsTable : Table("slot_passwords") {
   override val primaryKey = PrimaryKey(sessionId, slotName)
 }
 
+/** Per session besides the players: its Session-Managers, support and watchers (V9); one role per person. */
+object SessionRolesTable : Table("session_roles") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val userId = uuid("user_id") references UsersTable.id
+  /** `manager`, `support` or `watcher`. */
+  val role = varchar("role", 16)
+  /** The name of then, like [SessionWorldsTable.userName]. */
+  val userName = varchar("user_name", 64).nullable()
+  val addedBy = varchar("added_by", 64).nullable()
+  val addedAt = timestamp("added_at")
+  override val primaryKey = PrimaryKey(sessionId, userId)
+}
+
+/** What Administrators set for everyone (V9). */
+object AppSettingsTable : Table("app_settings") {
+  val key = varchar("key", 64)
+  val value = text("value")
+  override val primaryKey = PrimaryKey(key)
+}
+
 /** The cheats admins ran from the admin panel, per session. */
 object CheatLogTable : Table("cheat_log") {
   val id = long("id").autoIncrement()
   val sessionId = uuid("session_id") references SessionsTable.id
   val at = timestamp("at")
+  /** Who ran it (the column's name is from before the roles). */
   val admin = varchar("admin", 64)
+  /** As what: `administrator`, `manager` or `support` (V9). */
+  val byRole = varchar("by_role", 16).default("administrator")
   val action = varchar("action", 32)
   val slotName = varchar("slot_name", 64)
   val value = varchar("value", 255).nullable()

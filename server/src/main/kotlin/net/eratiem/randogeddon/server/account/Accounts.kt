@@ -15,6 +15,7 @@ import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
+import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.time.Instant
@@ -36,8 +37,11 @@ val LOGIN_DURATION = 30.days
 interface LoginCheck {
   suspend fun userOf(token: String): User?
 
-  /** The user sees session [id]: an admin, or one of its players. */
+  /** The user sees session [id]: an Administrator, or anyone with a part in it. */
   fun maySee(user: User, id: String): Boolean
+
+  /** The user's part in session [id] (`null`: none). */
+  fun roleIn(user: User, id: String): SessionRole?
 }
 
 /** Logging in and out, and which sessions the logged-in users are part of. */
@@ -76,6 +80,8 @@ class LoginService(
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 
   override fun maySee(user: User, id: String): Boolean = sessions.canSee(user, id)
+
+  override fun roleIn(user: User, id: String): SessionRole? = sessions.roleIn(user, id)
 
   /** Removes expired logins every few hours, for as long as [scope] runs. */
   fun cleanUp(scope: CoroutineScope) = scope.launch {

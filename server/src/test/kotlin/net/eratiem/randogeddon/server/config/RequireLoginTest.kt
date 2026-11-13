@@ -14,6 +14,7 @@ import io.ktor.server.testing.testApplication
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.SessionRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,18 +24,24 @@ import kotlin.uuid.Uuid
 class RequireLoginTest {
   private val alice = User(Uuid.random(), "alice", "hash")
   private val mallory = User(Uuid.random(), "Mallory", "hash")
-  private val ada = User(Uuid.random(), "Ada", "hash", admin = true, twoFactor = true)
-  private val grace = User(Uuid.random(), "Grace", "hash", admin = true)
+  private val ada = User(Uuid.random(), "Ada", "hash", administrator = true, twoFactor = true)
+  private val grace = User(Uuid.random(), "Grace", "hash", administrator = true)
   private val pete = User(Uuid.random(), "Pete", "hash")
+  private val sam = User(Uuid.random(), "Sam", "hash")
 
   /**
-   * Alice plays in brave-otter, Pete only in quiet-fox, Mallory has a login but is in none; Ada is an admin, Grace one
-   * without two-factor login.
+   * Alice plays in brave-otter, Pete only in quiet-fox, Sam manages brave-otter, Mallory has a login but is in none;
+   * Ada is an Administrator, Grace one without two-factor login.
    */
   private val check = object : LoginCheck {
-    override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada, "g" to grace, "p" to pete)[token]
-    private val members = mapOf("brave-otter" to setOf(alice), "quiet-fox" to setOf(pete))
-    override fun maySee(user: User, id: String) = user.admin || user in members[id].orEmpty()
+    override suspend fun userOf(token: String) =
+      mapOf("a" to alice, "m" to mallory, "ada" to ada, "g" to grace, "p" to pete, "s" to sam)[token]
+    private val roles = mapOf(
+      "brave-otter" to mapOf(alice to SessionRole.PLAYER, sam to SessionRole.MANAGER),
+      "quiet-fox" to mapOf(pete to SessionRole.PLAYER),
+    )
+    override fun maySee(user: User, id: String) = user.administrator || roleIn(user, id) != null
+    override fun roleIn(user: User, id: String) = roles[id]?.get(user)
   }
 
   private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {
@@ -54,9 +61,19 @@ class RequireLoginTest {
               handled = true
               call.respondText("state of ${call.parameters["id"]} for ${call.loggedIn.user.name}")
             }
+            route("/manage") {
+              install(RequireSessionRole) {
+                logins = check
+                roles = setOf(SessionRole.MANAGER)
+              }
+              get {
+                handled = true
+                call.respondText("managing ${call.parameters["id"]}")
+              }
+            }
           }
           route("/admin") {
-            install(RequireAdmin)
+            install(RequireAdministrator)
             get("/sessions") {
               handled = true
               call.respondText("all sessions")
@@ -137,5 +154,19 @@ class RequireLoginTest {
     val demo = sessionCookie("t", 60, secure = false)
     assertFalse(demo.secure)
     assertTrue(demo.httpOnly)
+  }
+
+  @Test
+  fun `a session is managed by its Session-Managers and Administrators`() = test { handled ->
+    assertEquals("managing brave-otter", client.get("/api/sessions/brave-otter/manage") { cookie(SESSION_COOKIE, "s") }.bodyAsText())
+    assertEquals("managing quiet-fox", client.get("/api/sessions/quiet-fox/manage") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+    // A player of it, a Session-Manager of another one, an Administrator without two-factor login
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/brave-otter/manage") { cookie(SESSION_COOKIE, "a") }.status)
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/quiet-fox/manage") { cookie(SESSION_COOKIE, "s") }.status)
+    val grace = client.get("/api/sessions/quiet-fox/manage") { cookie(SESSION_COOKIE, "g") }
+    assertEquals(HttpStatusCode.Forbidden, grace.status)
+    assertTrue("two-factor" in grace.bodyAsText())
+    // Managing doesn't make Sam an Administrator
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "s") }.status)
   }
 }

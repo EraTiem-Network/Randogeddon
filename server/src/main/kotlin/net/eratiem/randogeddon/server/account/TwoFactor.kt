@@ -65,7 +65,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** Off, after a code (not for admins: they need it). */
   suspend fun disable(user: User, code: String) {
-    if (user.admin) throw AccountProblem(HttpStatusCode.Forbidden, "Admins need two-factor login")
+    if (user.administrator) throw AccountProblem(HttpStatusCode.Forbidden, "Admins need two-factor login")
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, "That code doesn't fit")
     store.disable(user.id)
     logger.info("{} turned two-factor login off", user.name)

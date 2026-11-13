@@ -52,11 +52,11 @@ class StoresTest {
   fun `users are no admins until granted`() = runBlocking {
     val users = UserStore(db)
     val dave = users.create("Dave", "hash")
-    assertEquals(false, users.findActive("dave")?.admin)
+    assertEquals(false, users.findActive("dave")?.administrator)
     users.setAdmin(dave.id, true)
-    assertEquals(true, users.findActive(dave.id)?.admin)
+    assertEquals(true, users.findActive(dave.id)?.administrator)
     users.setAdmin(dave.id, false)
-    assertEquals(false, users.active().single().admin)
+    assertEquals(false, users.active().single().administrator)
   }
 
   @Test
@@ -349,5 +349,41 @@ class StoresTest {
     users.delete(kai.id)
     assertNull(store.of(kai.id))
     assertEquals(0, store.codesLeft(kai.id))
+  }
+
+  @Test
+  fun `a session's roles are one per person, with names that follow a rename and managed sessions counted`() = runBlocking {
+    val users = UserStore(db)
+    val roles = SessionRoleStore(db)
+    val setups = SessionSetupStore(db)
+    val lea = users.create("Lea", "hash")
+    val max = users.create("Max", "hash")
+    setups.create("lea-one", "555", "0.6.8", "{}", mapOf("Max-HK" to listOf(max.id)))
+    assertTrue(roles.add("lea-one", lea.id, "manager", "Lea", "Lea"))
+    assertEquals(false, roles.add("lea-one", lea.id, "watcher", "Lea", "Lea"))
+    assertTrue(roles.add("lea-one", max.id, "support", "Max", "Lea"))
+    assertEquals(mapOf(lea.id to "manager", max.id to "support"), setups.of("555")?.roles?.mapValues { it.value.role })
+    assertEquals(1, roles.runningManagedBy(lea.id))
+
+    users.rename(lea.id, "Leandra")
+    assertEquals("Leandra", setups.of("555")?.roles?.get(lea.id)?.name)
+    // A watched (or supported) session postpones the automatic deletion like a played one
+    users.setAutoDelete(max.id, "2w")
+    assertTrue(users.activity().single { it.user.id == max.id }.playing)
+
+    SessionFinishStore(db).finish("555", by = null)
+    assertEquals(0, roles.runningManagedBy(lea.id))
+    assertTrue(roles.remove("lea-one", max.id))
+    assertEquals(false, roles.remove("lea-one", max.id))
+  }
+
+  @Test
+  fun `settings have their defaults and keep what is set`() = runBlocking {
+    val settings = AppSettingsStore(db)
+    assertEquals("1", settings.get("sessions_per_user"))
+    settings.set("sessions_per_user", "3")
+    assertEquals("3", settings.get("sessions_per_user"))
+    settings.set("something_new", "x")
+    assertEquals("x", settings.get("something_new"))
   }
 }

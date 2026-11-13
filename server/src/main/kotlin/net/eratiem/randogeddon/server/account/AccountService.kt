@@ -55,10 +55,15 @@ class AccountService(
   private val sessions: LiveSessions,
   private val config: TrackerConfig,
 ) {
-  /** Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. */
-  suspend fun invite(email: String, suggestedName: String?, by: String): Account {
+  /**
+   * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
+   * with an account is refused: with who has it (for Administrators), or with [existing] (for everyone else, who
+   * picks people by name and doesn't learn their addresses).
+   */
+  suspend fun invite(email: String, suggestedName: String?, by: String, existing: String? = null): Account {
     val address = address(email)
     users.accountByEmail(address)?.let {
+      if (existing != null) throw AccountProblem(HttpStatusCode.Conflict, existing)
       val what = if (it.signedUpAt == null) "invited already (send the link again instead)" else "the address of ${it.name}"
       throw AccountProblem(HttpStatusCode.Conflict, "$address is $what")
     }
@@ -133,7 +138,7 @@ class AccountService(
       pendingEmail = emailChanges.pending(user.id, now),
       autoDelete = AutoDelete.of(user.autoDelete),
       deletesAt = activity?.let { deletesAt(it, now) }?.toEpochMilli(),
-      admin = user.admin,
+      administrator = user.administrator,
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
     )
@@ -207,7 +212,7 @@ class AccountService(
         name = a.name,
         email = a.email,
         state = if (a.signedUpAt == null) AccountState.INVITED else AccountState.ACTIVE,
-        admin = a.admin,
+        administrator = a.administrator,
         sessions = members[a.id].orEmpty().sorted(),
         createdAt = a.createdAt.toEpochMilli(),
         invitationExpiresAt = if (a.signedUpAt == null) invitations.of(a.id)?.expiresAt?.toEpochMilli() else null,

@@ -108,7 +108,7 @@ private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           PersonName(user.name ?: user.email.orEmpty(), user.id, deleted = false, size = 13.5.sp)
           if (user.state == AccountState.INVITED) Pill("invited", p.accent)
-          if (user.admin) Pill("admin", p.ok)
+          if (user.administrator) Pill("Administrator", p.ok)
         }
         val parts = listOfNotNull(
           user.email.takeIf { user.name != null },

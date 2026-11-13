@@ -204,14 +204,14 @@ fun SessionSection(
   var problem by remember { mutableStateOf<String?>(null) }
   var gone by remember { mutableStateOf(false) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
+    when (val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
       is Answer.Ok -> { cache.views[id] = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
   }
   LaunchedEffect(Unit) { load() }
   fun act(path: String, body: String? = null) = scope.launch {
-    problem = post("api/admin/sessions/$id/$path", body)
+    problem = post("api/sessions/$id/manage/$path", body)
     load()
     onChanged()
   }
@@ -234,7 +234,7 @@ fun SessionSection(
           session,
           onDelete = {
             scope.launch {
-              when (val answer = call("DELETE", "api/admin/sessions/$id", null) { }) {
+              when (val answer = call("DELETE", "api/sessions/$id/manage", null) { }) {
                 is Answer.Ok -> { gone = true; onChanged() }
                 is Answer.Failed -> problem = answer.message
               }
@@ -344,11 +344,11 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
     problem = (call(method, path, body) { } as? Answer.Failed)?.message
     onChanged()
   }
-  val onReopen: (String) -> Unit = { act("POST", "api/admin/sessions/$it/reopen") }
+  val onReopen: (String) -> Unit = { act("POST", "api/sessions/$it/manage/reopen") }
   val onKeep: (String, Boolean) -> Unit = { id, keep ->
-    act("POST", "api/admin/sessions/$id/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
+    act("POST", "api/sessions/$id/manage/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
   }
-  val onDelete: (String) -> Unit = { act("DELETE", "api/admin/sessions/$it") }
+  val onDelete: (String) -> Unit = { act("DELETE", "api/sessions/$it/manage") }
   // (session, "delete" or "keep"): the question shown in place of that session's buttons
   var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
   var overview by remember { mutableStateOf<SessionEntry?>(null) }
@@ -711,7 +711,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
 
   fun inspect(): Job = scope.launch {
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
-    when (val answer = call("POST", "api/admin/sessions/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
+    when (val answer = call("POST", "api/sessions/new/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
       is Answer.Ok -> {
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
@@ -932,7 +932,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          when (val answer = call("POST", "api/admin/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
+          when (val answer = call("POST", "api/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
             is Answer.Ok -> onCreated(answer.value)
             is Answer.Failed -> error = answer.message
           }
