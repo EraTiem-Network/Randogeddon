@@ -416,7 +416,9 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The panel's are under
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`, `.../files` and
+`.../files/<name>` (the seed's files of the user's slots: patches, mods; every slot's for its Session-Managers and
+Administrators). The panel's are under
 `/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
 `.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),

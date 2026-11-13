@@ -4,6 +4,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Patch file downloads (Phase 7, part 1)
+- The seed's files of a slot (ROM patches like `.apsm` or `.aplttp`, Factorio's mod zip, other per-slot output) at
+  `GET /api/sessions/<id>/files` and `.../files/<name>` (an attachment): each player those of their own slots (a
+  shared slot: each of its players), Session-Managers and Administrators every slot's, support and watchers none. As
+  long as the session exists, finished ones too. Never the multidata, a spoiler or readable text (`.txt`, `.log`,
+  `.html`, …). Every download is logged.
+- The gateway reads them from the seed's zip (`/internal/sessions/<id>/files`); a file's slot comes from `P<n>` in its
+  name, its slot's name and game from the spoiler log.
+
 ### Roles (Phase 6)
 Sessions belong to whoever creates them now: every user can create one and is its Session-Manager; Administrators (the
 admins of before) reach everything. Per session there are support (items, checks and free hints, logged) and watchers
