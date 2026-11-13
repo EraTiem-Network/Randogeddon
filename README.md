@@ -300,6 +300,12 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   runs) and give its people a part: Session-Managers (co-managers), support and watchers. How many running sessions one
   user may manage at once is the Administrators' setting (default 1); the game servers' number still applies. Every
   cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
+- **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session
+  without cheat hints), and sees its spoiler log while it runs; no release or collect, game server or console. **Watchers**
+  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players add watchers too
+  (by name, or invite an address that has no account), and take them away again. A **share link** (players and
+  Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
+  passwords, no spoiler, no accounts. It is shown once; a new link replaces the old one, and it can be turned off.
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
   e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
   deletion period. A
@@ -387,11 +393,13 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
-`GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
+`GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
 own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
 `/api/sessions/new` and `POST /api/sessions` (creating one, for everyone), a session's management under
-`/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), and the
+`/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
+`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
+the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
 Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
 open and says nothing about the sessions.
 
