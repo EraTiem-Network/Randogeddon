@@ -1,8 +1,12 @@
 package net.eratiem.randogeddon.server.config
 
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -15,6 +19,7 @@ import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
+import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -23,6 +28,7 @@ import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.SlotFiles
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -31,9 +37,9 @@ private val KEEPALIVE = 15.seconds
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
- * (once and as a live stream), the details of one slot, where and with which passwords to connect, and its spoiler
- * log (for its players once it is finished, any time for admins). A finished session answers as it was when it
- * finished (its archive).
+ * (once and as a live stream), the details of one slot, where and with which passwords to connect, the seed's files of
+ * the user's slots, and its spoiler log (for its players once it is finished, any time for admins). A finished session
+ * answers as it was when it finished (its archive).
  */
 fun Route.sessionRoutes(
   config: TrackerConfig,
@@ -43,6 +49,7 @@ fun Route.sessionRoutes(
   archives: Archives,
   slotPasswords: SlotPasswords,
   spoilers: Spoilers,
+  downloads: SlotDownloads,
 ) {
   get("/sessions") { call.respond(list.visibleTo(call.loggedIn.user)) }
   route("/sessions/{id}") {
@@ -61,6 +68,18 @@ fun Route.sessionRoutes(
       session(sessions) { live ->
         val archived = archives.read(live.id) ?: return@session call.respond(HttpStatusCode.NotFound, ApiError("${live.id} isn't finished"))
         call.respond(archived)
+      }
+    }
+    // The seed's files of the user's slots (patches, mods; every slot's for Session-Managers and Administrators)
+    get("/files") { gatewayCall { call.respond(SlotFiles(downloads.of(id(), call.loggedIn.user))) } }
+    get("/files/{name}") {
+      gatewayCall {
+        val (file, bytes) = downloads.file(id(), call.parameters["name"].orEmpty(), call.loggedIn.user)
+        call.response.header(
+          HttpHeaders.ContentDisposition,
+          ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, file.name).toString(),
+        )
+        call.respondBytes(bytes, ContentType.Application.OctetStream)
       }
     }
     // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it

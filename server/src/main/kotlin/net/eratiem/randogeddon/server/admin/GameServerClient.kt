@@ -10,6 +10,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -31,6 +32,8 @@ import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SessionServers
+import net.eratiem.randogeddon.shared.SlotFile
+import net.eratiem.randogeddon.shared.SlotFiles
 import org.koin.core.annotation.Single
 
 /** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
@@ -38,8 +41,8 @@ class GameServerUnavailable(val status: HttpStatusCode, message: String) : Excep
 
 /**
  * The gateway's internal API (gateway/.../InternalApi.kt): each session's game server (state, start/stop/restart, its
- * log and console), generating a session's seed, deleting its files, its spoiler log; the releases and the apworld
- * library. A stop waits until MultiServer has saved, so the timeout is generous.
+ * log and console), generating a session's seed, deleting its files, its spoiler log and its slots' files; the
+ * releases and the apworld library. A stop waits until MultiServer has saved, so the timeout is generous.
  */
 @Single
 class GameServerClient(private val config: TrackerConfig) {
@@ -133,6 +136,20 @@ class GameServerClient(private val config: TrackerConfig) {
     return when {
       response.status == HttpStatusCode.NotFound -> null
       response.status.isSuccess() -> response.bodyAsText()
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Every slot's files in the session's seed (patches, mods); empty without a seed. */
+  suspend fun slotFiles(id: String): List<SlotFile> = call { http.get("${session(id)}/files") { auth() } }
+    .let { ApiJson.decodeFromString(SlotFiles.serializer(), it).files }
+
+  /** One of [slotFiles], its bytes; `null` if the seed has no such file. */
+  suspend fun slotFile(id: String, name: String): ByteArray? {
+    val response = request { http.get("${session(id)}/files/${name.encodeURLPathPart()}") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> response.readRawBytes()
       else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
     }
   }

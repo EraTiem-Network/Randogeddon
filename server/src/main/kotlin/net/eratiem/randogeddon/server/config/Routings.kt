@@ -19,6 +19,7 @@ import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
+import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.shared.SessionRole
@@ -48,6 +49,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val settings by inject<AppSettingsStore>()
   val support by inject<Support>()
   val shareLinks by inject<ShareLinks>()
+  val downloads by inject<SlotDownloads>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, trackerConfig.cookieSecure)
@@ -60,7 +62,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       install(RequireLogin) { this.logins = logins }
       meRoute(list)
       accountRoutes(accounts, twoFactor, trackerConfig.cookieSecure)
-      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers)
+      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
       supportRoutes(support, logins)

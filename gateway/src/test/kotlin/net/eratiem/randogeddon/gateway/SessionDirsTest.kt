@@ -23,12 +23,15 @@ class SessionDirsTest {
   private val data: Path = Files.createTempDirectory("data")
   private val dirs = SessionDirs(data)
 
-  private fun seed(dir: Path, name: String, spoiler: String? = "Playthrough:\n") {
+  private fun seed(dir: Path, name: String, spoiler: String? = "Playthrough:\n", extra: Map<String, String> = emptyMap()) {
     dir.createDirectories()
     ZipOutputStream(dir.resolve("AP_$name.zip").outputStream()).use { zip ->
       zip.putNextEntry(ZipEntry("AP_$name.archipelago")); zip.closeEntry()
       if (spoiler != null) {
         zip.putNextEntry(ZipEntry("AP_${name}_Spoiler.txt")); zip.write(spoiler.toByteArray()); zip.closeEntry()
+      }
+      for ((entry, content) in extra) {
+        zip.putNextEntry(ZipEntry(entry)); zip.write(content.toByteArray()); zip.closeEntry()
       }
     }
     dir.resolve("AP_$name.apsave").createFile()
@@ -46,6 +49,41 @@ class SessionDirsTest {
     assertNull(dirs.seed("friday-chaos"))
     assertNull(dirs.seed("../brave-otter"))
     assertFailsWith<IllegalArgumentException> { dirs.dir("..") }
+  }
+
+  @Test
+  fun `the slots' files are their patches and mods, never the multidata, a spoiler or text`() {
+    seed(
+      data.resolve("sessions/brave-otter"), "111",
+      extra = mapOf(
+        "AP_111_P3_Alice-SM.apsm" to "patch",
+        "AP_111_P1_Bob_LttP.aplttp" to "lttp",
+        "AP-111-P2-Carol_0.6.8.zip" to "factorio mod",
+        // Spoilers and readable text of a slot show the way
+        "AP_111_P3_Alice-SM_Spoiler.txt" to "where everything is",
+        "AP_111_P1_Bob_hints.txt" to "hints",
+        "AP_111_P1_Bob.html" to "<html>",
+        "AP_111_P2_Carol_spoiler.json" to "{}",
+        // No slot, or a path
+        "AP_111_options.yaml" to "x",
+        "sub/AP_111_P1_Bob.apbp" to "nested",
+        "AP_111_P0_Server.apbp" to "nobody",
+      ),
+    )
+    val files = dirs.slotFiles("brave-otter")
+    assertEquals(
+      listOf(1 to "AP_111_P1_Bob_LttP.aplttp", 2 to "AP-111-P2-Carol_0.6.8.zip", 3 to "AP_111_P3_Alice-SM.apsm"),
+      files.map { it.slot to it.name },
+    )
+    assertEquals(5L, files.first { it.slot == 3 }.size)
+    assertEquals("patch", dirs.slotFile("brave-otter", "AP_111_P3_Alice-SM.apsm")?.decodeToString())
+    // Only what the list offers
+    assertNull(dirs.slotFile("brave-otter", "AP_111_P3_Alice-SM_Spoiler.txt"))
+    assertNull(dirs.slotFile("brave-otter", "AP_111.archipelago"))
+    assertNull(dirs.slotFile("brave-otter", "sub/AP_111_P1_Bob.apbp"))
+    assertNull(dirs.slotFile("brave-otter", "../AP_111_P3_Alice-SM.apsm"))
+    assertNull(dirs.slotFile("brave-otter", "AP_111_P9_Nobody.apsm"))
+    assertEquals(emptyList(), dirs.slotFiles("nobody-here"))
   }
 
   @Test

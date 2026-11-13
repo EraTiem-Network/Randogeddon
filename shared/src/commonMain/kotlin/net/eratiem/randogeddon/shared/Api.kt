@@ -567,6 +567,27 @@ data class CheatView(
   val log: List<CheatLogEntry> = emptyList(),
 )
 
+/**
+ * A file of the seed that belongs to a slot, for its players to download: a ROM patch (`.apsm`, `.aplttp`, …), a mod
+ * (Factorio's zip), other output of the slot's game. Never the multidata, a spoiler or readable text.
+ */
+@Serializable
+data class SlotFile(
+  /** As in the seed, e.g. `AP_7213_P3_Alice-SM.apsm`. */
+  val name: String,
+  /** The slot's number in the seed. */
+  val slot: Int,
+  /** Bytes. */
+  val size: Long = 0,
+  /** The slot's name and game; filled in by the tracker. */
+  val slotName: String? = null,
+  val game: String? = null,
+)
+
+/** `GET /api/sessions/{id}/files`: the files the user may download (gateway → tracker: every slot's). */
+@Serializable
+data class SlotFiles(val files: List<SlotFile> = emptyList())
+
 /** `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. */
 @Serializable
 data class CheatNames(val items: List<String> = emptyList(), val locations: List<String> = emptyList())

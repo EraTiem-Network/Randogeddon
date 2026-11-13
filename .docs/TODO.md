@@ -220,14 +220,32 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] The panel (*Manage*) is everyone's: the sessions they manage with their people (who watches, supports or
       co-manages, added or removed while it runs); *General* is the Administrators'
 
-## Phase 7: Multi-Language
+## Phase 7: Patch File Downloads
+
+*Players of ROM-based games get their patch files from the dashboard, not from whoever has the server.*
+
+- [ ] Each player downloads the patch files of their own slots
+    - From the dashboard, next to the slot under *Your connection* (e.g. `AP_<seed>_P3_Alice-SM.apsm`); only slots
+      whose game has one (ROM-based games), the others show nothing.
+    - The files come from the session's seed (`data/sessions/<id>/AP_<seed>.zip`), read by the gateway and handed
+      out by the tracker; the ROM itself is never part of it.
+- [ ] Who may download what
+    - Players: their own slots (a slot played together: each of its players).
+    - Session-Managers and Administrators: every slot of the session (e.g. for someone who can't log in).
+    - Support, watchers and share links: none.
+- [ ] A short how-to with the download: patching with the Archipelago Launcher (the ROM is the player's own)
+- Open: whether a finished session's patch files stay downloadable (for replaying), and for how long.
+- Open: whether the session's other files are offered too (e.g. a game's mod or config files that some games put in
+  the seed).
+
+## Phase 8: Multi-Language
 
 *Everyone reads the app in their language.*
 
 - [ ] Every text of the web app comes from one place per language instead of the code
     - English stays the default and the fallback for a text a language doesn't have yet.
     - The first other language: German. Open: which ones follow.
-- [ ] A language applies to every page: dashboard, person and world views, admin panel, settings, login
+- [ ] A language applies to every page: dashboard, person and world views, the panel, settings, login
     - Dates, times and numbers are formatted for the language (e.g. `12.11.2026`, `1.234`).
     - Names from Archipelago (games, items, locations, slots) stay as they are; they come from the games.
     - Messages from the server (errors, refusals, feed lines it builds) are translated too, so the server sends what
@@ -236,13 +254,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Before login the user isn't known: the login page follows the browser's language, or the language last used in
       this browser.
 
-## Phase 8: More Themes
+## Phase 9: More Themes
 
 *Everyone picks how the dashboard looks for them.*
 
 - [ ] Several themes, each with a light and a dark variant
     - The current colours (`webApp/…/Theme.kt`) become the default theme; a theme is a pair of palettes.
-- [ ] A theme applies to every page: dashboard, person and world views, admin panel, settings, login
+- [ ] A theme applies to every page: dashboard, person and world views, the panel, settings, login
 - [ ] Theme and mode are a user setting, stored with the account (settings page from Phase 5)
     - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it).
     - Active for that user on every device they log in with; other users are not affected.
