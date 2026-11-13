@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.gateway
 
 import net.eratiem.randogeddon.shared.SessionIds
+import net.eratiem.randogeddon.shared.SlotFile
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -24,6 +25,23 @@ private val SEED_NAME = Regex("[A-Za-z0-9_-]{1,64}")
 fun seedNameOf(file: Path): String = file.name.removePrefix("AP_").removeSuffix(".zip").removeSuffix(".archipelago")
 
 internal fun isSeed(f: Path) = f.name.endsWith(".archipelago") || (f.name.startsWith("AP_") && f.name.endsWith(".zip"))
+
+/** A slot's output in the seed: `AP_<seed>_P<n>_<name>.<ext>`, or with `-` (Factorio: `AP-<seed>-P<n>-<name>_<version>.zip`). */
+private val SLOT_FILE = Regex("^AP[_-][A-Za-z0-9]+[_-]P(\\d+)[_-].+\\.[A-Za-z0-9]+$")
+
+/** Readable text could show the way through the seed (a spoiler, a log): never handed out. */
+private val TEXT = setOf("txt", "log", "html", "htm", "md", "csv")
+
+/**
+ * The slot number [name] belongs to, if players may download it: a flat file name (no directory, no `..`) of a slot's
+ * output, not the multidata, nothing named spoiler and no readable text.
+ */
+internal fun slotOf(name: String): Int? {
+  if ('/' in name || '\\' in name || ".." in name) return null
+  val lower = name.lowercase()
+  if ("spoiler" in lower || lower.endsWith(".archipelago") || lower.substringAfterLast('.') in TEXT) return null
+  return SLOT_FILE.matchEntire(name)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+}
 
 /**
  * The sessions' files: `sessions/<id>/` holds a session's seed, its save and room.json for as long as the session
@@ -53,6 +71,23 @@ class SessionDirs(private val dataDir: Path) {
       file.entries().asSequence().firstOrNull { it.name.endsWith("_Spoiler.txt") }
         ?.let { entry -> file.getInputStream(entry).bufferedReader().readText() }
     }
+  }
+
+  /** The files of the session's seed that belong to a slot (patches, mods), as players may download them. */
+  fun slotFiles(id: String): List<SlotFile> {
+    val zip = seed(id)?.takeIf { it.name.endsWith(".zip") } ?: return emptyList()
+    return ZipFile(zip.toFile()).use { file ->
+      file.entries().asSequence().filter { !it.isDirectory }
+        .mapNotNull { entry -> slotOf(entry.name)?.let { SlotFile(entry.name, it, entry.size.coerceAtLeast(0)) } }
+        .sortedWith(compareBy({ it.slot }, { it.name })).toList()
+    }
+  }
+
+  /** One of [slotFiles], its bytes; `null` if it isn't one. */
+  fun slotFile(id: String, name: String): ByteArray? {
+    if (slotOf(name) == null) return null
+    val zip = seed(id)?.takeIf { it.name.endsWith(".zip") } ?: return null
+    return ZipFile(zip.toFile()).use { file -> file.getEntry(name)?.takeIf { !it.isDirectory }?.let { file.getInputStream(it).readBytes() } }
   }
 
   /** Deletes the session's files for good ([purge]), or moves them to `old/<id>-<time>/`; `false` if there are none. */
