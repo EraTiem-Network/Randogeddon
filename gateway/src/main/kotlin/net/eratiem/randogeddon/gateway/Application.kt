@@ -13,7 +13,10 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
-import io.ktor.server.routing.port
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.RouteSelector
+import io.ktor.server.routing.RouteSelectorEvaluation
+import io.ktor.server.routing.RoutingResolveContext
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
@@ -186,7 +189,9 @@ fun main() {
     }
     install(ContentNegotiation) { json(ApiJson) }
     routing {
-      port(config.port) {
+      // The port the connection came in on: port() would take the one the client asked for (Host header,
+      // X-Forwarded-Port), which is 443 behind Traefik, and could name the internal port
+      localPort(config.port) {
         // wss://<session>.<domain>:443 behind Traefik, ws://host:38281/<session> without; with one session running,
         // a client that names none gets that one
         webSocket("/{path...}") {
@@ -202,7 +207,7 @@ fun main() {
         }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
-      port(config.internalPort) {
+      localPort(config.internalPort) {
         internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds), apworlds, dirs)
       }
     }
@@ -216,4 +221,17 @@ fun main() {
       database.close()
     }
   }.also { runBlocking { sessions.startAll() } }.start(wait = true)
+}
+
+/**
+ * Routes for connections that came in on [port] (the server's own port). Ktor's `port()` takes the port the client
+ * asked for instead (Host header, X-Forwarded-Port): 443 behind Traefik, or whatever a client writes there.
+ */
+private fun Route.localPort(port: Int, build: Route.() -> Unit): Route = createChild(LocalPortSelector(port)).apply(build)
+
+private class LocalPortSelector(private val port: Int) : RouteSelector() {
+  override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int): RouteSelectorEvaluation =
+    if (context.call.request.local.localPort == port) RouteSelectorEvaluation.Constant else RouteSelectorEvaluation.Failed
+
+  override fun toString() = "(local port $port)"
 }
