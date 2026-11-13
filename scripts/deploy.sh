@@ -26,7 +26,8 @@ remote() { ssh "$DEPLOY_SSH" "$@"; }
 read -r -d '' SWITCH <<'SH' || true
 set -euo pipefail
 cd /srv/randogeddon
-setting() { grep -E "^$1=" .env | tail -1 | cut -d= -f2-; }
+# Empty if missing (the first deploy has no tags yet)
+setting() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }
 set_setting() {
   if grep -qE "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else printf '%s=%s\n' "$1" "$2" >> .env; fi
 }
@@ -40,7 +41,8 @@ current="$(setting IMAGE_TAG)" current_gateway="$(setting GATEWAY_TAG)"
 if docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
   mkdir -p /srv/backups
   dump="/srv/backups/randogeddon-$(date +%Y%m%d-%H%M%S)-before-${tag}.sql.gz"
-  docker compose exec -T postgres pg_dump -U randogeddon randogeddon | gzip > "$dump"
+  # </dev/null: this script itself comes over stdin, which `exec -T` would read
+  docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump"
   echo "Database dumped to $dump"
 fi
 set_setting IMAGE_REGISTRY "$REGISTRY"
@@ -57,7 +59,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 curl -sf http://localhost:8000/healthz >/dev/null || { echo "The tracker isn't healthy: docker compose logs tracker"; exit 1; }
-echo "Running: tracker $tag, gateway $gateway_tag; schema version $(docker compose exec -T postgres psql -U randogeddon -d randogeddon -tAc 'select max(version::int) from flyway_schema_history')"
+echo "Running: tracker $tag, gateway $gateway_tag; schema version $(docker compose exec -T postgres psql -U randogeddon -d randogeddon -tAc 'select max(version::int) from flyway_schema_history' </dev/null)"
 SH
 
 if [[ "${1:-}" == "--rollback" ]]; then
