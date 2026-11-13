@@ -313,4 +313,41 @@ class StoresTest {
     users.setAutoDelete(ivy.id, "1y")
     assertNull(users.activity().single().warnedAt)
   }
+
+  @Test
+  fun `two-factor login counts once confirmed, each step and recovery code once`() = runBlocking {
+    val users = UserStore(db)
+    val store = TwoFactorStore(db)
+    val kai = users.create("Kai", "hash")
+    store.setUp(kai.id, "sealed-secret")
+    assertEquals(false, users.findActive(kai.id)?.twoFactor)
+    assertNull(store.of(kai.id)?.enabledAt)
+
+    store.enable(kai.id, listOf("h1", "h2", "h2"))
+    assertEquals(true, users.findActive(kai.id)?.twoFactor)
+    assertEquals(2, store.codesLeft(kai.id))
+    // A step works once, an older one never again
+    assertTrue(store.useStep(kai.id, 100))
+    assertEquals(false, store.useStep(kai.id, 100))
+    assertEquals(false, store.useStep(kai.id, 99))
+    assertTrue(store.useStep(kai.id, 101))
+    assertTrue(store.useCode(kai.id, "h1"))
+    assertEquals(false, store.useCode(kai.id, "h1"))
+    assertEquals(false, store.useCode(kai.id, "nope"))
+    assertEquals(1, store.codesLeft(kai.id))
+
+    store.replaceCodes(kai.id, listOf("h3"))
+    assertEquals(false, store.useCode(kai.id, "h2"))
+    store.disable(kai.id)
+    assertNull(store.of(kai.id))
+    assertEquals(0, store.codesLeft(kai.id))
+    assertEquals(false, users.findActive(kai.id)?.twoFactor)
+
+    // Deleting the account takes it along
+    store.setUp(kai.id, "sealed")
+    store.enable(kai.id, listOf("h4"))
+    users.delete(kai.id)
+    assertNull(store.of(kai.id))
+    assertEquals(0, store.codesLeft(kai.id))
+  }
 }

@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.lowerCase
 import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -29,6 +30,8 @@ data class User(
   val email: String? = null,
   /** The shared AutoDelete's code. */
   val autoDelete: String = "never",
+  /** Logs in with a code from an authenticator after the password. */
+  val twoFactor: Boolean = false,
 )
 
 /** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
@@ -184,9 +187,13 @@ class UserStore(private val db: RandogeddonDatabase) {
       it[isAdmin] = false
       it[autoDelete] = "never"
       it[deleteWarnedAt] = null
+      it[totpSecret] = null
+      it[totpEnabledAt] = null
+      it[totpLastStep] = null
       it[deletedAt] = now
     }
     LoginSessionsTable.deleteWhere { userId eq id }
+    RecoveryCodesTable.deleteWhere { userId eq id }
     InvitationsTable.deleteWhere { userId eq id }
     EmailChangesTable.deleteWhere { userId eq id }
     Unit
@@ -217,13 +224,90 @@ class UserStore(private val db: RandogeddonDatabase) {
   private fun user(row: ResultRow): User? {
     val name = row[UsersTable.name] ?: return null
     val hash = row[UsersTable.passwordHash] ?: return null
-    return User(row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete])
+    return User(
+      row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete],
+      twoFactor = row[UsersTable.totpEnabledAt] != null,
+    )
   }
 
   private fun account(row: ResultRow) = Account(
     row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete],
   )
+}
+
+/** A user's TOTP: the encrypted secret, since when it counts (`null`: being set up), the newest step used. */
+data class TotpState(val secret: String, val enabledAt: Instant?, val lastStep: Long?)
+
+/** Two-factor login: each user's TOTP secret (encrypted by the caller) and their recovery codes (hashed). */
+class TwoFactorStore(private val db: RandogeddonDatabase) {
+  suspend fun of(id: Uuid): TotpState? = db.query {
+    UsersTable.selectAll().where { UsersTable.id eq id }.singleOrNull()?.let { row ->
+      row[UsersTable.totpSecret]?.let { TotpState(it, row[UsersTable.totpEnabledAt], row[UsersTable.totpLastStep]) }
+    }
+  }
+
+  /** A new secret being set up; two-factor login is off until [enable] (an older one is replaced). */
+  suspend fun setUp(id: Uuid, encryptedSecret: String) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[totpSecret] = encryptedSecret
+      it[totpEnabledAt] = null
+      it[totpLastStep] = null
+    }
+    Unit
+  }
+
+  /** The secret was confirmed with a code: it counts from now, with new recovery codes ([codeHashes]). */
+  suspend fun enable(id: Uuid, codeHashes: List<String>, now: Instant = Instant.now()) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[totpEnabledAt] = now }
+    replace(id, codeHashes)
+  }
+
+  /** Off: the secret and the recovery codes go. */
+  suspend fun disable(id: Uuid) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[totpSecret] = null
+      it[totpEnabledAt] = null
+      it[totpLastStep] = null
+    }
+    RecoveryCodesTable.deleteWhere { userId eq id }
+    Unit
+  }
+
+  /**
+   * Takes [step] as used, if it is newer than the last one used; `false` otherwise (the same code a second time). The
+   * database decides, so two logins with one code at once can't both get through.
+   */
+  suspend fun useStep(id: Uuid, step: Long): Boolean = db.query {
+    UsersTable.update({
+      (UsersTable.id eq id) and (UsersTable.totpLastStep.isNull() or (UsersTable.totpLastStep less step))
+    }) { it[totpLastStep] = step } > 0
+  }
+
+  /** New recovery codes in place of the old ones. */
+  suspend fun replaceCodes(id: Uuid, codeHashes: List<String>) = db.query { replace(id, codeHashes) }
+
+  /** Uses a recovery code once; `false` if it isn't one of [id]'s, or was used. */
+  suspend fun useCode(id: Uuid, codeHash: String, now: Instant = Instant.now()): Boolean = db.query {
+    RecoveryCodesTable.update({
+      (RecoveryCodesTable.userId eq id) and (RecoveryCodesTable.codeHash eq codeHash) and RecoveryCodesTable.usedAt.isNull()
+    }) { it[usedAt] = now } > 0
+  }
+
+  /** How many of [id]'s recovery codes are left. */
+  suspend fun codesLeft(id: Uuid): Int = db.query {
+    RecoveryCodesTable.selectAll().where { (RecoveryCodesTable.userId eq id) and RecoveryCodesTable.usedAt.isNull() }.count().toInt()
+  }
+
+  private fun replace(id: Uuid, codeHashes: List<String>) {
+    RecoveryCodesTable.deleteWhere { userId eq id }
+    for (hash in codeHashes.distinct()) {
+      RecoveryCodesTable.insert {
+        it[userId] = id
+        it[codeHash] = hash
+      }
+    }
+  }
 }
 
 /** An invitation link: whose, to which address, and how long it works. */
