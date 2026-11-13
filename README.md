@@ -144,7 +144,7 @@ The gateway runs as uid 1000 and writes the sessions' files to `data/`; when mov
 container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`. Seeds from before
 several sessions (one seed in `data/` itself, finished ones in `data/sessions/<seed>/`) are moved into
 `data/sessions/s-<seed>/` on the first start, and get the session ID `s-<seed>`; their players were in `session.yaml`,
-which is no longer read, so only admins see them.
+which is no longer read, so only Administrators see them.
 
 The first admin, who then invites the others and creates the sessions in the admin panel:
 
@@ -286,14 +286,20 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
   (ending that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict cookie). Failed logins and
   sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
-  other; admins see every session. Each session keeps the names its players had in it: a rename shows in the running
+  other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
-  works once). **Admins need it**: an admin without it sets it up right after the password (QR code or the key, then
+  works once). **Administrators need it**: an Administrator without it sets it up right after the password (QR code or the key, then
   a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
-  device and the recovery codes (an admin sets it up again at the next login).
+  device and the recovery codes (an Administrator sets it up again at the next login).
+- **Roles:** an **Administrator** (`randogeddon admins --grant`) reaches everything: every session, the APWorlds, the
+  users and the settings. **Every user can create a session** and is its **Session-Manager**: they manage it (its
+  state, finishing and reopening, deleting it, its game server, console and log, the cheats, its spoiler log while it
+  runs) and give its people a part: Session-Managers (co-managers), support and watchers. How many running sessions one
+  user may manage at once is the Administrators' setting (default 1); the game servers' number still applies. Every
+  cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
   e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
   deletion period. A
@@ -384,7 +390,9 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
 own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
-`/api/admin/sessions`, the accounts under `/api/admin/users`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
+`/api/sessions/new` and `POST /api/sessions` (creating one, for everyone), a session's management under
+`/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), and the
+Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
 open and says nothing about the sessions.
 
 The login form is a plain HTML form in `index.html` rather than part of the Compose app, so password managers can
