@@ -109,7 +109,7 @@ def create(id_: str, group: str):
               for w in setup["worlds"]]
     request = {"id": id_, "yamls": yamls, "worlds": worlds, "options": setup.get("options", {})}
     for attempt in range(1, 6):
-        status, answer = call("POST", "/api/admin/sessions", request, timeout=12 * 60)
+        status, answer = call("POST", "/api/sessions", request, timeout=12 * 60)
         if status != 422:
             break
         print(f"{id_}: no seed (attempt {attempt}): {answer.get('message', '').splitlines()[0]}", file=sys.stderr)
@@ -126,7 +126,7 @@ def prune(keep: list[str]):
         sys.exit(f"{status} {overview}")
     for session in overview["sessions"]:
         if session["id"].startswith("demo-") and session["id"] not in keep:
-            status, _ = call("DELETE", f"/api/admin/sessions/{session['id']}")
+            status, _ = call("DELETE", f"/api/sessions/{session['id']}/manage")
             print(f"Deleted {session['id']}" if status == 204 else f"Could not delete {session['id']} ({status})")
 
 
