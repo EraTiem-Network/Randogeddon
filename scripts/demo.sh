@@ -11,7 +11,7 @@
 # Dashboard: http://localhost:8000. The simulated players connect through the gateway with their slot passwords, like
 # real ones (ws://gateway:38281/<session>), and finish in about DEMO_MINUTES (default 15). Alice is the demo's admin:
 # her password is printed once, when her login is made, and kept in output/demo/admin.password for the next runs. The
-# other logins (Bob, Carol, Dave, Erin) are printed once, when the first session with them is created.
+# other logins (Bob, Carol, Dave, Erin) are made the same way (no invitations in the demo) and printed once.
 #
 # For the loop, keep it running in the background:  nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &
 set -euo pipefail
@@ -58,16 +58,24 @@ admin_password() {
 
 # The demo's admin calls (demo/admin.py), in the compose network
 admin() {
-  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" \
+  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" \
     -e DEMO_ADMIN="$ADMIN" -e DEMO_PASSWORD="$(cat "$PASSWORD_FILE")" --entrypoint python "$image" /demo/admin.py "$@"
 }
 
 admin_password
 # A kept password that no longer works (the database was reset): a new one
 if ! admin check >/dev/null 2>&1; then
-  rm -f "$PASSWORD_FILE"
+  rm -f "$PASSWORD_FILE" output/demo/admin.totp
   admin_password
+  # Her two-factor login too: admin.py sets it up again
+  docker compose exec -T tracker randogeddon admins --reset-2fa "$ADMIN" >/dev/null
 fi
+
+# The players of demo/*/session.json get a login (once; their passwords are printed then). Real players are invited
+# by e-mail in the admin panel instead
+for name in $(grep -oh '"users": *\[[^]]*\]' demo/*/session.json | grep -o '"[^"]*"' | tr -d '"' | grep -vx users | sort -u); do
+  if out="$(docker compose exec -T tracker randogeddon logins --create "$name" 2>/dev/null)"; then echo "$out" | head -2; fi
+done
 
 # A new session of a group (admin.py tries another seed when one can't be generated)
 create() {

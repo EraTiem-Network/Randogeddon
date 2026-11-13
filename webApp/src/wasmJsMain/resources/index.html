@@ -37,9 +37,17 @@
       border-radius: 20px; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
     #login h1 { margin: 0 0 4px; font-size: 22px; }
     #login label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12.5px; }
-    #login input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    #login input, #login select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
       border-radius: 10px; padding: 9px 11px; }
-    #login input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    #login input:focus, #login select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    #login form[hidden] { display: none; }
+    #login .hint { margin: 0; color: var(--muted); font-size: 12.5px; }
+    #login button.secondary { color: var(--text); background: var(--bg); border: 1px solid var(--border); }
+    #login .qr { align-self: center; width: 200px; height: 200px; border-radius: 10px; overflow: hidden; }
+    #login .qr svg { width: 100%; height: 100%; display: block; }
+    #login code { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
+    #login .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin: 0; padding: 12px;
+      border-radius: 10px; background: var(--bg); border: 1px solid var(--border); list-style: none; }
     #login button { font: inherit; font-weight: 600; color: #fff; border: 0; border-radius: 10px; padding: 10px;
       background: linear-gradient(90deg, #ff7a45, var(--accent)); cursor: pointer; }
     #login button:disabled { opacity: 0.6; cursor: default; }
@@ -54,12 +62,77 @@
   </div>
   <div id="app"></div>
   <div id="login" hidden>
-    <form>
+    <form id="login-form">
       <h1>Randogeddon</h1>
-      <label>Name<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label>Name or e-mail<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <p class="message" role="alert"></p>
       <button type="submit">Log in</button>
+    </form>
+    <!-- After the password, with two-factor login: the authenticator's code (or a recovery code) -->
+    <form id="code-form" hidden>
+      <h1>Your code</h1>
+      <p class="hint">The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.</p>
+      <label>Code<input name="code" autocomplete="one-time-code" inputmode="text" autocapitalize="off" spellcheck="false"
+        required></label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Log in</button>
+    </form>
+    <!-- An admin without two-factor login sets it up before anything else -->
+    <form id="setup-form" hidden>
+      <h1>Two-factor login</h1>
+      <p class="hint">Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type the
+        key in, then enter the code it shows.</p>
+      <div class="qr"></div>
+      <code class="secret"></code>
+      <label>Code<input name="code" autocomplete="one-time-code" inputmode="numeric" required></label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Turn it on</button>
+    </form>
+    <!-- Its recovery codes, shown once -->
+    <form id="codes-form" hidden>
+      <h1>Recovery codes</h1>
+      <p class="hint">Each works once, in place of a code, if you lose your authenticator. Keep them somewhere safe:
+        they are shown only now.</p>
+      <ul class="codes"></ul>
+      <p class="message" role="alert"></p>
+      <button type="button" class="secondary copy">Copy</button>
+      <button type="submit">I have saved them</button>
+    </form>
+    <!-- The invitation's link (#/invite/<token>): the new user chooses their name, password and deletion period -->
+    <form id="signup-form" hidden>
+      <h1>Welcome to Randogeddon</h1>
+      <p class="hint"></p>
+      <!-- For the password manager: the account's address, entered by the admin -->
+      <input name="email" type="email" autocomplete="email" hidden>
+      <label>Name<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required
+        minlength="3" maxlength="32"></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label>Password again<input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label>Delete my account by itself
+        <select name="autoDelete">
+          <option value="2w">2 weeks after my last session</option>
+          <option value="4w">4 weeks after my last session</option>
+          <option value="3m">3 months after my last session</option>
+          <option value="6m">6 months after my last session</option>
+          <option value="1y">1 year after my last session</option>
+          <option value="never" selected>Never</option>
+        </select>
+      </label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Sign up</button>
+    </form>
+    <!-- From the settings: a new password (the password manager saves it) -->
+    <form id="password-form" hidden>
+      <h1>New password</h1>
+      <input name="username" autocomplete="username" hidden>
+      <label>Current password<input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label>New password again<input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
+      <p class="hint">Your other logins end; this one stays.</p>
+      <p class="message" role="alert"></p>
+      <button type="submit">Change password</button>
+      <button type="button" class="secondary">Cancel</button>
     </form>
   </div>
   <script>
@@ -77,13 +150,22 @@
       s.src = "webApp.js";
       document.body.appendChild(s);
     })();
-    // Shown by the web app (Platform.showLogin) when the server answers 401
+    // Shown by the web app (Platform.showLogin) when the server answers 401: the login, or with an invitation's link
+    // (#/invite/<token>) the sign-up. Platform.showPasswordChange opens the password form from the settings.
     window.randogeddonLogin = (function () {
       var root = document.getElementById("login");
-      var form = root.querySelector("form");
-      var message = root.querySelector(".message");
-      var button = form.querySelector("button");
+      var forms = {
+        login: document.getElementById("login-form"),
+        signup: document.getElementById("signup-form"),
+        password: document.getElementById("password-form"),
+        code: document.getElementById("code-form"),
+        setup: document.getElementById("setup-form"),
+        codes: document.getElementById("codes-form")
+      };
+      // A login whose password was right, waiting for its code (or the setup)
+      var pending = null;
       var done = null;
+      var token = null;
       // Compose keeps the pixel density it started with: after a browser zoom it would draw everything blurry. So the
       // page reloads once the zoom has settled (the login and the settings stay); behind the login form nothing of
       // Compose is visible, so there it waits for the login.
@@ -100,36 +182,173 @@
           zoomTimer = setTimeout(function () { location.reload(); }, 400);
         }, { once: true });
       })(window.devicePixelRatio);
-      form.addEventListener("submit", function (event) {
-        event.preventDefault();
+
+      function open(name, text) {
+        Object.keys(forms).forEach(function (key) { forms[key].hidden = key !== name; });
+        forms[name].querySelector(".message").textContent = text || "";
+        root.hidden = false;
+      }
+      function close(ok) {
+        root.hidden = true;
+        if (stale && ok) { location.reload(); return; }
+        var callback = done;
+        done = null;
+        if (callback) callback(ok);
+      }
+      // Sends the form's JSON; on success calls onOk, otherwise shows why
+      function send(form, method, path, body, onOk) {
+        var button = form.querySelector("button[type=submit]");
+        var message = form.querySelector(".message");
         button.disabled = true;
         message.textContent = "";
-        fetch("api/login", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: form.username.value, password: form.password.value })
-        }).then(function (r) {
-          if (r.ok) {
-            form.password.value = "";
-            if (stale) { location.reload(); return; }
-            root.hidden = true;
-            if (done) done();
+        fetch(path, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+          .then(function (r) {
+            if (r.ok) { return (r.status === 204 ? Promise.resolve(null) : r.json()).then(onOk); }
+            if (r.status === 429) { message.textContent = "Too many attempts. Please wait a minute."; return; }
+            return r.json().then(function (e) { message.textContent = e.message; },
+              function () { message.textContent = "That didn't work (" + r.status + ")."; });
+          }, function () { message.textContent = "The server can't be reached."; })
+          .finally(function () { button.disabled = false; });
+      }
+      function sameTwice(form) {
+        if (form.password.value === form.repeat.value) return true;
+        form.querySelector(".message").textContent = "The two passwords differ.";
+        form.repeat.focus();
+        return false;
+      }
+      // The hash goes back to the sessions (the token isn't needed any more, and shouldn't stay in the history)
+      function leaveInvitation() {
+        history.replaceState(null, "", location.pathname + location.search + "#/");
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      }
+
+      forms.login.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var form = forms.login;
+        send(form, "POST", "api/login", { username: form.username.value, password: form.password.value }, function (step) {
+          form.password.value = "";
+          if (!step) { close(true); return; }
+          pending = step.pending;
+          if (step.next === "code") {
+            forms.code.code.value = "";
+            open("code");
+            forms.code.code.focus();
+          } else {
+            startSetup();
+          }
+        });
+      });
+      forms.code.addEventListener("submit", function (event) {
+        event.preventDefault();
+        send(forms.code, "POST", "api/login/code", { pending: pending, code: forms.code.code.value }, function () {
+          forms.code.code.value = "";
+          pending = null;
+          close(true);
+        });
+      });
+      function startSetup() {
+        var form = forms.setup;
+        fetch("api/login/setup", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pending: pending }) }).then(function (r) {
+          if (!r.ok) return r.json().then(function (e) { open("login", e.message); });
+          return r.json().then(function (setup) {
+            // The server's SVG of the QR code (nothing else in it)
+            form.querySelector(".qr").innerHTML = setup.svg;
+            form.querySelector(".secret").textContent = setup.secret.replace(/(.{4})/g, "$1 ").trim();
+            form.code.value = "";
+            open("setup");
+            form.code.focus();
+          });
+        }, function () { open("login", "The server can't be reached."); });
+      }
+      forms.setup.addEventListener("submit", function (event) {
+        event.preventDefault();
+        send(forms.setup, "POST", "api/login/setup/confirm", { pending: pending, code: forms.setup.code.value }, function (answer) {
+          pending = null;
+          var list = forms.codes.querySelector(".codes");
+          list.innerHTML = "";
+          answer.codes.forEach(function (code) {
+            var item = document.createElement("li");
+            item.innerHTML = "<code></code>";
+            item.firstChild.textContent = code;
+            list.appendChild(item);
+          });
+          forms.codes.dataset.codes = answer.codes.join("\n");
+          open("codes");
+        });
+      });
+      forms.codes.querySelector("button.copy").addEventListener("click", function () {
+        navigator.clipboard.writeText(forms.codes.dataset.codes).then(function () {
+          forms.codes.querySelector(".message").textContent = "Copied.";
+        }, function () {});
+      });
+      forms.codes.addEventListener("submit", function (event) {
+        event.preventDefault();
+        forms.codes.dataset.codes = "";
+        forms.codes.querySelector(".codes").innerHTML = "";
+        close(true);
+      });
+      forms.signup.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var form = forms.signup;
+        if (!sameTwice(form)) return;
+        send(form, "POST", "api/signup", {
+          token: token, name: form.username.value.trim(), password: form.password.value, autoDelete: form.autoDelete.value
+        }, function () {
+          form.password.value = form.repeat.value = "";
+          token = null;
+          leaveInvitation();
+          close(true);
+        });
+      });
+      forms.password.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var form = forms.password;
+        if (!sameTwice(form)) return;
+        send(form, "PUT", "api/account/password", { current: form.current.value, password: form.password.value }, function () {
+          form.current.value = form.password.value = form.repeat.value = "";
+          close(true);
+        });
+      });
+      forms.password.querySelector("button.secondary").addEventListener("click", function () { close(false); });
+
+      function showSignup(invitation) {
+        var form = forms.signup;
+        token = invitation;
+        fetch("api/invitations/" + encodeURIComponent(invitation)).then(function (r) { return r.json(); }).then(function (info) {
+          if (!info.valid) {
+            token = null;
+            leaveInvitation();
+            open("login", info.problem);
+            forms.login.username.focus();
             return;
           }
-          if (r.status === 429) { message.textContent = "Too many attempts. Please wait a minute."; return; }
-          return r.json().then(function (e) { message.textContent = e.message; },
-            function () { message.textContent = "Login failed (" + r.status + ")."; });
+          form.email.value = info.email || "";
+          form.querySelector(".hint").textContent = "You're invited as " + info.email +
+            ". Choose the name the others see, and your password.";
+          if (!form.username.value) form.username.value = info.suggestedName || "";
+          open("signup");
+          (form.username.value ? form.password : form.username).focus();
         }, function () {
-          message.textContent = "The server can't be reached.";
-        }).finally(function () { button.disabled = false; });
-      });
+          open("login", "The server can't be reached.");
+        });
+      }
       return {
         show: function (text, onLoggedIn) {
-          done = onLoggedIn;
-          message.textContent = text || "";
-          root.hidden = false;
+          done = function (ok) { if (ok) onLoggedIn(); };
+          var invitation = /^#\/invite\/([^/]+)/.exec(location.hash);
+          if (invitation) { showSignup(decodeURIComponent(invitation[1])); return; }
+          open("login", text);
+          var form = forms.login;
           (form.username.value ? form.password : form.username).focus();
         },
-        hide: function () { root.hidden = true; }
+        hide: function () { root.hidden = true; },
+        password: function (name, onDone) {
+          done = onDone;
+          forms.password.username.value = name || "";
+          open("password");
+          forms.password.current.focus();
+        }
       };
     })();
     if ("serviceWorker" in navigator) {

@@ -10,7 +10,6 @@ import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.account.PasswordGenerator
-import net.eratiem.randogeddon.server.account.PasswordHasher
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
@@ -31,7 +30,7 @@ import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
-import net.eratiem.randogeddon.shared.NewLogin
+import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SessionOptions
@@ -101,6 +100,7 @@ class SessionAdmin(
       sessions = sessions.all().map { list.entry(it, person = null, admin = true) },
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = users.active().map { it.name }.sorted(),
+      people = people(),
       capacity = sessions.capacity,
       suggestedId = suggestId(random) { it in taken },
     )
@@ -120,7 +120,10 @@ class SessionAdmin(
       createdAt = live.record.createdAt.toEpochMilli(),
       options = live.options,
       worlds = live.people().flatMap { (person, slots) -> slots.map { it to person } }
-        .groupBy({ it.first }, { it.second }).map { (slot, names) -> WorldPlan(slot, names) },
+        .groupBy({ it.first }, { it.second }).map { (slot, names) ->
+          val ids = setup?.members?.entries?.associate { (id, name) -> name to id.toString() }.orEmpty()
+          WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] })
+        },
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finishedAt?.toEpochMilli(),
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },
@@ -132,6 +135,7 @@ class SessionAdmin(
       session = info,
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = users.active().map { it.name }.sorted(),
+      people = people(),
     )
   }
 
@@ -167,8 +171,12 @@ class SessionAdmin(
       throw SessionProblem(HttpStatusCode.BadRequest, "Not in the YAMLs: ${it.joinToString()}")
     }
     val plans = inspected.worlds.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
-    val people = plans.values.flatMap { it.users }.map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
-    people.firstOrNull { it.length > 64 }?.let { throw SessionProblem(HttpStatusCode.BadRequest, "Name too long: $it") }
+    // Who plays: accounts by ID, invited ones too (they sign up later; the session shows them meanwhile)
+    val accounts = users.accounts().associateBy { it.id.toString() }
+    val people = plans.values.flatMap { it.userIds }.distinct()
+    people.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, "No such users: ${it.joinToString()}")
+    }
     val versions = gameServer.versions()
     val version = request.apVersion ?: versions.firstOrNull()
       ?: throw SessionProblem(HttpStatusCode.ServiceUnavailable, "The gateway has no Archipelago release")
@@ -187,25 +195,21 @@ class SessionAdmin(
     val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
     val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
 
-    // People without a login get one now; its password is shown once, in the answer
-    val logins = mutableListOf<NewLogin>()
-    val ids = people.associate { name ->
-      val user = users.findActive(name) ?: PasswordGenerator.generate().let { password ->
-        logins += NewLogin(name, password)
-        users.create(name, PasswordHasher.hash(password))
-      }
-      name.lowercase() to user.id
-    }
     setups.create(
       id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
-      plans.mapValues { (_, plan) -> plan.users.mapNotNull { ids[it.trim().lowercase()] } },
+      plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
     )
     slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
     gameServer.control(id, "start")
     sessions.refresh()
-    logger.info("{} created session {} (seed {}, {} new logins)", admin, id, seed, logins.size)
-    return CreateSessionResult(id, seed, logins, locked)
+    logger.info("{} created session {} (seed {})", admin, id, seed)
+    return CreateSessionResult(id, seed, locked)
   }
+
+  /** The accounts a new session can be played by, invited ones too. */
+  private suspend fun people(): List<UserRef> = users.accounts()
+    .map { UserRef(it.id.toString(), it.name, it.email.takeIf { _ -> it.name == null }) }
+    .sortedBy { it.label.lowercase() }
 
   /** For the random locks and the suggested IDs. */
   private val random: Random = SecureRandom().asKotlinRandom()

@@ -1,5 +1,5 @@
 # Overlay for local testing / no reverse proxy: publish the ports directly.
-#   game server: localhost:38281    dashboard: http://localhost:8000
+#   game server: localhost:38281    dashboard: http://localhost:8000    mails: http://localhost:8025 (Mailpit)
 services:
   # Game clients connect to the gateway; MultiServer itself is not published
   gateway:
@@ -12,3 +12,15 @@ services:
       # Plain HTTP: without this, browsers on other devices (http://<pc-ip>:8000) drop the login cookie. Browsers
       # accept it over HTTP on localhost anyway; behind Traefik (HTTPS) it stays secure
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # The mails (invitations, …) go to Mailpit instead of out: see them at http://localhost:8025
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_SECURITY: none
+      PUBLIC_URL: http://localhost:8000
+
+  # Catches every mail the tracker sends, with a web UI to read them
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    ports:
+      - "8025:8025"

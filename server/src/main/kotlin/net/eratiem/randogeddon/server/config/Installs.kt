@@ -18,13 +18,17 @@ import io.ktor.server.sse.SSE
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.CheatLogStore
+import net.eratiem.randogeddon.database.EmailChangeStore
+import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
+import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.RandogeddonTracker
+import net.eratiem.randogeddon.server.account.AccountCleanup
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.SessionAdmin
@@ -53,6 +57,9 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { SessionFinishStore(get()) }
       single { CheatLogStore(get()) }
       single { SessionStore(get()) }
+      single { InvitationStore(get()) }
+      single { EmailChangeStore(get()) }
+      single { TwoFactorStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
@@ -92,6 +99,9 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   slotPasswords.watch(this)
   val logins by inject<LoginService>()
   logins.cleanUp(this)
+  // Warns and deletes the accounts whose auto-deletion is due
+  val accountCleanup by inject<AccountCleanup>()
+  accountCleanup.watch(this)
   // Finishes a session 2 minutes after every slot is done
   val lifecycle by inject<SessionLifecycle>()
   lifecycle.watch(this)

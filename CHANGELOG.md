@@ -4,6 +4,49 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Proper user management (Phase 5)
+Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
+two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox
+`randogeddon@example.net`; existing logins stay (they add an e-mail address under *Your account*), admins set up
+two-factor login at their next login. The parts:
+
+### Two-factor login (Phase 5, part 3)
+- TOTP (RFC 6238, any authenticator app): after the password, the code (or one of 10 recovery codes, each usable once;
+  `autocomplete="one-time-code"`). A code works once; the step before and after count too.
+- Admins need it: an admin without it sets it up right after the password (QR code, the key to type in, a first code),
+  and the admin API refuses an admin without it. Everyone else can turn it on and off under *Your account*, and get new
+  recovery codes there.
+- The secrets are stored encrypted (AES-256-GCM) with `TOTP_KEY`, or a key file the tracker makes in its state volume.
+  `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the device and the codes.
+- Migration V8. The demo's admin logs in with it too (secret in `output/demo/admin.totp`).
+
+### Sign-up, users, settings (Phase 5, part 2)
+- The invitation's link opens the sign-up: name, password (twice) and the deletion period, as a plain form like the
+  login, so password managers save the new account. A link that was used, has expired or was replaced says so.
+- Admin panel, *Users*: every account (invited ones with until when their link works), invite by e-mail with a
+  suggested name, send an invited one's link again or to another address. The new-session form invites an address
+  typed in a slot's player field right there.
+- *Your account* (the person button on the top card, `#/settings`): the name (unique; the running sessions show the new
+  one), the password (a form of its own for the password manager; the other logins end), the e-mail address (a link
+  to the new one confirms it, `#/email/<token>`), the deletion period with the date it would happen.
+- Names show their account's ID as a tip, and a deleted account's name in an old session is marked so.
+- The login field takes the name or the e-mail address. `settings`, `invite` and `email` can't be session IDs.
+
+### Accounts of people (Phase 5, part 1)
+- Accounts belong to people, not to a session. Admins invite people by e-mail (`/api/admin/users`); the link (single
+  use, valid 7 days, a new one replaces the old) leads to the sign-up, where they choose their name, password and when
+  their account deletes itself. Until then an admin can send the link again, or to another address.
+- Logging in with the name or the e-mail address. An account without a session gets in too (and sees none).
+- Automatic deletion: 2 or 4 weeks, 3 or 6 months, 1 year after the end of the user's last session, or never; a mail
+  warns 14 days before. Deleting keeps the account's UUID in the sessions, with the name it had in each.
+- Sessions keep the names their players had in them (a rename follows in running sessions only); who is part of a
+  session goes by the account's UUID.
+- Mails through SMTP (`MAIL_*` in `.env`; STARTTLS or TLS, `MAIL_ADDRESS` for an internal address); without a mail
+  server they go to the log. The local overlay has Mailpit (http://localhost:8025).
+- New sessions take their players by account (`WorldPlan.userIds`); new names no longer get a generated login.
+  `randogeddon logins --create <name>` for local use and the demo, which makes its players that way.
+- Migration V7: e-mail addresses, invitations, address changes, deletion settings, names per session.
+
 ### Reachable from outside (Phase 4, part 3)
 - Every session's game server is reachable at `<id>.<BASE_DOMAIN>:443`: one Traefik router for `*.<BASE_DOMAIN>` to
   the gateway, which relays by the host name, with a wildcard certificate. `SESSION_ID` and the router for one

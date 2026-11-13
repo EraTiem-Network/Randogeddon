@@ -35,6 +35,8 @@ actual object Platform {
 
   actual fun hideLogin() = jsHideLogin()
 
+  actual fun showPasswordChange(name: String, onDone: (Boolean) -> Unit) = jsShowPasswordChange(name, onDone)
+
   actual fun date(epochMillis: Long): String = jsDate(epochMillis.toDouble())
 
   actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
@@ -80,6 +82,9 @@ private fun jsShowLogin(message: String?, onLoggedIn: () -> Unit): Unit =
   js("window.randogeddonLogin.show(message, onLoggedIn)")
 
 private fun jsHideLogin(): Unit = js("window.randogeddonLogin.hide()")
+
+private fun jsShowPasswordChange(name: String, onDone: (Boolean) -> Unit): Unit =
+  js("window.randogeddonLogin.password(name, onDone)")
 
 // A hidden file input; every chosen file is read as text, or as base64 (from a data: URL)
 private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit): Unit = js(

@@ -146,12 +146,23 @@ several sessions (one seed in `data/` itself, finished ones in `data/sessions/<s
 `data/sessions/s-<seed>/` on the first start, and get the session ID `s-<seed>`; their players were in `session.yaml`,
 which is no longer read, so only admins see them.
 
-The first admin, who then creates the sessions in the admin panel:
+The first admin, who then invites the others and creates the sessions in the admin panel:
 
 ```sh
 docker compose exec tracker randogeddon admins --create <person>   # prints the password once
 docker compose exec tracker randogeddon admins --grant <person>    # an existing login; --revoke takes it back
 ```
+
+**Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
+(`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
+certificate is checked against `MAIL_HOST`; if the server's public address leads back to this host (a VM behind the
+same host as the mail server), `MAIL_ADDRESS` names its internal one. Without `MAIL_HOST` the mails, links included,
+only go to the tracker's log.
+
+**Updating to the accounts of Phase 5** (migrations V7 and V8 run by themselves): set `MAIL_*` (and `MAIL_ADDRESS`
+if needed) and `TOTP_KEY` in `.env`, and create the `randogeddon@example.net` mailbox. Existing logins stay, without
+an e-mail address: each person adds theirs under *Your account*. Admins set up two-factor login at their next login;
+until then the admin panel is closed to them.
 
 ## Session day
 
@@ -163,7 +174,8 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 2. **Create the session** (admin panel, *New session*): its *Session ID* (prefilled with a free suggestion like
    `brave-otter`; lowercase letters, digits and `-`, starting with a letter; it becomes the game server's host name,
    so it can't be changed later), *Add YAMLs…*, then for every slot who
-   plays it (one or more players: a slot with several players is played together; new names get a login); the locks
+   plays it (one or more players, picked from the accounts, invited ones too: a slot with several players is played
+   together); the locks
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
@@ -173,9 +185,10 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
    name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
    before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
    or one whose APWorld comes from another release) above its output.
-3. **Hand out the new logins**: the panel shows each new player's password **once** (and, with random locks, which
-   slots start locked). Players who already had a login keep it.
-4. **Players log in** at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
+3. **New players are invited** beforehand, by e-mail (admin panel, *Users*): they get a link, valid for 7 days, and
+   choose their name and password themselves. Until they sign up, the session shows them by the name the admin
+   suggested.
+4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/admin` and
    `#/admin/<session-id>` the admin panel. Under *Your connection* they find the server
@@ -184,7 +197,7 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 
 Patch files for ROM-based games are in the seed: `data/sessions/<id>/AP_<seed>.zip` on the server. **Deleting** a
 running session (admin panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
-finished one deletes them for good. The logins stay. As many sessions run at once as the gateway has ports for
+finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
 (`AP_PORTS`); a finished session doesn't take one.
 
 ### Finishing, past sessions and the spoiler log
@@ -264,11 +277,28 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 
-- **Logins** are made when a session is created in the admin panel (see *Session day*); the username is the
-  player's name. Passwords are 32 random characters and stored only as Argon2id hashes; `randogeddon logins --reset
-  <player>` makes a new one (and ends that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict
-  cookie). Failed logins are slowed down and limited to 5 per minute per address. A player sees the sessions they play
-  in, and no other; someone with a login who plays in none is refused (admins always get in, and see every session).
+- **Accounts** belong to people, not to a session. An admin invites someone by e-mail (admin panel, *Users*, or right
+  in a new session's player field); the link (single use, 7 days, a new one replaces it) leads to the sign-up page,
+  where they choose their name (3–32 characters, no `@`,
+  unique without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
+  account deletes itself (2 or 4 weeks, 3 or 6 months, 1 year after the end of their last session, or never; a mail
+  warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
+  makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
+  (ending that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict cookie). Failed logins and
+  sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
+  other; admins see every session. Each session keeps the names its players had in it: a rename shows in the running
+  ones, a finished one keeps the old name, also of a deleted account.
+- **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
+  works once). **Admins need it**: an admin without it sets it up right after the password (QR code or the key, then
+  a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
+  (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
+  either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
+  device and the recovery codes (an admin sets it up again at the next login).
+- **Your account** (the person button on the top card): change the name, the password (the other logins end), the
+  e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
+  deletion period. A
+  name's tip shows its account's ID, which tells a deleted account's name in an old session from a new account with
+  the same name.
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
@@ -345,11 +375,16 @@ Known limitations:
   slot's connection log, since their real start is unknown.
 - The event history keeps the last 500 events per session, stored in the `tracker-state` volume.
 
-API: `POST /api/login` (JSON with `username` and `password`, sets the cookie), `POST /api/logout`; with a login:
+API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
+two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
+`.../setup` and `.../setup/confirm`),
+`POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
+(a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
+`POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
 own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
-`/api/admin/sessions`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
+`/api/admin/sessions`, the accounts under `/api/admin/users`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
 open and says nothing about the sessions.
 
 The login form is a plain HTML form in `index.html` rather than part of the Compose app, so password managers can

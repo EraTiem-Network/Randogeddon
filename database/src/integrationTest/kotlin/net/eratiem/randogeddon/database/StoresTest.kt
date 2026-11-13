@@ -215,4 +215,139 @@ class StoresTest {
     assertNotEquals(first["Alice-HK"], next["Alice-HK"])
     assertEquals(emptyMap(), slots.passwords("unknown"))
   }
+
+  @Test
+  fun `an invited user can't log in until they sign up, then by name or address`() = runBlocking {
+    val users = UserStore(db)
+    val invited = users.invite("Erin@example.org")
+    assertNull(users.findLogin("erin@example.org"))
+    assertEquals(emptyList(), users.active())
+    assertEquals(listOf(null), users.accounts().map { it.name })
+    // One account per address, without regard to case
+    assertFailsWith<Exception> { users.invite("erin@example.org") }
+
+    assertTrue(users.signUp(invited.id, "Erin", "hash", "6m"))
+    assertEquals(invited.id, users.findLogin("ERIN@example.org")?.id)
+    assertEquals(invited.id, users.findLogin("erin")?.id)
+    assertEquals("6m", users.findActive(invited.id)?.autoDelete)
+    // A link works once
+    assertEquals(false, users.signUp(invited.id, "Erin2", "hash", "never"))
+  }
+
+  @Test
+  fun `a new invitation replaces the old one, and a link is used once`() = runBlocking {
+    val users = UserStore(db)
+    val invitations = InvitationStore(db)
+    val frank = users.invite("frank@example.org")
+    val later = Instant.now().plus(7, ChronoUnit.DAYS)
+    invitations.create("first", frank.id, "frank@example.org", "Frank", later)
+    invitations.create("second", frank.id, "frank@example.org", "Frank", later)
+    assertNull(invitations.find("first"))
+    assertEquals("Frank", invitations.of(frank.id)?.suggestedName)
+    assertTrue(invitations.use("second"))
+    assertEquals(false, invitations.use("second"))
+    assertTrue(invitations.find("second")?.usedAt != null)
+  }
+
+  @Test
+  fun `a session shows the names of then, invited users by their suggested name until they sign up`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val finishes = SessionFinishStore(db)
+    val alice = users.create("Alice", "hash")
+    val gina = users.invite("gina@example.org")
+    InvitationStore(db).create("token", gina.id, "gina@example.org", "Gina", Instant.now().plus(7, ChronoUnit.DAYS))
+    setups.create("old-one", "111", "0.6.8", "{}", mapOf("Alice-HK" to listOf(alice.id)))
+    setups.create("new-one", "222", "0.6.8", "{}", mapOf("Alice-HK" to listOf(alice.id), "Gina-RoR2" to listOf(gina.id)))
+    assertEquals(mapOf(alice.id to "Alice", gina.id to "Gina"), setups.of("222")?.members)
+
+    finishes.finish("111", by = null)
+    users.rename(alice.id, "Alicia")
+    users.signUp(gina.id, "Georgina", "hash", "never")
+    // The finished session keeps the name of then; the running one follows
+    assertEquals(mapOf(alice.id to "Alice"), setups.of("111")?.members)
+    assertEquals(mapOf(alice.id to "Alicia", gina.id to "Georgina"), setups.of("222")?.members)
+    assertEquals(mapOf("Alice-HK" to listOf("Alicia"), "Gina-RoR2" to listOf("Georgina")), setups.of("222")?.worlds)
+  }
+
+  @Test
+  fun `deleting an account clears it, frees its name and address, and the sessions keep its name`() = runBlocking {
+    val users = UserStore(db)
+    val logins = LoginSessionStore(db)
+    val hank = users.create("Hank", "hash", email = "hank@example.org")
+    logins.create("token", hank.id, Instant.now().plus(1, ChronoUnit.DAYS))
+    SessionSetupStore(db).create("hanks", "333", "0.6.8", "{}", mapOf("Hank-HK" to listOf(hank.id)))
+
+    users.delete(hank.id)
+    assertNull(users.findLogin("hank"))
+    assertNull(logins.userOf("token"))
+    assertNull(users.account(hank.id))
+    assertEquals(mapOf(hank.id to "Hank"), SessionSetupStore(db).of("333")?.members)
+    // The name and the address are free again
+    users.create("Hank", "hash", email = "hank@example.org")
+    Unit
+  }
+
+  @Test
+  fun `the deletion goes by the last finished session, and waits while one runs`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val finishes = SessionFinishStore(db)
+    val ivy = users.create("Ivy", "hash")
+    users.setAutoDelete(ivy.id, "3m")
+    val never = users.create("Jo", "hash")
+    assertEquals(listOf(ivy.id), users.activity().map { it.user.id })
+    assertNull(users.activity().single().lastSessionEnd)
+
+    setups.create("ivy-one", "444", "0.6.8", "{}", mapOf("Ivy-HK" to listOf(ivy.id, never.id)))
+    assertTrue(users.activity().single().playing)
+    val end = Instant.now().truncatedTo(ChronoUnit.MILLIS)
+    finishes.finish("444", by = null, now = end)
+    val activity = users.activity().single()
+    assertEquals(false, activity.playing)
+    assertEquals(end, activity.lastSessionEnd?.truncatedTo(ChronoUnit.MILLIS))
+
+    users.markWarned(ivy.id, end)
+    assertEquals(end, users.activity().single().warnedAt?.truncatedTo(ChronoUnit.MILLIS))
+    // A new period takes the warning back
+    users.setAutoDelete(ivy.id, "1y")
+    assertNull(users.activity().single().warnedAt)
+  }
+
+  @Test
+  fun `two-factor login counts once confirmed, each step and recovery code once`() = runBlocking {
+    val users = UserStore(db)
+    val store = TwoFactorStore(db)
+    val kai = users.create("Kai", "hash")
+    store.setUp(kai.id, "sealed-secret")
+    assertEquals(false, users.findActive(kai.id)?.twoFactor)
+    assertNull(store.of(kai.id)?.enabledAt)
+
+    store.enable(kai.id, listOf("h1", "h2", "h2"))
+    assertEquals(true, users.findActive(kai.id)?.twoFactor)
+    assertEquals(2, store.codesLeft(kai.id))
+    // A step works once, an older one never again
+    assertTrue(store.useStep(kai.id, 100))
+    assertEquals(false, store.useStep(kai.id, 100))
+    assertEquals(false, store.useStep(kai.id, 99))
+    assertTrue(store.useStep(kai.id, 101))
+    assertTrue(store.useCode(kai.id, "h1"))
+    assertEquals(false, store.useCode(kai.id, "h1"))
+    assertEquals(false, store.useCode(kai.id, "nope"))
+    assertEquals(1, store.codesLeft(kai.id))
+
+    store.replaceCodes(kai.id, listOf("h3"))
+    assertEquals(false, store.useCode(kai.id, "h2"))
+    store.disable(kai.id)
+    assertNull(store.of(kai.id))
+    assertEquals(0, store.codesLeft(kai.id))
+    assertEquals(false, users.findActive(kai.id)?.twoFactor)
+
+    // Deleting the account takes it along
+    store.setUp(kai.id, "sealed")
+    store.enable(kai.id, listOf("h4"))
+    users.delete(kai.id)
+    assertNull(store.of(kai.id))
+    assertEquals(0, store.codesLeft(kai.id))
+  }
 }

@@ -20,7 +20,7 @@ object SessionIds {
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
   /** Words the API and the dashboard's links use themselves. */
-  private val RESERVED = setOf("admin", "api", "inspect", "new", "sessions", "www")
+  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "new", "sessions", "settings", "www")
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
@@ -134,6 +134,7 @@ data class HintSettings(
 /** One person and their worlds. */
 @Serializable
 data class PersonSummary(
+  /** The name the person has in this session (the one of then, once it is finished). */
   val name: String,
   /** Slots of [PlayerSummary.slot], in the order of `session.yaml`. */
   val slots: List<Int>,
@@ -145,6 +146,10 @@ data class PersonSummary(
   val lastActivity: Long? = null,
   /** Sum of the worlds' finished sessions; add `now - onlineSince` of the online worlds. */
   val playTimeMs: Long = 0,
+  /** Their account's UUID (tells two people of the same name apart); `null` for a session from before accounts. */
+  val userId: String? = null,
+  /** Their account is deleted; the session keeps the name. */
+  val deleted: Boolean = false,
 )
 
 @Serializable
@@ -412,13 +417,16 @@ data class InspectResult(
 )
 
 /**
- * One slot of a new session: who plays it (one or more users, existing or new names) and whether it starts locked, or
- * whether that is left to chance ([random], with [SessionOptions.openSlots]).
+ * One slot of a new session: who plays it (one or more users; new people are invited first) and whether it starts
+ * locked, or whether that is left to chance ([random], with [SessionOptions.openSlots]).
  */
 @Serializable
 data class WorldPlan(
   val name: String,
+  /** Who plays it, by name: what the admin panel shows of an existing session. */
   val users: List<String> = emptyList(),
+  /** Who plays it, by user ID ([UserRef.id]): what a new session is created with. */
+  val userIds: List<String> = emptyList(),
   val locked: Boolean = false,
   val random: Boolean = false,
 )
@@ -434,15 +442,10 @@ data class CreateSessionRequest(
   val apVersion: String? = null,
 )
 
-/** A login created for a new person; the password is shown only this once. */
-@Serializable
-data class NewLogin(val name: String, val password: String)
-
 @Serializable
 data class CreateSessionResult(
   val id: String,
   val seedName: String,
-  val logins: List<NewLogin> = emptyList(),
   /** The slots that start locked (with random locks, the ones picked). */
   val locked: List<String> = emptyList(),
 )
@@ -571,6 +574,8 @@ data class AdminSessionView(
   /** Archipelago releases the gateway can run, newest first. */
   val apVersions: List<String> = emptyList(),
   val users: List<String> = emptyList(),
+  /** The accounts a new session can be played by, invited ones too. */
+  val people: List<UserRef> = emptyList(),
 )
 
 /**
@@ -582,6 +587,8 @@ data class AdminOverview(
   val sessions: List<SessionEntry> = emptyList(),
   val apVersions: List<String> = emptyList(),
   val users: List<String> = emptyList(),
+  /** The accounts a new session can be played by, invited ones too. */
+  val people: List<UserRef> = emptyList(),
   val capacity: Int = 0,
   /** A free ID for the next session, e.g. `friday-chaos`. */
   val suggestedId: String = "",

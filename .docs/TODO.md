@@ -76,6 +76,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - `randogeddon admins --grant <person>`; `/api/admin/*` answers 403 for everyone else.
 - [x] Create a session: upload the player YAMLs, set players, locks and hint options, generate the seed
     - Every slot gets one or more players (several: they play it together); new names get a login, shown once.
+      Since Phase 5 the players are accounts, new people are invited by e-mail.
     - The gateway generates the seed; the game server starts on it.
     - Words: a player is a person (a user with a login), a slot is one YAML, the game only its title.
 - [x] Random locks: a number of slots, picked at random, start open; all others start locked
@@ -150,32 +151,35 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The gateway routes by the host name (the first label), or by the path without a domain
       (`ws://localhost:38281/<session-id>`, local use and the demo).
 
-## Phase 5: Proper User Management
+## Phase 5: Proper User Management (done)
 
 *Accounts belong to people, not to a session.*
 
-- [ ] When creating a session: select existing users, or add new ones by e-mail address
-- [ ] New users get an invitation mail with a link to choose their username and password
-    - The link is single-use and expires.
+- [x] When creating a session: select existing users, or add new ones by e-mail address
+- [x] New users get an invitation mail with a link to choose their username and password
+    - The link is single-use and works for 7 days; sending it again (or to another address) replaces it.
     - No open sign-up: an account can only be created with the link from an invitation mail, for the address the
       admin entered.
-    - Mail via SMTP on `mail.example.net`, sender `randogeddon@example.net`, credentials in `.env`. The host is
-      configurable: if the TLS certificate is issued for `mail.example.org`, connect by that name.
-- [ ] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
-- [ ] Automatic account deletion, chosen when signing up
-    - Delete after a time span (weeks, months or years, from a fixed list) or never.
+    - Mail via SMTP on `mail.example.net`, sender `randogeddon@example.net`, credentials in `.env`. The certificate
+      is checked against `MAIL_HOST`; `MAIL_ADDRESS` connects to an internal address instead (the VM behind the same
+      host as the mail server).
+    - People log in with their name or their e-mail address.
+- [x] As long as the user hasn't signed up, an admin can change the e-mail address; the old invitation stops working
+- [x] Automatic account deletion, chosen when signing up
+    - Delete after a time span (2 or 4 weeks, 3 or 6 months, 1 year) or never.
     - The time counts from the end of the user's last session (when it was finished, Phase 3).
-    - The user is told before the deletion happens.
+    - The user is told 14 days before the deletion happens (and at least 2 days before); a running session postpones it.
     - Deleting removes only the account (login, e-mail address, settings). Sessions stay viewable: they keep the user's
       UUID and the name the user had in that session, saved with the session.
-- [ ] Display names are unique among active accounts
+- [x] Display names are unique among active accounts
     - Checked without regard to case ("Alice" and "alice" can't both exist), at sign-up and when renaming; a deleted
       account frees its name.
     - The UI shows only the name; the UUID appears only when hovering over it (e.g. to tell a deleted user's name in
       an old session from a new account with the same name).
-- [ ] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
+- [x] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
     - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else.
-- [ ] User settings page: change username, password, e-mail address and the auto-deletion setting
+    - The secrets are encrypted (`TOTP_KEY`); `randogeddon admins --reset-2fa` for a lost device.
+- [x] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.
     - Renaming doesn't change the names saved in old sessions.
 

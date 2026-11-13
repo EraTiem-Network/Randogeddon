@@ -99,6 +99,13 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
 
+  /** Who is logged in, again (after a rename in the settings). */
+  suspend fun reloadMe() {
+    val result = Platform.request("GET", "api/me")?.takeIf { it.status == 200 } ?: return
+    runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()?.let { _me.value = it }
+    refreshSessions()
+  }
+
   /** The sessions again (one was created, finished or deleted); one that is gone stops being shown. */
   suspend fun refreshSessions() {
     val list = Platform.request("GET", "api/sessions")?.takeIf { it.status == 200 }

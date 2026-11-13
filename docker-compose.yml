@@ -88,6 +88,20 @@ services:
       SESSION_RETENTION_DAYS: ${SESSION_RETENTION_DAYS:-90}
       # The login cookie only over HTTPS; the local overlay can switch that off (see there)
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Where the dashboard is reached, for the links in mails
+      PUBLIC_URL: ${PUBLIC_URL:-https://${BASE_DOMAIN:-randogeddon.eratiem.net}}
+      # The mails (invitations, address confirmations, deletion warnings); without MAIL_HOST only in the log
+      MAIL_HOST: ${MAIL_HOST:-}
+      # Connect to this address instead of MAIL_HOST's, still checking the certificate against MAIL_HOST: from a VM
+      # behind the same host as the mail server, its public address leads back to the host
+      MAIL_ADDRESS: ${MAIL_ADDRESS:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_SECURITY: ${MAIL_SECURITY:-starttls}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-randogeddon@example.net}
+      # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
+      TOTP_KEY: ${TOTP_KEY:-}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
       - tracker-state:/state         # each session's event history and archive survive restarts

@@ -218,6 +218,7 @@ fun AdminView(
     // What concerns every session
     Txt("General", size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
+    UsersAdmin(onChanged = { load() })
     ApworldsSection()
   }
 }

@@ -13,6 +13,8 @@ dependencies {
   implementation(libs.bundles.ktor.server.login)
   // Argon2id for the login passwords (pure Java, so it works in the native image)
   implementation(libs.bouncycastle)
+  // The QR code for setting up two-factor login (one plain Java class)
+  implementation(libs.qrcodegen)
   implementation(libs.bundles.ktor.client)
   implementation(libs.bundles.kotlin.coroutines)
   implementation(libs.kaml)

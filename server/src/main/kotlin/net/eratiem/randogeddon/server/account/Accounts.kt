@@ -18,6 +18,7 @@ import net.eratiem.randogeddon.shared.MySlot
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.time.Instant
+import kotlin.uuid.Uuid
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -28,12 +29,12 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 /** How long a login lasts; logging in again starts a new one. */
 val LOGIN_DURATION = 30.days
 
-/** What the access check needs: whose login a cookie token is, and which sessions that user is part of. */
+/**
+ * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
+ * account gets in (accounts belong to people, not to a session); what they see of the sessions is checked per session.
+ */
 interface LoginCheck {
   suspend fun userOf(token: String): User?
-
-  /** The user gets in at all: an admin, or a player of some session. */
-  suspend fun mayEnter(user: User): Boolean
 
   /** The user sees session [id]: an admin, or one of its players. */
   fun maySee(user: User, id: String): Boolean
@@ -46,23 +47,33 @@ class LoginService(
   private val logins: LoginSessionStore,
   private val sessions: SessionList,
 ) : LoginCheck {
-  /** The token for the session cookie, or `null` if the name or password is wrong. */
-  suspend fun login(name: String, password: String): String? {
-    val user = users.findActive(name.trim())
+  /**
+   * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited
+   * users who haven't signed up have no password and can't log in.
+   */
+  suspend fun login(nameOrEmail: String, password: String): String? = verify(nameOrEmail, password)?.let { start(it) }
+
+  /** The user whose name (or address) and password these are; `null` if either is wrong. */
+  suspend fun verify(nameOrEmail: String, password: String): User? {
+    val user = users.findLogin(nameOrEmail.trim())
     // Argon2 is CPU work; an unknown name is checked against a dummy hash so it takes as long as a wrong password
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(password, user?.passwordHash ?: PasswordHasher.dummyHash) }
-    if (user == null || !valid) return null
+    return user.takeIf { valid }
+  }
+
+  suspend fun user(id: Uuid): User? = users.findActive(id)
+
+  /** A new login of [user] (after the password, or right after signing up); its token for the cookie. */
+  suspend fun start(user: User): String {
+    logger.info("{} logged in", user.name)
     val token = newToken()
     logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()))
-    logger.info("{} logged in", user.name)
     return token
   }
 
   override suspend fun userOf(token: String): User? = logins.userOf(tokenHash(token))?.let { users.findActive(it) }
 
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
-
-  override suspend fun mayEnter(user: User): Boolean = user.admin || sessions.playsIn(user)
 
   override fun maySee(user: User, id: String): Boolean = sessions.canSee(user, id)
 

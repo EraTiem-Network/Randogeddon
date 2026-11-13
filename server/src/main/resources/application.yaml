@@ -19,6 +19,23 @@ randogeddon:
     # The login cookie only over HTTPS (browsers make an exception for localhost). false only for a demo over plain
     # HTTP from other devices in the local network
     cookieSecure: "$COOKIE_SECURE:true"
+    # Where the dashboard is reached, for the links in mails (invitations, address confirmations)
+    publicUrl: "$PUBLIC_URL:http://localhost:8000"
+    # Encrypts the two-factor (TOTP) secrets: base64 of 32 random bytes (openssl rand -base64 32); empty: a key file
+    # totp.key in stateDir, made on the first start (it must stay with the database: without it, every two-factor
+    # login has to be set up again)
+    totpKey: "$TOTP_KEY:"
+  mail:
+    # The SMTP server for invitations and other mails; empty: mails are only written to the log (links included)
+    host: "$MAIL_HOST:"
+    # Connect here instead (an internal address); the certificate is still checked against host. Empty: host
+    address: "$MAIL_ADDRESS:"
+    port: "$MAIL_PORT:587"
+    # starttls (587), tls (465), or none (a local test server only)
+    security: "$MAIL_SECURITY:starttls"
+    user: "$MAIL_USER:"
+    password: "$MAIL_PASSWORD:"
+    from: "$MAIL_FROM:randogeddon@example.net"
   server:
     # The gateway, which runs one MultiServer per session (on ports only the tracker reaches)
     gatewayHost: "$GATEWAY_HOST:localhost"

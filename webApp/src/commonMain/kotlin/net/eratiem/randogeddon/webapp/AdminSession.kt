@@ -69,9 +69,9 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
-import net.eratiem.randogeddon.shared.NewLogin
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.SessionEntry
@@ -80,6 +80,7 @@ import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.UploadedYaml
+import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
 
@@ -88,9 +89,11 @@ private val RELEASE_MODES = listOf("auto", "enabled", "disabled", "goal", "auto-
 private val REMAINING_MODES = listOf("enabled", "disabled", "goal")
 
 /** What each option of a new session does, for its info tip. */
-private object Tips {
+internal object Tips {
   const val PLAYERS = "Who plays this slot. A slot with several players is played together: they share it and its " +
-    "slot password. A name without a login gets one when the session is created."
+    "slot password. Someone without an account: type their e-mail address to invite them."
+  const val INVITE = "An invitation mail with a link, valid for 7 days: they choose their name and password themselves. " +
+    "The name you give is only a suggestion; until they sign up, sessions show them by it."
   const val LOCKS = "A locked slot can't be played until its key is found, somewhere in another slot (World Locks). " +
     "At least one slot starts open."
   val LOCK_MODES = listOf(
@@ -257,12 +260,13 @@ fun SessionSection(
 private fun PlayersAdmin(worlds: List<WorldPlan>) {
   val p = LocalPalette.current
   val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
+  val ids = worlds.flatMap { w -> w.users.zip(w.userIds) }.toMap()
   val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
   Section("Players", subtitle = "${players.size} players, ${worlds.size} slots") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       if (players.isEmpty() && nobody.isEmpty()) Txt("Nobody is named for its slots.", size = 13.sp, color = p.muted)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots) }
+        players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots, ids[name]) }
       }
       if (nobody.isNotEmpty()) {
         Txt("Nobody plays", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
@@ -276,7 +280,7 @@ private fun PlayersAdmin(worlds: List<WorldPlan>) {
 
 /** A player as a pill in their colour: avatar, name, their slots. */
 @Composable
-private fun PlayerPill(name: String, slots: List<String>) {
+private fun PlayerPill(name: String, slots: List<String>, userId: String?) {
   val hue = LocalPalette.current.hue(name)
   Row(
     Modifier.clip(CircleShape).background(hue.copy(alpha = 0.15f)).padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
@@ -284,7 +288,7 @@ private fun PlayerPill(name: String, slots: List<String>) {
     horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Avatar(name, 22.dp)
-    Txt(name, size = 12.5.sp, weight = FontWeight.SemiBold, color = hue, maxLines = 1)
+    PersonName(name, userId, deleted = false, size = 12.5.sp, color = hue)
     Txt(slots.joinToString(", "), size = 11.5.sp, color = hue.copy(alpha = 0.8f), maxLines = 1)
   }
 }
@@ -538,7 +542,7 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
   Section("New session", subtitle = "as many run at once as the gateway has game servers (${overview?.capacity ?: "…"})") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       created?.let { result ->
-        NewLogins(result.logins, result.locked, onDone = { created = null })
+        Created(result.locked, onDone = { created = null })
       }
       if (full) Txt("Every game server is in use: finish or stop a session first.", size = 12.5.sp, color = p.trap)
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -549,7 +553,7 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
       }
       if (overview != null) key(round) {
         CreateSession(
-          AdminSessionView(apVersions = overview.apVersions, users = overview.users), chosen,
+          AdminSessionView(apVersions = overview.apVersions, users = overview.users, people = overview.people), chosen,
           ready = idProblem == null && chosen.isNotEmpty() && !full,
           onCreated = { result ->
             created = result
@@ -686,7 +690,9 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
   var worlds by remember { mutableStateOf<List<YamlWorld>>(emptyList()) }
   var problems by remember { mutableStateOf<List<String>>(emptyList()) }
+  // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
   val users = remember { mutableStateMapOf<String, List<String>>() }
+  val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
   var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
   // Mixed locks: each slot's switch (left to chance until moved)
@@ -854,7 +860,13 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     worlds.forEach { world ->
       val isLocked = world.name in lockedNow
       WorldRow(
-        world, users[world.name].orEmpty(), view.users,
+        world, users[world.name].orEmpty(), people,
+        onInvite = { email ->
+          when (val r = invite(email)) {
+            is Answer.Ok -> r.value.ref().also { people += it }
+            is Answer.Failed -> { error = r.message; null }
+          }
+        },
         lock = {
           when (mode) {
             // The last open slot stays open
@@ -911,7 +923,10 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
             id = id,
             yamls = yamls.toList(),
             worlds = worlds.map {
-              WorldPlan(it.name, users[it.name].orEmpty(), it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM)
+              WorldPlan(
+                it.name, userIds = users[it.name].orEmpty(), locked = it.name in lockedNow,
+                random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+              )
             },
             options = options.copy(openSlots = open),
             apVersion = version,
@@ -945,23 +960,29 @@ private fun GenerationError(message: String) {
 }
 
 /**
- * One slot of the new session: its players (chips; type a name and Enter, or pick a suggestion) and its [lock] control
- * (nothing with random locks, or a single slot).
+ * One slot of the new session: its players (chips; type to search the accounts, Enter or a click picks one) and its
+ * [lock] control (nothing with random locks, or a single slot). [users] are account IDs.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WorldRow(
   world: YamlWorld,
   users: List<String>,
-  known: List<String>,
+  known: List<UserRef>,
+  /** Invites an address from here: the new account, or `null` (the form shows why). */
+  onInvite: suspend (String) -> UserRef?,
   lock: @Composable () -> Unit,
   onUsers: (List<String>) -> Unit,
 ) {
   val p = LocalPalette.current
+  val scope = rememberCoroutineScope()
   var input by remember { mutableStateOf("") }
-  fun add(name: String) {
-    val clean = name.trim()
-    if (clean.isNotEmpty() && users.none { it.equals(clean, ignoreCase = true) }) onUsers(users + clean)
+  var inviting by remember { mutableStateOf(false) }
+  // Accounts that match what's typed and aren't in this slot yet
+  val suggestions = known.filter { it.id !in users }
+    .filter { input.isBlank() || it.label.contains(input.trim(), ignoreCase = true) }.take(8)
+  fun add(user: UserRef) {
+    if (user.id !in users) onUsers(users + user.id)
     input = ""
   }
   Divider()
@@ -976,23 +997,34 @@ private fun WorldRow(
         lock()
       }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        users.forEach { name ->
-          val isNew = known.none { it.equals(name, ignoreCase = true) }
-          UserChip(name, isNew, onRemove = { onUsers(users - name) })
+        users.forEach { id ->
+          val user = known.firstOrNull { it.id == id }
+          UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
         }
         FilterField(
           input, { input = it }, if (users.isEmpty()) "Add a player…" else "Add another…",
           Modifier.width(170.dp).onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) { add(input); true } else false
+            val enter = event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)
+            if (enter) suggestions.firstOrNull()?.takeIf { input.isNotBlank() }?.let(::add)
+            enter
           },
           minHeight = FIELD_HEIGHT,
         )
       }
-      // Logins that match what's typed (or, before typing, those not in this slot yet)
-      val suggestions = known.filter { k -> users.none { it.equals(k, ignoreCase = true) } }
-        .filter { input.isBlank() || it.contains(input.trim(), ignoreCase = true) }.take(8)
-      if (input.isNotBlank() && suggestions.isNotEmpty()) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { suggestions.forEach { SmallButton(it, { add(it) }) } }
+      if (input.isNotBlank()) {
+        val address = EmailAddresses.normalize(input)
+        when {
+          suggestions.isNotEmpty() ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { suggestions.forEach { SmallButton(it.label, { add(it) }) } }
+          EmailAddresses.valid(address) -> SmallButton(if (inviting) "Inviting…" else "Invite $address", {
+            if (!inviting) scope.launch {
+              inviting = true
+              onInvite(address)?.let(::add)
+              inviting = false
+            }
+          })
+          else -> Txt("No account matches; type their e-mail address to invite them", size = 12.sp, color = p.muted)
+        }
       }
     }
   }
@@ -1016,7 +1048,7 @@ private fun YamlChip(fileName: String, games: List<String>, onRemove: () -> Unit
 }
 
 @Composable
-private fun UserChip(name: String, isNew: Boolean, onRemove: () -> Unit) {
+private fun UserChip(name: String, invited: Boolean, onRemove: () -> Unit) {
   val p = LocalPalette.current
   Row(
     Modifier.heightIn(min = FIELD_HEIGHT).clip(CircleShape).background(p.hue(name).copy(alpha = 0.15f))
@@ -1024,16 +1056,16 @@ private fun UserChip(name: String, isNew: Boolean, onRemove: () -> Unit) {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    Txt(name + if (isNew) " (new)" else "", size = 12.5.sp, weight = FontWeight.SemiBold, color = p.hue(name), maxLines = 1)
+    Txt(name + if (invited) " (invited)" else "", size = 12.5.sp, weight = FontWeight.SemiBold, color = p.hue(name), maxLines = 1)
     Box(Modifier.size(18.dp).clip(CircleShape).hand().clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
       DrawnIcon(Icon.CLOSE, p.hue(name), 10.dp)
     }
   }
 }
 
-/** The logins of a session just created (their passwords are shown only now) and the slots that start locked. */
+/** A session just created: its game server starts; the slots that start locked. */
 @Composable
-private fun NewLogins(logins: List<NewLogin>, locked: List<String>, onDone: () -> Unit) {
+private fun Created(locked: List<String>, onDone: () -> Unit) {
   val p = LocalPalette.current
   Column(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.ok.copy(alpha = 0.1f)).padding(12.dp),
@@ -1041,18 +1073,6 @@ private fun NewLogins(logins: List<NewLogin>, locked: List<String>, onDone: () -
   ) {
     Txt("Session created; the game server is starting.", size = 13.sp, weight = FontWeight.SemiBold)
     if (locked.isNotEmpty()) Txt("Start locked: ${locked.joinToString(", ")}", size = 12.5.sp)
-    if (logins.isEmpty()) {
-      Txt("Everyone already had a login.", size = 12.5.sp, color = p.muted)
-    } else {
-      Txt("New logins. The passwords are shown only now; hand them to the players.", size = 12.5.sp, color = p.muted)
-      logins.forEach { login ->
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Txt(login.name, size = 13.sp, weight = FontWeight.SemiBold, modifier = Modifier.width(120.dp), maxLines = 1)
-          Mono(login.password, p.text, Modifier.weight(1f))
-          SmallButton("Copy", { Platform.copy(login.password) })
-        }
-      }
-    }
     Row { Button("Done") { onDone() } }
   }
 }
@@ -1172,7 +1192,7 @@ private fun NumberField(label: String, value: Int, tip: String? = null, onChange
 }
 
 /** The height of the form's text fields, dropdowns and player chips, so they line up. */
-private val FIELD_HEIGHT = 34.dp
+internal val FIELD_HEIGHT = 34.dp
 
 @Composable
 internal fun Mono(text: String, color: Color, modifier: Modifier = Modifier) {
