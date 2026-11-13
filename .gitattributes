@@ -1,0 +1,4 @@
+# Run on Linux (WSL, the servers, the images) even when checked out on Windows: always LF
+*.sh text eol=lf
+gradlew text eol=lf
+infra/** text eol=lf
