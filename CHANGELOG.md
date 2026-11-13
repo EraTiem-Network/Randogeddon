@@ -4,6 +4,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Roles (Phase 6)
+Sessions belong to whoever creates them now: every user can create one and is its Session-Manager; Administrators (the
+admins of before) reach everything. Per session there are support (items, checks and free hints, logged) and watchers
+(added by Session-Managers and players), and a share link shows it without a login. Updating: nothing to set
+(migrations V9 and V10); existing sessions have no Session-Manager until an Administrator adds one, and every user may
+create one running session at once (*Settings*). The parts:
+
 ### Administrators and Session-Managers (Phase 6, part 1)
 - The admins are **Administrators** now: they reach everything (every session, the APWorlds, the users, the settings)
   and log in with two-factor login, as before.
