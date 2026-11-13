@@ -31,7 +31,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Hint switches (point hints, automatic hints), hint points per world, hint filters
 - [x] Demo session with simulated players
 - [x] Renamed to Randogeddon; dashboard at `randogeddon.eratiem.net`, the session's game server at
-  `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN`, `SESSION_ID` in `.env`)
+  `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN` in `.env`)
 
 ## Phase 2: User Login (done)
 
@@ -136,14 +136,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
   Phase 2)
 - [x] Admins see and control all sessions
-- [ ] Each session's server is reachable from outside
-    - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS) and 2401 (plain fallback, see
-      Conventions). Traefik routes the WebSocket by host name to that session's port inside the container.
-    - Certificates through Traefik's HTTP challenge, one per session host name (Let's Encrypt has no wildcard
-      certificates with the HTTP challenge). For that, the tracker writes a Traefik router per session into a watched
-      file (file provider) and removes it when the session is deleted; the first connection to a new session waits
-      a few seconds for its certificate.
-    - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server; no API access for Traefik needed.
+- [x] Each session's server is reachable from outside
+    - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS). Traefik routes the WebSocket
+      to the gateway, which relays it by the host name to that session's MultiServer.
+    - One Traefik router for `*.randogeddon.eratiem.net` with a wildcard certificate (DNS challenge through ClouDNS's
+      API; the HTTP challenge has no wildcard certificates). A new session needs no change in Traefik or DNS.
+    - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server.
     - Not paths (`randogeddon.eratiem.net/<session-id>`): Launcher-based clients would accept them, but many modded
       game clients only take host:port.
     - The gateway (Phase 2) already sees each connection's host name, so it can route to the session's MultiServer
@@ -152,6 +150,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       (`friday-chaos`); a DNS label that starts with a letter, 3 to 40 characters.
     - The gateway routes by the host name (the first label), or by the path without a domain
       (`ws://localhost:38281/<session-id>`, local use and the demo).
+- [ ] Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS (see
+  Conventions): a Traefik entrypoint on 2401, and a second router per session on it without TLS.
 
 ## Phase 5: Proper User Management
 

@@ -75,18 +75,70 @@ not the memory), build on your PC and copy the images over:
 
 `.env` sets `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`, so plain `docker compose …`
 always uses the Traefik labels. Check `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` and
-`TRAEFIK_CERTRESOLVER` against your Traefik setup.
+`TRAEFIK_CERTRESOLVER` and `TRAEFIK_DNS_CERTRESOLVER` against your Traefik setup (v3).
 
 DNS: a wildcard record `*.randogeddon.eratiem.net` (and `randogeddon.eratiem.net` itself) pointing at the server,
-so a new session ID needs no DNS change. Certificates come per host name from the cert resolver (HTTP challenge).
-If you configure Traefik via the file provider instead of labels, the two routes are:
+so a new session ID needs no DNS change.
 
-- `Host(<session-id>.randogeddon.eratiem.net)` → `http://gateway:38281` (websocket; Traefik handles the upgrade,
-  no extra config)
-- `Host(randogeddon.eratiem.net)` → `http://tracker:8000` (uses SSE; Traefik doesn't buffer it by default)
+One router takes every session, `*.randogeddon.eratiem.net`, to the gateway, which relays each game client by the
+host name it connected to; a new session needs no change in Traefik or DNS. Its wildcard certificate needs the DNS
+challenge (the HTTP challenge has no wildcard certificates), so Traefik needs a second cert resolver that uses the DNS
+API, `TRAEFIK_DNS_CERTRESOLVER` (default `letsencrypt-dns`). With ClouDNS, in Traefik's static configuration:
 
-For now the Traefik overlay has one fixed router for the gateway, for the session named `SESSION_ID` in `.env`; a
-router per session follows in Phase 4 (see [.docs/TODO.md](.docs/TODO.md)).
+```yaml
+certificatesResolvers:
+  letsencrypt-dns:
+    acme:
+      email: you@example.org
+      storage: /letsencrypt/acme-dns.json
+      dnsChallenge:
+        provider: cloudns
+```
+
+and the ClouDNS API login in Traefik's environment. Use a sub-user that may only edit this zone: in ClouDNS,
+*API & Resellers* → *API Sub-Users* → *Add new sub-user*:
+
+- a password of letters and digits only (`openssl rand -hex 20`; systemd's env files and shells trip over the
+  rest), access level *Read and write*, all limits 0 except *DNS zones* 1 and *DNS records* (e.g. 500);
+- as allowed IPs, the server's outgoing IPv4 **and** IPv6 (the API is reached over either);
+- save, then delegate the zone (`example.net`) to it; its ID is in the sub-users table.
+
+```sh
+# <traefik-dir>/cloudns.env, chmod 600
+CLOUDNS_SUB_AUTH_ID=<the sub-user's ID>
+CLOUDNS_AUTH_PASSWORD=<its password>
+```
+
+With Traefik as a systemd service, a drop-in loads it (`/etc/systemd/system/traefik.service.d/cloudns.conf`:
+`[Service]` and `EnvironmentFile=<traefik-dir>/cloudns.env`, then `systemctl daemon-reload` and a restart). Traefik
+asks for the certificate when it first sees a router that uses the resolver, and renews it by itself.
+
+With the file provider instead of the labels (e.g. Traefik on the host, Randogeddon in a VM), one router for both,
+on one certificate:
+
+```yaml
+http:
+  routers:
+    randogeddon-ap:
+      # [.] rather than \. : no escaping in YAML's double quotes
+      rule: "HostRegexp(`^[a-z0-9-]+[.]randogeddon[.]eratiem[.]net$`)"
+      entryPoints: [websecure]
+      service: randogeddon-ap          # http://<vm>:38281, the gateway (websocket; no extra config)
+      tls: &randogeddon-tls
+        certResolver: letsencrypt-dns
+        domains:
+          - main: "randogeddon.eratiem.net"
+            sans: ["*.randogeddon.eratiem.net"]
+    randogeddon:
+      rule: "Host(`randogeddon.eratiem.net`)"
+      entryPoints: [websecure]
+      service: randogeddon             # http://<vm>:8000, the tracker (SSE; Traefik doesn't buffer it by default)
+      tls: *randogeddon-tls
+```
+
+Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
+(`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` in `.env`): it publishes 38281 and 8000 and keeps the
+public addresses (`BASE_DOMAIN`, the login cookie only over HTTPS).
 
 The gateway runs as uid 1000 and writes the sessions' files to `data/`; when moving from the old `archipelago`
 container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`. Seeds from before

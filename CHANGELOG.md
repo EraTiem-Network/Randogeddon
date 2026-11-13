@@ -4,6 +4,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Reachable from outside (Phase 4, part 3)
+- Every session's game server is reachable at `<id>.<BASE_DOMAIN>:443`: one Traefik router for `*.<BASE_DOMAIN>` to
+  the gateway, which relays by the host name, with a wildcard certificate. `SESSION_ID` and the router for one
+  session are gone. The certificate needs a cert resolver with the DNS challenge: `TRAEFIK_DNS_CERTRESOLVER` in
+  `.env` (default `letsencrypt-dns`; ClouDNS in the README). Needs Traefik v3.
+- A gateway restart no longer leaves a running session stopped when finished sessions came first: they took a port
+  for a moment, before they were refused.
+- A stop right after a start (of the gateway, or by an admin) no longer hangs the game server's controls.
+- Game clients through Traefik reached nothing (404): the gateway picked its routes by the port the client asked for
+  (443), not the one the connection came in on. A Host header naming the internal port no longer leads there either.
+- `docker-compose.proxy.yml`: for a Traefik on another machine (file provider), e.g. on a Proxmox host with
+  Randogeddon in a VM. Publishes 38281 and 8000 and keeps the public addresses.
+
 ### Picking sessions, links (Phase 4, part 2)
 - Every view has a link of its own and survives a reload: `#/` the user's sessions, `#/<id>` a session's dashboard,
   `#/<id>/spoiler` its spoiler log, `#/admin`, `#/admin/<id>` and `#/admin/new` the admin panel. Back and forward

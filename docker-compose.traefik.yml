@@ -1,6 +1,8 @@
 # Overlay for the server: route the gateway (game clients) and the tracker (dashboard) through an existing Traefik.
-# Game server: wss://${SESSION_ID}.${BASE_DOMAIN}:443  (players enter "${SESSION_ID}.${BASE_DOMAIN}:443" in their client)
-# Dashboard:   https://${BASE_DOMAIN}
+# Game servers: wss://<session-id>.${BASE_DOMAIN}:443  (players enter "<session-id>.${BASE_DOMAIN}:443" in their client)
+# Dashboard:    https://${BASE_DOMAIN}
+# One router for every session: the gateway relays each client by its host name to that session's MultiServer. Its
+# wildcard certificate needs a cert resolver with the DNS challenge (TRAEFIK_DNS_CERTRESOLVER, see README).
 services:
   # MultiServer itself stays inside: game clients come in through the gateway
   gateway:
@@ -11,10 +13,12 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
-      traefik.http.routers.randogeddon-ap.rule: Host(`${SESSION_ID:?set SESSION_ID in .env}.${BASE_DOMAIN:-randogeddon.eratiem.net}`)
+      # Every <session-id>.<BASE_DOMAIN> (Traefik v3 syntax; $$ is a $ for compose). The gateway checks the ID itself.
+      traefik.http.routers.randogeddon-ap.rule: HostRegexp(`^[a-z0-9-]+\.${BASE_DOMAIN:-randogeddon.eratiem.net}$$`)
       traefik.http.routers.randogeddon-ap.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
       traefik.http.routers.randogeddon-ap.tls: "true"
-      traefik.http.routers.randogeddon-ap.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.randogeddon-ap.tls.certresolver: ${TRAEFIK_DNS_CERTRESOLVER:-letsencrypt-dns}
+      traefik.http.routers.randogeddon-ap.tls.domains[0].main: "*.${BASE_DOMAIN:-randogeddon.eratiem.net}"
       traefik.http.services.randogeddon-ap.loadbalancer.server.port: "38281"
 
   tracker:
