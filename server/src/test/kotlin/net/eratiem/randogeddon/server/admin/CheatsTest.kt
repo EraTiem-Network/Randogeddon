@@ -29,5 +29,8 @@ class CheatsTest {
   fun `the feed says who did what`() {
     assertEquals("Ada gave Mantis Claw to Alice-HK", cheatText("Ada", CheatAction.ITEM, "Alice-HK", "Mantis Claw"))
     assertEquals("Ada released Bob-Yacht", cheatText("Ada", CheatAction.RELEASE, "Bob-Yacht", null))
+    // Anyone but an Administrator with their role
+    assertEquals("Bob (support) gave Mantis Claw to Alice-HK", cheatText("Bob", CheatAction.ITEM, "Alice-HK", "Mantis Claw", "support"))
+    assertEquals("Sam (Session-Manager) hinted Dash for Alice-HK", cheatText("Sam", CheatAction.HINT, "Alice-HK", "Dash", "manager"))
   }
 }

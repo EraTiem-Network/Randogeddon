@@ -155,6 +155,15 @@ class LiveSession(
 
   suspend fun json(): String = mutex.withLock { current().second }
 
+  /** The summary for its share link: the people without their accounts, no connection error (it names our hosts). */
+  suspend fun publicJson(): String {
+    val summary = summary()
+    return ApiJson.encodeToString(
+      Summary.serializer(),
+      summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }),
+    )
+  }
+
   private suspend fun current(): Pair<Summary, String> {
     val archived = if (finished) archives.read(id) else null
     val now = if (archived != null) Triple("archived", finish?.finishedAt, setup?.deleted) else version()

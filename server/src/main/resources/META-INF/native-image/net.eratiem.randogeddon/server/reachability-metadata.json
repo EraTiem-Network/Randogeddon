@@ -2384,6 +2384,40 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.WatcherRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.WatcherRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.ShareLinkView",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.ShareLinkView$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "com.sun.crypto.provider.HmacCore$HmacSHA1",
       "methods": [
         {
