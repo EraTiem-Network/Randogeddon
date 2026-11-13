@@ -58,15 +58,17 @@ admin_password() {
 
 # The demo's admin calls (demo/admin.py), in the compose network
 admin() {
-  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" \
+  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" \
     -e DEMO_ADMIN="$ADMIN" -e DEMO_PASSWORD="$(cat "$PASSWORD_FILE")" --entrypoint python "$image" /demo/admin.py "$@"
 }
 
 admin_password
 # A kept password that no longer works (the database was reset): a new one
 if ! admin check >/dev/null 2>&1; then
-  rm -f "$PASSWORD_FILE"
+  rm -f "$PASSWORD_FILE" output/demo/admin.totp
   admin_password
+  # Her two-factor login too: admin.py sets it up again
+  docker compose exec -T tracker randogeddon admins --reset-2fa "$ADMIN" >/dev/null
 fi
 
 # The players of demo/*/session.json get a login (once; their passwords are printed then). Real players are invited
