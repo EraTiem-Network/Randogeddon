@@ -51,6 +51,10 @@
     #login button { font: inherit; font-weight: 600; color: #fff; border: 0; border-radius: 10px; padding: 10px;
       background: linear-gradient(90deg, #ff7a45, var(--accent)); cursor: pointer; }
     #login button:disabled { opacity: 0.6; cursor: default; }
+    /* Single sign-on for Administrators: a link to the provider, styled like a secondary button */
+    #login a.sso { font-weight: 600; text-align: center; text-decoration: none; color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+    #login a.sso[hidden] { display: none; }
     #login .message { margin: 0; color: var(--error); min-height: 1.4em; }
   </style>
 </head>
@@ -68,6 +72,8 @@
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <p class="message" role="alert"></p>
       <button type="submit">Log in</button>
+      <!-- Shown when the server names a provider (GET api/login/options): how Administrators log in -->
+      <a class="sso" href="api/login/oidc" hidden></a>
     </form>
     <!-- After the password, with two-factor login: the authenticator's code (or a recovery code) -->
     <form id="code-form" hidden>
@@ -333,11 +339,35 @@
           open("login", "The server can't be reached.");
         });
       }
+      // Administrators log in through the provider, if the server names one
+      fetch("api/login/options").then(function (r) { return r.ok ? r.json() : {}; }).then(function (options) {
+        if (!options.singleSignOn) return;
+        var link = forms.login.querySelector("a.sso");
+        link.textContent = "Administrators: log in with " + options.singleSignOn;
+        link.hidden = false;
+      }, function () {});
+      // A one-time login link of the host's CLI (#/login/<token>)
+      function useLink(linkToken) {
+        leaveInvitation();
+        fetch("api/login/link", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: linkToken }) }).then(function (r) {
+          if (r.ok) { close(true); return; }
+          return r.json().then(function (e) { open("login", e.message); }, function () { open("login", "That didn't work."); });
+        }, function () { open("login", "The server can't be reached."); });
+      }
       return {
         show: function (text, onLoggedIn) {
           done = function (ok) { if (ok) onLoggedIn(); };
           var invitation = /^#\/invite\/([^/]+)/.exec(location.hash);
           if (invitation) { showSignup(decodeURIComponent(invitation[1])); return; }
+          var link = /^#\/login\/([^/]+)/.exec(location.hash);
+          if (link) { useLink(decodeURIComponent(link[1])); return; }
+          // Back from the provider without a login: why
+          var problem = /^#\/login-problem\/(.+)/.exec(location.hash);
+          if (problem) {
+            leaveInvitation();
+            text = decodeURIComponent(problem[1]);
+          }
           open("login", text);
           var form = forms.login;
           (form.username.value ? form.password : form.username).focus();
