@@ -39,6 +39,12 @@ expect object Platform {
   fun hideLogin()
 
   /**
+   * The password form of index.html (for the password manager), for the user [name]; it changes the password itself.
+   * [onDone] gets whether it was changed (or cancelled).
+   */
+  fun showPasswordChange(name: String, onDone: (Boolean) -> Unit)
+
+  /**
    * Lets the user pick files (e.g. `.yaml,.yml` for [accept]); [onPicked] gets them as a JSON array of
    * `{"fileName", "content"}` (nothing if the dialog is cancelled). The content is the text, or base64 with [binary].
    */
