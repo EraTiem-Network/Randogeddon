@@ -77,7 +77,7 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
 
   fun start() {
     if (close != null) return
-    close = Platform.events("api/admin/sessions/$id/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
+    close = Platform.events("api/sessions/$id/manage/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
   }
 
   fun stop() {
@@ -86,10 +86,10 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
   }
 
   /** [action]: start, stop or restart; the error message, or `null`. */
-  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/admin/sessions/$id/server/$action"))
+  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/sessions/$id/manage/server/$action"))
 
   suspend fun command(line: String): String? = answer(
-    Platform.request("POST", "api/admin/sessions/$id/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
+    Platform.request("POST", "api/sessions/$id/manage/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
   )
 
   private fun answer(result: HttpResult?): String? = when {
@@ -136,11 +136,11 @@ class AdminCache(private val scope: CoroutineScope) {
     (repositories.keys - ids.toSet()).forEach { repositories.remove(it)?.stop() }
     ids.forEach { id ->
       if (id !in views) scope.launch {
-        val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
         if (answer is Answer.Ok && id !in views) views[id] = answer.value
       }
       if (id !in cheats) scope.launch {
-        val answer = call("GET", "api/admin/sessions/$id/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
         if (answer is Answer.Ok && id !in cheats) cheats[id] = answer.value
       }
     }

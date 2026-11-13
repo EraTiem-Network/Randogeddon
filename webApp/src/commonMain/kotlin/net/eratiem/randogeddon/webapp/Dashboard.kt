@@ -247,7 +247,7 @@ fun App() {
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
-              onAdmin = if (user.admin) ({ go(if (adminOpen) back(selected) else Route.Admin(selected)) }) else null,
+              onAdmin = if (user.administrator) ({ go(if (adminOpen) back(selected) else Route.Admin(selected)) }) else null,
               adminOpen = adminOpen,
               stacked = narrow,
             )
@@ -257,7 +257,7 @@ fun App() {
                 return@Column
               }
               is Route.Admin -> {
-                if (user.admin) AdminView(
+                if (user.administrator) AdminView(
                   now, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
                   onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
                   onDashboard = { go(Route.Dashboard(it)) },
@@ -286,7 +286,7 @@ fun App() {
               }
               Route.Home -> {
                 if (loadedSessions != null) {
-                  SessionPicker(sessions.filter { it.mySlots.isNotEmpty() }, user.admin, onOpen = { go(Route.Dashboard(it)) })
+                  SessionPicker(sessions.filter { it.mySlots.isNotEmpty() }, user.administrator, onOpen = { go(Route.Dashboard(it)) })
                 }
                 return@Column
               }
@@ -301,9 +301,9 @@ fun App() {
             val error = s.error
             if (!s.connected && error != null && s.finishedAt == null) Banner(error)
             FinishBanner(
-              s, user.admin,
-              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish") } },
-              onCancel = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish/cancel") } },
+              s, user.administrator,
+              onFinishNow = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish") } },
+              onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
               onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
             )
             if (wide) {
