@@ -304,8 +304,10 @@ data class ApiError(val message: String)
 @Serializable
 data class Me(
   val name: String,
-  /** Sees and reaches the admin panel, and every session. */
-  val admin: Boolean = false,
+  /** An Administrator: sees and manages every session, the APWorlds, the users and the settings. */
+  val administrator: Boolean = false,
+  /** The sessions the user is a Session-Manager of. */
+  val manages: List<String> = emptyList(),
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
@@ -486,8 +488,10 @@ data class SessionEntry(
   /** Who finished it by hand; `null`: by itself. */
   val finishedBy: String? = null,
   val players: List<String> = emptyList(),
-  /** The slots of the one asking (none for an admin who doesn't play). */
+  /** The slots of the one asking (none for someone who doesn't play). */
   val mySlots: List<String> = emptyList(),
+  /** What the one asking is in it; `null` for an Administrator without a role there. */
+  val myRole: SessionRole? = null,
   val slots: Int = 0,
   val percent: Double = 0.0,
   val goals: Int = 0,
@@ -499,7 +503,7 @@ data class SessionEntry(
   val keep: Boolean = false,
   /** It is deleted then; `null`: never (kept, no auto-deletion, or not finished). */
   val deletesAt: Long? = null,
-  /** Its game server, for admins only. */
+  /** Its game server, for its Session-Managers and Administrators only. */
   val server: GameServerState? = null,
 )
 
