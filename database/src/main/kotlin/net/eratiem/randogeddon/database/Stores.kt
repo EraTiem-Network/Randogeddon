@@ -26,7 +26,7 @@ data class User(
   val id: Uuid,
   val name: String,
   val passwordHash: String,
-  val admin: Boolean = false,
+  val administrator: Boolean = false,
   val email: String? = null,
   /** The shared AutoDelete's code. */
   val autoDelete: String = "never",
@@ -39,7 +39,7 @@ data class Account(
   val id: Uuid,
   val name: String?,
   val email: String?,
-  val admin: Boolean,
+  val administrator: Boolean,
   val createdAt: Instant,
   /** `null` while invited. */
   val signedUpAt: Instant?,
@@ -203,11 +203,16 @@ class UserStore(private val db: RandogeddonDatabase) {
   suspend fun activity(): List<AccountActivity> = db.query {
     val users = UsersTable.selectAll().where { signedUp() and (UsersTable.autoDelete neq "never") }.toList()
     if (users.isEmpty()) return@query emptyList()
+    val ids = users.map { it[UsersTable.id] }
     val played = (SessionWorldsTable innerJoin SessionsTable).selectAll()
-      .where { SessionWorldsTable.userId inList users.map { it[UsersTable.id] } }
-      .groupBy({ it[SessionWorldsTable.userId] }, { it[SessionsTable.finishedAt] })
+      .where { SessionWorldsTable.userId inList ids }
+      .map { it[SessionWorldsTable.userId] to it[SessionsTable.finishedAt] } +
+      (SessionRolesTable innerJoin SessionsTable).selectAll()
+        .where { SessionRolesTable.userId inList ids }
+        .map { it[SessionRolesTable.userId] to it[SessionsTable.finishedAt] }
+    val byUser = played.groupBy({ it.first }, { it.second })
     users.map { row ->
-      val ends = played[row[UsersTable.id]].orEmpty()
+      val ends = byUser[row[UsersTable.id]].orEmpty()
       AccountActivity(account(row), ends.filterNotNull().maxOrNull(), ends.any { it == null }, row[UsersTable.deleteWarnedAt])
     }
   }
@@ -215,6 +220,10 @@ class UserStore(private val db: RandogeddonDatabase) {
   private fun nameInRunningSessions(id: Uuid, name: String) {
     val running = SessionsTable.select(SessionsTable.id).where { SessionsTable.finishedAt.isNull() }
     SessionWorldsTable.update({ (SessionWorldsTable.userId eq id) and (SessionWorldsTable.sessionId inSubQuery running) }) {
+      it[userName] = name
+    }
+    val stillRunning = SessionsTable.select(SessionsTable.id).where { SessionsTable.finishedAt.isNull() }
+    SessionRolesTable.update({ (SessionRolesTable.userId eq id) and (SessionRolesTable.sessionId inSubQuery stillRunning) }) {
       it[userName] = name
     }
   }
@@ -473,7 +482,7 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
 /**
  * A session as the admin panel set it up: the Archipelago version, the options (JSON), and which users play which
  * world ([worlds]: slot name -> the names they have in this session, in the order they were given; [members]: user
- * ID -> that name; [deleted]: the members whose account is deleted).
+ * ID -> that name; [deleted]: the members whose account is deleted; [roles]: who else has a role in it).
  */
 data class SessionSetup(
   val seedName: String,
@@ -483,7 +492,11 @@ data class SessionSetup(
   val worlds: Map<String, List<String>>,
   val members: Map<Uuid, String> = emptyMap(),
   val deleted: Set<Uuid> = emptySet(),
+  val roles: Map<Uuid, SessionRoleEntry> = emptyMap(),
 )
+
+/** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
+data class SessionRoleEntry(val role: String, val name: String, val deleted: Boolean = false)
 
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
@@ -539,9 +552,15 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     val worlds = rows.groupBy({ it[SessionWorldsTable.slotName] }, ::name)
     val members = rows.associate { it[SessionWorldsTable.userId] to name(it) }
     val deleted = rows.filter { it[UsersTable.deletedAt] != null }.map { it[SessionWorldsTable.userId] }.toSet()
+    val roles = (SessionRolesTable innerJoin UsersTable).selectAll()
+      .where { SessionRolesTable.sessionId eq row[SessionsTable.id] }
+      .associate {
+        val name = it[SessionRolesTable.userName] ?: it[UsersTable.name] ?: it[SessionRolesTable.userId].toString().take(8)
+        it[SessionRolesTable.userId] to SessionRoleEntry(it[SessionRolesTable.role], name, it[UsersTable.deletedAt] != null)
+      }
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted,
+      deleted, roles,
     )
   }
 
@@ -711,7 +730,15 @@ class SessionFinishStore(private val db: RandogeddonDatabase) {
 }
 
 /** One cheat of an admin; [value]: the item or location, if the action has one. */
-data class CheatEntry(val at: Instant, val admin: String, val action: String, val slotName: String, val value: String?)
+data class CheatEntry(
+  val at: Instant,
+  val admin: String,
+  val action: String,
+  val slotName: String,
+  val value: String?,
+  /** `administrator`, `manager` or `support`. */
+  val byRole: String = "administrator",
+)
 
 /** Every cheat from the admin panel, per session, with the admin's name at the time. */
 class CheatLogStore(private val db: RandogeddonDatabase) {
@@ -721,6 +748,7 @@ class CheatLogStore(private val db: RandogeddonDatabase) {
       it[sessionId] = id
       it[at] = entry.at
       it[admin] = entry.admin
+      it[byRole] = entry.byRole
       it[action] = entry.action
       it[slotName] = entry.slotName
       it[value] = entry.value?.take(255)
@@ -733,7 +761,107 @@ class CheatLogStore(private val db: RandogeddonDatabase) {
     (CheatLogTable innerJoin SessionsTable).selectAll().where { SessionsTable.seedName eq seedName }
       .orderBy(CheatLogTable.at, SortOrder.DESC).limit(limit)
       .map {
-        CheatEntry(it[CheatLogTable.at], it[CheatLogTable.admin], it[CheatLogTable.action], it[CheatLogTable.slotName], it[CheatLogTable.value])
+        CheatEntry(
+          it[CheatLogTable.at], it[CheatLogTable.admin], it[CheatLogTable.action], it[CheatLogTable.slotName],
+          it[CheatLogTable.value], it[CheatLogTable.byRole],
+        )
       }
   }
+}
+
+/** Who has which role in a session besides the players (Session-Managers, support, watchers). */
+class SessionRoleStore(private val db: RandogeddonDatabase) {
+  /**
+   * Gives [userId] [role] in the session of [publicId] ([name]: what it shows of them); `false` if they have a role
+   * there already. Whether they may get it is the caller's to check.
+   */
+  suspend fun add(publicId: String, userId: Uuid, role: String, name: String?, by: String?, now: Instant = Instant.now()): Boolean =
+    db.query {
+      val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+        ?: return@query false
+      val exists = SessionRolesTable.selectAll()
+        .where { (SessionRolesTable.sessionId eq session) and (SessionRolesTable.userId eq userId) }.any()
+      if (exists) return@query false
+      SessionRolesTable.insert {
+        it[sessionId] = session
+        it[SessionRolesTable.userId] = userId
+        it[SessionRolesTable.role] = role
+        it[userName] = name
+        it[addedBy] = by
+        it[addedAt] = now
+      }
+      true
+    }
+
+  /** Takes [userId]'s role in the session of [publicId] away; `false` if they had none. */
+  suspend fun remove(publicId: String, userId: Uuid): Boolean = db.query {
+    val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionRolesTable.deleteWhere { (sessionId eq session) and (SessionRolesTable.userId eq userId) } > 0
+  }
+
+  /** How many sessions that aren't finished [userId] manages (for the per-user limit). */
+  suspend fun runningManagedBy(userId: Uuid): Int = db.query {
+    (SessionRolesTable innerJoin SessionsTable).selectAll()
+      .where { (SessionRolesTable.userId eq userId) and (SessionRolesTable.role eq "manager") and SessionsTable.finishedAt.isNull() }
+      .count().toInt()
+  }
+}
+
+/** What Administrators set for everyone, by key. */
+class AppSettingsStore(private val db: RandogeddonDatabase) {
+  suspend fun get(key: String): String? = db.query {
+    AppSettingsTable.selectAll().where { AppSettingsTable.key eq key }.singleOrNull()?.get(AppSettingsTable.value)
+  }
+
+  suspend fun set(key: String, value: String) = db.query {
+    val updated = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value }
+    if (updated == 0) {
+      AppSettingsTable.insert {
+        it[AppSettingsTable.key] = key
+        it[AppSettingsTable.value] = value
+      }
+    }
+    Unit
+  }
+}
+
+/** A session's share link as it is on: who made it, and when. */
+data class ShareLinkInfo(val createdBy: String?, val createdAt: Instant)
+
+/** Share links: a session followed without a login. One per session, stored only as the token's SHA-256. */
+class ShareLinkStore(private val db: RandogeddonDatabase) {
+  /** A new link for the session of [publicId] (the old one stops working); `false` if there's no such session. */
+  suspend fun replace(publicId: String, tokenHash: String, by: String?, now: Instant = Instant.now()): Boolean = db.query {
+    val session = sessionOf(publicId) ?: return@query false
+    ShareLinksTable.deleteWhere { sessionId eq session }
+    ShareLinksTable.insert {
+      it[sessionId] = session
+      it[ShareLinksTable.tokenHash] = tokenHash
+      it[createdBy] = by
+      it[createdAt] = now
+    }
+    true
+  }
+
+  /** Turns the session's link off; `false` if it had none. */
+  suspend fun remove(publicId: String): Boolean = db.query {
+    val session = sessionOf(publicId) ?: return@query false
+    ShareLinksTable.deleteWhere { sessionId eq session } > 0
+  }
+
+  /** The session's link, if it has one. */
+  suspend fun of(publicId: String): ShareLinkInfo? = db.query {
+    (ShareLinksTable innerJoin SessionsTable).selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()
+      ?.let { ShareLinkInfo(it[ShareLinksTable.createdBy], it[ShareLinksTable.createdAt]) }
+  }
+
+  /** The public ID of the session whose link has [tokenHash]; `null`: no such link (any more). */
+  suspend fun sessionWith(tokenHash: String): String? = db.query {
+    (ShareLinksTable innerJoin SessionsTable).select(SessionsTable.publicId)
+      .where { ShareLinksTable.tokenHash eq tokenHash }.singleOrNull()?.get(SessionsTable.publicId)
+  }
+
+  private fun sessionOf(publicId: String): Uuid? =
+    SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
 }

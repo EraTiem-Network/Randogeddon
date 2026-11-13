@@ -7,3 +7,5 @@ V5__finish.sql
 V6__session_ids.sql
 V7__accounts_of_people.sql
 V8__two_factor.sql
+V9__session_roles.sql
+V10__share_links.sql

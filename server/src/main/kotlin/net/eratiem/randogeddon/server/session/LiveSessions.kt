@@ -25,6 +25,7 @@ import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionServer
 import net.eratiem.randogeddon.shared.Summary
 import org.koin.core.annotation.Single
@@ -101,6 +102,19 @@ class LiveSession(
   }
 
   /**
+   * What [user] is in this session: a Session-Manager, support or watcher by its roles (a Session-Manager who plays is a
+   * manager), a player by its slots; `null`: nothing (an Administrator still sees it).
+   */
+  fun roleOf(user: User): SessionRole? {
+    setup?.roles?.get(user.id)?.let { entry -> SessionRole.of(entry.role)?.let { return it } }
+    return if (personOf(user) != null) SessionRole.PLAYER else null
+  }
+
+  /** The IDs of its Session-Managers. */
+  fun managers(): Set<kotlin.uuid.Uuid> =
+    setup?.roles?.filterValues { it.role == SessionRole.MANAGER.code }?.keys.orEmpty()
+
+  /**
    * Who [user] is in this session: the name they have in it (by their UUID, so a rename doesn't matter); `null`: not
    * part of it. A seed from before without a setup: by name.
    */
@@ -140,6 +154,15 @@ class LiveSession(
   suspend fun summary(): Summary = mutex.withLock { current().first }
 
   suspend fun json(): String = mutex.withLock { current().second }
+
+  /** The summary for its share link: the people without their accounts, no connection error (it names our hosts). */
+  suspend fun publicJson(): String {
+    val summary = summary()
+    return ApiJson.encodeToString(
+      Summary.serializer(),
+      summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }),
+    )
+  }
 
   private suspend fun current(): Pair<Summary, String> {
     val archived = if (finished) archives.read(id) else null

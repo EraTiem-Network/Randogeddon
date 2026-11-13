@@ -77,7 +77,7 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
 
   fun start() {
     if (close != null) return
-    close = Platform.events("api/admin/sessions/$id/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
+    close = Platform.events("api/sessions/$id/manage/stream", listOf("state", "log", "unreachable"), ::onEvent, onConnection = {})
   }
 
   fun stop() {
@@ -86,10 +86,10 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
   }
 
   /** [action]: start, stop or restart; the error message, or `null`. */
-  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/admin/sessions/$id/server/$action"))
+  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/sessions/$id/manage/server/$action"))
 
   suspend fun command(line: String): String? = answer(
-    Platform.request("POST", "api/admin/sessions/$id/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
+    Platform.request("POST", "api/sessions/$id/manage/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
   )
 
   private fun answer(result: HttpResult?): String? = when {
@@ -136,11 +136,11 @@ class AdminCache(private val scope: CoroutineScope) {
     (repositories.keys - ids.toSet()).forEach { repositories.remove(it)?.stop() }
     ids.forEach { id ->
       if (id !in views) scope.launch {
-        val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
         if (answer is Answer.Ok && id !in views) views[id] = answer.value
       }
       if (id !in cheats) scope.launch {
-        val answer = call("GET", "api/admin/sessions/$id/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
         if (answer is Answer.Ok && id !in cheats) cheats[id] = answer.value
       }
     }
@@ -148,14 +148,16 @@ class AdminCache(private val scope: CoroutineScope) {
 }
 
 /**
- * The admin panel. In a frame on top, one page at a time, picked in the switch ([picked], from the URL; [onPage] goes
- * to another): a running session with its state and control (its game server too), players, cheats, console and log;
- * or a new session. Below it, what concerns every session: the finished ones (each with its actions, a click shows its
- * overview), the APWorlds.
+ * The panel, for everyone: the sessions the user manages (an [administrator]: every session). In a frame on top, one
+ * page at a time, picked in the switch ([picked], from the URL; [onPage] goes to another): a running session with its
+ * state and control (its game server too), players and people, cheats, console and log; or a new session. Below it the
+ * finished ones (each with its actions, a click shows its overview); for Administrators what concerns everyone: the
+ * users, the APWorlds, the settings.
  */
 @Composable
 fun AdminView(
   now: Long,
+  administrator: Boolean,
   picked: String?,
   onPage: (String) -> Unit,
   onBack: () -> Unit,
@@ -167,7 +169,7 @@ fun AdminView(
   var overview by remember { mutableStateOf<AdminOverview?>(null) }
   var loadProblem by remember { mutableStateOf<String?>(null) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/sessions", null) { ApiJson.decodeFromString(AdminOverview.serializer(), it) }) {
+    when (val answer = call("GET", "api/manage", null) { ApiJson.decodeFromString(AdminOverview.serializer(), it) }) {
       is Answer.Ok -> {
         overview = answer.value
         loadProblem = null
@@ -195,7 +197,7 @@ fun AdminView(
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       IconButton(onBack, Icon.BACK)
-      Txt("Admin", size = 20.sp, weight = FontWeight.Bold)
+      Txt(if (administrator) "Manage · Administrator" else "Manage your sessions", size = 20.sp, weight = FontWeight.Bold)
     }
     loadProblem?.let { Txt(it, size = 12.5.sp, color = LocalPalette.current.trap) }
     // The session's space: framed and tinted, apart from what concerns every session below it
@@ -215,15 +217,18 @@ fun AdminView(
         }
       }
     }
-    // What concerns every session
-    Txt("General", size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+    // What concerns every session: Administrators'
+    if (administrator) Txt("General", size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
-    UsersAdmin(onChanged = { load() })
-    ApworldsSection()
+    if (administrator) {
+      UsersAdmin(onChanged = { load() })
+      ApworldsSection()
+      AppSettingsSection()
+    }
   }
 }
 
-/** One session's sections: its state and actions with its game server, players, cheats, console and log. */
+/** One session's sections: its state and actions with its game server, players, people, cheats, console and log. */
 @Composable
 private fun SelectedSession(
   id: String,
@@ -255,6 +260,7 @@ private fun SelectedSession(
     id, overview, cache, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
+  PeopleSection(id)
   CheatSection(id, server, cache)
   ConsoleSection(onSend = { line -> run { repository.command(line) } })
   LogSection(repository.log)

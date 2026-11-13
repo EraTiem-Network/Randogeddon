@@ -20,7 +20,7 @@ object SessionIds {
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
   /** Words the API and the dashboard's links use themselves. */
-  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "new", "sessions", "settings", "www")
+  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "manage", "new", "sessions", "settings", "watch", "www")
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
@@ -304,8 +304,10 @@ data class ApiError(val message: String)
 @Serializable
 data class Me(
   val name: String,
-  /** Sees and reaches the admin panel, and every session. */
-  val admin: Boolean = false,
+  /** An Administrator: sees and manages every session, the APWorlds, the users and the settings. */
+  val administrator: Boolean = false,
+  /** The sessions the user is a Session-Manager of. */
+  val manages: List<String> = emptyList(),
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
@@ -486,8 +488,10 @@ data class SessionEntry(
   /** Who finished it by hand; `null`: by itself. */
   val finishedBy: String? = null,
   val players: List<String> = emptyList(),
-  /** The slots of the one asking (none for an admin who doesn't play). */
+  /** The slots of the one asking (none for someone who doesn't play). */
   val mySlots: List<String> = emptyList(),
+  /** What the one asking is in it; `null` for an Administrator without a role there. */
+  val myRole: SessionRole? = null,
   val slots: Int = 0,
   val percent: Double = 0.0,
   val goals: Int = 0,
@@ -499,7 +503,7 @@ data class SessionEntry(
   val keep: Boolean = false,
   /** It is deleted then; `null`: never (kept, no auto-deletion, or not finished). */
   val deletesAt: Long? = null,
-  /** Its game server, for admins only. */
+  /** Its game server, for its Session-Managers and Administrators only. */
   val server: GameServerState? = null,
 )
 
@@ -579,19 +583,26 @@ data class AdminSessionView(
 )
 
 /**
- * `GET /api/admin/sessions`: every session with its game server, what a new one can use, who has a login, and how many
- * game servers can run at once ([capacity]; finished sessions don't count).
+ * `GET /api/manage` (`/api/admin/sessions` for Administrators): the sessions the user manages (an Administrator: every
+ * session) with their game servers, what a new one can use, who has a login, and how many game servers can run at once
+ * ([capacity]; finished sessions don't count).
  */
 @Serializable
 data class AdminOverview(
   val sessions: List<SessionEntry> = emptyList(),
   val apVersions: List<String> = emptyList(),
   val users: List<String> = emptyList(),
-  /** The accounts a new session can be played by, invited ones too. */
+  /** The accounts a new session can be played by: by name (Administrators also see invited ones, by address). */
   val people: List<UserRef> = emptyList(),
   val capacity: Int = 0,
   /** A free ID for the next session, e.g. `friday-chaos`. */
   val suggestedId: String = "",
+  /** Every session ID in use, also of sessions the user doesn't see. */
+  val taken: List<String> = emptyList(),
+  /** How many game servers run, of every session. */
+  val inUse: Int = 0,
+  /** How many more running sessions the user may create; `null`: no limit (an Administrator). */
+  val left: Int? = null,
 )
 
 /** Tracker → gateway: generate a seed from these YAMLs; World Locks is added from [locked]. */

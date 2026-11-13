@@ -214,11 +214,11 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
       is Answer.Failed -> state = answer.message
     }
   }
-  val subtitle = if (a.admin) "admins always log in with it" else "a code from an authenticator app after your password"
+  val subtitle = if (a.administrator) "Administrators always log in with it" else "a code from an authenticator app after your password"
   Section("Two-factor login", subtitle = subtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (a.admin && !a.twoFactor) {
-        Txt("The admin panel opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
+      if (a.administrator && !a.twoFactor) {
+        Txt("What only Administrators do opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
       }
       codes?.let { list ->
         Txt("Your recovery codes", size = 13.5.sp, weight = FontWeight.SemiBold)
@@ -261,7 +261,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           Txt("On · ${a.recoveryCodesLeft} recovery codes left", size = 13.sp, weight = FontWeight.SemiBold)
           Txt("A code from your authenticator (or a recovery code) for:", size = 12.5.sp, color = p.muted)
           CodeRow(code, { code = it; state = null }, "New recovery codes") { request("api/account/2fa/codes", onCodes = true) }
-          if (!a.admin) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
+          if (!a.administrator) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
         }
       }
       state?.let { Txt(it, size = 12.5.sp, color = p.muted) }

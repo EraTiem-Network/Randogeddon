@@ -22,12 +22,12 @@ private const val USAGE = """Usage: randogeddon [command]
   (no command)              run the tracker
   logins --create <person>  a login for <person> right away (local use, the demo; people are invited otherwise)
   logins --reset <person>   a new password for <person>; their logins end
-  admins                    who is an admin
-  admins --create <person>  a new login for <person> as an admin (the first one, to create sessions with)
-  admins --grant <person>   make <person> an admin (sees and reaches the admin panel)
+  admins                    who is an Administrator
+  admins --create <person>  a new login for <person> as an Administrator (the first one)
+  admins --grant <person>   make <person> an Administrator (every session, the APWorlds, the users, the settings)
   admins --revoke <person>  take it back
-  admins --reset-2fa <person>  turn off <person>'s two-factor login (lost authenticator and recovery codes); an admin
-                            sets it up again at the next login
+  admins --reset-2fa <person>  turn off <person>'s two-factor login (lost authenticator and recovery codes); an
+                            Administrator sets it up again at the next login
   sessions                  every session: its ID, seed and whether it is finished
   slots [--json] <session>  the slot passwords of a session's seed"""
 
@@ -81,14 +81,14 @@ private fun usage(): Int {
   return 2
 }
 
-/** A login for [person] without an invitation: the first admin, or a player of the local demo. */
+/** A login for [person] without an invitation: the first Administrator, or a player of the local demo. */
 private suspend fun createLogin(person: String, admin: Boolean, users: UserStore): Int {
   UserNames.problem(person)?.let {
     System.err.println("Name: $it")
     return 2
   }
   users.findActive(person)?.let { user ->
-    val hint = if (admin) " An admin: randogeddon admins --grant ${user.name}" else ""
+    val hint = if (admin) " An Administrator: randogeddon admins --grant ${user.name}" else ""
     System.err.println("${user.name} has a login already.$hint")
     return 1
   }
@@ -96,14 +96,14 @@ private suspend fun createLogin(person: String, admin: Boolean, users: UserStore
   val user = users.create(person, PasswordHasher.hash(password))
   if (admin) users.setAdmin(user.id, true)
   printLogins(listOf(user.name to password))
-  if (admin) println("${user.name} is an admin.")
+  if (admin) println("${user.name} is an Administrator.")
   return 0
 }
 
 private suspend fun listSessions(store: SessionStore): Int {
   val sessions = store.all()
   if (sessions.isEmpty()) {
-    println("No sessions yet; an admin creates them in the admin panel.")
+    println("No sessions yet; every user can create one in the web app.")
     return 0
   }
   val width = maxOf(7, sessions.maxOf { it.id.length })
@@ -114,7 +114,7 @@ private suspend fun listSessions(store: SessionStore): Int {
 
 private suspend fun resetLogin(person: String, users: UserStore): Int {
   val user = users.findActive(person) ?: run {
-    System.err.println("No login for '$person'. An admin invites people in the admin panel.")
+    System.err.println("No login for '$person'. People are invited in the web app.")
     return 1
   }
   val password = PasswordGenerator.generate()
@@ -125,8 +125,8 @@ private suspend fun resetLogin(person: String, users: UserStore): Int {
 }
 
 private suspend fun listAdmins(users: UserStore): Int {
-  val admins = users.active().filter { it.admin }.map { it.name }
-  println(if (admins.isEmpty()) "No admins yet: randogeddon admins --create <person>" else "Admins: ${admins.joinToString()}")
+  val admins = users.active().filter { it.administrator }.map { it.name }
+  println(if (admins.isEmpty()) "No Administrators yet: randogeddon admins --create <person>" else "Administrators: ${admins.joinToString()}")
   return 0
 }
 
@@ -136,17 +136,17 @@ private suspend fun resetTwoFactor(person: String, users: UserStore, twoFactor: 
     return 1
   }
   twoFactor.disable(user.id)
-  println("${user.name}'s two-factor login is off; ${if (user.admin) "they set it up again at their next login" else "they can set it up again"}.")
+  println("${user.name}'s two-factor login is off; ${if (user.administrator) "they set it up again at their next login" else "they can set it up again"}.")
   return 0
 }
 
 private suspend fun setAdmin(person: String, admin: Boolean, users: UserStore): Int {
   val user = users.findActive(person) ?: run {
-    System.err.println("No login for '$person'. A new admin: randogeddon admins --create $person")
+    System.err.println("No login for '$person'. A new Administrator: randogeddon admins --create $person")
     return 1
   }
   users.setAdmin(user.id, admin)
-  println(if (admin) "${user.name} is an admin now." else "${user.name} is no admin any more.")
+  println(if (admin) "${user.name} is an Administrator now." else "${user.name} is no Administrator any more.")
   return 0
 }
 

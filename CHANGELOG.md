@@ -4,6 +4,47 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Roles (Phase 6)
+Sessions belong to whoever creates them now: every user can create one and is its Session-Manager; Administrators (the
+admins of before) reach everything. Per session there are support (items, checks and free hints, logged) and watchers
+(added by Session-Managers and players), and a share link shows it without a login. Updating: nothing to set
+(migrations V9 and V10); existing sessions have no Session-Manager until an Administrator adds one, and every user may
+create one running session at once (*Settings*). The parts:
+
+### Administrators and Session-Managers (Phase 6, part 1)
+- The admins are **Administrators** now: they reach everything (every session, the APWorlds, the users, the settings)
+  and log in with two-factor login, as before.
+- **Every user can create a session** and is its **Session-Manager**: they manage it (state, finish, reopen, keep,
+  delete, game server, console, log, cheats, the spoiler log while it runs) and give others a part in it:
+  Session-Managers, support or watchers (by account, or a new address invited). A session keeps one Session-Manager.
+- How many running sessions one user may manage at once: the Administrators' setting (`/api/admin/settings`, default
+  1).
+- Routes: creating moves to `/api/sessions/new` and `POST /api/sessions`, a session's management to
+  `/api/sessions/<id>/manage/…`, its people to `.../people`; `/api/admin` is the Administrators'.
+- Watchers and support see the session; support and Session-Managers its spoiler log while it runs. Every cheat is
+  logged with the role it was done as. Migration V9 (roles per session, settings).
+
+### Support, watchers, share links (Phase 6, part 2)
+- **Support** (`/api/sessions/<id>/support`): gives items, checks locations and free hints (even without the session's
+  cheat hints); no release or collect. Logged and shown in the feed: "Bob (support) gave Mantis Claw to Alice-HK".
+- **Watchers** are added by the session's players too (`/api/sessions/<id>/watchers`): by name, or an invitation for an
+  address without an account. Players take away watchers, not support or Session-Managers.
+- **Share links** (`/api/sessions/<id>/share`, players and Session-Managers): the session without a login, read-only,
+  at `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (rate-limited; no passwords, spoiler or accounts).
+  A new link replaces the old one; stored only as SHA-256. Migration V10.
+
+### The web app for every role (Phase 6, part 3)
+- **The panel** (gear button, *Manage*, `#/manage`; `#/admin` still works) is everyone's: the sessions they manage
+  (`GET /api/manage`; an Administrator's: every session), *New session* with their limit, and per session its
+  **People** (Session-Managers, support, watchers by name or a new address; the share link). *General* (*Users*,
+  *APWorlds*, *Settings*: sessions per user) is the Administrators'.
+- **Dashboard by role:** support's *Support* section (items, checks, free hints, the spoiler log), players'
+  *Watchers* (and the share link), a *Watching* pill for watchers. The session lists show every session one has a
+  part in.
+- **Share link page** `#/watch/<token>`: the dashboard without a login, read-only.
+- New players are invited from the new-session form for an address without an account; `manage` and `watch` are
+  reserved session IDs.
+
 ### Proper user management (Phase 5)
 Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
 two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox

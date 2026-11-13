@@ -132,7 +132,7 @@ data class AdminUser(
   val name: String? = null,
   val email: String? = null,
   val state: AccountState = AccountState.ACTIVE,
-  val admin: Boolean = false,
+  val administrator: Boolean = false,
   /** The IDs of the sessions they play in. */
   val sessions: List<String> = emptyList(),
   val createdAt: Long = 0,
@@ -162,8 +162,8 @@ data class AccountView(
   val autoDelete: AutoDelete = AutoDelete.NEVER,
   /** When the account will be deleted by itself, as of now; `null`: not planned (never, or a session runs). */
   val deletesAt: Long? = null,
-  val admin: Boolean = false,
-  /** Logs in with a code from an authenticator after the password (admins always). */
+  val administrator: Boolean = false,
+  /** Logs in with a code from an authenticator after the password (Administrators always). */
   val twoFactor: Boolean = false,
   /** How many recovery codes are left. */
   val recoveryCodesLeft: Int = 0,
@@ -215,3 +215,99 @@ data class TotpSetup(val secret: String, val uri: String, val svg: String, val r
 /** The recovery codes, shown only this once. */
 @Serializable
 data class RecoveryCodeList(val codes: List<String>)
+
+/**
+ * Someone's part in a session: a [PLAYER] has slots; a [MANAGER] (Session-Manager) manages it (the creator, and the
+ * co-managers they add; they can also play); [SUPPORT] helps its players; a [WATCHER] follows it. Administrators
+ * manage every session without a role in it.
+ */
+@Serializable
+enum class SessionRole {
+  @SerialName("player") PLAYER,
+  @SerialName("manager") MANAGER,
+  @SerialName("support") SUPPORT,
+  @SerialName("watcher") WATCHER,
+  ;
+
+  /** How it is stored (`session_roles.role`; players aren't stored there). */
+  val code: String get() = name.lowercase()
+
+  companion object {
+    fun of(code: String): SessionRole? = entries.firstOrNull { it.code == code }
+  }
+}
+
+/** One person of a session: their account, name in it, and role (a Session-Manager who plays is listed once, as manager). */
+@Serializable
+data class SessionPerson(
+  val id: String,
+  val name: String,
+  val role: SessionRole,
+  /** Their slots (players and playing Session-Managers). */
+  val slots: List<String> = emptyList(),
+  val deleted: Boolean = false,
+)
+
+/** `GET /api/sessions/{id}/people`: everyone with a part in the session. */
+@Serializable
+data class SessionPeople(val people: List<SessionPerson> = emptyList())
+
+/**
+ * `POST /api/sessions/{id}/people` (Session-Managers): gives someone [role] (not [SessionRole.PLAYER]: players come with
+ * the slots), by account ([userId]), or by [email] (an invitation, only for an address without an account).
+ */
+@Serializable
+data class AddPersonRequest(
+  val role: SessionRole,
+  val userId: String? = null,
+  val email: String? = null,
+  val suggestedName: String? = null,
+)
+
+/**
+ * `POST /api/sessions/{id}/watchers` (players and Session-Managers): a watcher by account ([userId]), or by [email] (an
+ * invitation, only for an address without an account).
+ */
+@Serializable
+data class WatcherRequest(
+  val userId: String? = null,
+  val email: String? = null,
+  val suggestedName: String? = null,
+)
+
+/**
+ * `GET/POST /api/sessions/{id}/share`: the session's share link, to follow it without a login (read-only). The link's
+ * [token] is only in the answer that made it (`POST`); after that only whether one is on, by whom and since when.
+ */
+@Serializable
+data class ShareLinkView(
+  val on: Boolean = false,
+  val createdBy: String? = null,
+  /** Epoch milliseconds. */
+  val createdAt: Long? = null,
+  val token: String? = null,
+)
+
+/**
+ * `GET /api/sessions/new`: what a new session can use: the releases, a free ID, the accounts to pick by name, and how
+ * many running sessions the user may still create ([left]; `null`: no limit, an Administrator).
+ */
+@Serializable
+data class NewSessionView(
+  val apVersions: List<String> = emptyList(),
+  val suggestedId: String = "",
+  val people: List<UserRef> = emptyList(),
+  val left: Int? = null,
+  /** The game servers that can run at once, and how many do. */
+  val capacity: Int = 0,
+  val running: Int = 0,
+  /** The session IDs taken already. */
+  val taken: List<String> = emptyList(),
+)
+
+/** `GET/PUT /api/admin/settings` (Administrators): what applies to everyone. */
+@Serializable
+data class AppSettings(
+  /** How many running sessions one user (not an Administrator) may manage at once. */
+  val sessionsPerUser: Int = 1,
+)

@@ -4,10 +4,11 @@ Our self-hosted [Archipelago](https://archipelago.gg) multiworld server (plain `
 plus a custom live dashboard. Everything runs in Docker behind an existing Traefik. The dashboard is at
 `randogeddon.eratiem.net` and needs a login. Several sessions can run at once, each with its own game server at
 `<session-id>.randogeddon.eratiem.net:443`, where every slot has its own generated password. The gateway runs the game
-servers; admins create sessions and start, stop and command their game servers from the admin panel. The Kotlin apps (tracker and gateway) run as native
+servers; every user creates sessions and, as their Session-Manager, starts, stops and commands their game servers from
+the panel; support helps the players, watchers follow along. The Kotlin apps (tracker and gateway) run as native
 executables (GraalVM Native Image, Linux x86_64).
 
-What's done and what comes next (login, admin panel, multiple sessions, user management): [.docs/TODO.md](.docs/TODO.md).
+What's done and what comes next (login, the panel, multiple sessions, user management, roles): [.docs/TODO.md](.docs/TODO.md).
 
 Words used here and in the dashboard: a **player** is a person (with a login); a **slot** is one YAML, one game in
 the multiworld, played by one or more players (Archipelago itself says "player" for a slot, e.g. in `/send <player>`);
@@ -22,7 +23,7 @@ the **game** is just its title, e.g. Hollow Knight.
         ┌────────▼──────────────────┐                 ┌───────────▼──────────┐
         │  gateway (Ktor)           │  internal API   │  tracker (Ktor)      │
         │  checks each Connect's    │◄────────────────┤  login, API, SSE,    │
-        │  slot password            │  :8001 (control)│  admin panel,        │
+        │  slot password            │  :8001 (control)│  the panel,          │
         │  ┌─────────────────────┐  │                 │  Wasm app            │
         │  │ MultiServer per     │◄─┼─────────────────┤  Tracker-tag clients │
         │  │ session :38300…     │  │                 │  per session         │
@@ -44,14 +45,14 @@ restart or update doesn't drop the players.
 |---|---|
 | `archipelago/` | `serve.py` (MultiServer with the hint switches), `room_info.py`, `list_games.py`; the gateway image installs Archipelago next to them |
 | `server/` | Tracker server: Kotlin + Ktor. Follows every session's room, serves the login, the API and the web app; host commands (`randogeddon admins`) |
-| `gateway/` | The game host: runs one MultiServer per session, relays each client connection to its session's and checks the slot password of every `Connect`; internal API for the admin panel |
+| `gateway/` | The game host: runs one MultiServer per session, relays each client connection to its session's and checks the slot password of every `Connect`; internal API for the panel |
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
 | `apworlds/world_locks/` | Our own APWorld: slots that start locked until their key is found (part of the gateway image) |
 | `demo/` | Two example sessions (YAMLs and who plays which slot, in `a/` and `b/`), simulated players — see *Demo* below |
 | `kotlin.Dockerfile` | Builds the tracker image and the gateway image (native, plus the pinned Archipelago release) |
-| `custom_worlds/` | Extra `.apworld` files for games that aren't bundled, for every release (gitignored); or upload them in the admin panel |
+| `custom_worlds/` | Extra `.apworld` files for games that aren't bundled, for every release (gitignored); or upload them in the panel (Administrators) |
 | `output/` | The demo's files (gitignored) |
 | `data/` | Server side: each session's seed, `.apsave` savegame and `room.json` in `sessions/<id>/`, deleted ones in `old/`, the uploaded APWorlds in `apworlds/<release>/` (gitignored) |
 | `scripts/demo.sh` | The demo |
@@ -144,9 +145,9 @@ The gateway runs as uid 1000 and writes the sessions' files to `data/`; when mov
 container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`. Seeds from before
 several sessions (one seed in `data/` itself, finished ones in `data/sessions/<seed>/`) are moved into
 `data/sessions/s-<seed>/` on the first start, and get the session ID `s-<seed>`; their players were in `session.yaml`,
-which is no longer read, so only admins see them.
+which is no longer read, so only Administrators see them.
 
-The first admin, who then invites the others and creates the sessions in the admin panel:
+The first Administrator, who then invites the others (every user can create sessions):
 
 ```sh
 docker compose exec tracker randogeddon admins --create <person>   # prints the password once
@@ -161,17 +162,23 @@ only go to the tracker's log.
 
 **Updating to the accounts of Phase 5** (migrations V7 and V8 run by themselves): set `MAIL_*` (and `MAIL_ADDRESS`
 if needed) and `TOTP_KEY` in `.env`, and create the `randogeddon@example.net` mailbox. Existing logins stay, without
-an e-mail address: each person adds theirs under *Your account*. Admins set up two-factor login at their next login;
-until then the admin panel is closed to them.
+an e-mail address: each person adds theirs under *Your account*. Administrators set up two-factor login at their next
+login; until then what only they do is closed to them.
+
+**Updating to the roles of Phase 6** (migrations V9 and V10 run by themselves): nothing to set. The admins are the
+Administrators; existing sessions have no Session-Manager (Administrators reach them, and can add one under *People*).
+Every user may then create one running session at once; Administrators change that under *Settings* (0: only they
+create sessions).
 
 ## Session day
 
-### In the admin panel
+### In the panel (*Manage*)
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
-2. **Create the session** (admin panel, *New session*): its *Session ID* (prefilled with a free suggestion like
+2. **Create the session** (the gear button, *Manage*, then *New session*; every user can, as many running ones at
+   once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
    `brave-otter`; lowercase letters, digits and `-`, starting with a letter; it becomes the game server's host name,
    so it can't be changed later), *Add YAMLs…*, then for every slot who
    plays it (one or more players, picked from the accounts, invited ones too: a slot with several players is played
@@ -185,26 +192,28 @@ until then the admin panel is closed to them.
    name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
    before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
    or one whose APWorld comes from another release) above its output.
-3. **New players are invited** beforehand, by e-mail (admin panel, *Users*): they get a link, valid for 7 days, and
-   choose their name and password themselves. Until they sign up, the session shows them by the name the admin
-   suggested.
+3. **New players are invited** by e-mail, right in a slot's player field (only an address that has no account; someone
+   who has one is picked by name), or beforehand by an Administrator (*Users*): they get a link, valid for 7 days,
+   and choose their name and password themselves. Until they sign up, the session shows them by the suggested name.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
-   has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/admin` and
-   `#/admin/<session-id>` the admin panel. Under *Your connection* they find the server
+   has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
+   `#/manage/<session-id>` the panel (`#/admin` still works), `#/watch/<token>` a share link. Under *Your connection*
+   they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
    slot names and each slot's password. Phones can install the dashboard as an app (see below).
 
 Patch files for ROM-based games are in the seed: `data/sessions/<id>/AP_<seed>.zip` on the server. **Deleting** a
-running session (admin panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
+running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
 finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
 (`AP_PORTS`); a finished session doesn't take one.
 
 ### Finishing, past sessions and the spoiler log
 
 - **Ending and pausing:** 2 minutes after every slot has reached its goal or was released, the session ends by
-  itself. Meanwhile the dashboard shows a countdown; admins can *End now* or *Cancel* (it then doesn't start again
-  until a slot is no longer done). An admin can also end it by hand: *Pause session* while not every check is done
+  itself. Meanwhile the dashboard shows a countdown; its Session-Managers can *End now* or *Cancel* (it then doesn't
+  start again until a slot is no longer done). A Session-Manager can also end it: *Pause session* while not every
+  check is done
   (e.g. when someone drops out), *End session* once it is at 100 %. Either way the game server stops (the gateway
   refuses to start that seed, also after a restart), and the dashboard keeps showing how far it got: the session is
   read-only from then on.
@@ -212,17 +221,18 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   server is free. Its history goes on from where it was.
 - **Finished sessions** keep their files (`data/sessions/<id>/`) and what the dashboard showed when they finished
   (`/state/sessions/<id>/archive.json` in the tracker's volume). Their players see them under *Other sessions* on the
-  dashboard, admins see all; a finished session is kept until an admin deletes it in the admin panel, or
+  dashboard, Administrators see all; a finished session is kept until it is deleted in the panel, or
   automatically `SESSION_RETENTION_DAYS` after it finished (90 by default, `0`: never; the date shows in the lists).
-  *Disable auto-deletion* (asked once more) keeps it until an admin deletes it; enabled again, the days count from
+  *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). Admins can open it at any time (behind a warning: it is a full spoiler); the players of a session see it
-  once it is finished.
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them).
+  Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
+  its players and watchers see it once it is finished.
 
 ### APWorlds
 
-The admin panel's *apworlds* lists, for every Archipelago release of the gateway, the games it can generate and serve,
+The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
 and its APWorld library:
 
 - **Upload APWorld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
@@ -236,11 +246,13 @@ and its APWorld library:
 
 The gateway puts exactly these files into each release's `custom_worlds/` before it lists the games or generates.
 
-### Admin panel: the game server and its console
+### The panel: the game server and its console
 
-Admins get a gear button in the dashboard's header. The admin panel lists every session (how far it is, its game
-server); a click picks one. For that session it shows who plays which slot and its actions (pause or end, reopen,
-auto-deletion, delete, spoiler log), the cheats, its game server's state (running, starting, stopped, crashed), lets
+Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
+(an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
+who plays which slot and its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People**
+(everyone with a part, with role and slots; add a Session-Manager, support or a watcher by name, or invite a new
+address; remove them; the share link), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
 and has the server console:
 
@@ -254,15 +266,24 @@ and has the server console:
 
 Archipelago's commands say `<player>` for a slot.
 
-Up and down in the console bring back earlier commands. Every action is logged with the admin's name in the tracker's
+Up and down in the console bring back earlier commands. Every action is logged with the name of who did it in the tracker's
 log.
 
-**Cheats** (admin panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
+**Cheats** (the panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
 the slot and the item or location from searchable lists. Free hints (`/hint`, `/hint_location`) only if the session
-was created with *Cheat hints*. Every cheat is stored with the admin's name and shown in the live feed ("Cheat: Alice
+was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
-marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by an
-admin stays stopped until started again.
+marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
+hand stays stopped until started again.
+
+Below the finished sessions, Administrators find *General*: *Users*, *APWorlds* and *Settings* (how many running
+sessions one user may manage at once).
+
+**On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
+spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
+address, remove watchers, and the share link. Watchers see a *Watching* pill in place of their slots. A **share
+link** (`#/watch/<token>`) opens the session's dashboard without a login, read-only: progress, tiles, players, hints
+and the live feed, no passwords and no spoiler; turned off or replaced, it says so.
 
 Players can also use `!hint <item>`, `!remaining`, `!release`, `!collect` and `!countdown 10` from their
 client, depending on the session's options. `AP_ADMIN_PASSWORD` enables `!admin` for remote server commands.
@@ -277,7 +298,7 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 
-- **Accounts** belong to people, not to a session. An admin invites someone by e-mail (admin panel, *Users*, or right
+- **Accounts** belong to people, not to a session. An Administrator invites someone by e-mail (*Users*), or anyone right
   in a new session's player field); the link (single use, 7 days, a new one replaces it) leads to the sign-up page,
   where they choose their name (3–32 characters, no `@`,
   unique without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
@@ -286,14 +307,26 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
   (ending that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict cookie). Failed logins and
   sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
-  other; admins see every session. Each session keeps the names its players had in it: a rename shows in the running
+  other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
-  works once). **Admins need it**: an admin without it sets it up right after the password (QR code or the key, then
+  works once). **Administrators need it**: an Administrator without it sets it up right after the password (QR code or the key, then
   a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
-  device and the recovery codes (an admin sets it up again at the next login).
+  device and the recovery codes (an Administrator sets it up again at the next login).
+- **Roles:** an **Administrator** (`randogeddon admins --grant`) reaches everything: every session, the APWorlds, the
+  users and the settings. **Every user can create a session** and is its **Session-Manager**: they manage it (its
+  state, finishing and reopening, deleting it, its game server, console and log, the cheats, its spoiler log while it
+  runs) and give its people a part: Session-Managers (co-managers), support and watchers. How many running sessions one
+  user may manage at once is the Administrators' setting (default 1); the game servers' number still applies. Every
+  cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
+- **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session
+  without cheat hints), and sees its spoiler log while it runs; no release or collect, game server or console. **Watchers**
+  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players add watchers too
+  (by name, or invite an address that has no account), and take them away again. A **share link** (players and
+  Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
+  passwords, no spoiler, no accounts. It is shown once; a new link replaces the old one, and it can be turned off.
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
   e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
   deletion period. A
@@ -334,7 +367,7 @@ seed, not just of the dashboard: the `World Locks` APWorld (`apworlds/world_lock
 adds one key item per locked slot and tells the generator that nothing in that slot is reachable without its key. So
 every seed stays completable, chains included (a key inside a slot that is itself locked).
 
-In the admin panel, tick *starts locked* per slot, choose *Random* locks with the number of slots that start open
+In the panel, tick *starts locked* per slot, choose *Random* locks with the number of slots that start open
 (at least one; the others are locked), or *Mixed*: per slot open, locked or left to chance, and how many start open in
 all. The gateway adds the World Locks slot (`Locks`, nobody plays it) to the seed.
 
@@ -364,7 +397,7 @@ which the gateway writes before it starts the session's game server.
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
   choice is remembered in their browser. On narrow screens it always sits below the players.
-- **Other sessions:** the viewer's other sessions (all for admins), running or finished, below; a click shows one.
+- **Other sessions:** the viewer's other sessions (all for Administrators), running or finished, below; a click shows one.
 
 Known limitations:
 
@@ -381,10 +414,14 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
-`GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
+`GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
-`/api/admin/sessions`, the accounts under `/api/admin/users`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The panel's are under
+`/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
+everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
+`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
+the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
+Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
 open and says nothing about the sessions.
 
 The login form is a plain HTML form in `index.html` rather than part of the Compose app, so password managers can
@@ -403,14 +440,14 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 ## Demo
 
 ```sh
-./scripts/demo.sh        # starts the stack, creates two sessions (demo/a, demo/b) through the admin API, plays both
+./scripts/demo.sh        # starts the stack, creates two sessions (demo/a, demo/b) through the API, plays both
 ./scripts/demo.sh loop   # the same, again and again: once both rounds are at 100 % and finished, new sessions start
 ./scripts/demo.sh stop   # stops the simulated players; `docker compose down` stops everything
 
 nohup ./scripts/demo.sh loop > output/demo/loop.log 2>&1 &   # the loop in the background
 ```
 
-Two sessions at once, with players of their own, created like in the admin panel (`demo/admin.py` calls its API):
+Two sessions at once, with players of their own, created like in the panel (`demo/admin.py` calls its API):
 
 - **demo-a-…:** Alice three slots (two of them start locked), Bob two (one locked) and, with Carol, Risk of Rain 2,
   which they play together (a shared slot: on both cards, both get its slot password).
@@ -439,7 +476,7 @@ export COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml   # publishes 38
 export POSTGRES_PASSWORD=local INTERNAL_TOKEN=local                # or set them in .env
 docker compose up -d
 docker compose exec tracker randogeddon admins --create Admin
-# dashboard on http://localhost:8000: create a session in the admin panel; its game server is
+# dashboard on http://localhost:8000: create a session in the panel; its game server is
 # ws://localhost:38281/<session-id>
 ```
 
@@ -498,10 +535,10 @@ and review the result:
 ## Updating Archipelago
 
 A session keeps the Archipelago release it was generated with, and the gateway runs it only with that release: one
-it doesn't have can't be started (the admin panel and the gateway's log say so). The gateway image has one release
-(`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the admin panel offers what it has.
+it doesn't have can't be started (the panel and the gateway's log say so). The gateway image has one release
+(`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the panel offers what it has.
 
 To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
-other releases* (*apworlds* in the admin panel) and can be tried with it, or upload versions made for the new release.
+other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.

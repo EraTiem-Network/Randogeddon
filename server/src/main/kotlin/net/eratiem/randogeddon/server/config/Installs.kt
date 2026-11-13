@@ -17,7 +17,10 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.database.CheatLogStore
+import net.eratiem.randogeddon.database.SessionRoleStore
+import net.eratiem.randogeddon.database.ShareLinkStore
 import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.SessionFinishStore
@@ -60,6 +63,9 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { InvitationStore(get()) }
       single { EmailChangeStore(get()) }
       single { TwoFactorStore(get()) }
+      single { SessionRoleStore(get()) }
+      single { AppSettingsStore(get()) }
+      single { ShareLinkStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
@@ -73,6 +79,10 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   install(RateLimit) {
     register(LOGIN_RATE_LIMIT) {
       rateLimiter(limit = 5, refillPeriod = 1.minutes)
+      requestKey { it.request.origin.remoteHost }
+    }
+    register(WATCH_RATE_LIMIT) {
+      rateLimiter(limit = 60, refillPeriod = 1.minutes)
       requestKey { it.request.origin.remoteHost }
     }
   }
@@ -111,3 +121,6 @@ fun Application.installs(trackerConfig: TrackerConfig) {
 }
 
 val LOGIN_RATE_LIMIT = RateLimitName("login")
+
+/** Share links, without a login: enough for a dashboard (the stream, a slot now and then), not for guessing tokens. */
+val WATCH_RATE_LIMIT = RateLimitName("watch")

@@ -40,7 +40,7 @@ fun SessionPicker(sessions: List<SessionEntry>, admin: Boolean, onOpen: (String)
   val finished = sessions.filter { !it.status.running }
   if (sessions.isEmpty()) {
     Txt(
-      if (admin) "You don't play in a session. Every session is in the admin panel." else "You aren't part of a session yet.",
+      if (admin) "You have no part in a session. Every session is under Manage." else "You aren't part of a session yet.",
       color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
     )
     return
@@ -167,9 +167,9 @@ fun FinishBanner(
       SmallButton("Cancel", onCancel)
     }
     InfoTip(
-      "A session ends 2 minutes after every slot reached its goal or was released; an admin can also pause or end it " +
-        "earlier. Then it is read-only: the game server stops, and its players see the spoiler log. Unless it was " +
-        "completed (100 %), admins can reopen it within 14 days.",
+      "A session ends 2 minutes after every slot reached its goal or was released; its Session-Managers can also " +
+        "pause or end it earlier. Then it is read-only: the game server stops, and its players see the spoiler log. " +
+        "Unless it was completed (100 %), its Session-Managers can reopen it within 14 days.",
       Modifier.width(16.dp),
     )
   }

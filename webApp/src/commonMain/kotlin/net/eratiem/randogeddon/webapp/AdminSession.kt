@@ -121,7 +121,7 @@ internal object Tips {
   val RELEASE_CHOICES = listOf(
     "auto" to "By itself when the slot reaches its goal.",
     "enabled" to "Any time, with !release.",
-    "disabled" to "Never; only an admin can, with a cheat.",
+    "disabled" to "Never; only its Session-Managers can, with a cheat.",
     "goal" to "With !release, once the slot reached its goal.",
     "auto-enabled" to "By itself at the goal, and any time with !release.",
   )
@@ -129,7 +129,7 @@ internal object Tips {
   val COLLECT_CHOICES = listOf(
     "auto" to "By itself when the slot reaches its goal.",
     "enabled" to "Any time, with !collect.",
-    "disabled" to "Never; only an admin can, with a cheat.",
+    "disabled" to "Never; only its Session-Managers can, with a cheat.",
     "goal" to "With !collect, once the slot reached its goal.",
     "auto-enabled" to "By itself at the goal, and any time with !collect.",
   )
@@ -141,8 +141,8 @@ internal object Tips {
   )
   const val RELEASE_VERSION = "The Archipelago release that generates and serves this session; the session stays on " +
     "it. Which games it has is listed under APWorlds."
-  const val CHEAT_HINTS = "Admins may give free hints from the admin panel's cheats. Every one is logged and shown in " +
-    "the live feed. Giving items and checks works without this."
+  const val CHEAT_HINTS = "Session-Managers may give free hints with the cheats (support always may). Every one is " +
+    "logged and shown in the live feed. Giving items and checks works without this."
   const val SESSION_ID = "The session's name in the links, and its address for game clients (<ID>.<domain>). " +
     "Lowercase letters, digits and -, starting with a letter; it can't be changed later."
   const val DASHBOARD = "The session's dashboard as its players see it (slot passwords only for your own slots)."
@@ -154,7 +154,7 @@ internal object Tips {
   const val REOPEN = "A finished session can be reopened within 14 days, unless it was completed (100 %): the game " +
     "server serves it again, if one is free."
   const val KEEP = "A finished session is deleted by itself some time after it finished (SESSION_RETENTION_DAYS, 90 by " +
-    "default). With its auto-deletion disabled it stays until an admin deletes it; enabled again, the time counts " +
+    "default). With its auto-deletion disabled it stays until it is deleted by hand; enabled again, the time counts " +
     "from then."
   const val SPOILER = "The spoiler log shows where every item of the seed is, and the playthrough sphere by sphere. " +
     "Players see it once the session is finished."
@@ -204,14 +204,14 @@ fun SessionSection(
   var problem by remember { mutableStateOf<String?>(null) }
   var gone by remember { mutableStateOf(false) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/sessions/$id", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
+    when (val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
       is Answer.Ok -> { cache.views[id] = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
   }
   LaunchedEffect(Unit) { load() }
   fun act(path: String, body: String? = null) = scope.launch {
-    problem = post("api/admin/sessions/$id/$path", body)
+    problem = post("api/sessions/$id/manage/$path", body)
     load()
     onChanged()
   }
@@ -234,7 +234,7 @@ fun SessionSection(
           session,
           onDelete = {
             scope.launch {
-              when (val answer = call("DELETE", "api/admin/sessions/$id", null) { }) {
+              when (val answer = call("DELETE", "api/sessions/$id/manage", null) { }) {
                 is Answer.Ok -> { gone = true; onChanged() }
                 is Answer.Failed -> problem = answer.message
               }
@@ -324,7 +324,7 @@ private fun stateLines(session: SessionEntry?, overview: AdminOverview?): List<S
   return listOfNotNull(
     session?.let(::switchDetails)?.replaceFirstChar { it.uppercase() },
     overview?.let {
-      "${all.count { s -> s.status.running }} sessions running · ${all.count { s -> s.server?.status in RUNNING }} of " +
+      "${all.count { s -> s.status.running }} sessions running · ${it.inUse} of " +
         "${it.capacity} game servers in use (a finished session doesn't take one)"
     },
   )
@@ -344,11 +344,11 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
     problem = (call(method, path, body) { } as? Answer.Failed)?.message
     onChanged()
   }
-  val onReopen: (String) -> Unit = { act("POST", "api/admin/sessions/$it/reopen") }
+  val onReopen: (String) -> Unit = { act("POST", "api/sessions/$it/manage/reopen") }
   val onKeep: (String, Boolean) -> Unit = { id, keep ->
-    act("POST", "api/admin/sessions/$id/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
+    act("POST", "api/sessions/$id/manage/keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep)))
   }
-  val onDelete: (String) -> Unit = { act("DELETE", "api/admin/sessions/$it") }
+  val onDelete: (String) -> Unit = { act("DELETE", "api/sessions/$it/manage") }
   // (session, "delete" or "keep"): the question shown in place of that session's buttons
   var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
   var overview by remember { mutableStateOf<SessionEntry?>(null) }
@@ -411,7 +411,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
             )
             "keep" -> Confirm(
               if (past.keep) "Enable its auto-deletion again? Its time counts from now."
-              else "Disable its auto-deletion? It stays until an admin deletes it.",
+              else "Disable its auto-deletion? It stays until it is deleted by hand.",
               if (past.keep) "Yes, enable" else "Yes, disable", danger = false,
               onYes = { pending = null; onKeep(seed, !past.keep) }, onCancel = { pending = null },
             )
@@ -536,15 +536,19 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
   var round by remember { mutableStateOf(0) }
   val suggested = overview?.suggestedId.orEmpty()
   val chosen = id ?: suggested
-  val taken = overview?.sessions?.any { it.id == chosen } == true
+  val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
   val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen) ?: if (taken) "Taken" else null
-  val full = overview != null && overview.sessions.count { it.server?.status in RUNNING } >= overview.capacity
+  val full = overview != null && overview.inUse >= overview.capacity
+  // The user manages as many running sessions as the Administrators allow
+  val atLimit = overview?.left == 0
   Section("New session", subtitle = "as many run at once as the gateway has game servers (${overview?.capacity ?: "…"})") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       created?.let { result ->
         Created(result.locked, onDone = { created = null })
       }
       if (full) Txt("Every game server is in use: finish or stop a session first.", size = 12.5.sp, color = p.trap)
+      if (atLimit) Txt("You manage as many running sessions as you may at once: finish one first.", size = 12.5.sp, color = p.trap)
+      overview?.left?.takeIf { it > 0 }?.let { Txt("You may create $it more running session${if (it == 1) "" else "s"}.", size = 12.5.sp, color = p.muted) }
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Txt("Session ID", size = 13.sp, weight = FontWeight.SemiBold)
         InfoTip(Tips.SESSION_ID)
@@ -554,7 +558,7 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
       if (overview != null) key(round) {
         CreateSession(
           AdminSessionView(apVersions = overview.apVersions, users = overview.users, people = overview.people), chosen,
-          ready = idProblem == null && chosen.isNotEmpty() && !full,
+          ready = idProblem == null && chosen.isNotEmpty() && !full && !atLimit,
           onCreated = { result ->
             created = result
             id = null
@@ -656,7 +660,7 @@ private fun SessionSummary(
       onYes = { pending = null; onDelete() }, onCancel = { pending = null },
     )
     "keep" -> Confirm(
-      if (session.keep) "Enable its auto-deletion again? Its time counts from now." else "Disable its auto-deletion? It stays until an admin deletes it.",
+      if (session.keep) "Enable its auto-deletion again? Its time counts from now." else "Disable its auto-deletion? It stays until it is deleted by hand.",
       if (session.keep) "Yes, enable" else "Yes, disable", danger = false,
       onYes = { pending = null; onKeep(!session.keep) }, onCancel = { pending = null },
     )
@@ -711,7 +715,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
 
   fun inspect(): Job = scope.launch {
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
-    when (val answer = call("POST", "api/admin/sessions/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
+    when (val answer = call("POST", "api/sessions/new/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
       is Answer.Ok -> {
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
@@ -862,8 +866,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
       WorldRow(
         world, users[world.name].orEmpty(), people,
         onInvite = { email ->
-          when (val r = invite(email)) {
-            is Answer.Ok -> r.value.ref().also { people += it }
+          when (val r = inviteForSession(email)) {
+            is Answer.Ok -> r.value.also { people += it }
             is Answer.Failed -> { error = r.message; null }
           }
         },
@@ -932,7 +936,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          when (val answer = call("POST", "api/admin/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
+          when (val answer = call("POST", "api/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
             is Answer.Ok -> onCreated(answer.value)
             is Answer.Failed -> error = answer.message
           }

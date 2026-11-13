@@ -103,7 +103,7 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: 
 /** Under the protected `/api` branch: the accounts in the admin panel (invite, send the link again, another address). */
 fun Route.adminUserRoutes(accounts: AccountService) {
   route("/admin/users") {
-    install(RequireAdmin)
+    install(RequireAdministrator)
     get { call.respond(accounts.list()) }
     post {
       accountCall {

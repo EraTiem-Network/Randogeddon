@@ -56,13 +56,25 @@ private val WITH_ITEM = setOf(CheatAction.ITEM, CheatAction.HINT)
 private val HINTS = setOf(CheatAction.HINT, CheatAction.HINT_LOCATION)
 private val WITH_LOCATION = setOf(CheatAction.LOCATION, CheatAction.HINT_LOCATION)
 
+/** What support does: no release or collect. */
+private val SUPPORT_ACTIONS = WITH_ITEM + WITH_LOCATION
+
 /**
  * Cheats: give an item, check a location, release or collect for a slot, and free hints if the session allows them.
- * Every cheat is logged with the admin's name and shown in the live feed; the latest ones are listed here. Loaded
- * again whenever the game server changes ([server]: started, stopped, another seed). Kept in [cache].
+ * Every cheat is logged with the name of who did it and shown in the live feed; the latest ones are listed here. Loaded
+ * again whenever the game server changes ([server]: started, stopped, another seed). Kept in [cache]. [support]: the
+ * session's support helps (items, checks and hints, no release or collect), on the dashboard.
  */
 @Composable
-fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
+fun CheatSection(
+  id: String,
+  server: GameServerState?,
+  cache: AdminCache,
+  support: Boolean = false,
+  /** Support: their spoiler log (while it runs too). */
+  onSpoiler: (() -> Unit)? = null,
+) {
+  val path = if (support) "api/sessions/$id/support" else "api/sessions/$id/manage/cheat"
   val p = LocalPalette.current
   val scope = rememberCoroutineScope()
   // The last one loaded at once, loaded again behind
@@ -75,7 +87,7 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
   var busy by remember { mutableStateOf(false) }
 
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/sessions/$id/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }) {
+    when (val answer = call("GET", path, null) { ApiJson.decodeFromString(CheatView.serializer(), it) }) {
       is Answer.Ok -> cache.cheats[id] = answer.value
       is Answer.Failed -> outcome = false to answer.message
     }
@@ -97,7 +109,7 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
   // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
   LaunchedEffect(slot, view) {
     val s = slot ?: return@LaunchedEffect
-    val answer = call("GET", "api/admin/sessions/$id/cheat/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
+    val answer = call("GET", "$path/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
     if (answer is Answer.Ok) {
       names = answer.value
       if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
@@ -106,12 +118,15 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
 
   val current = view
   Section(
-    "Cheats", subtitle = "logged with your name and shown in the live feed",
+    if (support) "Support" else "Cheats",
+    subtitle = (if (support) "you help as support: " else "") + "logged with your name and shown in the live feed",
     actions = {
       InfoTip(
-        "For when something went wrong: a game bug, a missed item, someone has to drop out. Everyone sees in the " +
+        if (support) "When a player is stuck: give an item, check a location or a free hint. Everyone sees in the live " +
+          "feed who helped how." else "For when something went wrong: a game bug, a missed item, someone has to drop out. Everyone sees in the " +
           "live feed who cheated what. Hints are only possible if the session was created with cheat hints."
       )
+      onSpoiler?.let { SmallButton("Spoiler log", it) }
     },
   ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -122,7 +137,7 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
         current.slots.isEmpty() -> Txt("No session with slots yet.", size = 13.sp, color = p.muted)
         else -> {
           if (!current.available) Txt("Only while the game server runs a session that isn't finished.", size = 12.5.sp, color = p.muted)
-          val actions = CheatAction.entries.filter { current.cheatHints || it !in HINTS }
+          val actions = CheatAction.entries.filter { (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) }
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
           val choices = when (action) {
@@ -159,12 +174,12 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
             )
           }
           val send: @Composable () -> Unit = {
-            Button(if (busy) "Sending…" else "Cheat", enabled = ready, danger = true) {
+            Button(if (busy) "Sending…" else if (support) "Send" else "Cheat", enabled = ready, danger = !support) {
               busy = true
               outcome = null
               scope.launch {
                 val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value))
-                outcome = when (val answer = call("POST", "api/admin/sessions/$id/cheat", body) { }) {
+                outcome = when (val answer = call("POST", path, body) { }) {
                   is Answer.Ok -> true to "Done: ${CHEAT_LABELS.getValue(action).lowercase()} for $slot" + (value?.let { ": $it" } ?: "")
                   is Answer.Failed -> false to answer.message
                 }
@@ -195,7 +210,7 @@ fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
           outcome?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
           if (current.log.isNotEmpty()) {
             Divider()
-            Txt("Cheats of this session", size = 12.5.sp, weight = FontWeight.SemiBold)
+            Txt(if (support) "Help and cheats of this session" else "Cheats of this session", size = 12.5.sp, weight = FontWeight.SemiBold)
             current.log.take(15).forEach { entry ->
               Txt(
                 "${Platform.clock(entry.ts)} · ${entry.admin}: ${CHEAT_LABELS.getValue(entry.action).lowercase()} for ${entry.slot}" +
@@ -215,4 +230,12 @@ private fun String.encodeQuery(): String = encodeToByteArray().joinToString("") 
   val c = (b.toInt() and 0xff)
   if (c < 128 && (c.toChar().isLetterOrDigit() || c.toChar() in "-_.~")) c.toChar().toString()
   else "%" + c.toString(16).uppercase().padStart(2, '0')
+}
+
+/** On the dashboard, for the session's support: giving items, checking locations, free hints; the spoiler log. */
+@Composable
+fun SupportSection(id: String, onSpoiler: () -> Unit) {
+  val scope = rememberCoroutineScope()
+  val cache = remember { AdminCache(scope) }
+  CheatSection(id, server = null, cache, support = true, onSpoiler = onSpoiler)
 }
