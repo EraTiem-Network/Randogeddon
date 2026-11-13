@@ -41,7 +41,8 @@ services:
       retries: 10
 
   gateway:
-    image: randogeddon-gateway:${AP_VERSION:-0.6.8}
+    # Locally as built; on the server from the registry (IMAGE_REGISTRY, GATEWAY_TAG set by scripts/deploy.sh)
+    image: ${IMAGE_REGISTRY:-}randogeddon-gateway:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
     build:
       <<: *build
       target: gateway
@@ -65,7 +66,7 @@ services:
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   tracker:
-    image: randogeddon-tracker:latest
+    image: ${IMAGE_REGISTRY:-}randogeddon-tracker:${IMAGE_TAG:-latest}
     build:
       <<: *build
       target: tracker
