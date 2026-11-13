@@ -1,0 +1,8 @@
+[Unit]
+Description=Randogeddon: daily database dump to /srv/backups
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/randogeddon-backup
