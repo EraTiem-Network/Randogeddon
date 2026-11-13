@@ -154,6 +154,15 @@ docker compose exec tracker randogeddon admins --create <person>   # prints the 
 docker compose exec tracker randogeddon admins --grant <person>    # an existing login; --revoke takes it back
 ```
 
+**Administrators through Authentik** (single sign-on, `OIDC_*` in `.env`): with `OIDC_ISSUER` set, the login form
+has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
+`randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
+first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
+app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
+`randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
+(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
+application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+
 **Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
 (`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
 certificate is checked against `MAIL_HOST`; if the server's public address leads back to this host (a VM behind the
@@ -355,8 +364,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
-  works once). **Administrators need it**: an Administrator without it sets it up right after the password (QR code or the key, then
-  a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
+  works once). **Administrators need it** unless they log in through Authentik (above): an Administrator without it
+  sets it up right after the password (QR code or the key, then a first code); everyone else can turn it on in
+  *Your account*. The secrets are stored encrypted with `TOTP_KEY`
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
   device and the recovery codes (an Administrator sets it up again at the next login).
@@ -456,7 +466,9 @@ Known limitations:
 API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
-`POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
+`POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
+`.../callback`, and `POST /api/login/link` (a CLI login link); `GET /api/invitations/<token>`, `POST /api/signup` (the
+sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
