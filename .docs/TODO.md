@@ -173,7 +173,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       account frees its name.
     - The UI shows only the name; the UUID appears only when hovering over it (e.g. to tell a deleted user's name in
       an old session from a new account with the same name).
-- [ ] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
+- [x] Two-factor login (TOTP, any authenticator app), first for admins, since they can cheat and delete sessions
     - Set up with a QR code on first admin login, with one-time recovery codes; optional for everyone else.
 - [x] User settings page: change username, password, e-mail address and the auto-deletion setting
     - Changing the e-mail address needs a confirmation mail to the new address.

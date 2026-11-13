@@ -4,6 +4,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Two-factor login (Phase 5, part 3)
+- TOTP (RFC 6238, any authenticator app): after the password, the code (or one of 10 recovery codes, each usable once;
+  `autocomplete="one-time-code"`). A code works once; the step before and after count too.
+- Admins need it: an admin without it sets it up right after the password (QR code, the key to type in, a first code),
+  and the admin API refuses an admin without it. Everyone else can turn it on and off under *Your account*, and get new
+  recovery codes there.
+- The secrets are stored encrypted (AES-256-GCM) with `TOTP_KEY`, or a key file the tracker makes in its state volume.
+  `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the device and the codes.
+- Migration V8. The demo's admin logs in with it too (secret in `output/demo/admin.totp`).
+
 ### Sign-up, users, settings (Phase 5, part 2)
 - The invitation's link opens the sign-up: name, password (twice) and the deletion period, as a plain form like the
   login, so password managers save the new account. A link that was used, has expired or was replaced says so.

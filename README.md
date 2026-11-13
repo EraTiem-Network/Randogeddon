@@ -283,8 +283,15 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
   other; admins see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
+- **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
+  works once). **Admins need it**: an admin without it sets it up right after the password (QR code or the key, then
+  a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
+  (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
+  either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
+  device and the recovery codes (an admin sets it up again at the next login).
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
-  e-mail address (a link to the new address confirms it; until then the old one stays) and the deletion period. A
+  e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
+  deletion period. A
   name's tip shows its account's ID, which tells a deleted account's name in an old session from a new account with
   the same name.
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
@@ -363,10 +370,12 @@ Known limitations:
   slot's connection log, since their real start is unknown.
 - The event history keeps the last 500 events per session, stored in the `tracker-state` volume.
 
-API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`, sets the cookie),
+API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
+two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
+`.../setup` and `.../setup/confirm`),
 `POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
-`POST .../email` (the settings),
+`POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, admin), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
 own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The admin panel's are under
