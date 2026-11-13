@@ -17,6 +17,9 @@ import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
+import net.eratiem.randogeddon.server.admin.SessionPeopleService
+import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
@@ -39,6 +42,8 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val accounts by inject<AccountService>()
   val twoFactor by inject<TwoFactor>()
   val pending by inject<PendingLogins>()
+  val people by inject<SessionPeopleService>()
+  val settings by inject<AppSettingsStore>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, trackerConfig.cookieSecure)
@@ -47,10 +52,20 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
       install(RequireLogin) { this.logins = logins }
-      meRoute()
+      meRoute(list)
       accountRoutes(accounts, twoFactor, trackerConfig.cookieSecure)
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers)
-      adminRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions)
+      newSessionRoutes(sessionAdmin, people)
+      peopleRoutes(people, logins)
+      // A session's management: its Session-Managers, and Administrators
+      route("/sessions/{id}/manage") {
+        install(RequireSessionRole) {
+          this.logins = logins
+          roles = setOf(SessionRole.MANAGER)
+        }
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list)
+      }
+      adminRoutes(gameServer, sessionAdmin, settings)
       adminUserRoutes(accounts)
     }
 

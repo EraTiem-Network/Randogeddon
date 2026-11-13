@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.AppSettings
+import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.database.AppSettingsStore
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -8,6 +12,7 @@ import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
@@ -26,9 +31,7 @@ import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CommandRequest
-import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.GameServerState
-import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SessionIds
@@ -42,126 +45,24 @@ private val LOG_POLL = 750.milliseconds
 private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /**
- * Under the protected `/api` branch: the admin panel's control of every session and its game server, which the
- * gateway runs, and of the apworld library. Every action is logged with the admin's name.
+ * Under the protected `/api` branch, for Administrators: every session with its game server, the apworld library of
+ * each release, and what applies to everyone (the settings). Every action is logged with their name.
  */
-fun Route.adminRoutes(
-  gameServer: GameServerClient,
-  admin: SessionAdmin,
-  lifecycle: SessionLifecycle,
-  cheats: Cheats,
-  sessions: LiveSessions,
-) {
+fun Route.adminRoutes(gameServer: GameServerClient, admin: SessionAdmin, settings: AppSettingsStore) {
   route("/admin") {
-    install(RequireAdmin)
-    route("/sessions") {
-      // Every session with its game server, and what a new one needs (releases, logins, a free ID)
-      get { gatewayCall { call.respond(admin.overview()) } }
-      post { gatewayCall { call.respond(admin.create(call.receive<CreateSessionRequest>(), call.loggedIn.user.name)) } }
-      // The slots of the uploaded YAMLs, before the admin assigns them; games the release lacks are problems
-      post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
-      route("/{id}") {
-        get { gatewayCall { call.respond(admin.view(id())) } }
-        delete {
-          gatewayCall {
-            admin.delete(id(), call.loggedIn.user.name)
-            call.respond(HttpStatusCode.NoContent)
-          }
+    install(RequireAdministrator)
+    // Every session with its game server, and what a new one needs (releases, logins, a free ID)
+    get("/sessions") { gatewayCall { call.respond(admin.overview()) } }
+    route("/settings") {
+      get { call.respond(AppSettings(sessionsPerUser(settings))) }
+      put {
+        val request = call.receive<AppSettings>()
+        if (request.sessionsPerUser !in 0..MAX_SESSIONS_PER_USER) {
+          return@put call.respond(HttpStatusCode.BadRequest, ApiError("Sessions per user: 0 to $MAX_SESSIONS_PER_USER"))
         }
-        // Finishing it now, or stopping its countdown; reopening it; keeping it for good (or not)
-        post("/finish") {
-          gatewayCall {
-            lifecycle.finishNow(id(), call.loggedIn.user.name)
-            call.respond(HttpStatusCode.NoContent)
-          }
-        }
-        post("/finish/cancel") {
-          gatewayCall {
-            lifecycle.cancel(id(), call.loggedIn.user.name)
-            call.respond(HttpStatusCode.NoContent)
-          }
-        }
-        post("/reopen") {
-          gatewayCall {
-            lifecycle.reopen(id(), call.loggedIn.user.name)
-            call.respond(HttpStatusCode.NoContent)
-          }
-        }
-        post("/keep") {
-          val keep = call.receive<KeepRequest>().keep
-          gatewayCall {
-            admin.setKeep(id(), keep, call.loggedIn.user.name)
-            call.respond(HttpStatusCode.NoContent)
-          }
-        }
-        // Cheats: logged with the admin's name, shown in the live feed
-        route("/cheat") {
-          get { gatewayCall { call.respond(cheats.view(id())) } }
-          get("/names") {
-            val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-            gatewayCall { call.respond(cheats.names(id(), slot)) }
-          }
-          post {
-            val request = call.receive<CheatRequest>()
-            gatewayCall {
-              cheats.run(id(), request, call.loggedIn.user.name)
-              call.respond(HttpStatusCode.NoContent)
-            }
-          }
-        }
-        get("/server") { gatewayCall { call.respond(gameServer.state(id())) } }
-        post("/server/{action}") {
-          val action = call.parameters["action"]
-          if (action !in setOf("start", "stop", "restart")) return@post call.respond(HttpStatusCode.NotFound)
-          gatewayCall {
-            val id = id()
-            if (action != "stop" && sessions.get(id)?.finished == true) {
-              throw SessionProblem(HttpStatusCode.Conflict, "The session is finished; reopen it to start the game server")
-            }
-            logger.info("{} asked to {} the game server of {}", call.loggedIn.user.name, action, id)
-            val state = gameServer.control(id, action!!)
-            sessions.refresh()
-            call.respond(state)
-          }
-        }
-        post("/command") {
-          val line = call.receive<CommandRequest>().line.trim()
-          if (line.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("Empty command"))
-          gatewayCall {
-            val id = id()
-            logger.info("{} ran on the game server of {}: {}", call.loggedIn.user.name, id, line)
-            if (gameServer.command(id, line)) call.respond(HttpStatusCode.NoContent)
-            else call.respond(HttpStatusCode.Conflict, ApiError("The game server isn't running"))
-          }
-        }
-        // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
-        sse("/stream") {
-          val id = call.parameters["id"].orEmpty()
-          var since = 0L
-          var lastState: GameServerState? = null
-          var reachable = true
-          while (true) {
-            try {
-              val state = gameServer.state(id)
-              if (state != lastState || !reachable) {
-                send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
-                lastState = state
-                reachable = true
-              }
-              val lines = gameServer.log(id, since)
-              // The gateway restarted and counts from 1 again
-              if (lines.last < since) since = 0
-              if (lines.lines.isNotEmpty()) {
-                send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
-              }
-              since = lines.last
-            } catch (e: GameServerUnavailable) {
-              if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
-              reachable = false
-            }
-            delay(LOG_POLL)
-          }
-        }
+        settings.set(SESSIONS_PER_USER, request.sessionsPerUser.toString())
+        logger.info("{} set the sessions per user to {}", call.loggedIn.user.name, request.sessionsPerUser)
+        call.respond(HttpStatusCode.NoContent)
       }
     }
     // The apworld library of each Archipelago release
@@ -192,14 +93,14 @@ fun Route.adminRoutes(
 }
 
 /** The session ID of the path; a [SessionProblem] (404) if it isn't one. */
-private fun RoutingContext.id(): String =
+internal fun RoutingContext.id(): String =
   call.parameters["id"]?.takeIf(SessionIds::valid) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session ${call.parameters["id"]}")
 
 /**
  * Answers 502 with the reason when the gateway doesn't answer, and what's wrong with a session request (409, 400,
  * 422), instead of failing the request.
  */
-private suspend fun RoutingContext.gatewayCall(block: suspend () -> Unit) {
+internal suspend fun RoutingContext.gatewayCall(block: suspend () -> Unit) {
   try {
     block()
   } catch (e: SessionProblem) {
@@ -209,3 +110,130 @@ private suspend fun RoutingContext.gatewayCall(block: suspend () -> Unit) {
     call.respond(e.status, ApiError(e.message ?: "The gateway can't be reached"))
   }
 }
+
+/**
+ * Under `/api/sessions/{id}/manage`, for the session's Session-Managers and Administrators: its state and actions,
+ * cheats, game server, console and log (what the admin panel shows of one session). Every action is logged with the
+ * name of who did it.
+ */
+fun Route.manageRoutes(
+  gameServer: GameServerClient,
+  admin: SessionAdmin,
+  lifecycle: SessionLifecycle,
+  cheats: Cheats,
+  sessions: LiveSessions,
+  list: SessionList,
+) {
+  get { gatewayCall { call.respond(admin.view(id())) } }
+  delete {
+    gatewayCall {
+      admin.delete(id(), call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  // Finishing it now, or stopping its countdown; reopening it; keeping it for good (or not)
+  post("/finish") {
+    gatewayCall {
+      lifecycle.finishNow(id(), call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  post("/finish/cancel") {
+    gatewayCall {
+      lifecycle.cancel(id(), call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  post("/reopen") {
+    gatewayCall {
+      lifecycle.reopen(id(), call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  post("/keep") {
+    val keep = call.receive<KeepRequest>().keep
+    gatewayCall {
+      admin.setKeep(id(), keep, call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  // Cheats: logged with the admin's name, shown in the live feed
+  route("/cheat") {
+    get { gatewayCall { call.respond(cheats.view(id())) } }
+    get("/names") {
+      val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+      gatewayCall { call.respond(cheats.names(id(), slot)) }
+    }
+    post {
+      val request = call.receive<CheatRequest>()
+      gatewayCall {
+        cheats.run(id(), request, call.loggedIn.user.name, byRole(list))
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+  }
+  get("/server") { gatewayCall { call.respond(gameServer.state(id())) } }
+  post("/server/{action}") {
+    val action = call.parameters["action"]
+    if (action !in setOf("start", "stop", "restart")) return@post call.respond(HttpStatusCode.NotFound)
+    gatewayCall {
+      val id = id()
+      if (action != "stop" && sessions.get(id)?.finished == true) {
+        throw SessionProblem(HttpStatusCode.Conflict, "The session is finished; reopen it to start the game server")
+      }
+      logger.info("{} asked to {} the game server of {}", call.loggedIn.user.name, action, id)
+      val state = gameServer.control(id, action!!)
+      sessions.refresh()
+      call.respond(state)
+    }
+  }
+  post("/command") {
+    val line = call.receive<CommandRequest>().line.trim()
+    if (line.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("Empty command"))
+    gatewayCall {
+      val id = id()
+      logger.info("{} ran on the game server of {}: {}", call.loggedIn.user.name, id, line)
+      if (gameServer.command(id, line)) call.respond(HttpStatusCode.NoContent)
+      else call.respond(HttpStatusCode.Conflict, ApiError("The game server isn't running"))
+    }
+  }
+  // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
+  sse("/stream") {
+    val id = call.parameters["id"].orEmpty()
+    var since = 0L
+    var lastState: GameServerState? = null
+    var reachable = true
+    while (true) {
+      try {
+        val state = gameServer.state(id)
+        if (state != lastState || !reachable) {
+          send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
+          lastState = state
+          reachable = true
+        }
+        val lines = gameServer.log(id, since)
+        // The gateway restarted and counts from 1 again
+        if (lines.last < since) since = 0
+        if (lines.lines.isNotEmpty()) {
+          send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
+        }
+        since = lines.last
+      } catch (e: GameServerUnavailable) {
+        if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
+        reachable = false
+      }
+      delay(LOG_POLL)
+    }
+  }
+}
+
+/** As what the caller acts in this session: a Session-Manager, or an Administrator without a part in it. */
+private fun RoutingContext.byRole(list: SessionList): String =
+  if (list.roleIn(call.loggedIn.user, call.parameters["id"].orEmpty()) == SessionRole.MANAGER) "manager" else "administrator"
+
+/** The key of the setting, and its highest value. */
+const val SESSIONS_PER_USER = "sessions_per_user"
+private const val MAX_SESSIONS_PER_USER = 20
+
+/** How many running sessions one user (not an Administrator) may manage at once. */
+suspend fun sessionsPerUser(settings: AppSettingsStore): Int = settings.get(SESSIONS_PER_USER)?.toIntOrNull() ?: 1

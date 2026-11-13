@@ -4,6 +4,7 @@ import net.eratiem.randogeddon.database.FinishState
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionStatus
 import org.koin.core.annotation.Single
 import java.time.Instant
@@ -41,14 +42,15 @@ fun statusOf(finish: FinishState?, percent: Double): SessionStatus = when {
  */
 @Single
 class SessionList(private val config: TrackerConfig, private val sessions: LiveSessions) {
-  /** What [user] may see, the newest first. */
+  /** What [user] may see (every session they have a part in; an Administrator all), the newest first. */
   suspend fun visibleTo(user: User): List<SessionEntry> = sessions.all().mapNotNull { live ->
-    val person = live.personOf(user)
-    if (person == null && !user.admin) null else entry(live, person, admin = user.admin)
+    val role = live.roleOf(user)
+    if (role == null && !user.administrator) null
+    else entry(live, live.personOf(user), admin = user.administrator || role == SessionRole.MANAGER, role = role)
   }
 
-  /** [live] as the lists show it; [person]: who asks, in it; [admin]: with its game server. */
-  suspend fun entry(live: LiveSession, person: String?, admin: Boolean): SessionEntry {
+  /** [live] as the lists show it; [person]: who asks, in it; [admin]: with its game server; [role]: theirs in it. */
+  suspend fun entry(live: LiveSession, person: String?, admin: Boolean, role: SessionRole? = null): SessionEntry {
     val s = runCatching { live.summary() }.getOrNull()
     val finish = live.finish
     val finishedAt = finish?.finishedAt
@@ -64,6 +66,7 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
       finishedBy = finish?.finishedBy,
       players = people.keys.toList(),
       mySlots = person?.let { people[it] }.orEmpty(),
+      myRole = role,
       slots = s?.totals?.players ?: 0,
       percent = percent,
       goals = s?.totals?.goals ?: 0,
@@ -75,8 +78,12 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
     )
   }
 
-  /** [user] may see session [id]: an admin, or one of its players. */
-  fun canSee(user: User, id: String): Boolean = user.admin || sessions.get(id)?.personOf(user) != null
+  /** [user] may see session [id]: an Administrator, or anyone with a part in it. */
+  fun canSee(user: User, id: String): Boolean = user.administrator || roleIn(user, id) != null
 
-  /** [user] plays in some session (and may log in to see it). */
+  /** [user]'s part in session [id]; `null`: none (or no such session). */
+  fun roleIn(user: User, id: String): SessionRole? = sessions.get(id)?.roleOf(user)
+
+  /** The sessions [user] is a Session-Manager of. */
+  fun managedBy(user: User): List<String> = sessions.all().filter { user.id in it.managers() }.map { it.id }
 }

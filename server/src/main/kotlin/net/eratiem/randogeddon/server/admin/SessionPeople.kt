@@ -1,0 +1,106 @@
+package net.eratiem.randogeddon.server.admin
+
+import io.ktor.http.HttpStatusCode
+import net.eratiem.randogeddon.database.SessionRoleStore
+import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.account.AccountProblem
+import net.eratiem.randogeddon.server.account.AccountService
+import net.eratiem.randogeddon.server.session.LiveSession
+import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.util.logger
+import net.eratiem.randogeddon.shared.AddPersonRequest
+import net.eratiem.randogeddon.shared.SessionPeople
+import net.eratiem.randogeddon.shared.SessionPerson
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.UserRef
+import org.koin.core.annotation.Single
+import java.lang.invoke.MethodHandles
+import kotlin.uuid.Uuid
+
+private val logger = logger(MethodHandles.lookup().lookupClass())
+
+/**
+ * Who has which part in a session besides playing: its Session-Managers, support and watchers. Given and taken by its
+ * Session-Managers (and Administrators); nobody gets a second part, and Administrators none (they reach every session
+ * anyway). A session always keeps one Session-Manager, unless an Administrator takes the last one away.
+ */
+@Single
+class SessionPeopleService(
+  private val users: UserStore,
+  private val roles: SessionRoleStore,
+  private val sessions: LiveSessions,
+  private val accounts: AccountService,
+) {
+  /** Everyone with a part in session [id]: players with their slots, and the others with their role. */
+  fun list(id: String): SessionPeople {
+    val live = session(id)
+    val setup = live.setup
+    val slots = live.people()
+    val players = setup?.members.orEmpty().map { (user, name) ->
+      SessionPerson(user.toString(), name, SessionRole.PLAYER, slots[name].orEmpty(), user in setup?.deleted.orEmpty())
+    }
+    val others = setup?.roles.orEmpty().mapNotNull { (user, entry) ->
+      SessionRole.of(entry.role)?.let { SessionPerson(user.toString(), entry.name, it, slots[entry.name].orEmpty(), entry.deleted) }
+    }
+    // A Session-Manager who also plays is listed once, as a manager (with their slots)
+    val managers = others.map { it.id }.toSet()
+    return SessionPeople((others + players.filter { it.id !in managers }).sortedWith(compareBy({ it.role.ordinal }, { it.name.lowercase() })))
+  }
+
+  /** Who can still be given a part in session [id]: accounts with a name, without one there, no Administrators. */
+  suspend fun choices(id: String): List<UserRef> {
+    val live = session(id)
+    val taken = taken(live)
+    return users.active().filter { !it.administrator && it.id !in taken }
+      .map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() }
+  }
+
+  /** Gives someone a part in session [id]: an account, or a new address (invited). */
+  suspend fun add(id: String, request: AddPersonRequest, by: User): SessionPerson {
+    val live = session(id)
+    if (request.role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, "Players come with the slots")
+    val (userId, name) = when {
+      request.userId != null -> {
+        val user = runCatching { Uuid.parse(request.userId!!) }.getOrNull()?.let { users.findActive(it) }
+          ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
+        if (user.administrator) throw AccountProblem(HttpStatusCode.Conflict, "${user.name} is an Administrator and reaches every session")
+        user.id to user.name
+      }
+      request.email != null -> {
+        val invited = inviteNew(request.email!!, request.suggestedName, by)
+        Uuid.parse(invited.id) to (invited.name ?: request.email!!.substringBefore('@'))
+      }
+      else -> throw AccountProblem(HttpStatusCode.BadRequest, "Whom: an account or an e-mail address")
+    }
+    if (userId in taken(live)) throw AccountProblem(HttpStatusCode.Conflict, "$name has a part in ${live.id} already")
+    if (!roles.add(live.id, userId, request.role.code, name, by.name)) {
+      throw AccountProblem(HttpStatusCode.Conflict, "$name has a part in ${live.id} already")
+    }
+    sessions.refresh()
+    logger.info("{} made {} {} of {}", by.name, name, request.role.code, live.id)
+    return SessionPerson(userId.toString(), name, request.role)
+  }
+
+  /** Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator. */
+  suspend fun remove(id: String, userId: Uuid, by: User) {
+    val live = session(id)
+    val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, "They have no part to take")
+    if (entry.role == SessionRole.MANAGER.code && live.managers().size <= 1 && !by.administrator) {
+      throw AccountProblem(HttpStatusCode.Conflict, "A session keeps at least one Session-Manager")
+    }
+    roles.remove(live.id, userId)
+    sessions.refresh()
+    logger.info("{} took {}'s part ({}) in {}", by.name, entry.name, entry.role, live.id)
+  }
+
+  /** Invites [email] for a session (a player, or a part in it): only if no account has that address. */
+  suspend fun inviteNew(email: String, suggestedName: String?, by: User): UserRef {
+    val account = accounts.invite(email, suggestedName, by.name, existing = "That address has an account: pick them by name")
+    return UserRef(account.id.toString(), account.name, account.email.takeIf { account.name == null })
+  }
+
+  private fun taken(live: LiveSession): Set<Uuid> = live.setup?.members.orEmpty().keys + live.setup?.roles.orEmpty().keys
+
+  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, "No session $id")
+}

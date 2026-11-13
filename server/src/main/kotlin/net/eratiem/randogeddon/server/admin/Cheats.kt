@@ -41,8 +41,9 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
   }
 }
 
-/** For the live feed: "Alice gave Mantis Claw to Alice-HK". */
-internal fun cheatText(admin: String, action: CheatAction, slot: String, value: String?): String = admin + " " + when (action) {
+/** For the live feed: "Alice gave Mantis Claw to Alice-HK", "Bob (support) …" for anyone but an Administrator. */
+internal fun cheatText(admin: String, action: CheatAction, slot: String, value: String?, byRole: String = "administrator"): String =
+  who(admin, byRole) + " " + when (action) {
   CheatAction.ITEM -> "gave $value to $slot"
   CheatAction.LOCATION -> "checked $value in $slot"
   CheatAction.RELEASE -> "released $slot"
@@ -71,7 +72,7 @@ class Cheats(
       cheatHints = session.options?.cheatHints == true,
       available = running && !session.finished,
       log = log.of(session.seedName).map {
-        CheatLogEntry(it.at.toEpochMilli(), it.admin, CheatAction.valueOf(it.action), it.slotName, it.value)
+        CheatLogEntry(it.at.toEpochMilli(), who(it.admin, it.byRole), CheatAction.valueOf(it.action), it.slotName, it.value)
       },
     )
   }
@@ -79,7 +80,8 @@ class Cheats(
   suspend fun names(id: String, slot: String): CheatNames =
     session(id).tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, "No slot $slot")
 
-  suspend fun run(id: String, request: CheatRequest, admin: String) {
+  /** [byRole]: `administrator`, `manager` or `support`; the log and the feed say so. */
+  suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator") {
     val session = session(id)
     val tracker = session.tracker
     val seed = session.seedName
@@ -103,10 +105,17 @@ class Cheats(
     if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, "The game server isn't running")
     logger.info("{} cheated in {}: {}", admin, id, command)
     val shown = value.takeIf { request.action in NEEDS_VALUE }
-    log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown))
-    tracker.cheat(cheatText(admin, request.action, request.slot, shown))
+    log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown, byRole))
+    tracker.cheat(cheatText(admin, request.action, request.slot, shown, byRole))
   }
 
   private fun session(id: String): LiveSession =
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+}
+
+/** Who ran a cheat as the log and the feed show it: an Administrator by name, the others with their role. */
+internal fun who(name: String, byRole: String): String = when (byRole) {
+  "manager" -> "$name (Session-Manager)"
+  "support" -> "$name (support)"
+  else -> name
 }

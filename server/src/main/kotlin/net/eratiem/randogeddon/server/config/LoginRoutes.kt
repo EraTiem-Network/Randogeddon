@@ -19,12 +19,14 @@ import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.TwoFactor
+import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.LoginNext
 import net.eratiem.randogeddon.shared.LoginStep
 import net.eratiem.randogeddon.shared.PendingRequest
 import net.eratiem.randogeddon.shared.RecoveryCodeList
+import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.LoginRequest
 import net.eratiem.randogeddon.shared.Me
 import kotlin.time.Duration.Companion.seconds
@@ -76,20 +78,52 @@ val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::Req
 }
 
 /**
- * Lets a call through only for admins with two-factor login (403 otherwise); goes inside [RequireLogin], which provides
- * [loggedIn]. Checked on every call, so hiding the panel in the web app is not what protects it.
+ * Lets a call through only for Administrators with two-factor login (403 otherwise); goes inside [RequireLogin], which
+ * provides [loggedIn]. Checked on every call, so hiding the panel in the web app is not what protects it.
  */
-val RequireAdmin = createRouteScopedPlugin("RequireAdmin") {
+val RequireAdministrator = createRouteScopedPlugin("RequireAdministrator") {
   onCall { call ->
     val user = call.loggedIn.user
     when {
-      !user.admin -> call.respond(HttpStatusCode.Forbidden, ApiError("Only admins can do this"))
-      !user.twoFactor -> call.respond(
-        HttpStatusCode.Forbidden, ApiError("Admins need two-factor login: set it up under Your account first"),
-      )
+      !user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError("Only Administrators can do this"))
+      !user.twoFactor -> call.respond(HttpStatusCode.Forbidden, ApiError(NEEDS_TWO_FACTOR))
     }
   }
 }
+
+private const val NEEDS_TWO_FACTOR = "Administrators need two-factor login: set it up under Your account first"
+
+class RequireSessionRoleConfig {
+  lateinit var logins: LoginCheck
+  var roles: Set<SessionRole> = emptySet()
+}
+
+/**
+ * A session's routes (`.../{id}/...`) only for those with one of [RequireSessionRoleConfig.roles] in it, and for
+ * Administrators (with two-factor login): 403 otherwise. Goes inside [RequireLogin].
+ */
+val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::RequireSessionRoleConfig) {
+  val logins = pluginConfig.logins
+  val roles = pluginConfig.roles
+  onCall { call ->
+    val user = call.loggedIn.user
+    if (logins.roleIn(user, call.parameters["id"].orEmpty()) in roles) return@onCall
+    when {
+      user.administrator && user.twoFactor -> Unit
+      user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError(NEEDS_TWO_FACTOR))
+      else -> call.respond(HttpStatusCode.Forbidden, ApiError("Only the session's ${roles.joinToString(" or ") { it.label }} can do this"))
+    }
+  }
+}
+
+/** How a role is called in messages. */
+val SessionRole.label: String
+  get() = when (this) {
+    SessionRole.PLAYER -> "players"
+    SessionRole.MANAGER -> "Session-Managers"
+    SessionRole.SUPPORT -> "support"
+    SessionRole.WATCHER -> "watchers"
+  }
 
 /**
  * `POST /api/login`, then for users with two-factor login `POST /api/login/code`, for an admin without it
@@ -118,7 +152,7 @@ fun Route.loginRoutes(logins: LoginService, twoFactor: TwoFactor, pending: Pendi
       when {
         user.twoFactor -> call.respond(LoginStep(LoginNext.CODE, pending.create(user.id)))
         // Admins can cheat and delete sessions: they set up two-factor login before anything else
-        user.admin -> call.respond(LoginStep(LoginNext.SETUP, pending.create(user.id)))
+        user.administrator -> call.respond(LoginStep(LoginNext.SETUP, pending.create(user.id)))
         else -> {
           loggedIn(user)
           call.respond(HttpStatusCode.NoContent)
@@ -161,11 +195,11 @@ fun Route.loginRoutes(logins: LoginService, twoFactor: TwoFactor, pending: Pendi
   }
 }
 
-/** Under the protected `/api` branch. */
-fun Route.meRoute() {
+/** Under the protected `/api` branch: who is logged in, an Administrator, and which sessions they manage. */
+fun Route.meRoute(list: SessionList) {
   get("/me") {
-    val me = call.loggedIn
-    call.respond(Me(name = me.user.name, admin = me.user.admin))
+    val user = call.loggedIn.user
+    call.respond(Me(name = user.name, administrator = user.administrator, manages = list.managedBy(user)))
   }
 }
 
