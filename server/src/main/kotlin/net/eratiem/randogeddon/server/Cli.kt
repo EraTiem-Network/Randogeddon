@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
@@ -12,6 +13,7 @@ import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.account.PasswordGenerator
 import net.eratiem.randogeddon.server.account.PasswordHasher
+import net.eratiem.randogeddon.server.account.createLoginLink
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.UserNames
@@ -26,6 +28,7 @@ private const val USAGE = """Usage: randogeddon [command]
   admins --create <person>  a new login for <person> as an Administrator (the first one)
   admins --grant <person>   make <person> an Administrator (every session, the APWorlds, the users, the settings)
   admins --revoke <person>  take it back
+  admins --login <person>   a one-time login link for <person> (15 minutes): when single sign-on can't be reached
   admins --reset-2fa <person>  turn off <person>'s two-factor login (lost authenticator and recovery codes); an
                             Administrator sets it up again at the next login
   sessions                  every session: its ID, seed and whether it is finished
@@ -56,6 +59,7 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
             args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db))
             args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db))
             args.size == 3 && args[1] == "--reset-2fa" -> resetTwoFactor(args[2], UserStore(db), TwoFactorStore(db))
+            args.size == 3 && args[1] == "--login" -> loginLink(config, args[2], UserStore(db), LoginLinkStore(db))
             else -> usage()
           }
           "sessions" -> if (args.size == 1) listSessions(SessionStore(db)) else usage()
@@ -79,6 +83,17 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
 private fun usage(): Int {
   System.err.println(USAGE)
   return 2
+}
+
+/** A one-time login link for [person] (an Administrator when single sign-on is away): printed, valid 15 minutes. */
+private suspend fun loginLink(config: TrackerConfig, person: String, users: UserStore, links: LoginLinkStore): Int {
+  val user = users.findActive(person) ?: run {
+    System.err.println("No login for '$person'.")
+    return 1
+  }
+  println("A login link for ${user.name} (once, for 15 minutes):")
+  println(createLoginLink(links, config.publicUrl, user))
+  return 0
 }
 
 /** A login for [person] without an invitation: the first Administrator, or a player of the local demo. */

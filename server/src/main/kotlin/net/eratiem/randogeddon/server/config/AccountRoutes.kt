@@ -10,6 +10,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
@@ -101,9 +102,9 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: 
 }
 
 /** Under the protected `/api` branch: the accounts in the admin panel (invite, send the link again, another address). */
-fun Route.adminUserRoutes(accounts: AccountService) {
+fun Route.adminUserRoutes(accounts: AccountService, logins: LoginCheck) {
   route("/admin/users") {
-    install(RequireAdministrator)
+    install(RequireAdministrator) { this.logins = logins }
     get { call.respond(accounts.list()) }
     post {
       accountCall {

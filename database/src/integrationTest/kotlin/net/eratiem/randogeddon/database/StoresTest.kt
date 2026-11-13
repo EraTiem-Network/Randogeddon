@@ -399,6 +399,36 @@ class StoresTest {
   }
 
   @Test
+  fun `an account is linked to one Authentik user, logins keep their method, a login link works once`() = runBlocking {
+    val users = UserStore(db)
+    val lea = users.create("Lea", "hash", email = "lea@example.org")
+    val max = users.create("Max", "hash")
+    assertNull(users.findBySubject("sub-1"))
+    assertTrue(users.linkSubject(lea.id, "sub-1"))
+    assertEquals(lea.id, users.findBySubject("sub-1")?.id)
+    // Another account can't take it, and Lea keeps hers
+    assertEquals(false, users.linkSubject(max.id, "sub-1"))
+    assertEquals(false, users.linkSubject(lea.id, "sub-2"))
+    assertTrue(users.linkSubject(lea.id, "sub-1"))
+
+    val logins = LoginSessionStore(db)
+    val later = Instant.now().plus(1, ChronoUnit.DAYS)
+    logins.create("a".repeat(64), lea.id, later, method = "oidc")
+    logins.create("b".repeat(64), max.id, later)
+    assertEquals(lea.id to "oidc", logins.loginOf("a".repeat(64)))
+    assertEquals(max.id to "password", logins.loginOf("b".repeat(64)))
+
+    val links = LoginLinkStore(db)
+    links.create("c".repeat(64), lea.id, later)
+    links.create("d".repeat(64), lea.id, Instant.now().minusSeconds(1))
+    assertEquals(lea.id, links.use("c".repeat(64)))
+    assertNull(links.use("c".repeat(64)))
+    // Expired, or none
+    assertNull(links.use("d".repeat(64)))
+    assertNull(links.use("e".repeat(64)))
+  }
+
+  @Test
   fun `settings have their defaults and keep what is set`() = runBlocking {
     val settings = AppSettingsStore(db)
     assertEquals("1", settings.get("sessions_per_user"))

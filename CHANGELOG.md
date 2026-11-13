@@ -4,6 +4,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Administrators through Authentik (Phase 8, part 2)
+- With `OIDC_ISSUER` (and the client) set, the login form has *Administrators: log in with Authentik* (OpenID Connect,
+  authorization code with PKCE; our own small client, the ID token checked with the JDK). Members of
+  `OIDC_ADMIN_GROUP` are the Administrators: linked by the provider's subject, the first time by their verified
+  e-mail address (or a new account), the flag following the group at every login. Others are refused.
+- Then Administrators act as such only after logging in through Authentik (its MFA instead of the app's two-factor
+  login) and can't log in with a password; `randogeddon admins --login <person>` prints a one-time link (15 minutes)
+  for when Authentik can't be reached. Players keep their name and password. Without `OIDC_ISSUER` nothing changes.
+- Migration V11: `users.oidc_subject`, `login_sessions.method`, `login_links`. `login` and `login-problem` are reserved
+  session IDs.
+
 ### The live server (Phase 8, part 1)
 - The build infrastructure of example.org, its compose files in `infra/`: Zot at `img.example.org` (the registry VM) for
   the images, Authentik at `auth.example.org` (the auth VM) with Zot's login through it (`infra/auth/setup.py` makes its

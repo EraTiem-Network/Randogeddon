@@ -103,6 +103,13 @@ services:
       MAIL_FROM: ${MAIL_FROM:-randogeddon@example.net}
       # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
       TOTP_KEY: ${TOTP_KEY:-}
+      # Administrators log in through this OpenID Connect provider (Authentik); without OIDC_ISSUER with their password
+      # and two-factor login
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-randogeddon-administrators}
+      OIDC_NAME: ${OIDC_NAME:-Authentik}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
       - tracker-state:/state         # each session's event history and archive survive restarts

@@ -35,6 +35,8 @@ data class TrackerConfig(
   val mail: MailConfig = MailConfig(),
   /** Encrypts the TOTP secrets: base64 of 32 bytes; empty: a key file in [stateDir], made once. */
   val totpKey: String = "",
+  /** Administrators log in through this provider; `null`: with their password and two-factor login. */
+  val oidc: OidcConfig? = null,
 ) {
   /** Where the players of session [id] connect. */
   fun addressOf(id: String): String = publicAddress.replace("{id}", id)
@@ -66,6 +68,13 @@ data class TrackerConfig(
           password = value("mail.password"),
           from = value("mail.from"),
         ),
+        oidc = OidcConfig(
+          issuer = value("oidc.issuer").trim(),
+          clientId = value("oidc.clientId").trim(),
+          clientSecret = value("oidc.clientSecret"),
+          adminGroup = value("oidc.adminGroup").trim(),
+          name = value("oidc.name").trim(),
+        ).takeIf { it.issuer.isNotEmpty() && it.clientId.isNotEmpty() },
       )
     }
   }
@@ -97,4 +106,17 @@ data class MailConfig(
   val user: String = "",
   val password: String = "",
   val from: String = "randogeddon@example.net",
+)
+
+/**
+ * The OpenID Connect provider (Authentik) Administrators log in through: [issuer] (its discovery document is at
+ * `<issuer>.well-known/openid-configuration`), this app's client, and the group whose members are Administrators.
+ */
+data class OidcConfig(
+  val issuer: String,
+  val clientId: String,
+  val clientSecret: String,
+  val adminGroup: String = "randogeddon-administrators",
+  /** For the login button. */
+  val name: String = "Authentik",
 )

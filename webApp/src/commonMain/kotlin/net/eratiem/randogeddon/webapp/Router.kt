@@ -46,6 +46,8 @@ sealed interface Route {
         parts[0] == "invite" && parts.size >= 2 -> Invite(parts[1])
         parts[0] == "email" && parts.size >= 2 -> ConfirmEmail(parts[1])
         parts[0] == "watch" && parts.size >= 2 -> Watch(parts[1])
+        // index.html's login form uses these (a CLI login link, a refused login through the provider)
+        parts[0] == "login" || parts[0] == "login-problem" -> Home
         parts.size >= 2 && parts[1] == "spoiler" -> Spoiler(parts[0], fromAdmin = false)
         else -> Dashboard(parts[0])
       }
