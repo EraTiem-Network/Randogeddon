@@ -25,6 +25,8 @@ object UsersTable : Table("users") {
   val totpEnabledAt = timestamp("totp_enabled_at").nullable()
   /** The newest 30-second step a code was accepted for: no code works twice. */
   val totpLastStep = long("totp_last_step").nullable()
+  /** The Authentik user (the ID token's `sub`) this account is linked to (V11). */
+  val oidcSubject = varchar("oidc_subject", 255).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
@@ -63,6 +65,18 @@ object LoginSessionsTable : Table("login_sessions") {
   val userId = uuid("user_id") references UsersTable.id
   val createdAt = timestamp("created_at")
   val expiresAt = timestamp("expires_at")
+  /** `password`, `oidc` or `link` (V11). */
+  val method = varchar("method", 16).default("password")
+  override val primaryKey = PrimaryKey(tokenHash)
+}
+
+/** One-time login links of the host's CLI (V11), by the SHA-256 of their token. */
+object LoginLinksTable : Table("login_links") {
+  val tokenHash = varchar("token_hash", 64)
+  val userId = uuid("user_id") references UsersTable.id
+  val createdAt = timestamp("created_at")
+  val expiresAt = timestamp("expires_at")
+  val usedAt = timestamp("used_at").nullable()
   override val primaryKey = PrimaryKey(tokenHash)
 }
 

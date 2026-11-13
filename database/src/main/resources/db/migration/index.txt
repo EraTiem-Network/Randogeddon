@@ -9,3 +9,4 @@ V7__accounts_of_people.sql
 V8__two_factor.sql
 V9__session_roles.sql
 V10__share_links.sql
+V11__single_sign_on.sql
