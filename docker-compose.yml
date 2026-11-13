@@ -100,6 +100,8 @@ services:
       MAIL_USER: ${MAIL_USER:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-randogeddon@example.net}
+      # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
+      TOTP_KEY: ${TOTP_KEY:-}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
       - tracker-state:/state         # each session's event history and archive survive restarts
