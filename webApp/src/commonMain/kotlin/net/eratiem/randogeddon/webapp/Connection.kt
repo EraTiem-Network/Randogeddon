@@ -22,19 +22,25 @@ import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.MySlot
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.Summary
 
 /**
  * How the logged-in player joins the game: the server address and, for one of their worlds, the slot name and its
  * password. With several worlds, a searchable dropdown picks the world (by its short name, without the player's; the
  * full slot name is below it, to copy); it starts on the one that is online now, or
- * else the one played last. The password is hidden until shown; copying works either way. [fillHeight]: the card
- * fills the height the section is given (next to the overview).
+ * else the one played last. The password is hidden until shown; copying works either way. Below them the slot's files
+ * from the seed ([files]: patches, mods), to download. [fillHeight]: the card fills the height the section is given
+ * (next to the overview).
  */
 @Composable
 fun ConnectionSection(
   name: String,
   connection: Connection?,
+  /** The session, for the downloads. */
+  sessionId: String,
+  /** The seed's files of [name]'s slots. */
+  files: List<SlotFile>,
   /** [name] plays in this session (an Administrator, support or a watcher doesn't). */
   mine: Boolean,
   /** What [name] is in it; `null`: an Administrator without a part. */
@@ -94,6 +100,7 @@ fun ConnectionSection(
       if (slot != null) {
         Field("Slot", slot.name)
         PasswordField(slot)
+        files.filter { it.slotName == slot.name }.forEach { file -> FileField(sessionId, file) }
       }
     }
   }
@@ -107,6 +114,23 @@ private fun PasswordField(slot: MySlot) {
     Mono(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f))
     SmallButton(if (shown) "Hide" else "Show", { shown = !shown })
     SmallButton("Copy", { Platform.copy(slot.password) })
+  }
+}
+
+/** How a slot's file is used: on the download's tip. */
+internal const val PATCH_HOW_TO = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
+  "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
+  "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
+
+/** One of the slot's files from the seed: its name and size, and the download. */
+@Composable
+private fun FileField(sessionId: String, file: SlotFile) {
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Label("File")
+    Mono(file.name, Modifier.weight(1f))
+    Txt(fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
+    InfoTip(PATCH_HOW_TO)
+    SmallButton("Download", { Platform.download(slotFilePath(sessionId, file.name)) })
   }
 }
 

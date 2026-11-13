@@ -109,7 +109,7 @@ fun CheatSection(
   // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
   LaunchedEffect(slot, view) {
     val s = slot ?: return@LaunchedEffect
-    val answer = call("GET", "$path/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
+    val answer = call("GET", "$path/names?slot=${s.percentEncoded()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
     if (answer is Answer.Ok) {
       names = answer.value
       if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
@@ -223,13 +223,6 @@ fun CheatSection(
       }
     }
   }
-}
-
-/** For a query parameter: letters and digits as they are, everything else percent-encoded (UTF-8). */
-private fun String.encodeQuery(): String = encodeToByteArray().joinToString("") { b ->
-  val c = (b.toInt() and 0xff)
-  if (c < 128 && (c.toChar().isLetterOrDigit() || c.toChar() in "-_.~")) c.toChar().toString()
-  else "%" + c.toString(16).uppercase().padStart(2, '0')
 }
 
 /** On the dashboard, for the session's support: giving items, checking locations, free hints; the spoiler log. */

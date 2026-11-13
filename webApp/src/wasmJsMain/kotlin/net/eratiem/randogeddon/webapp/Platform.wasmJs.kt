@@ -43,6 +43,8 @@ actual object Platform {
 
   actual fun copy(text: String) = jsCopy(text)
 
+  actual fun download(path: String) = jsDownload(path)
+
   actual fun systemDarkMode(): Boolean = jsDarkMode()
 
   actual fun touchScreen(): Boolean = jsTouchScreen()
@@ -104,6 +106,10 @@ private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> U
 )
 
 private fun jsCopy(text: String): Unit = js("{ try { navigator.clipboard.writeText(text); } catch (e) {} }")
+
+// A link with `download`: the browser saves the answer (its Content-Disposition names the file) instead of opening it
+private fun jsDownload(path: String): Unit =
+  js("{ const a = document.createElement('a'); a.href = path; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }")
 
 private fun jsOpenStream(url: String, onState: (String) -> Unit, onOpen: () -> Unit, onError: () -> Unit): JsAny = js(
   """{ const es = new EventSource(url);

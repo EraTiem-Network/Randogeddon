@@ -79,6 +79,8 @@ import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SlotFile
+import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
@@ -251,17 +253,25 @@ fun SessionSection(
       if (!gone) server()
     }
   }
-  if (session != null && !gone) PlayersAdmin(session.worlds)
+  if (session != null && !gone) PlayersAdmin(id, session.worlds)
 }
 
-/** Who plays in a session, each with their slots; slots nobody plays at the end. */
+/**
+ * Who plays in a session, each with their slots; slots nobody plays at the end. Below: every slot's files from the seed
+ * (patches, mods), to download, e.g. for someone who can't log in.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PlayersAdmin(worlds: List<WorldPlan>) {
+private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
   val p = LocalPalette.current
   val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
   val ids = worlds.flatMap { w -> w.users.zip(w.userIds) }.toMap()
   val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
+  var files by remember(id) { mutableStateOf<List<SlotFile>>(emptyList()) }
+  LaunchedEffect(id) {
+    (call("GET", "api/sessions/$id/files", null) { ApiJson.decodeFromString(SlotFiles.serializer(), it) } as? Answer.Ok)
+      ?.let { files = it.value.files }
+  }
   Section("Players", subtitle = "${players.size} players, ${worlds.size} slots") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       if (players.isEmpty() && nobody.isEmpty()) Txt("Nobody is named for its slots.", size = 13.sp, color = p.muted)
@@ -272,6 +282,21 @@ private fun PlayersAdmin(worlds: List<WorldPlan>) {
         Txt("Nobody plays", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           nobody.forEach { Pill(it, p.muted) }
+        }
+      }
+      if (files.isNotEmpty()) {
+        Divider()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          Txt("Files of the slots", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          InfoTip("Each player downloads their own under Your connection; here every slot's. $PATCH_HOW_TO")
+        }
+        files.forEach { file ->
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill(file.slotName ?: "slot ${file.slot}", p.hue(file.slotName ?: file.name))
+            Mono(file.name, p.text, Modifier.weight(1f))
+            Txt(fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
+            SmallButton("Download", { Platform.download(slotFilePath(id, file.name)) })
+          }
         }
       }
     }
