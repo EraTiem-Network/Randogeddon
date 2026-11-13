@@ -22,6 +22,24 @@ class SpoilerTest {
   }
 
   @Test
+  fun `the slots are named by their numbers, with their games`() {
+    // As Archipelago 0.6.8 writes the options part (shortened)
+    val text = "Archipelago Version 0.6.8  -  Seed: 1\n\nPlayers:                         3\n\n" +
+      "Player 1: Dave-Timespinner\nGame:                            Timespinner\nStart With Jewelry Box:          Yes\n\n" +
+      "Player 2: Erin Super Metroid\nGame:                            Super Metroid\n\n" +
+      "Player 3: Locks\nGame:                            World Locks\n\nLocations:\n\n" +
+      "Player 9: Nobody (Alice-HK): Mantis Claw (Alice-HK)\n"
+    assertEquals(
+      mapOf(
+        1 to SeedSlot("Dave-Timespinner", "Timespinner"),
+        2 to SeedSlot("Erin Super Metroid", "Super Metroid"),
+        3 to SeedSlot("Locks", "World Locks"),
+      ),
+      seedSlots(text),
+    )
+  }
+
+  @Test
   fun `the section after the playthrough ends it`() {
     val text = "Playthrough:\n\n0: {\n  A (X)\n}\n1: {\n  L (X): I (Y)\n}\n\nPaths:\n\n  I (Y): [...]\n"
     val spoiler = parseSpoiler("1", text)

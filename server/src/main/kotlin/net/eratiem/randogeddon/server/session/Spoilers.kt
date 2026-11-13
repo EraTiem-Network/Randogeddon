@@ -43,6 +43,34 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
   return Spoiler(seed, spheres, text)
 }
 
+private val PLAYER = Regex("^Player (\\d+): (.+)$")
+private val GAME = Regex("^Game:\\s+(.+)$")
+
+/** A slot of the seed by its number, as the spoiler log names it: `Player <n>: <name>`, then `Game: <game>`. */
+internal data class SeedSlot(val name: String, val game: String?)
+
+/** The slots of the seed by their numbers, from the spoiler log's options part. */
+internal fun seedSlots(text: String): Map<Int, SeedSlot> {
+  val slots = LinkedHashMap<Int, SeedSlot>()
+  var last: Int? = null
+  for (line in text.lineSequence().map { it.trimEnd() }) {
+    // The options part ends where the placements begin
+    if (line == "Locations:" || line == "Playthrough:") break
+    val player = PLAYER.matchEntire(line)
+    if (player != null) {
+      val number = player.groupValues[1].toInt()
+      slots[number] = SeedSlot(player.groupValues[2].trim(), null)
+      last = number
+      continue
+    }
+    val number = last ?: continue
+    val game = GAME.matchEntire(line) ?: continue
+    slots[number] = slots.getValue(number).copy(game = game.groupValues[1].trim())
+    last = null
+  }
+  return slots
+}
+
 /** The spoiler logs of the sessions, from the gateway (it reads them from the seeds' zips), kept once read. */
 @Single
 class Spoilers(private val gameServer: GameServerClient) {
