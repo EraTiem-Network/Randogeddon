@@ -4,6 +4,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Patch file downloads (Phase 7)
+Players download their slots' files from the seed (ROM patches, mods) under *Your connection*; Session-Managers and
+Administrators every slot's in the panel. Nothing that shows the way (the spoiler, readable text), and nothing for
+support, watchers or share links. Updating: nothing to set (no migration). The parts:
+
 ### Patch file downloads in the web app (Phase 7, part 2)
 - *Your connection*: the shown slot's files (name, size) with *Download*, and how to patch with the Archipelago
   Launcher on its ⓘ.

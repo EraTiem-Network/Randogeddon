@@ -220,23 +220,29 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] The panel (*Manage*) is everyone's: the sessions they manage with their people (who watches, supports or
       co-manages, added or removed while it runs); *General* is the Administrators'
 
-## Phase 7: Patch File Downloads
+## Phase 7: Patch File Downloads (done)
 
 *Players of ROM-based games get their patch files from the dashboard, not from whoever has the server.*
 
-- [ ] Each player downloads the patch files of their own slots
-    - From the dashboard, next to the slot under *Your connection* (e.g. `AP_<seed>_P3_Alice-SM.apsm`); only slots
-      whose game has one (ROM-based games), the others show nothing.
+- [x] Each player downloads the files of their own slots
+    - From the dashboard, under the slot in *Your connection* (e.g. `AP_<seed>_P3_Alice-SM.apsm`); slots without a
+      file show nothing.
     - The files come from the session's seed (`data/sessions/<id>/AP_<seed>.zip`), read by the gateway and handed
       out by the tracker; the ROM itself is never part of it.
-- [ ] Who may download what
+    - A file belongs to a slot by `P<n>` in its name (`AP_<seed>_P<n>_…`, or with `-` as Factorio's mod); the
+      spoiler log's `Player <n>: <name>` lines name the slot.
+- [x] Which files: everything Archipelago writes for the slot that doesn't help cheating
+    - ROM patches, mods (Factorio's zip), other per-slot output.
+    - Never the multidata, anything named spoiler, or readable text that could show the way (`.txt`, `.log`,
+      `.html`, `.md`, `.csv`).
+- [x] Who may download what
     - Players: their own slots (a slot played together: each of its players).
-    - Session-Managers and Administrators: every slot of the session (e.g. for someone who can't log in).
-    - Support, watchers and share links: none.
-- [ ] A short how-to with the download: patching with the Archipelago Launcher (the ROM is the player's own)
-- Open: whether a finished session's patch files stay downloadable (for replaying), and for how long.
-- Open: whether the session's other files are offered too (e.g. a game's mod or config files that some games put in
-  the seed).
+    - Session-Managers and Administrators: every slot of the session (e.g. for someone who can't log in), in the
+      panel's *Players*; on the dashboard they see only their own, like everyone.
+    - Support, watchers and share links: none. Every download is logged.
+- [x] A short how-to with the download: patching with the Archipelago Launcher (*Open Patch*, the player's own ROM)
+- [x] How long: as long as the session exists, finished ones too (until it is deleted, by hand or after
+      `SESSION_RETENTION_DAYS`)
 
 ## Phase 8: Multi-Language
 
