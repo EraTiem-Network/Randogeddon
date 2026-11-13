@@ -18,7 +18,7 @@ import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
-import net.eratiem.randogeddon.server.session.CurrentSession
+import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
@@ -31,6 +31,7 @@ import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.SessionIds
 import java.lang.invoke.MethodHandles
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -41,77 +42,125 @@ private val LOG_POLL = 750.milliseconds
 private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /**
- * Under the protected `/api` branch: the admin panel's control of the game server, which the gateway runs. Every
- * action is logged with the admin's name.
+ * Under the protected `/api` branch: the admin panel's control of every session and its game server, which the
+ * gateway runs, and of the apworld library. Every action is logged with the admin's name.
  */
 fun Route.adminRoutes(
   gameServer: GameServerClient,
-  sessions: SessionAdmin,
+  admin: SessionAdmin,
   lifecycle: SessionLifecycle,
   cheats: Cheats,
-  session: CurrentSession,
+  sessions: LiveSessions,
 ) {
   route("/admin") {
     install(RequireAdmin)
-    route("/session") {
-      get { gatewayCall { call.respond(sessions.view()) } }
+    route("/sessions") {
+      // Every session with its game server, and what a new one needs (releases, logins, a free ID)
+      get { gatewayCall { call.respond(admin.overview()) } }
+      post { gatewayCall { call.respond(admin.create(call.receive<CreateSessionRequest>(), call.loggedIn.user.name)) } }
       // The slots of the uploaded YAMLs, before the admin assigns them; games the release lacks are problems
-      post("/inspect") { call.respond(sessions.inspect(call.receive<InspectRequest>())) }
-      post { gatewayCall { call.respond(sessions.create(call.receive<CreateSessionRequest>(), call.loggedIn.user.name)) } }
-      delete {
-        gatewayCall {
-          sessions.delete(call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+      post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
+      route("/{id}") {
+        get { gatewayCall { call.respond(admin.view(id())) } }
+        delete {
+          gatewayCall {
+            admin.delete(id(), call.loggedIn.user.name)
+            call.respond(HttpStatusCode.NoContent)
+          }
         }
-      }
-      // Finishing the current session now, or stopping its countdown
-      post("/finish") {
-        gatewayCall {
-          lifecycle.finishNow(call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        // Finishing it now, or stopping its countdown; reopening it; keeping it for good (or not)
+        post("/finish") {
+          gatewayCall {
+            lifecycle.finishNow(id(), call.loggedIn.user.name)
+            call.respond(HttpStatusCode.NoContent)
+          }
         }
-      }
-      post("/finish/cancel") {
-        gatewayCall {
-          lifecycle.cancel(call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        post("/finish/cancel") {
+          gatewayCall {
+            lifecycle.cancel(id(), call.loggedIn.user.name)
+            call.respond(HttpStatusCode.NoContent)
+          }
         }
-      }
-    }
-    // Finished sessions (the current one, or past ones): reopen, keep for good (or not), delete for good
-    route("/sessions/{seed}") {
-      post("/reopen") {
-        gatewayCall {
-          lifecycle.reopen(call.parameters["seed"]!!, call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        post("/reopen") {
+          gatewayCall {
+            lifecycle.reopen(id(), call.loggedIn.user.name)
+            call.respond(HttpStatusCode.NoContent)
+          }
         }
-      }
-      post("/keep") {
-        val keep = call.receive<KeepRequest>().keep
-        gatewayCall {
-          sessions.setKeep(call.parameters["seed"]!!, keep, call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        post("/keep") {
+          val keep = call.receive<KeepRequest>().keep
+          gatewayCall {
+            admin.setKeep(id(), keep, call.loggedIn.user.name)
+            call.respond(HttpStatusCode.NoContent)
+          }
         }
-      }
-      delete {
-        gatewayCall {
-          sessions.deletePast(call.parameters["seed"]!!, call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        // Cheats: logged with the admin's name, shown in the live feed
+        route("/cheat") {
+          get { gatewayCall { call.respond(cheats.view(id())) } }
+          get("/names") {
+            val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            gatewayCall { call.respond(cheats.names(id(), slot)) }
+          }
+          post {
+            val request = call.receive<CheatRequest>()
+            gatewayCall {
+              cheats.run(id(), request, call.loggedIn.user.name)
+              call.respond(HttpStatusCode.NoContent)
+            }
+          }
         }
-      }
-    }
-    // Cheats: logged with the admin's name, shown in the live feed
-    route("/cheat") {
-      get { gatewayCall { call.respond(cheats.view()) } }
-      get("/names") {
-        val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-        gatewayCall { call.respond(cheats.names(slot)) }
-      }
-      post {
-        val request = call.receive<CheatRequest>()
-        gatewayCall {
-          cheats.run(request, call.loggedIn.user.name)
-          call.respond(HttpStatusCode.NoContent)
+        get("/server") { gatewayCall { call.respond(gameServer.state(id())) } }
+        post("/server/{action}") {
+          val action = call.parameters["action"]
+          if (action !in setOf("start", "stop", "restart")) return@post call.respond(HttpStatusCode.NotFound)
+          gatewayCall {
+            val id = id()
+            if (action != "stop" && sessions.get(id)?.finished == true) {
+              throw SessionProblem(HttpStatusCode.Conflict, "The session is finished; reopen it to start the game server")
+            }
+            logger.info("{} asked to {} the game server of {}", call.loggedIn.user.name, action, id)
+            val state = gameServer.control(id, action!!)
+            sessions.refresh()
+            call.respond(state)
+          }
+        }
+        post("/command") {
+          val line = call.receive<CommandRequest>().line.trim()
+          if (line.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("Empty command"))
+          gatewayCall {
+            val id = id()
+            logger.info("{} ran on the game server of {}: {}", call.loggedIn.user.name, id, line)
+            if (gameServer.command(id, line)) call.respond(HttpStatusCode.NoContent)
+            else call.respond(HttpStatusCode.Conflict, ApiError("The game server isn't running"))
+          }
+        }
+        // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
+        sse("/stream") {
+          val id = call.parameters["id"].orEmpty()
+          var since = 0L
+          var lastState: GameServerState? = null
+          var reachable = true
+          while (true) {
+            try {
+              val state = gameServer.state(id)
+              if (state != lastState || !reachable) {
+                send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
+                lastState = state
+                reachable = true
+              }
+              val lines = gameServer.log(id, since)
+              // The gateway restarted and counts from 1 again
+              if (lines.last < since) since = 0
+              if (lines.lines.isNotEmpty()) {
+                send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
+              }
+              since = lines.last
+            } catch (e: GameServerUnavailable) {
+              if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
+              reachable = false
+            }
+            delay(LOG_POLL)
+          }
         }
       }
     }
@@ -139,54 +188,12 @@ fun Route.adminRoutes(
         }
       }
     }
-    get("/server") { gatewayCall { call.respond(gameServer.state()) } }
-    post("/server/{action}") {
-      val action = call.parameters["action"]
-      if (action !in setOf("start", "stop", "restart")) return@post call.respond(HttpStatusCode.NotFound)
-      if (action != "stop" && session.finish?.finishedAt != null) {
-        return@post call.respond(HttpStatusCode.Conflict, ApiError("The session is finished; reopen it to start the game server"))
-      }
-      logger.info("{} asked to {} the game server", call.loggedIn.user.name, action)
-      gatewayCall { call.respond(gameServer.control(action!!)) }
-    }
-    post("/command") {
-      val line = call.receive<CommandRequest>().line.trim()
-      if (line.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("Empty command"))
-      logger.info("{} ran on the game server: {}", call.loggedIn.user.name, line)
-      gatewayCall {
-        if (gameServer.command(line)) call.respond(HttpStatusCode.NoContent)
-        else call.respond(HttpStatusCode.Conflict, ApiError("The game server isn't running"))
-      }
-    }
-    // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
-    sse("/stream") {
-      var since = 0L
-      var lastState: GameServerState? = null
-      var reachable = true
-      while (true) {
-        try {
-          val state = gameServer.state()
-          if (state != lastState || !reachable) {
-            send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
-            lastState = state
-            reachable = true
-          }
-          val lines = gameServer.log(since)
-          // The gateway restarted and counts from 1 again
-          if (lines.last < since) since = 0
-          if (lines.lines.isNotEmpty()) {
-            send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
-          }
-          since = lines.last
-        } catch (e: GameServerUnavailable) {
-          if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
-          reachable = false
-        }
-        delay(LOG_POLL)
-      }
-    }
   }
 }
+
+/** The session ID of the path; a [SessionProblem] (404) if it isn't one. */
+private fun RoutingContext.id(): String =
+  call.parameters["id"]?.takeIf(SessionIds::valid) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session ${call.parameters["id"]}")
 
 /**
  * Answers 502 with the reason when the gateway doesn't answer, and what's wrong with a session request (409, 400,

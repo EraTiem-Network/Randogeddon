@@ -1,6 +1,0 @@
-# The demo's people (see scripts/demo.sh); the names are the `name:` of demo/players. Not everyone plays the same
-# number of worlds, and Bob and Carol play Risk of Rain 2 together (a world can belong to several people).
-people:
-  Alice: [Alice-HK, Alice-Celeste, Alice-DLC]
-  Bob: [Bob-Timespinner, Bob-Yacht, Team-RoR2]
-  Carol: [Team-RoR2]

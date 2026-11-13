@@ -12,12 +12,18 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
-import io.ktor.server.routing.port
+import io.ktor.server.plugins.origin
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.RouteSelector
+import io.ktor.server.routing.RouteSelectorEvaluation
+import io.ktor.server.routing.RoutingResolveContext
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.WebSocketDeflateExtension
+import io.ktor.websocket.close
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -28,11 +34,12 @@ import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
+import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
+import net.eratiem.randogeddon.database.legacySessionId
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GameServerStatus
-import net.eratiem.randogeddon.shared.SessionOptions
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
@@ -43,44 +50,30 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Ap
 /** The `gateway` section of `application.yaml`; every value can be set by an environment variable. */
 data class GatewayConfig(
   val port: Int,
-  val upstream: String,
-  val roomJson: Path,
+  /** Game clients connect to `<session-id>.<baseDomain>`; empty: only by path (`ws://host:port/<session-id>`). */
+  val baseDomain: String,
   val database: DatabaseConfig,
   val internalPort: Int,
   val internalToken: String,
-  /** `null`: MultiServer runs elsewhere (development against `upstream`), the gateway only relays. */
-  val gameServer: GameServerSettings?,
+  val gameServer: GameServerSettings,
 ) {
   companion object {
     fun from(config: ApplicationConfig): GatewayConfig {
       fun value(key: String) = config.property("gateway.$key").getString()
       fun server(key: String) = value("gameServer.$key")
-      fun flag(key: String) = server(key).trim().lowercase() !in setOf("0", "false", "no", "off")
       return GatewayConfig(
         port = value("port").toInt(),
-        upstream = value("upstream"),
-        roomJson = Path.of(value("roomJson")),
+        baseDomain = value("baseDomain").trim().trim('.'),
         database = DatabaseConfig(value("database.url"), value("database.user"), value("database.password")),
         internalPort = value("internal.port").toInt(),
         internalToken = value("internal.token"),
-        gameServer = if (!flag("enabled")) null else GameServerSettings(
+        gameServer = GameServerSettings(
           apRoot = Path.of(server("apRoot")),
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
           customWorlds = Path.of(server("customWorlds")),
-          port = server("port").toInt(),
+          ports = parsePorts(server("ports")),
           adminPassword = server("adminPassword"),
-          // For seeds without a session from the admin panel (deployed with the CLI)
-          defaults = SessionOptions(
-            pointHints = flag("pointHints"),
-            autoHints = flag("autoHints"),
-            hintCost = server("hintCost").toInt(),
-            locationCheckPoints = server("locationCheckPoints").toInt(),
-            releaseMode = server("releaseMode"),
-            collectMode = server("collectMode"),
-            remainingMode = server("remainingMode"),
-            countdownMode = server("countdownMode"),
-          ),
         ),
       )
     }
@@ -94,20 +87,21 @@ data class GameServerSettings(
   val dataDir: Path,
   /** The apworlds put on the server by hand, for every release (read-only). */
   val customWorlds: Path,
-  val port: Int,
+  /** One per session that runs; as many sessions can run at once. */
+  val ports: List<Int>,
   val adminPassword: String,
-  val defaults: SessionOptions,
 )
 
 /**
- * Accepts game clients on [GatewayConfig.port] and relays each one to MultiServer, which it runs itself; the tracker
- * controls that on [GatewayConfig.internalPort].
+ * Runs one MultiServer per session and accepts game clients on [GatewayConfig.port], relaying each one to its
+ * session's; the tracker controls them on [GatewayConfig.internalPort].
  */
 fun main() {
   val config = GatewayConfig.from(ApplicationConfig("application.yaml"))
-  // Only reads; the tracker migrates
+  val options = config.gameServer
+  // Only reads (and counts the session time); the tracker migrates
   val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3)
-  val passwords = SlotPasswordCache(SlotPasswordStore(database), config.roomJson)
+  val passwordStore = SlotPasswordStore(database)
   val http = HttpClient(CIO) {
     install(ClientWebSockets) {
       maxFrameSize = Long.MAX_VALUE // the data package can be several MB
@@ -115,7 +109,6 @@ fun main() {
       extensions { install(WebSocketDeflateExtension) }
     }
   }
-  val options = config.gameServer
   // The session time: how long the game server ran for each seed, without the times it was stopped
   val times = SessionTimeStore(database)
   val background = CoroutineScope(SupervisorJob())
@@ -124,48 +117,56 @@ fun main() {
   fun count(block: suspend () -> Unit) = counts.launch {
     runCatching { block() }.onFailure { logger.warn("Could not count the session time: {}", it.message) }
   }
-  val archipelago = options?.let { Archipelago(it.apRoot, it.python) }
+  val archipelago = Archipelago(options.apRoot, options.python)
   // The apworld library: uploads per release in the data directory, plus the hand-placed ones
-  val apworlds = options?.let { Apworlds(archipelago!!, it.dataDir.resolve("apworlds"), it.customWorlds) }
+  val apworlds = Apworlds(archipelago, options.dataDir.resolve("apworlds"), options.customWorlds)
   val finishes = SessionFinishStore(database)
-  val gameServer = options?.let {
-    val launcher = Launcher(archipelago!!, SessionSetupStore(database), config.roomJson, it.port, it.defaults, it.adminPassword)
-    GameServer(
-      GameServerConfig(
-        dataDir = it.dataDir,
-        launch = launcher::launch,
-        prepare = launcher::prepare,
-        // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
-        onRunning = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.started(seed) } } },
-        onEnded = { _ -> readSeedName(config.roomJson)?.let { seed -> count { times.stopped(seed) } } },
-        // A finished session stays stopped, also after a gateway restart, until it is reopened
-        refuse = { seed ->
-          runBlocking { finishes.of(seedNameOf(seed)) }?.finishedAt?.let { "its session is finished (reopen it in the admin panel)" }
-        },
-      ),
-      background,
-    )
-  }
-  if (gameServer != null) {
-    // MultiServer and Generate.py load the apworlds from each release's custom_worlds/
-    val library = apworlds!!
-    runBlocking { library.syncAll() }
-    // The games of each release, listed ahead (it loads every world), so the admin panel doesn't wait for it
-    background.launch { archipelago!!.versions().forEach { runCatching { library.release(it) } } }
-    // Counted before a kill of the gateway stays; the stretch after the last count is unknown and dropped
-    runBlocking { runCatching { times.dropOpenCounts() } }
-    background.launch {
-      while (true) {
-        delay(30.seconds)
-        val state = gameServer.state
-        if (state.status == GameServerStatus.RUNNING) readSeedName(config.roomJson)?.let { seed -> count { times.tick(seed) } }
+  val sessionStore = SessionStore(database)
+  val dirs = SessionDirs(options.dataDir)
+  // The files of one session at a time, from before, into sessions/<id>/
+  dirs.migrate { seed -> runBlocking { runCatching { sessionStore.idOf(seed) }.getOrNull() } ?: legacySessionId(seed) }
+  val launcher = Launcher(archipelago, SessionSetupStore(database), options.adminPassword)
+  val sessions = Sessions(
+    dirs, options.ports,
+    create = { _, dir, port ->
+      val roomJson = dir.resolve("room.json")
+      GameServer(
+        GameServerConfig(
+          dataDir = dir,
+          launch = { seed -> launcher.launch(seed, roomJson, port()) },
+          prepare = { seed -> launcher.prepare(seed, roomJson) },
+          // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
+          onRunning = { _ -> readSeedName(roomJson)?.let { seed -> count { times.started(seed) } } },
+          onEnded = { _ -> readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } } },
+          // A finished session stays stopped, also after a gateway restart, until it is reopened
+          refuse = { seed ->
+            runBlocking { finishes.of(seedNameOf(seed)) }?.finishedAt?.let { "its session is finished (reopen it in the admin panel)" }
+          },
+        ),
+        background,
+      )
+    },
+    passwords = { roomJson -> SlotPasswordCache(passwordStore, roomJson) },
+  )
+  // MultiServer and Generate.py load the apworlds from each release's custom_worlds/
+  runBlocking { apworlds.syncAll() }
+  // The games of each release, listed ahead (it loads every world), so the admin panel doesn't wait for it
+  background.launch { archipelago.versions().forEach { runCatching { apworlds.release(it) } } }
+  // Counted before a kill of the gateway stays; the stretch after the last count is unknown and dropped
+  runBlocking { runCatching { times.dropOpenCounts() } }
+  background.launch {
+    while (true) {
+      delay(30.seconds)
+      sessions.all().filter { it.server.state.status == GameServerStatus.RUNNING }.forEach { session ->
+        readSeedName(session.roomJson)?.let { seed -> count { times.tick(seed) } }
       }
     }
   }
-  if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game server")
+  if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
-    "Gateway on port {}, relaying to {}; {}", config.port, config.upstream,
-    if (archipelago != null) "running MultiServer (Archipelago ${archipelago.versions().joinToString()})" else "MultiServer runs elsewhere",
+    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once", config.port,
+    if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
+    archipelago.versions().joinToString(), options.ports.size,
   )
 
   embeddedServer(
@@ -176,7 +177,7 @@ fun main() {
       connector { port = config.internalPort }
     },
   ) {
-    // Behind Traefik: the players' addresses (for the log) come from X-Forwarded-For
+    // Behind Traefik: the host the player connected to (X-Forwarded-Host) and their address (for the log)
     install(XForwardedHeaders) {
       // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up
       useLastProxy()
@@ -188,26 +189,49 @@ fun main() {
     }
     install(ContentNegotiation) { json(ApiJson) }
     routing {
-      port(config.port) {
-        // Clients connect to the root ("wss://host:443"); any path is accepted, MultiServer ignores it too
-        webSocket("/{path...}") { relay(http, config.upstream, passwords) }
+      // The port the connection came in on: port() would take the one the client asked for (Host header,
+      // X-Forwarded-Port), which is 443 behind Traefik, and could name the internal port
+      localPort(config.port) {
+        // wss://<session>.<domain>:443 behind Traefik, ws://host:38281/<session> without; with one session running,
+        // a client that names none gets that one
+        webSocket("/{path...}") {
+          val id = sessionIdOf(call.request.origin.serverHost, call.parameters.getAll("path").orEmpty(), config.baseDomain)
+          val session = if (id != null) sessions.get(id) else sessions.onlyActive()
+          val port = session?.port?.takeIf { session.active }
+          if (session == null || port == null) {
+            val why = if (id == null) "Which session? Connect to <session>.<domain>" else "Session $id isn't running"
+            close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
+          } else {
+            relay(http, "ws://localhost:$port", session.passwords)
+          }
+        }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
-      if (gameServer != null) port(config.internalPort) {
-        internalApi(
-          config.internalToken, gameServer, archipelago!!, Generator(archipelago, options.dataDir, apworlds!!), apworlds,
-          SeedFiles(options.dataDir),
-        )
+      localPort(config.internalPort) {
+        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds), apworlds, dirs)
       }
     }
     monitor.subscribe(ApplicationStopping) {
-      // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last count.
+      // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last counts.
       runBlocking {
-        gameServer?.stop()
+        sessions.stopAll()
         counts.coroutineContext[Job]?.children?.forEach { it.join() }
       }
       http.close()
       database.close()
     }
-  }.also { runBlocking { gameServer?.start() } }.start(wait = true)
+  }.also { runBlocking { sessions.startAll() } }.start(wait = true)
+}
+
+/**
+ * Routes for connections that came in on [port] (the server's own port). Ktor's `port()` takes the port the client
+ * asked for instead (Host header, X-Forwarded-Port): 443 behind Traefik, or whatever a client writes there.
+ */
+private fun Route.localPort(port: Int, build: Route.() -> Unit): Route = createChild(LocalPortSelector(port)).apply(build)
+
+private class LocalPortSelector(private val port: Int) : RouteSelector() {
+  override suspend fun evaluate(context: RoutingResolveContext, segmentIndex: Int): RouteSelectorEvaluation =
+    if (context.call.request.local.localPort == port) RouteSelectorEvaluation.Constant else RouteSelectorEvaluation.Failed
+
+  override fun toString() = "(local port $port)"
 }

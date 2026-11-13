@@ -16,7 +16,9 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
+import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.SessionIds
 import java.security.MessageDigest
 
 /**
@@ -38,16 +40,17 @@ val InternalAuth = createRouteScopedPlugin("InternalAuth", ::InternalAuthConfig)
 }
 
 /**
- * The tracker's control of the game server: state, start/stop/restart, log, console; of the sessions: the
- * Archipelago releases, generating a seed, deleting the current one; and of the apworld library of each release.
+ * The tracker's control of the sessions' game servers (each: state, start/stop/restart, log, console), generating a
+ * session's seed, deleting a session's files, its spoiler log; the Archipelago releases and the apworld library of
+ * each.
  */
 fun Route.internalApi(
   token: String,
-  server: GameServer,
+  sessions: Sessions,
   archipelago: Archipelago,
   generator: Generator,
   apworlds: Apworlds,
-  seeds: SeedFiles,
+  dirs: SessionDirs,
 ) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
@@ -64,72 +67,87 @@ fun Route.internalApi(
         }
       }
     }
-    // Takes as long as Generate.py does (up to minutes); the new seed is served after a restart
-    post("/generate") { call.respond(generator.generate(call.receive<GenerateRequest>())) }
-    // Stops the game server and moves the seed, its save and room.json to data/old; then waits for the next seed
-    post("/session/delete") {
-      server.stop()
-      val moved = generator.retire()
-      server.start()
-      call.respond(moved)
-    }
-    // A finished session makes way for a new one: its seed and save go to data/sessions/<seed>; the archived seed
     route("/sessions") {
-      post("/archive") {
-        server.stop()
-        val seed = seeds.archive()
-        server.start()
-        call.respond(listOfNotNull(seed))
-      }
-      // Reopening an archived session: its files come back (the data directory must hold no seed), and it is served
-      post("/{seed}/activate") {
-        server.stop()
-        val ok = runCatching { seeds.activate(call.parameters["seed"]!!) }
-        server.start()
-        when {
-          ok.isFailure -> call.respond(HttpStatusCode.Conflict, ApiError(ok.exceptionOrNull()?.message ?: "Not possible"))
-          ok.getOrThrow() -> call.respond(HttpStatusCode.NoContent)
-          else -> call.respond(HttpStatusCode.NotFound, ApiError("No archived session ${call.parameters["seed"]}"))
+      get { call.respond(sessions.list()) }
+      route("/{id}") {
+        // Takes as long as Generate.py does (up to minutes); the new seed's game server waits for a start
+        post("/generate") {
+          val id = sessionId() ?: return@post
+          val request = call.receive<GenerateRequest>()
+          val result = try {
+            generator.generate(id, request)
+          } catch (e: IllegalStateException) {
+            return@post call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "It has a seed already"))
+          }
+          if (result.seedName != null) sessions.added(id)
+          call.respond(result)
         }
-      }
-      delete("/{seed}") {
-        if (seeds.delete(call.parameters["seed"]!!)) call.respond(HttpStatusCode.NoContent)
-        else call.respond(HttpStatusCode.NotFound)
-      }
-      get("/{seed}/spoiler") {
-        val text = seeds.spoiler(call.parameters["seed"]!!)
-        if (text == null) call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this seed"))
-        else call.respondText(text, ContentType.Text.Plain)
-      }
-    }
-    route("/server") {
-      get { call.respond(server.state) }
-      post("/start") {
-        server.start()
-        call.respond(server.state)
-      }
-      post("/stop") {
-        server.stop()
-        call.respond(server.state)
-      }
-      post("/restart") {
-        server.restart()
-        call.respond(server.state)
-      }
-      get("/log") {
-        val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-        call.respond(server.log(since))
-      }
-      post("/command") {
-        val line = call.receive<CommandRequest>().line.trim()
-        when {
-          line.isEmpty() -> call.respond(HttpStatusCode.BadRequest)
-          server.command(line) -> call.respond(HttpStatusCode.NoContent)
-          // No server running to take it
-          else -> call.respond(HttpStatusCode.Conflict)
+        // Stops its game server; its files go to data/old, or for good with ?purge=true
+        delete {
+          val id = sessionId() ?: return@delete
+          val purge = call.request.queryParameters["purge"] == "true"
+          if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
+        }
+        get("/spoiler") {
+          val id = sessionId() ?: return@get
+          val text = dirs.spoiler(id)
+          if (text == null) call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this session"))
+          else call.respondText(text, ContentType.Text.Plain)
+        }
+        route("/server") {
+          get { server(sessions) { call.respond(it.server.state) } }
+          post("/start") { control { sessions.start(it) } }
+          post("/stop") { control { sessions.stop(it) } }
+          post("/restart") { control { sessions.restart(it) } }
+          get("/log") {
+            server(sessions) {
+              val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+              call.respond(it.server.log(since))
+            }
+          }
+          post("/command") {
+            server(sessions) {
+              val line = call.receive<CommandRequest>().line.trim()
+              when {
+                line.isEmpty() -> call.respond(HttpStatusCode.BadRequest)
+                it.server.command(line) -> call.respond(HttpStatusCode.NoContent)
+                // No server running to take it
+                else -> call.respond(HttpStatusCode.Conflict)
+              }
+            }
+          }
         }
       }
     }
+  }
+}
+
+/** The `{id}` of the path, if it is a session ID; otherwise answers 400 and gives `null`. */
+private suspend fun RoutingContext.sessionId(): String? {
+  val id = call.parameters["id"]
+  if (id == null || !SessionIds.valid(id)) {
+    call.respond(HttpStatusCode.BadRequest, ApiError("Not a session ID: $id"))
+    return null
+  }
+  return id
+}
+
+/** The session's game server, or 404. */
+private suspend fun RoutingContext.server(sessions: Sessions, block: suspend (SessionGameServer) -> Unit) {
+  val id = sessionId() ?: return
+  val session = sessions.get(id) ?: return call.respond(HttpStatusCode.NotFound, ApiError("No session $id"))
+  block(session)
+}
+
+/** Start, stop or restart: the new state; 404 for an unknown session, 409 when no port is free. */
+private suspend fun RoutingContext.control(action: suspend (String) -> GameServerState) {
+  val id = sessionId() ?: return
+  try {
+    call.respond(action(id))
+  } catch (e: NoSuchElementException) {
+    call.respond(HttpStatusCode.NotFound, ApiError(e.message ?: "No session $id"))
+  } catch (e: NoFreePort) {
+    call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "No game server free"))
   }
 }
 

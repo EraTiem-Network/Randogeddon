@@ -611,7 +611,8 @@ fun <T> Select(
 /**
  * A dropdown with a second line per option, and a search field on top of its list when it has more than
  * [SEARCH_FROM]. [options]: value, label and a second line (e.g. the game, shown as a game chip too unless [chip] is
- * off); the search matches both. Long lists show the first 300 matches: the search finds the rest.
+ * off); the search matches both. Long lists show the first 300 matches: the search finds the rest. With [heading]
+ * (its text size) it is part of a heading: just the label and the chevron, no field around them, no second line.
  */
 @Composable
 fun <T> SearchableSelect(
@@ -623,6 +624,9 @@ fun <T> SearchableSelect(
   placeholder: String = "",
   /** E.g. as tall as the buttons next to it. */
   minHeight: Dp = 0.dp,
+  heading: TextUnit? = null,
+  /** The label's colour with [heading] (e.g. white on the gradient); the text's otherwise. */
+  headingColor: Color? = null,
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
@@ -631,7 +635,20 @@ fun <T> SearchableSelect(
   var anchorHeight by remember { mutableStateOf(0) }
   val current = options.firstOrNull { it.first == selected }
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
-    Row(
+    if (heading != null) {
+      Row(
+        Modifier.heightIn(min = minHeight).clip(RoundedCornerShape(10.dp))
+          .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+          .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        val color = headingColor ?: p.text
+        Txt(current?.second ?: placeholder, size = heading, weight = FontWeight.Bold, maxLines = 1,
+          color = if (current == null) color.copy(alpha = 0.7f) else color, modifier = Modifier.weight(1f, fill = false))
+        DrawnIcon(Icon.CHEVRON, headingColor?.copy(alpha = 0.85f) ?: p.muted, 16.dp)
+      }
+    } else Row(
       Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
         .border(1.dp, p.border, RoundedCornerShape(10.dp))
         .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }

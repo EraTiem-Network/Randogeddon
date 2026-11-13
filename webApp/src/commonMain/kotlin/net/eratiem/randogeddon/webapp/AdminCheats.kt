@@ -59,13 +59,14 @@ private val WITH_LOCATION = setOf(CheatAction.LOCATION, CheatAction.HINT_LOCATIO
 /**
  * Cheats: give an item, check a location, release or collect for a slot, and free hints if the session allows them.
  * Every cheat is logged with the admin's name and shown in the live feed; the latest ones are listed here. Loaded
- * again whenever the game server changes ([server]: started, stopped, another seed).
+ * again whenever the game server changes ([server]: started, stopped, another seed). Kept in [cache].
  */
 @Composable
-fun CheatSection(server: GameServerState?) {
+fun CheatSection(id: String, server: GameServerState?, cache: AdminCache) {
   val p = LocalPalette.current
   val scope = rememberCoroutineScope()
-  var view by remember { mutableStateOf<CheatView?>(null) }
+  // The last one loaded at once, loaded again behind
+  val view = cache.cheats[id]
   var action by remember { mutableStateOf(CheatAction.ITEM) }
   var slot by remember { mutableStateOf<String?>(null) }
   var names by remember { mutableStateOf<CheatNames?>(null) }
@@ -74,8 +75,8 @@ fun CheatSection(server: GameServerState?) {
   var busy by remember { mutableStateOf(false) }
 
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }) {
-      is Answer.Ok -> view = answer.value
+    when (val answer = call("GET", "api/admin/sessions/$id/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }) {
+      is Answer.Ok -> cache.cheats[id] = answer.value
       is Answer.Failed -> outcome = false to answer.message
     }
   }
@@ -96,7 +97,7 @@ fun CheatSection(server: GameServerState?) {
   // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
   LaunchedEffect(slot, view) {
     val s = slot ?: return@LaunchedEffect
-    val answer = call("GET", "api/admin/cheat/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
+    val answer = call("GET", "api/admin/sessions/$id/cheat/names?slot=${s.encodeQuery()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
     if (answer is Answer.Ok) {
       names = answer.value
       if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
@@ -163,7 +164,7 @@ fun CheatSection(server: GameServerState?) {
               outcome = null
               scope.launch {
                 val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value))
-                outcome = when (val answer = call("POST", "api/admin/cheat", body) { }) {
+                outcome = when (val answer = call("POST", "api/admin/sessions/$id/cheat", body) { }) {
                   is Answer.Ok -> true to "Done: ${CHEAT_LABELS.getValue(action).lowercase()} for $slot" + (value?.let { ": $it" } ?: "")
                   is Answer.Failed -> false to answer.message
                 }

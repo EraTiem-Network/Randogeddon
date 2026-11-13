@@ -9,10 +9,10 @@ import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
-import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.session.LiveSession
+import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.Room
-import net.eratiem.randogeddon.server.session.CurrentSession
-import net.eratiem.randogeddon.server.session.PastSessions
+import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
 import org.koin.core.annotation.Single
@@ -28,24 +28,23 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 /** How long a login lasts; logging in again starts a new one. */
 val LOGIN_DURATION = 30.days
 
-/** What the access check needs: whose login a cookie token is, and whether that user is part of the session. */
+/** What the access check needs: whose login a cookie token is, and which sessions that user is part of. */
 interface LoginCheck {
   suspend fun userOf(token: String): User?
 
-  /** The player of the current session this user is; `null`: not part of it. */
-  fun personOf(user: User): String?
-
-  /** Outside the current session, the user still gets in: an admin, or a player of a past session (to see it). */
+  /** The user gets in at all: an admin, or a player of some session. */
   suspend fun mayEnter(user: User): Boolean
+
+  /** The user sees session [id]: an admin, or one of its players. */
+  fun maySee(user: User, id: String): Boolean
 }
 
-/** Logging in and out, and who of the logged-in users is part of the session. */
+/** Logging in and out, and which sessions the logged-in users are part of. */
 @Single
 class LoginService(
   private val users: UserStore,
   private val logins: LoginSessionStore,
-  private val session: CurrentSession,
-  private val past: PastSessions,
+  private val sessions: SessionList,
 ) : LoginCheck {
   /** The token for the session cookie, or `null` if the name or password is wrong. */
   suspend fun login(name: String, password: String): String? {
@@ -63,10 +62,9 @@ class LoginService(
 
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 
-  /** Same name as the person, without regard to case. */
-  override fun personOf(user: User): String? = session.people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
+  override suspend fun mayEnter(user: User): Boolean = user.admin || sessions.playsIn(user)
 
-  override suspend fun mayEnter(user: User): Boolean = user.admin || past.playedIn(user)
+  override fun maySee(user: User, id: String): Boolean = sessions.canSee(user, id)
 
   /** Removes expired logins every few hours, for as long as [scope] runs. */
   fun cleanUp(scope: CoroutineScope) = scope.launch {
@@ -80,41 +78,38 @@ class LoginService(
 }
 
 /**
- * The game passwords of the current seed: every slot a client can connect as gets one (the World Locks slot too, for
- * the host's hints from there). The gateway checks them; players see their own on the dashboard.
+ * The game passwords of each session's seed: every slot a client can connect as gets one (the World Locks slot too,
+ * for the host's hints from there). The gateway checks them; players see their own on the dashboard.
  */
 @Single
-class SlotPasswords(
-  private val config: TrackerConfig,
-  private val store: SlotPasswordStore,
-  private val session: CurrentSession,
-) {
-  /** Slot name -> password of the seed in room.json, creating missing ones; empty while there is no seed. */
-  suspend fun current(): Map<String, String> {
-    val room = Room.read(config.roomJson) ?: return emptyMap()
+class SlotPasswords(private val store: SlotPasswordStore, private val sessions: LiveSessions) {
+  /** Slot name -> password of [session]'s seed, creating missing ones; empty while its room.json isn't there. */
+  suspend fun current(session: LiveSession): Map<String, String> {
+    val room = Room.read(session.roomJson) ?: return emptyMap()
     val seed = room.seedName ?: return emptyMap()
     return store.ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
   }
 
-  /** The worlds of [person] (a world played together is theirs too) with game and password. */
-  suspend fun of(person: String): List<MySlot> {
-    val room = Room.read(config.roomJson) ?: return emptyList()
-    val passwords = current()
+  /** The slots of [person] in [session] (a slot played together is theirs too) with game and password. */
+  suspend fun of(session: LiveSession, person: String): List<MySlot> {
+    val room = Room.read(session.roomJson) ?: return emptyList()
+    val passwords = current(session)
     val games = room.players.associate { it.name to it.game }
     return session.people()[person].orEmpty().mapNotNull { slot ->
       passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) }
     }
   }
 
-  /** Creates the passwords as soon as a new seed appears, so the gateway knows them before the first player joins. */
+  /** Creates the passwords as soon as a session's seed has its room.json, so the gateway knows them before a player joins. */
   fun watch(scope: CoroutineScope) = scope.launch {
-    var seed: String? = null
+    val ready = mutableSetOf<String>()
     while (true) {
-      val current = Room.read(config.roomJson)?.seedName
-      if (current != null && current != seed) {
-        runCatching { current() }
-          .onSuccess { seed = current; logger.info("Slot passwords ready for seed {} ({} slots)", current, it.size) }
-          .onFailure { logger.warn("Could not create the slot passwords: {}", it.message) }
+      for (session in sessions.all()) {
+        val seed = Room.read(session.roomJson)?.seedName ?: continue
+        if (seed in ready) continue
+        runCatching { current(session) }
+          .onSuccess { ready += seed; logger.info("Slot passwords ready for {} (seed {}, {} slots)", session.id, seed, it.size) }
+          .onFailure { logger.warn("Could not create the slot passwords of {}: {}", session.id, it.message) }
       }
       delay(5.seconds)
     }

@@ -27,7 +27,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.state.SessionState
 import net.eratiem.randogeddon.server.state.array
@@ -36,11 +35,8 @@ import net.eratiem.randogeddon.server.state.obj
 import net.eratiem.randogeddon.server.state.string
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
-import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -60,10 +56,14 @@ class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToStrin
  * which the server sends to the slot's own connections only.
  *
  * All access to [SessionState] goes through [read] and the private `update`, so the connections and the web layer
- * never see it half-updated.
+ * never see it half-updated. One per session: its history goes to [statePath], its slots come from [roomJson], and
+ * [serverUrl] is where its MultiServer runs (`null` while it doesn't).
  */
-@Single
-class TrackerService(private val config: TrackerConfig) {
+class TrackerService(
+  private val statePath: Path,
+  private val roomJson: Path,
+  private val serverUrl: () -> String?,
+) {
   private val state = SessionState()
   private val mutex = Mutex()
 
@@ -84,20 +84,24 @@ class TrackerService(private val config: TrackerConfig) {
 
   private suspend fun update(block: SessionState.() -> Unit) = mutex.withLock { state.block() }
 
-  /** Connects and stays connected until [scope] ends. */
+  /** Loads the history once, then connects and stays connected until the job is cancelled. */
   fun start(scope: CoroutineScope): Job = scope.launch {
-    update { load(config.statePath) }
+    if (!loaded) {
+      update { load(statePath) }
+      loaded = true
+    }
     launch { autosave() }
     var backoff = 1L
     while (isActive) {
       val name = slotNames().firstOrNull()
-      if (name == null) {
-        error("no slots known yet (waiting for ${config.roomJson})")
-        delay(10.seconds)
+      val url = serverUrl()
+      if (name == null || url == null) {
+        error(if (url == null) "the game server isn't running" else "no slots known yet (waiting for $roomJson)")
+        delay(5.seconds)
         continue
       }
       try {
-        primary(name)
+        primary(name, url)
         backoff = 1
       } catch (e: CancellationException) {
         throw e
@@ -112,22 +116,14 @@ class TrackerService(private val config: TrackerConfig) {
     }
   }
 
+  /** The history file was read (by the first [start]). */
+  @Volatile
+  private var loaded = false
+
   /** The session was deleted: its state goes, the history file too, so a restart doesn't bring it back. */
   suspend fun clear() {
     update { clear() }
-    runCatching { config.statePath.toFile().delete() }
-  }
-
-  /**
-   * A reopened session's history ([saved], a copy of the history file from when it finished) comes back: it becomes
-   * the history file and is applied once the tracker is connected to the seed again.
-   */
-  suspend fun restore(saved: Path) {
-    update {
-      clear()
-      runCatching { Files.copy(saved, config.statePath, StandardCopyOption.REPLACE_EXISTING) }
-      load(config.statePath)
-    }
+    runCatching { statePath.toFile().delete() }
   }
 
   /** Writes the history file now (a session finishes and is archived). */
@@ -146,12 +142,9 @@ class TrackerService(private val config: TrackerConfig) {
     lastError = message
   }
 
-  private fun slotNames(): List<String> {
-    config.bootstrapSlot?.let { return listOf(it) }
-    return Room.read(config.roomJson)?.players.orEmpty().map { it.name }
-  }
+  private fun slotNames(): List<String> = Room.read(roomJson)?.players.orEmpty().map { it.name }
 
-  private suspend fun primary(slotName: String) = http.webSocket(config.serverUrl) {
+  private suspend fun primary(slotName: String, url: String) = http.webSocket(url) {
     val conn = ApConnection(this)
     val (roomInfo, connected) = conn.handshake(slotName, listOf("Tracker"))
     val games = roomInfo.array("games").orEmpty().map { it.jsonPrimitive.content }.toSet() + "Archipelago"
@@ -182,7 +175,7 @@ class TrackerService(private val config: TrackerConfig) {
     )
 
     coroutineScope {
-      val secondaries = others.map { (slot, name) -> launch { secondary(slot, name) } }
+      val secondaries = others.map { (slot, name) -> launch { secondary(slot, name, url) } }
       try {
         while (true) dispatch(mySlot, conn.next(), primary = true)
       } finally {
@@ -192,11 +185,11 @@ class TrackerService(private val config: TrackerConfig) {
   }
 
   /** Retries on its own; ends when the primary connection ends. */
-  private suspend fun secondary(slot: Int, slotName: String) {
+  private suspend fun secondary(slot: Int, slotName: String, url: String) {
     var backoff = 1L
     while (true) {
       try {
-        http.webSocket(config.serverUrl) {
+        http.webSocket(url) {
           val conn = ApConnection(this)
           val (_, connected) = conn.handshake(slotName, listOf("Tracker", "NoText"))
           update { onConnected(slot, connected) }
@@ -244,8 +237,12 @@ class TrackerService(private val config: TrackerConfig) {
 
   private fun save() {
     // Called from close() too, so not through the mutex; a save is a snapshot of plain collections
-    runCatching { if (state.seedName != null) state.save(config.statePath) }
-      .onFailure { logger.warn("Could not save the tracker state to {}: {}", config.statePath, it.message) }
+    runCatching {
+      if (state.seedName != null) {
+        statePath.parent?.toFile()?.mkdirs()
+        state.save(statePath)
+      }
+    }.onFailure { logger.warn("Could not save the tracker state to {}: {}", statePath, it.message) }
   }
 
   // ----------------------------------------------------------------------------------------------------- protocol

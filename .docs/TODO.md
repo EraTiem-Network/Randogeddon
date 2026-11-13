@@ -7,11 +7,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - **Addresses:** the app runs at `randogeddon.eratiem.net`; each session's game server at
   `<session-id>.randogeddon.eratiem.net:443` (TLS, `wss://`).
-    - Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS: one
-      port for all sessions, routed by host name like 443, but unencrypted (passwords included).
-    - Current clients connect over TLS: Launcher-based clients retry with `wss://`, and Archipelago.MultiClient.Net
-      (used by many modded games) tries `wss://` first since April 2023. Older or unmaintained mods may only speak
-      `ws://`, so every game of a session is tested with its real client before session day.
+    - TLS only: current clients connect over `wss://` (Launcher-based clients retry with it, and
+      Archipelago.MultiClient.Net, used by many modded games, tries it first since April 2023). Older or unmaintained
+      mods may only speak `ws://`, so every game of a session is tested with its real client before session day; a
+      plain fallback is optional (see the end).
 - **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
@@ -31,7 +30,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Hint switches (point hints, automatic hints), hint points per world, hint filters
 - [x] Demo session with simulated players
 - [x] Renamed to Randogeddon; dashboard at `randogeddon.eratiem.net`, the session's game server at
-  `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN`, `SESSION_ID` in `.env`)
+  `<session-id>.randogeddon.eratiem.net:443` (`BASE_DOMAIN` in `.env`)
 
 ## Phase 2: User Login (done)
 
@@ -69,7 +68,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       changes (an Archipelago update with a new or changed `Connect`).
 - [x] Tracker and gateway as native executables (GraalVM, Linux x86_64, `-march=x86-64-v3` for the i7-8700)
 
-## Phase 3: Admin Panel
+## Phase 3: Admin Panel (done)
 
 *The host runs the session from the browser instead of the shell.*
 
@@ -124,28 +123,32 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
       update never breaks a running session. Releases no session uses any more can be dropped.
 
-## Phase 4: Multiple Sessions
+## Phase 4: Multiple Sessions (done)
 
 *Several groups play at the same time on the same server.*
 
-- [ ] More than one session at the same time, each with its own MultiServer, seed, save and tracker state
-- [ ] The dashboard lists the sessions a user is part of; the session is chosen after login
-- [ ] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
+- [x] More than one session at the same time, each with its own MultiServer, seed, save and tracker state
+    - As many run at once as the gateway has ports for (`AP_PORTS`); a finished session doesn't take one.
+- [x] The dashboard lists the sessions a user is part of; the session is chosen after login
+    - The only running one opens by itself; the top card switches between them. Each view has a link (`#/<id>`,
+      `#/admin/<id>`, …).
+- [x] Users of a new session: pick from the users of the existing sessions, or add new ones (login generated as in
   Phase 2)
-- [ ] Admins see and control all sessions
-- [ ] Each session's server is reachable from outside
-    - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS) and 2401 (plain fallback, see
-      Conventions). Traefik routes the WebSocket by host name to that session's port inside the container.
-    - Certificates through Traefik's HTTP challenge, one per session host name (Let's Encrypt has no wildcard
-      certificates with the HTTP challenge). For that, the tracker writes a Traefik router per session into a watched
-      file (file provider) and removes it when the session is deleted; the first connection to a new session waits
-      a few seconds for its certificate.
-    - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server; no API access for Traefik needed.
+- [x] Admins see and control all sessions
+- [x] Each session's server is reachable from outside
+    - One host name per session, `<session-id>.randogeddon.eratiem.net`, on 443 (TLS). Traefik routes the WebSocket
+      to the gateway, which relays it by the host name to that session's MultiServer.
+    - One Traefik router for `*.randogeddon.eratiem.net` with a wildcard certificate (DNS challenge through ClouDNS's
+      API; the HTTP challenge has no wildcard certificates). A new session needs no change in Traefik or DNS.
+    - DNS: one wildcard record `*.randogeddon.eratiem.net` pointing to the server.
     - Not paths (`randogeddon.eratiem.net/<session-id>`): Launcher-based clients would accept them, but many modded
       game clients only take host:port.
     - The gateway (Phase 2) already sees each connection's host name, so it can route to the session's MultiServer
       itself instead of one Traefik router per session.
-    - Open: the session ID format (random like `k7f3q9` or readable like `friday-chaos`), decided in this phase.
+    - The session ID: the admin picks it when creating the session, prefilled with a free readable suggestion
+      (`friday-chaos`); a DNS label that starts with a letter, 3 to 40 characters.
+    - The gateway routes by the host name (the first label), or by the path without a domain
+      (`ws://localhost:38281/<session-id>`, local use and the demo).
 
 ## Phase 5: Proper User Management
 
@@ -222,3 +225,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Active for that user on every device they log in with; other users are not affected.
     - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
       used in this browser.
+
+## Optional
+
+*Only if a game needs it.*
+
+- [ ] Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS
+    - One port for all sessions, routed by host name like 443: a Traefik entrypoint on 2401, the port open in the
+      host's firewall, and a second wildcard router on it without TLS.
+    - Unencrypted, slot passwords included: `wss://` stays the way in, this only for a game whose client can't do it.

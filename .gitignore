@@ -1,6 +1,4 @@
 # Seed inputs / outputs — contain player info and spoilers
-players/*
-!players/.gitkeep
 custom_worlds/*
 !custom_worlds/.gitkeep
 output/*
@@ -11,7 +9,6 @@ roms/*
 !roms/.gitkeep
 
 .env
-/session.yaml
 __pycache__/
 
 ### Gradle / Kotlin ###

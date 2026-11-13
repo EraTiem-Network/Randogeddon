@@ -49,7 +49,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -63,10 +68,11 @@ import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.FeedEvent
 import net.eratiem.randogeddon.shared.HintView
 import net.eratiem.randogeddon.shared.ItemFlags
-import net.eratiem.randogeddon.shared.PastSession
 import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
+import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
 
 private const val THEME_KEY = "ap-theme"
@@ -119,6 +125,10 @@ fun App() {
   // null until logged in; the login form of index.html covers the page meanwhile
   val me by repository.me.collectAsState()
   val unreachable by repository.unreachable.collectAsState()
+  val loadedSessions by repository.sessions.collectAsState()
+  val sessions = loadedSessions.orEmpty()
+  val selected by repository.selected.collectAsState()
+  val connection by repository.connection.collectAsState()
 
   var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
   val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
@@ -135,35 +145,43 @@ fun App() {
 
   var detailSlot by remember { mutableStateOf<Int?>(null) }
   var detailPerson by remember { mutableStateOf<String?>(null) }
-  // The admin panel instead of the dashboard (admins only; the server checks every call too)
-  var adminOpen by remember { mutableStateOf(false) }
-  // A past session, or a spoiler log, instead of the dashboard (or the admin panel)
-  var pastSeed by remember { mutableStateOf<String?>(null) }
-  var spoilerSeed by remember { mutableStateOf<String?>(null) }
-  // The past session's archive: its view, and the header card while it is shown
-  var pastArchive by remember { mutableStateOf<ArchiveSource?>(null) }
-  var pastMissing by remember { mutableStateOf(false) }
-  LaunchedEffect(pastSeed) {
-    pastArchive = null
-    pastMissing = false
-    val seed = pastSeed ?: return@LaunchedEffect
-    val archived = repository.pastSession(seed)
-    pastArchive = archived?.let(::ArchiveSource)
-    pastMissing = archived == null
+  // Where the page is, from the URL's hash: back, forward and links move it too
+  var route by remember { mutableStateOf(Route.parse(Platform.hash())) }
+  DisposableEffect(Unit) {
+    val stop = Platform.onHashChange { route = Route.parse(it) }
+    onDispose { stop() }
+  }
+  fun go(to: Route, replace: Boolean = false) {
+    route = to
+    Platform.setHash(to.hash, replace)
   }
   LaunchedEffect(me) {
     if (me == null) {
       detailSlot = null
       detailPerson = null
-      adminOpen = false
-      pastSeed = null
-      spoilerSeed = null
     }
   }
-  // Loaded again when a session finishes or another one starts
-  var pastSessions by remember { mutableStateOf(emptyList<PastSession>()) }
-  LaunchedEffect(me, summary?.seedName, summary?.finishedAt, adminOpen) {
-    pastSessions = if (me == null) emptyList() else repository.pastSessions()
+  // Another session: its own slots and people
+  LaunchedEffect(selected) {
+    detailSlot = null
+    detailPerson = null
+  }
+  val adminOpen = route is Route.Admin || (route as? Route.Spoiler)?.fromAdmin == true
+  // The admin panel may have created, finished or deleted one
+  LaunchedEffect(adminOpen) { if (me != null) repository.refreshSessions() }
+  // The route picks the dashboard's session; the sessions' page opens the user's only running one by itself. The
+  // admin panel and a spoiler log leave the dashboard's session as it is (back returns to it)
+  LaunchedEffect(route, loadedSessions, me) {
+    val list = loadedSessions ?: return@LaunchedEffect
+    if (me == null) return@LaunchedEffect
+    when (val r = route) {
+      Route.Home -> {
+        val mine = list.filter { it.mySlots.isNotEmpty() && it.status.running }
+        if (mine.size == 1) go(Route.Dashboard(mine.single().id), replace = true) else repository.select(null)
+      }
+      is Route.Dashboard -> repository.select(r.id.takeIf { id -> list.any { it.id == id } })
+      else -> {}
+    }
   }
 
   // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
@@ -207,8 +225,18 @@ fun App() {
               )
               return@Column
             }
+            val r = route
+            val dashboard = (r as? Route.Dashboard)?.id
+            // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
+            // the admin panel keeps the dashboard's session in it, a spoiler log its own
+            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { adminOpen }
+            val switchable = sessions.filter { it.mySlots.isNotEmpty() || it.id == shown }
+            Headline()
             Hero(
-              pastArchive?.archived?.summary?.takeIf { pastSeed != null } ?: s, streamOpen,
+              s.takeIf { dashboard != null || r is Route.Spoiler || adminOpen }, streamOpen,
+              sessions = switchable, shown = shown,
+              onSession = { go(Route.Dashboard(it)) },
+              onAllSessions = { go(Route.Home) },
               onToggleTheme = {
                 themeSetting = if (dark) "light" else "dark"
                 Platform.saveSetting(THEME_KEY, themeSetting)
@@ -216,49 +244,53 @@ fun App() {
               feedVisible = feedVisible,
               onToggleFeed = { setFeedVisible(!feedVisible) },
               onLogout = { scope.launch { repository.logout() } },
-              onAdmin = if (user.admin) ({ adminOpen = !adminOpen; pastSeed = null; spoilerSeed = null }) else null,
+              onAdmin = if (user.admin) ({ go(if (adminOpen) back(selected) else Route.Admin(selected)) }) else null,
               adminOpen = adminOpen,
               stacked = narrow,
             )
-            spoilerSeed?.let { seed ->
-              SpoilerView(seed, onBack = { spoilerSeed = null })
-              return@Column
+            when (r) {
+              is Route.Spoiler -> {
+                SpoilerView(r.id, onBack = { go(if (r.fromAdmin) Route.Admin(r.id) else Route.Dashboard(r.id)) })
+                return@Column
+              }
+              is Route.Admin -> {
+                if (user.admin) AdminView(
+                  now, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
+                  onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
+                  onDashboard = { go(Route.Dashboard(it)) },
+                ) else Txt("The admin panel is for admins.", color = p.muted)
+                return@Column
+              }
+              Route.Home -> {
+                if (loadedSessions != null) {
+                  SessionPicker(sessions.filter { it.mySlots.isNotEmpty() }, user.admin, onOpen = { go(Route.Dashboard(it)) })
+                }
+                return@Column
+              }
+              is Route.Dashboard -> if (loadedSessions != null && sessions.none { it.id == r.id }) {
+                Txt("There is no session ${r.id}, or you aren't part of it.", color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
+                SmallButton("All your sessions", { go(Route.Home) })
+                return@Column
+              }
             }
-            pastSeed?.let { seed ->
-              PastSessionView(seed, pastArchive, pastMissing, contentWidth, onBack = { pastSeed = null }, onSpoiler = { spoilerSeed = seed })
-              return@Column
-            }
-            if (adminOpen && user.admin) {
-              AdminView(now, onBack = { adminOpen = false }, onSpoiler = { spoilerSeed = it })
-              return@Column
-            }
-            val past = pastSessions.filter { !it.current }
-            if (!user.inSession && !user.admin) {
-              // Only of past sessions: those, not the current one
-              Txt(
-                "You aren't part of the current session." + if (past.isNotEmpty()) " Your past sessions:" else "",
-                color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
-              )
-              if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
-              return@Column
-            }
-            if (s == null) return@Column
+            if (s == null || selected == null) return@Column
+            val mine = sessions.firstOrNull { it.id == selected }?.mySlots?.isNotEmpty() == true
             val error = s.error
             if (!s.connected && error != null && s.finishedAt == null) Banner(error)
             FinishBanner(
               s, user.admin,
-              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/session/finish") } },
-              onCancel = { scope.launch { Platform.request("POST", "api/admin/session/finish/cancel") } },
-              onSpoiler = { s.seedName?.let { spoilerSeed = it } },
+              onFinishNow = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish") } },
+              onCancel = { scope.launch { Platform.request("POST", "api/admin/sessions/$selected/finish/cancel") } },
+              onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
             )
             if (wide) {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
                 Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-                ConnectionSection(user, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
+                ConnectionSection(user.name, connection, mine, s, Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true)
               }
             } else {
-              ConnectionSection(user, s, Modifier.fillMaxWidth())
+              ConnectionSection(user.name, connection, mine, s, Modifier.fillMaxWidth())
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
@@ -285,7 +317,6 @@ fun App() {
               if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
               if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             }
-            if (past.isNotEmpty()) PastSessionsSection(past, onOpen = { pastSeed = it })
           }
         }
       }
@@ -301,14 +332,36 @@ fun App() {
   }
 }
 
+/** "Randogeddon" above the top card, centred, in the brand's gradient. */
+@Composable
+private fun Headline() {
+  val p = LocalPalette.current
+  Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+    BasicText(
+      "RANDOGEDDON",
+      style = TextStyle(
+        brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
+        fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
+        shadow = Shadow(p.brandEnd.copy(alpha = if (p.dark) 0.55f else 0.3f), Offset(0f, 4f), blurRadius = 18f),
+      ),
+    )
+  }
+}
+
 /**
- * The gradient card on top: title, seed, overall progress and the connection state. [stacked] (a phone): the title,
- * the session info, the pill and buttons, and the bar each on their own line.
+ * The gradient card on top: the session (its ID, a switch to the user's others), seed, overall progress and the
+ * connection state. [stacked] (a phone): the session, its info, the pill and buttons, and the bar each on their own
+ * line.
  */
 @Composable
 private fun Hero(
   summary: Summary?,
   streamOpen: Boolean,
+  /** For the switch in the heading: the sessions, the one shown ([shown]; `null`: none), and the sessions' page. */
+  sessions: List<SessionEntry>,
+  shown: String?,
+  onSession: (String) -> Unit,
+  onAllSessions: () -> Unit,
   onToggleTheme: () -> Unit,
   feedVisible: Boolean,
   onToggleFeed: () -> Unit,
@@ -333,12 +386,22 @@ private fun Hero(
   ) {
     val heading: @Composable (Modifier) -> Unit = { modifier ->
       Column(modifier) {
-        Txt(summary?.title ?: "Randogeddon", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
+        if (sessions.isNotEmpty()) {
+          // The session's ID is the heading and its switch; "All sessions" goes to the sessions' page
+          SearchableSelect(
+            listOf(Triple<String?, String, String>(null, "All sessions", "")) +
+              sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(it)) },
+            shown, { id -> if (id == null) onAllSessions() else onSession(id) },
+            chip = false, heading = 24.sp, headingColor = Color.White, placeholder = "Pick a session",
+          )
+        } else {
+          Txt(shown ?: "No session", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
+        }
         val meta = listOfNotNull(
           summary?.seedName?.let { "Seed $it" },
           summary?.serverVersion?.let { "AP $it" },
           summary?.let { hintModeLabel(it) },
-        ).ifEmpty { listOf("Connecting to the tracker…") }
+        ).ifEmpty { listOf(if (shown == null) "Pick one of your sessions" else "Connecting to the tracker…") }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
           Txt(it, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
@@ -402,6 +465,21 @@ private fun Hero(
     }
   }
 }
+
+/** Where back from the admin panel goes: the dashboard's session, or the sessions' page without one. */
+private fun back(selected: String?): Route = selected?.let { Route.Dashboard(it) } ?: Route.Home
+
+/** A session in the hero's switch: how it stands, how far it got, the user's slots. */
+private fun sessionLine(session: SessionEntry): String = listOfNotNull(
+  when (session.status) {
+    SessionStatus.LIVE -> "live"
+    SessionStatus.FINISHING -> "ending"
+    SessionStatus.PAUSED -> "paused"
+    SessionStatus.ENDED -> "ended"
+  },
+  "${oneDecimal(session.percent)}%",
+  session.mySlots.takeIf { it.isNotEmpty() }?.joinToString(", "),
+).joinToString(" · ")
 
 @Composable
 private fun Banner(text: String) {

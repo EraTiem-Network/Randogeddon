@@ -52,7 +52,7 @@ class GeneratorTest {
   }
 
   private val archipelago get() = Archipelago(root, "sh")
-  private val generator get() = Generator(archipelago, data, Apworlds(archipelago, data.resolve("apworlds"), null))
+  private val generator get() = Generator(archipelago, SessionDirs(data), Apworlds(archipelago, data.resolve("apworlds"), null))
 
   @Test
   fun `versions are listed newest first, by number`() {
@@ -62,12 +62,11 @@ class GeneratorTest {
   }
 
   @Test
-  fun `a generated seed replaces the previous one, which goes to old`() = runBlocking {
-    data.resolve("AP_999.zip").createFile()
-    data.resolve("AP_999.apsave").createFile()
-    data.resolve("room.json").writeText("{}")
+  fun `a generated seed goes into its session's directory, next to the other sessions`() = runBlocking {
+    data.resolve("sessions/quiet-fox").createDirectories().resolve("AP_999.zip").createFile()
 
     val result = generator.generate(
+      "brave-otter",
       GenerateRequest(
         yamls = listOf(UploadedYaml("Alice HK.yaml", "name: Alice-HK"), UploadedYaml("../evil.yml", "name: Bob")),
         locked = listOf("Bob"),
@@ -76,15 +75,20 @@ class GeneratorTest {
       )
     )
     assertEquals("12345", result.seedName)
-    assertTrue(data.resolve("AP_12345.zip").exists())
-    assertTrue(data.resolve("old/AP_999.zip").exists() && data.resolve("old/AP_999.apsave").exists())
-    assertTrue(!data.resolve("room.json").exists())
+    assertTrue(data.resolve("sessions/brave-otter/AP_12345.zip").exists())
+    assertTrue(data.resolve("sessions/quiet-fox/AP_999.zip").exists())
     assertTrue(result.log.any { "version 0.6.8" in it })
+    // A session gets one seed
+    assertFailsWith<IllegalStateException> {
+      generator.generate("brave-otter", GenerateRequest(listOf(UploadedYaml("a.yaml", "name: A")), apVersion = "0.6.8"))
+    }
+    Unit
   }
 
   @Test
   fun `the locked worlds become a World Locks slot, the file names are made safe`() = runBlocking {
     generator.generate(
+      "brave-otter",
       GenerateRequest(
         listOf(UploadedYaml("../Alice HK.yaml", "name: Al")), locked = listOf("Al\"ice", "Bob"), apVersion = "0.6.8",
       )
@@ -98,14 +102,14 @@ class GeneratorTest {
   }
 
   @Test
-  fun `a failed generation keeps the current seed and says why`() = runBlocking {
-    data.resolve("AP_999.zip").createFile()
+  fun `a failed generation leaves no seed and says why`() = runBlocking {
     val result = generator.generate(
+      "brave-otter",
       GenerateRequest(listOf(UploadedYaml("a.yaml", "unbeatable")), apVersion = "0.6.8", games = listOf("Hollow Knight", "Celeste"))
     )
     assertNull(result.seedName)
     assertTrue(result.log.any { "unbeatable" in it })
-    assertTrue(data.resolve("AP_999.zip").exists())
+    assertNull(SessionDirs(data).seed("brave-otter"))
     // Celeste isn't in the release at all; Hollow Knight's module is in the traceback
     assertEquals(listOf("Celeste", "Hollow Knight"), result.suspects.map { it.game })
     assertEquals("named in the error", result.suspects[1].reason)
@@ -113,7 +117,7 @@ class GeneratorTest {
 
   @Test
   fun `a version the gateway doesn't have is refused`() = runBlocking {
-    val result = generator.generate(GenerateRequest(emptyList(), apVersion = "1.0.0"))
+    val result = generator.generate("brave-otter", GenerateRequest(emptyList(), apVersion = "1.0.0"))
     assertNull(result.seedName)
     assertTrue(result.log.single().contains("not installed"))
   }

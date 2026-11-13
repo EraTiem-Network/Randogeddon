@@ -75,13 +75,27 @@ class GameServerTest {
   }
 
   @Test
+  fun `a stop right after a start ends it, also before its process is there`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    repeat(20) {
+      val server = server()
+      withTimeout(5.seconds) {
+        server.start()
+        server.stop()
+      }
+      assertEquals(GameServerStatus.STOPPED, server.state.status)
+    }
+  }
+
+  @Test
   fun `a refused seed (its session is finished) stays stopped, and is asked about on every start`() = runBlocking {
     var finished = true
     val server = server(refuse = { if (finished) "its session is finished" else null })
     dir.resolve("AP_1.zip").createFile()
     server.start()
+    // Stopped as soon as the start returns: it never counts as starting (and takes no port)
+    assertEquals(GameServerStatus.STOPPED, server.state.status)
     server.awaitLine("Not starting AP_1.zip: its session is finished")
-    server.awaitStatus(GameServerStatus.STOPPED)
     finished = false
     server.start()
     server.awaitStatus(GameServerStatus.RUNNING)

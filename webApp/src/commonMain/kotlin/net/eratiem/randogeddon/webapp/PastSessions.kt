@@ -2,8 +2,10 @@ package net.eratiem.randogeddon.webapp
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -19,83 +21,92 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import net.eratiem.randogeddon.shared.PastSession
+import net.eratiem.randogeddon.shared.SessionEntry
+import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
 
-/** The finished sessions the viewer took part in (all for admins), the newest first; [onOpen] shows one. */
+/**
+ * The page after the login, unless exactly one running session is the user's (it opens then): the user's sessions as
+ * cards, running ones first, each with its title, ID, how it stands, how far it got, the user's slots and who is
+ * online. [onOpen] shows one. [admin]: a hint where the other sessions are.
+ */
 @Composable
-fun PastSessionsSection(sessions: List<PastSession>, onOpen: (String) -> Unit) {
+fun SessionPicker(sessions: List<SessionEntry>, admin: Boolean, onOpen: (String) -> Unit) {
   val p = LocalPalette.current
-  Section("Past sessions", subtitle = "finished; as they were when they finished") {
-    Column(Modifier.fillMaxWidth().card(p)) {
-      sessions.forEachIndexed { i, session ->
-        if (i > 0) Divider()
-        HoverRow(onClick = { onOpen(session.seedName) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
-          Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Txt(session.title + if (session.current) " (current seed)" else "", size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1)
-            Txt(
-              listOfNotNull(
-                "Seed ${session.seedName}", "finished ${Platform.date(session.finishedAt)}",
-                session.deletesAt?.let { "deleted on ${Platform.date(it)}" },
-              ).filter { it.isNotEmpty() }.joinToString(" · "),
-              size = 12.sp, color = p.muted, maxLines = 2,
-            )
+  val running = sessions.filter { it.status.running }
+  val finished = sessions.filter { !it.status.running }
+  if (sessions.isEmpty()) {
+    Txt(
+      if (admin) "You don't play in a session. Every session is in the admin panel." else "You aren't part of a session yet.",
+      color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
+    )
+    return
+  }
+  listOf("Running" to running, "Finished" to finished).filter { it.second.isNotEmpty() }.forEach { (title, list) ->
+    Section(
+      title,
+      subtitle = if (title == "Running") "pick one to see its dashboard" else "as they were when they finished",
+    ) {
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = ((maxWidth + 16.dp) / (360.dp + 16.dp)).toInt().coerceIn(1, 3)
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+          list.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+              row.forEach { SessionCard(it, Modifier.weight(1f), onOpen) }
+              repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
           }
-          Txt("${oneDecimal(session.percent)}%", size = 16.sp, weight = FontWeight.Bold, brush = p.brand,
-            modifier = Modifier.padding(end = 12.dp))
         }
       }
     }
   }
 }
 
-/**
- * A past session, read-only: its overview, players, hints and feed as they were when it finished ([source], its
- * archive; `null` while it loads, or with [missing] if it can't be had). Slot details come from the archive too.
- * [onSpoiler]: shows its spoiler log.
- */
 @Composable
-fun PastSessionView(
-  seed: String,
-  source: ArchiveSource?,
-  missing: Boolean,
-  contentWidth: Dp,
-  onBack: () -> Unit,
-  onSpoiler: () -> Unit,
-) {
+private fun SessionCard(session: SessionEntry, modifier: Modifier, onOpen: (String) -> Unit) {
   val p = LocalPalette.current
-  var detailSlot by remember(seed) { mutableStateOf<Int?>(null) }
-  var detailPerson by remember(seed) { mutableStateOf<String?>(null) }
-
-  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    val s = source?.archived?.summary
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      IconButton(onBack, Icon.BACK)
-      Column(Modifier.weight(1f)) {
-        Txt("Past session" + (s?.let { ": ${it.title}" } ?: ""), size = 20.sp, weight = FontWeight.Bold)
-        val finished = s?.finishedAt?.let { "finished ${Platform.date(it)}" }
-        val by = source?.archived?.finishedBy?.let { "by $it" } ?: if (s != null) "when every slot was done" else null
-        Txt(listOfNotNull("Seed $seed", s?.serverVersion?.let { "AP $it" }, listOfNotNull(finished, by).joinToString(" ").ifEmpty { null })
-          .joinToString(" · "), size = 12.5.sp, color = p.muted)
+  Column(modifier.card(p)) {
+    HoverRow(onClick = { onOpen(session.id) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+      Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+          StatusPill(session.status)
+        }
+        Txt(
+          listOfNotNull(
+            session.id,
+            session.finishedAt?.let { "finished ${Platform.date(it)}" } ?: session.createdAt?.let { "since ${Platform.date(it)}" },
+          ).joinToString(" · "),
+          size = 12.sp, color = p.muted, maxLines = 1,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          ProgressBar((session.percent / 100).toFloat(), Modifier.weight(1f), height = 6.dp)
+          Txt("${oneDecimal(session.percent)}%", size = 13.sp, weight = FontWeight.Bold, brush = p.brand)
+        }
+        Txt(
+          listOfNotNull(
+            session.mySlots.takeIf { it.isNotEmpty() }?.let { "Your slots: ${it.joinToString(", ")}" },
+            session.online.takeIf { it > 0 && session.status.running }?.let { "$it online" },
+          ).joinToString(" · ").ifEmpty { "${session.slots} slots" },
+          size = 12.sp, color = p.muted, maxLines = 2,
+        )
       }
-      if (s != null) SmallButton("Spoiler log", onSpoiler)
     }
-    if (missing) Txt("This session can't be shown (it was deleted, or you didn't play in it).", color = p.muted)
-    if (s == null) return@Column
-    val now = s.finishedAt ?: Platform.now()
-    Stats(s, now, contentWidth)
-    People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-    if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-    Feed(s, Modifier.fillMaxWidth(), FeedPosition.BELOW, false, onPosition = null, onHide = null, title = "Feed")
   }
-  val src = source
-  if (src != null) {
-    detailPerson?.let { name -> PersonDialog(name, src.archived.summary, src.archived.summary.finishedAt ?: 0, src, onClose = { detailPerson = null }) }
-    detailSlot?.let { slot -> PlayerDialog(slot, 0, src, onClose = { detailSlot = null }) }
+}
+
+/** Live, ending soon, paused or ended. */
+@Composable
+fun StatusPill(status: SessionStatus) {
+  val p = LocalPalette.current
+  when (status) {
+    SessionStatus.LIVE -> Pill("live", p.ok)
+    SessionStatus.FINISHING -> Pill("ending", p.key)
+    SessionStatus.PAUSED -> Pill("paused", p.warn)
+    SessionStatus.ENDED -> Pill("ended", p.muted)
   }
 }
 

@@ -51,12 +51,11 @@ sourceSets {
   }
 }
 
-// `./gradlew :server:run`: against a game server on localhost (docker-compose.local.yml), with the web app of this
-// build and the room of ./data
+// `./gradlew :server:run`: against a gateway on localhost (`:gateway:run`), with the web app of this build and the
+// sessions of ./data
 tasks.named<JavaExec>("run") {
   workingDir = rootDir
   dependsOn(":webApp:wasmJsBrowserDistribution")
-  environment("ROOM_JSON", System.getenv("ROOM_JSON") ?: "data/room.json")
-  environment("STATE_PATH", System.getenv("STATE_PATH") ?: "build/tracker-state/tracker.json")
-  environment("SESSION_YAML", System.getenv("SESSION_YAML") ?: "data/session.yaml")
+  environment("DATA_DIR", System.getenv("DATA_DIR") ?: "data")
+  environment("STATE_DIR", System.getenv("STATE_DIR") ?: "build/tracker-state")
 }

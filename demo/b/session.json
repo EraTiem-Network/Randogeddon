@@ -1,0 +1,11 @@
+{
+  "_comment": "Who plays which slot of group b (scripts/demo.sh), with mixed locks: Dave-Yacht starts open, Erin-HK locked, the other two are left to chance with 2 slots open in all.",
+  "worlds": [
+    {"name": "Dave-Yacht", "users": ["Dave"]},
+    {"name": "Dave-Timespinner", "users": ["Dave"], "random": true},
+    {"name": "Erin-DLC", "users": ["Erin"], "random": true},
+    {"name": "Erin-HK", "users": ["Erin"], "locked": true}
+  ],
+  "options": {"pointHints": false, "autoHints": true, "earlyKeys": true, "openSlots": 2},
+  "finisher": "Dave-Yacht"
+}

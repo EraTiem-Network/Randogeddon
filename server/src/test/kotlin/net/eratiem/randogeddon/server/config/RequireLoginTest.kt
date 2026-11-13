@@ -26,12 +26,12 @@ class RequireLoginTest {
   private val ada = User(Uuid.random(), "Ada", "hash", admin = true)
   private val pete = User(Uuid.random(), "Pete", "hash")
 
-  /** Alice is a player of the session (as "Alice"), Pete only of a past one, Mallory has a login but is in none. */
+  /** Alice plays in brave-otter, Pete only in quiet-fox, Mallory has a login but is in none; Ada is an admin. */
   private val check = object : LoginCheck {
     override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada, "p" to pete)[token]
-    // Ada is an admin outside the session
-    override fun personOf(user: User) = mapOf(alice to "Alice")[user]
-    override suspend fun mayEnter(user: User) = user.admin || user == pete
+    private val members = mapOf("brave-otter" to setOf(alice), "quiet-fox" to setOf(pete))
+    override suspend fun mayEnter(user: User) = user.admin || members.values.any { user in it }
+    override fun maySee(user: User, id: String) = user.admin || user in members[id].orEmpty()
   }
 
   private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {
@@ -41,22 +41,22 @@ class RequireLoginTest {
       routing {
         route("/api") {
           install(RequireLogin) { logins = check }
-          route("/state") {
-            install(RequireSessionMember)
-            get {
-              handled = true
-              call.respondText("state of ${call.loggedIn.person}")
-            }
-          }
           get("/sessions") {
             handled = true
-            call.respondText("past sessions of ${call.loggedIn.user.name}")
+            call.respondText("sessions of ${call.loggedIn.user.name}")
+          }
+          route("/sessions/{id}") {
+            install(RequireSessionMember) { logins = check }
+            get("/state") {
+              handled = true
+              call.respondText("state of ${call.parameters["id"]} for ${call.loggedIn.user.name}")
+            }
           }
           route("/admin") {
             install(RequireAdmin)
-            get("/server") {
+            get("/sessions") {
               handled = true
-              call.respondText("server")
+              call.respondText("all sessions")
             }
           }
         }
@@ -68,48 +68,51 @@ class RequireLoginTest {
 
   @Test
   fun `without a login the session data is refused and the handler never runs`() = test { handled ->
-    val response = client.get("/api/state")
+    val response = client.get("/api/sessions/brave-otter/state")
     assertEquals(HttpStatusCode.Unauthorized, response.status)
     assertTrue("state" !in response.bodyAsText())
     assertFalse(handled())
 
-    assertEquals(HttpStatusCode.Unauthorized, client.get("/api/state") { cookie(SESSION_COOKIE, "unknown") }.status)
+    assertEquals(HttpStatusCode.Unauthorized, client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "unknown") }.status)
     assertFalse(handled())
   }
 
   @Test
-  fun `a login of someone outside the session is forbidden`() = test { handled ->
-    assertEquals(HttpStatusCode.Forbidden, client.get("/api/state") { cookie(SESSION_COOKIE, "m") }.status)
-    assertFalse(handled())
-  }
-
-  @Test
-  fun `a player of a past session sees past sessions, not the current one`() = test { handled ->
-    assertEquals(HttpStatusCode.Forbidden, client.get("/api/state") { cookie(SESSION_COOKIE, "p") }.status)
-    assertFalse(handled())
-    assertEquals("past sessions of Pete", client.get("/api/sessions") { cookie(SESSION_COOKIE, "p") }.bodyAsText())
+  fun `a login of someone in no session is forbidden`() = test { handled ->
     assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions") { cookie(SESSION_COOKIE, "m") }.status)
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "m") }.status)
+    assertFalse(handled())
   }
 
   @Test
-  fun `an admin outside the session sees it`() = test {
-    assertEquals("state of null", client.get("/api/state") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+  fun `a player sees their own sessions, not the others`() = test { handled ->
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "p") }.status)
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/no-such-one/state") { cookie(SESSION_COOKIE, "p") }.status)
+    assertFalse(handled())
+    assertEquals("state of quiet-fox for Pete", client.get("/api/sessions/quiet-fox/state") { cookie(SESSION_COOKIE, "p") }.bodyAsText())
+    assertEquals("sessions of Pete", client.get("/api/sessions") { cookie(SESSION_COOKIE, "p") }.bodyAsText())
   }
 
   @Test
-  fun `a person of the session gets through`() = test { handled ->
-    val response = client.get("/api/state") { cookie(SESSION_COOKIE, "a") }
+  fun `an admin sees every session`() = test {
+    assertEquals("state of brave-otter for Ada", client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+    assertEquals("state of quiet-fox for Ada", client.get("/api/sessions/quiet-fox/state") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+  }
+
+  @Test
+  fun `a player of the session gets through`() = test { handled ->
+    val response = client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "a") }
     assertEquals(HttpStatusCode.OK, response.status)
-    assertEquals("state of Alice", response.bodyAsText())
+    assertEquals("state of brave-otter for alice", response.bodyAsText())
     assertTrue(handled())
   }
 
   @Test
   fun `the admin routes are for admins only`() = test { handled ->
-    assertEquals(HttpStatusCode.Unauthorized, client.get("/api/admin/server").status)
-    assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/server") { cookie(SESSION_COOKIE, "a") }.status)
+    assertEquals(HttpStatusCode.Unauthorized, client.get("/api/admin/sessions").status)
+    assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "a") }.status)
     assertFalse(handled())
-    assertEquals("server", client.get("/api/admin/server") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+    assertEquals("all sessions", client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
     assertTrue(handled())
   }
 
