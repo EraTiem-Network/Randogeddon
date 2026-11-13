@@ -8,6 +8,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
+import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
 import kotlinx.coroutines.delay
@@ -47,15 +48,7 @@ fun Route.sessionRoutes(
   route("/sessions/{id}") {
     install(RequireSessionMember) { this.logins = logins }
     get("/state") { session(sessions) { call.respondText(it.json(), ContentType.Application.Json) } }
-    get("/player/{slot}") {
-      session(sessions) { live ->
-        val slot = call.parameters["slot"]?.toIntOrNull() ?: return@session call.respond(HttpStatusCode.BadRequest)
-        val archived = if (live.finished) archives.read(live.id) else null
-        val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else live.tracker.read { playerDetail(slot) })
-          ?: return@session call.respond(HttpStatusCode.NotFound)
-        call.respond(detail)
-      }
-    }
+    get("/player/{slot}") { session(sessions) { playerDetail(it, archives) } }
     // Where the person's game clients connect, with their slots' passwords
     get("/connection") {
       session(sessions) { live ->
@@ -91,23 +84,37 @@ fun Route.sessionRoutes(
     // a release) becomes one update.
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
-      var sentVersion = -1L
-      var idle = 0.milliseconds
-      while (true) {
-        // A finished session's summary no longer changes, but finishing (and reopening) changes the version
-        val version = live.version()
-        if (version != sentVersion) {
-          sentVersion = version
-          send(ServerSentEvent(data = live.json(), event = "state"))
-          idle = 0.milliseconds
-        } else if (idle >= KEEPALIVE) {
-          send(ServerSentEvent(comments = "keepalive"))
-          idle = 0.milliseconds
-        }
-        delay(POLL_INTERVAL)
-        idle += POLL_INTERVAL
-      }
+      follow(live) { live.json() }
     }
+  }
+}
+
+/** The details of the path's `{slot}` of [live]; a finished session's from its archive. */
+internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives) {
+  val slot = call.parameters["slot"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest)
+  val archived = if (live.finished) archives.read(live.id) else null
+  val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else live.tracker.read { playerDetail(slot) })
+    ?: return call.respond(HttpStatusCode.NotFound)
+  call.respond(detail)
+}
+
+/** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
+internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend () -> String) {
+  var sentVersion = -1L
+  var idle = 0.milliseconds
+  while (true) {
+    // A finished session's summary no longer changes, but finishing (and reopening) changes the version
+    val version = live.version()
+    if (version != sentVersion) {
+      sentVersion = version
+      send(ServerSentEvent(data = json(), event = "state"))
+      idle = 0.milliseconds
+    } else if (idle >= KEEPALIVE) {
+      send(ServerSentEvent(comments = "keepalive"))
+      idle = 0.milliseconds
+    }
+    delay(POLL_INTERVAL)
+    idle += POLL_INTERVAL
   }
 }
 

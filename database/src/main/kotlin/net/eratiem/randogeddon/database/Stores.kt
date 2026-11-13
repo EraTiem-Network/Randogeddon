@@ -825,3 +825,43 @@ class AppSettingsStore(private val db: RandogeddonDatabase) {
     Unit
   }
 }
+
+/** A session's share link as it is on: who made it, and when. */
+data class ShareLinkInfo(val createdBy: String?, val createdAt: Instant)
+
+/** Share links: a session followed without a login. One per session, stored only as the token's SHA-256. */
+class ShareLinkStore(private val db: RandogeddonDatabase) {
+  /** A new link for the session of [publicId] (the old one stops working); `false` if there's no such session. */
+  suspend fun replace(publicId: String, tokenHash: String, by: String?, now: Instant = Instant.now()): Boolean = db.query {
+    val session = sessionOf(publicId) ?: return@query false
+    ShareLinksTable.deleteWhere { sessionId eq session }
+    ShareLinksTable.insert {
+      it[sessionId] = session
+      it[ShareLinksTable.tokenHash] = tokenHash
+      it[createdBy] = by
+      it[createdAt] = now
+    }
+    true
+  }
+
+  /** Turns the session's link off; `false` if it had none. */
+  suspend fun remove(publicId: String): Boolean = db.query {
+    val session = sessionOf(publicId) ?: return@query false
+    ShareLinksTable.deleteWhere { sessionId eq session } > 0
+  }
+
+  /** The session's link, if it has one. */
+  suspend fun of(publicId: String): ShareLinkInfo? = db.query {
+    (ShareLinksTable innerJoin SessionsTable).selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()
+      ?.let { ShareLinkInfo(it[ShareLinksTable.createdBy], it[ShareLinksTable.createdAt]) }
+  }
+
+  /** The public ID of the session whose link has [tokenHash]; `null`: no such link (any more). */
+  suspend fun sessionWith(tokenHash: String): String? = db.query {
+    (ShareLinksTable innerJoin SessionsTable).select(SessionsTable.publicId)
+      .where { ShareLinksTable.tokenHash eq tokenHash }.singleOrNull()?.get(SessionsTable.publicId)
+  }
+
+  private fun sessionOf(publicId: String): Uuid? =
+    SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+}

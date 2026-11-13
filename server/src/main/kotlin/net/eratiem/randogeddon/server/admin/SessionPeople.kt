@@ -14,6 +14,7 @@ import net.eratiem.randogeddon.shared.SessionPeople
 import net.eratiem.randogeddon.shared.SessionPerson
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.UserRef
+import net.eratiem.randogeddon.shared.WatcherRequest
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import kotlin.uuid.Uuid
@@ -92,6 +93,20 @@ class SessionPeopleService(
     roles.remove(live.id, userId)
     sessions.refresh()
     logger.info("{} took {}'s part ({}) in {}", by.name, entry.name, entry.role, live.id)
+  }
+
+  /** Session [id]'s watchers (accounts; the share link is apart). */
+  fun watchers(id: String): SessionPeople = SessionPeople(list(id).people.filter { it.role == SessionRole.WATCHER })
+
+  /** A watcher of session [id], added by a player or a Session-Manager: the same rules as [add]. */
+  suspend fun addWatcher(id: String, request: WatcherRequest, by: User): SessionPerson =
+    add(id, AddPersonRequest(SessionRole.WATCHER, request.userId, request.email, request.suggestedName), by)
+
+  /** Takes a watcher away; players take only watchers, not support or Session-Managers. */
+  suspend fun removeWatcher(id: String, userId: Uuid, by: User) {
+    val entry = session(id).setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, "They aren't watching")
+    if (entry.role != SessionRole.WATCHER.code) throw AccountProblem(HttpStatusCode.Forbidden, "${entry.name} isn't a watcher")
+    remove(id, userId, by)
   }
 
   /** Invites [email] for a session (a player, or a part in it): only if no account has that address. */

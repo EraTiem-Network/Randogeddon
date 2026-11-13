@@ -80,13 +80,16 @@ class Cheats(
   suspend fun names(id: String, slot: String): CheatNames =
     session(id).tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, "No slot $slot")
 
-  /** [byRole]: `administrator`, `manager` or `support`; the log and the feed say so. */
-  suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator") {
+  /**
+   * [byRole]: `administrator`, `manager` or `support`; the log and the feed say so. [freeHints]: hints without the
+   * session's cheat hints (support gives them).
+   */
+  suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator", freeHints: Boolean = false) {
     val session = session(id)
     val tracker = session.tracker
     val seed = session.seedName
     if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, "The session is finished")
-    if (request.action in HINTS && session.options?.cheatHints != true) {
+    if (request.action in HINTS && !freeHints && session.options?.cheatHints != true) {
       throw SessionProblem(HttpStatusCode.Forbidden, "This session doesn't allow cheat hints")
     }
     val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, "No slot ${request.slot}")

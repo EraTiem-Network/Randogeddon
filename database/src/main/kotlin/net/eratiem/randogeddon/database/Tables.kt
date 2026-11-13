@@ -118,6 +118,15 @@ object SessionRolesTable : Table("session_roles") {
   override val primaryKey = PrimaryKey(sessionId, userId)
 }
 
+/** A session's share link (V10): only the token's SHA-256; one per session. */
+object ShareLinksTable : Table("share_links") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val tokenHash = varchar("token_hash", 64)
+  val createdBy = varchar("created_by", 64).nullable()
+  val createdAt = timestamp("created_at")
+  override val primaryKey = PrimaryKey(sessionId)
+}
+
 /** What Administrators set for everyone (V9). */
 object AppSettingsTable : Table("app_settings") {
   val key = varchar("key", 64)

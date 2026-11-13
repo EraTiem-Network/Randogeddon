@@ -378,6 +378,27 @@ class StoresTest {
   }
 
   @Test
+  fun `a share link is one per session, replaced by a new one and gone with its session`() = runBlocking {
+    val links = ShareLinkStore(db)
+    val setups = SessionSetupStore(db)
+    setups.create("shared-one", "777", "0.6.8", "{}", emptyMap())
+    assertEquals(false, links.replace("nothing-here", "a".repeat(64), "Lea"))
+    assertNull(links.of("shared-one"))
+    assertTrue(links.replace("shared-one", "a".repeat(64), "Lea"))
+    assertEquals("shared-one", links.sessionWith("a".repeat(64)))
+    assertTrue(links.replace("shared-one", "b".repeat(64), "Max"))
+    assertNull(links.sessionWith("a".repeat(64)))
+    assertEquals("Max", links.of("shared-one")?.createdBy)
+    assertTrue(links.remove("shared-one"))
+    assertEquals(false, links.remove("shared-one"))
+    assertNull(links.sessionWith("b".repeat(64)))
+
+    assertTrue(links.replace("shared-one", "c".repeat(64), "Lea"))
+    setups.delete("777")
+    assertNull(links.sessionWith("c".repeat(64)))
+  }
+
+  @Test
   fun `settings have their defaults and keep what is set`() = runBlocking {
     val settings = AppSettingsStore(db)
     assertEquals("1", settings.get("sessions_per_user"))

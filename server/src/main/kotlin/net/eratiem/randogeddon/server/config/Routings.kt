@@ -18,6 +18,8 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
+import net.eratiem.randogeddon.server.admin.ShareLinks
+import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.server.session.Archives
@@ -44,10 +46,14 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val pending by inject<PendingLogins>()
   val people by inject<SessionPeopleService>()
   val settings by inject<AppSettingsStore>()
+  val support by inject<Support>()
+  val shareLinks by inject<ShareLinks>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, trackerConfig.cookieSecure)
     signupRoutes(accounts, trackerConfig.cookieSecure)
+    // A session by its share link, without a login
+    publicWatchRoutes(shareLinks, archives)
 
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
@@ -57,6 +63,8 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
+      supportRoutes(support, logins)
+      watcherRoutes(people, shareLinks, logins)
       // A session's management: its Session-Managers, and Administrators
       route("/sessions/{id}/manage") {
         install(RequireSessionRole) {

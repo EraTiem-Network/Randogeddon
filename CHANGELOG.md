@@ -17,6 +17,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Watchers and support see the session; support and Session-Managers its spoiler log while it runs. Every cheat is
   logged with the role it was done as. Migration V9 (roles per session, settings).
 
+### Support, watchers, share links (Phase 6, part 2)
+- **Support** (`/api/sessions/<id>/support`): gives items, checks locations and free hints (even without the session's
+  cheat hints); no release or collect. Logged and shown in the feed: "Bob (support) gave Mantis Claw to Alice-HK".
+- **Watchers** are added by the session's players too (`/api/sessions/<id>/watchers`): by name, or an invitation for an
+  address without an account. Players take away watchers, not support or Session-Managers.
+- **Share links** (`/api/sessions/<id>/share`, players and Session-Managers): the session without a login, read-only,
+  at `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (rate-limited; no passwords, spoiler or accounts).
+  A new link replaces the old one; stored only as SHA-256. Migration V10.
+
 ### Proper user management (Phase 5)
 Accounts belong to people now: invited by e-mail, their own name and password, deleted by themselves when they choose,
 two-factor login (required for admins). Updating: `MAIL_*` and `TOTP_KEY` in `.env`, the mailbox
