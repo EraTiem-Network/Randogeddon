@@ -7,11 +7,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - **Addresses:** the app runs at `randogeddon.eratiem.net`; each session's game server at
   `<session-id>.randogeddon.eratiem.net:443` (TLS, `wss://`).
-    - Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS: one
-      port for all sessions, routed by host name like 443, but unencrypted (passwords included).
-    - Current clients connect over TLS: Launcher-based clients retry with `wss://`, and Archipelago.MultiClient.Net
-      (used by many modded games) tries `wss://` first since April 2023. Older or unmaintained mods may only speak
-      `ws://`, so every game of a session is tested with its real client before session day.
+    - TLS only: current clients connect over `wss://` (Launcher-based clients retry with it, and
+      Archipelago.MultiClient.Net, used by many modded games, tries it first since April 2023). Older or unmaintained
+      mods may only speak `ws://`, so every game of a session is tested with its real client before session day; a
+      plain fallback is optional (see the end).
 - **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
@@ -69,7 +68,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       changes (an Archipelago update with a new or changed `Connect`).
 - [x] Tracker and gateway as native executables (GraalVM, Linux x86_64, `-march=x86-64-v3` for the i7-8700)
 
-## Phase 3: Admin Panel
+## Phase 3: Admin Panel (done)
 
 *The host runs the session from the browser instead of the shell.*
 
@@ -124,7 +123,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - The tracker image carries several Archipelago releases side by side; a session always runs on its own, so an
       update never breaks a running session. Releases no session uses any more can be dropped.
 
-## Phase 4: Multiple Sessions
+## Phase 4: Multiple Sessions (done)
 
 *Several groups play at the same time on the same server.*
 
@@ -150,8 +149,6 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       (`friday-chaos`); a DNS label that starts with a letter, 3 to 40 characters.
     - The gateway routes by the host name (the first label), or by the path without a domain
       (`ws://localhost:38281/<session-id>`, local use and the demo).
-- [ ] Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS (see
-  Conventions): a Traefik entrypoint on 2401, and a second router per session on it without TLS.
 
 ## Phase 5: Proper User Management
 
@@ -228,3 +225,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Active for that user on every device they log in with; other users are not affected.
     - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
       used in this browser.
+
+## Optional
+
+*Only if a game needs it.*
+
+- [ ] Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS
+    - One port for all sessions, routed by host name like 443: a Traefik entrypoint on 2401, the port open in the
+      host's firewall, and a second wildcard router on it without TLS.
+    - Unencrypted, slot passwords included: `wss://` stays the way in, this only for a game whose client can't do it.
