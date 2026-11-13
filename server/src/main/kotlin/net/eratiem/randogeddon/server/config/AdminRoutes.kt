@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.server.session.SessionList
@@ -48,9 +49,14 @@ private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
  * Under the protected `/api` branch, for Administrators: every session with its game server, the apworld library of
  * each release, and what applies to everyone (the settings). Every action is logged with their name.
  */
-fun Route.adminRoutes(gameServer: GameServerClient, admin: SessionAdmin, settings: AppSettingsStore) {
+fun Route.adminRoutes(
+  gameServer: GameServerClient,
+  admin: SessionAdmin,
+  settings: AppSettingsStore,
+  logins: LoginCheck,
+) {
   route("/admin") {
-    install(RequireAdministrator)
+    install(RequireAdministrator) { this.logins = logins }
     // Every session with its game server, and what a new one needs (releases, logins, a free ID)
     get("/sessions") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
     route("/settings") {
