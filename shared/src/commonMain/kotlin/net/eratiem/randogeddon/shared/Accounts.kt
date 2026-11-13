@@ -265,6 +265,30 @@ data class AddPersonRequest(
 )
 
 /**
+ * `POST /api/sessions/{id}/watchers` (players and Session-Managers): a watcher by account ([userId]), or by [email] (an
+ * invitation, only for an address without an account).
+ */
+@Serializable
+data class WatcherRequest(
+  val userId: String? = null,
+  val email: String? = null,
+  val suggestedName: String? = null,
+)
+
+/**
+ * `GET/POST /api/sessions/{id}/share`: the session's share link, to follow it without a login (read-only). The link's
+ * [token] is only in the answer that made it (`POST`); after that only whether one is on, by whom and since when.
+ */
+@Serializable
+data class ShareLinkView(
+  val on: Boolean = false,
+  val createdBy: String? = null,
+  /** Epoch milliseconds. */
+  val createdAt: Long? = null,
+  val token: String? = null,
+)
+
+/**
  * `GET /api/sessions/new`: what a new session can use: the releases, a free ID, the accounts to pick by name, and how
  * many running sessions the user may still create ([left]; `null`: no limit, an Administrator).
  */
