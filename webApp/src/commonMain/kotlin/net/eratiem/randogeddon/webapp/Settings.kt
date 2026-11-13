@@ -1,10 +1,16 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,6 +21,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,10 +34,13 @@ import net.eratiem.randogeddon.shared.AccountView
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.AutoDeleteRequest
+import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.NameRequest
+import net.eratiem.randogeddon.shared.RecoveryCodeList
 import net.eratiem.randogeddon.shared.TokenRequest
+import net.eratiem.randogeddon.shared.TotpSetup
 import net.eratiem.randogeddon.shared.UserNames
 
 /**
@@ -93,6 +106,8 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
         passwordState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
       }
     }
+
+    TwoFactorSection(a, onChanged = { scope.launch { load() } })
 
     // The e-mail address
     var email by remember { mutableStateOf("") }
@@ -170,3 +185,109 @@ fun ConfirmEmailView(token: String, onSettings: () -> Unit) {
 }
 
 private inline fun <reified T> body(value: T): String = ApiJson.encodeToString(value)
+
+/**
+ * Two-factor login: off, set it up (a QR code and the key, confirmed with a first code); on, new recovery codes or turn
+ * it off, each with a code. Admins can't turn it off. The recovery codes are shown once, right after.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
+  val p = LocalPalette.current
+  val scope = rememberCoroutineScope()
+  var setup by remember { mutableStateOf<TotpSetup?>(null) }
+  var code by remember { mutableStateOf("") }
+  var codes by remember { mutableStateOf<List<String>?>(null) }
+  var state by remember { mutableStateOf<String?>(null) }
+  fun request(path: String, onCodes: Boolean) = scope.launch {
+    val answer = call("POST", path, body(CodeRequest(code.trim()))) { body ->
+      if (onCodes) ApiJson.decodeFromString(RecoveryCodeList.serializer(), body).codes else emptyList()
+    }
+    when (answer) {
+      is Answer.Ok -> {
+        code = ""
+        setup = null
+        codes = answer.value.takeIf { onCodes }
+        state = if (onCodes) null else "Two-factor login is off."
+        onChanged()
+      }
+      is Answer.Failed -> state = answer.message
+    }
+  }
+  val subtitle = if (a.admin) "admins always log in with it" else "a code from an authenticator app after your password"
+  Section("Two-factor login", subtitle = subtitle) {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      if (a.admin && !a.twoFactor) {
+        Txt("The admin panel opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
+      }
+      codes?.let { list ->
+        Txt("Your recovery codes", size = 13.5.sp, weight = FontWeight.SemiBold)
+        Txt(
+          "Each works once, in place of a code, if you lose your authenticator. They are shown only now: keep them safe.",
+          size = 12.5.sp, color = p.muted,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          list.forEach { Mono(it, p.text) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          SmallButton("Copy", { Platform.copy(list.joinToString("\n")) })
+          Button("I have saved them") { codes = null }
+        }
+        return@Column
+      }
+      val current = setup
+      when {
+        current != null -> {
+          Txt("Scan this with an authenticator app (any TOTP app), or type the key in; then enter the code it shows.", size = 12.5.sp)
+          QrCode(current.rows, Modifier.size(200.dp))
+          Mono(current.secret.chunked(4).joinToString(" "), p.text)
+          CodeRow(code, { code = it; state = null }, "Turn it on") { request("api/account/2fa/enable", onCodes = true) }
+          SmallButton("Cancel", { setup = null; code = "" })
+        }
+        !a.twoFactor -> {
+          Txt("Off.", size = 13.sp)
+          Row {
+            Button("Set it up") {
+              scope.launch {
+                when (val r = call("POST", "api/account/2fa/setup", null) { ApiJson.decodeFromString(TotpSetup.serializer(), it) }) {
+                  is Answer.Ok -> { setup = r.value; state = null }
+                  is Answer.Failed -> state = r.message
+                }
+              }
+            }
+          }
+        }
+        else -> {
+          Txt("On · ${a.recoveryCodesLeft} recovery codes left", size = 13.sp, weight = FontWeight.SemiBold)
+          Txt("A code from your authenticator (or a recovery code) for:", size = 12.5.sp, color = p.muted)
+          CodeRow(code, { code = it; state = null }, "New recovery codes") { request("api/account/2fa/codes", onCodes = true) }
+          if (!a.admin) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
+        }
+      }
+      state?.let { Txt(it, size = 12.5.sp, color = p.muted) }
+    }
+  }
+}
+
+/** A code field with its button. */
+@Composable
+private fun CodeRow(code: String, onCode: (String) -> Unit, action: String, onAction: () -> Unit) {
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FilterField(code, onCode, "Code", Modifier.width(140.dp), minHeight = FIELD_HEIGHT)
+    Button(action, enabled = code.isNotBlank(), onClick = onAction)
+  }
+}
+
+/** A QR code from its [rows] of `0`/`1`, black on white with a quiet zone (scanners need the contrast). */
+@Composable
+private fun QrCode(rows: List<String>, modifier: Modifier) {
+  Canvas(modifier.clip(RoundedCornerShape(10.dp)).background(Color.White)) {
+    val n = rows.size + 8
+    val cell = size.minDimension / n
+    rows.forEachIndexed { y, row ->
+      row.forEachIndexed { x, c ->
+        if (c == '1') drawRect(Color.Black, Offset((x + 4) * cell, (y + 4) * cell), Size(cell + 0.5f, cell + 0.5f))
+      }
+    }
+  }
+}

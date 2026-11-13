@@ -43,6 +43,11 @@
     #login form[hidden] { display: none; }
     #login .hint { margin: 0; color: var(--muted); font-size: 12.5px; }
     #login button.secondary { color: var(--text); background: var(--bg); border: 1px solid var(--border); }
+    #login .qr { align-self: center; width: 200px; height: 200px; border-radius: 10px; overflow: hidden; }
+    #login .qr svg { width: 100%; height: 100%; display: block; }
+    #login code { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
+    #login .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin: 0; padding: 12px;
+      border-radius: 10px; background: var(--bg); border: 1px solid var(--border); list-style: none; }
     #login button { font: inherit; font-weight: 600; color: #fff; border: 0; border-radius: 10px; padding: 10px;
       background: linear-gradient(90deg, #ff7a45, var(--accent)); cursor: pointer; }
     #login button:disabled { opacity: 0.6; cursor: default; }
@@ -63,6 +68,36 @@
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <p class="message" role="alert"></p>
       <button type="submit">Log in</button>
+    </form>
+    <!-- After the password, with two-factor login: the authenticator's code (or a recovery code) -->
+    <form id="code-form" hidden>
+      <h1>Your code</h1>
+      <p class="hint">The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.</p>
+      <label>Code<input name="code" autocomplete="one-time-code" inputmode="text" autocapitalize="off" spellcheck="false"
+        required></label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Log in</button>
+    </form>
+    <!-- An admin without two-factor login sets it up before anything else -->
+    <form id="setup-form" hidden>
+      <h1>Two-factor login</h1>
+      <p class="hint">Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type the
+        key in, then enter the code it shows.</p>
+      <div class="qr"></div>
+      <code class="secret"></code>
+      <label>Code<input name="code" autocomplete="one-time-code" inputmode="numeric" required></label>
+      <p class="message" role="alert"></p>
+      <button type="submit">Turn it on</button>
+    </form>
+    <!-- Its recovery codes, shown once -->
+    <form id="codes-form" hidden>
+      <h1>Recovery codes</h1>
+      <p class="hint">Each works once, in place of a code, if you lose your authenticator. Keep them somewhere safe:
+        they are shown only now.</p>
+      <ul class="codes"></ul>
+      <p class="message" role="alert"></p>
+      <button type="button" class="secondary copy">Copy</button>
+      <button type="submit">I have saved them</button>
     </form>
     <!-- The invitation's link (#/invite/<token>): the new user chooses their name, password and deletion period -->
     <form id="signup-form" hidden>
@@ -122,8 +157,13 @@
       var forms = {
         login: document.getElementById("login-form"),
         signup: document.getElementById("signup-form"),
-        password: document.getElementById("password-form")
+        password: document.getElementById("password-form"),
+        code: document.getElementById("code-form"),
+        setup: document.getElementById("setup-form"),
+        codes: document.getElementById("codes-form")
       };
+      // A login whose password was right, waiting for its code (or the setup)
+      var pending = null;
       var done = null;
       var token = null;
       // Compose keeps the pixel density it started with: after a browser zoom it would draw everything blurry. So the
@@ -163,7 +203,7 @@
         message.textContent = "";
         fetch(path, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
           .then(function (r) {
-            if (r.ok) { onOk(); return; }
+            if (r.ok) { return (r.status === 204 ? Promise.resolve(null) : r.json()).then(onOk); }
             if (r.status === 429) { message.textContent = "Too many attempts. Please wait a minute."; return; }
             return r.json().then(function (e) { message.textContent = e.message; },
               function () { message.textContent = "That didn't work (" + r.status + ")."; });
@@ -185,10 +225,68 @@
       forms.login.addEventListener("submit", function (event) {
         event.preventDefault();
         var form = forms.login;
-        send(form, "POST", "api/login", { username: form.username.value, password: form.password.value }, function () {
+        send(form, "POST", "api/login", { username: form.username.value, password: form.password.value }, function (step) {
           form.password.value = "";
+          if (!step) { close(true); return; }
+          pending = step.pending;
+          if (step.next === "code") {
+            forms.code.code.value = "";
+            open("code");
+            forms.code.code.focus();
+          } else {
+            startSetup();
+          }
+        });
+      });
+      forms.code.addEventListener("submit", function (event) {
+        event.preventDefault();
+        send(forms.code, "POST", "api/login/code", { pending: pending, code: forms.code.code.value }, function () {
+          forms.code.code.value = "";
+          pending = null;
           close(true);
         });
+      });
+      function startSetup() {
+        var form = forms.setup;
+        fetch("api/login/setup", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pending: pending }) }).then(function (r) {
+          if (!r.ok) return r.json().then(function (e) { open("login", e.message); });
+          return r.json().then(function (setup) {
+            // The server's SVG of the QR code (nothing else in it)
+            form.querySelector(".qr").innerHTML = setup.svg;
+            form.querySelector(".secret").textContent = setup.secret.replace(/(.{4})/g, "$1 ").trim();
+            form.code.value = "";
+            open("setup");
+            form.code.focus();
+          });
+        }, function () { open("login", "The server can't be reached."); });
+      }
+      forms.setup.addEventListener("submit", function (event) {
+        event.preventDefault();
+        send(forms.setup, "POST", "api/login/setup/confirm", { pending: pending, code: forms.setup.code.value }, function (answer) {
+          pending = null;
+          var list = forms.codes.querySelector(".codes");
+          list.innerHTML = "";
+          answer.codes.forEach(function (code) {
+            var item = document.createElement("li");
+            item.innerHTML = "<code></code>";
+            item.firstChild.textContent = code;
+            list.appendChild(item);
+          });
+          forms.codes.dataset.codes = answer.codes.join("\n");
+          open("codes");
+        });
+      });
+      forms.codes.querySelector("button.copy").addEventListener("click", function () {
+        navigator.clipboard.writeText(forms.codes.dataset.codes).then(function () {
+          forms.codes.querySelector(".message").textContent = "Copied.";
+        }, function () {});
+      });
+      forms.codes.addEventListener("submit", function (event) {
+        event.preventDefault();
+        forms.codes.dataset.codes = "";
+        forms.codes.querySelector(".codes").innerHTML = "";
+        close(true);
       });
       forms.signup.addEventListener("submit", function (event) {
         event.preventDefault();
