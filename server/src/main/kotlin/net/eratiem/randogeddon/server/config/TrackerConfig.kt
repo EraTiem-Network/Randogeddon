@@ -33,6 +33,8 @@ data class TrackerConfig(
   /** Where the dashboard is reached, for the links in mails (invitations, address confirmations). */
   val publicUrl: String = "http://localhost:8000",
   val mail: MailConfig = MailConfig(),
+  /** Encrypts the TOTP secrets: base64 of 32 bytes; empty: a key file in [stateDir], made once. */
+  val totpKey: String = "",
 ) {
   /** Where the players of session [id] connect. */
   fun addressOf(id: String): String = publicAddress.replace("{id}", id)
@@ -54,6 +56,7 @@ data class TrackerConfig(
         sessionRetentionDays = value("tracker.sessionRetentionDays").toInt().coerceAtLeast(0),
         cookieSecure = flag(value("tracker.cookieSecure")),
         publicUrl = value("tracker.publicUrl").trimEnd('/'),
+        totpKey = value("tracker.totpKey"),
         mail = MailConfig(
           host = value("mail.host").trim(),
           address = value("mail.address").trim(),

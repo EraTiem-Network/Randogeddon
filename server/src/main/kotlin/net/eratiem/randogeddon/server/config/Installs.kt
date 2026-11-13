@@ -25,6 +25,7 @@ import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
+import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.RandogeddonTracker
 import net.eratiem.randogeddon.server.account.AccountCleanup
@@ -58,6 +59,7 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { SessionStore(get()) }
       single { InvitationStore(get()) }
       single { EmailChangeStore(get()) }
+      single { TwoFactorStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
