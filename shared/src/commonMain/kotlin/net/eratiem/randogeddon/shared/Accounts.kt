@@ -201,6 +201,17 @@ data class LoginStep(val next: LoginNext, val pending: String)
 @Serializable
 data class CodeRequest(val code: String, val pending: String? = null)
 
+/**
+ * `GET /api/login/options`, before the login: [singleSignOn] names the provider Administrators log in through (the
+ * login form's button, to `GET /api/login/oidc`); `null`: none.
+ */
+@Serializable
+data class LoginOptions(val singleSignOn: String? = null)
+
+/** `POST /api/login/link`: a one-time login link of the host's CLI (`randogeddon admins --login`). */
+@Serializable
+data class LinkLoginRequest(val token: String)
+
 /** `POST /api/login/setup`: the pending login of an admin who sets up two-factor login now. */
 @Serializable
 data class PendingRequest(val pending: String)
