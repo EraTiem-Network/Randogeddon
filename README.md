@@ -170,6 +170,9 @@ Administrators; existing sessions have no Session-Manager (Administrators reach 
 Every user may then create one running session at once; Administrators change that under *Settings* (0: only they
 create sessions).
 
+**Updating to the patch file downloads of Phase 7:** nothing to set, no migration; the downloads work for the
+sessions that exist already, finished ones too.
+
 ## Session day
 
 ### In the panel (*Manage*)
@@ -201,9 +204,13 @@ create sessions).
    `#/manage/<session-id>` the panel (`#/admin` still works), `#/watch/<token>` a share link. Under *Your connection*
    they find the server
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
-   slot names and each slot's password. Phones can install the dashboard as an app (see below).
+   slot names and each slot's password, and for a ROM-based game (or one that needs a mod) the slot's file from the
+   seed to download: a patch is opened with the Archipelago Launcher (*Open Patch*) and their own ROM. Session-Managers
+   and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
+   app (see below).
 
-Patch files for ROM-based games are in the seed: `data/sessions/<id>/AP_<seed>.zip` on the server. **Deleting** a
+Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
+server; players download their own from the dashboard (step 4), as long as the session exists. **Deleting** a
 running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
 finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
 (`AP_PORTS`); a finished session doesn't take one.
@@ -416,7 +423,9 @@ two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /a
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`. The panel's are under
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`, `.../files` and
+`.../files/<name>` (the seed's files of the user's slots: patches, mods; every slot's for its Session-Managers and
+Administrators). The panel's are under
 `/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
 `.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),

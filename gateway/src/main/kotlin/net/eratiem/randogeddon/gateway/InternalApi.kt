@@ -5,6 +5,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -19,6 +20,7 @@ import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.SessionIds
+import net.eratiem.randogeddon.shared.SlotFiles
 import java.security.MessageDigest
 
 /**
@@ -41,8 +43,8 @@ val InternalAuth = createRouteScopedPlugin("InternalAuth", ::InternalAuthConfig)
 
 /**
  * The tracker's control of the sessions' game servers (each: state, start/stop/restart, log, console), generating a
- * session's seed, deleting a session's files, its spoiler log; the Archipelago releases and the apworld library of
- * each.
+ * session's seed, deleting a session's files, its spoiler log and its slots' files; the Archipelago releases and the
+ * apworld library of each.
  */
 fun Route.internalApi(
   token: String,
@@ -93,6 +95,19 @@ fun Route.internalApi(
           val text = dirs.spoiler(id)
           if (text == null) call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this session"))
           else call.respondText(text, ContentType.Text.Plain)
+        }
+        // The seed's files of the slots (patches, mods), for the players to download through the tracker
+        route("/files") {
+          get {
+            val id = sessionId() ?: return@get
+            call.respond(SlotFiles(dirs.slotFiles(id)))
+          }
+          get("/{name}") {
+            val id = sessionId() ?: return@get
+            val bytes = dirs.slotFile(id, call.parameters["name"].orEmpty())
+              ?: return@get call.respond(HttpStatusCode.NotFound, ApiError("No such file"))
+            call.respondBytes(bytes, ContentType.Application.OctetStream)
+          }
         }
         route("/server") {
           get { server(sessions) { call.respond(it.server.state) } }
