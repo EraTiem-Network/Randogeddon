@@ -170,6 +170,9 @@ Administrators; existing sessions have no Session-Manager (Administrators reach 
 Every user may then create one running session at once; Administrators change that under *Settings* (0: only they
 create sessions).
 
+**Updating to the patch file downloads of Phase 7:** nothing to set, no migration; the downloads work for the
+sessions that exist already, finished ones too.
+
 ## Session day
 
 ### In the panel (*Manage*)
@@ -206,7 +209,8 @@ create sessions).
    and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
    app (see below).
 
-Patch files for ROM-based games are in the seed: `data/sessions/<id>/AP_<seed>.zip` on the server. **Deleting** a
+Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
+server; players download their own from the dashboard (step 4), as long as the session exists. **Deleting** a
 running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
 finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
 (`AP_PORTS`); a finished session doesn't take one.
