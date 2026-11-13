@@ -30,7 +30,6 @@ class RequireLoginTest {
   private val check = object : LoginCheck {
     override suspend fun userOf(token: String) = mapOf("a" to alice, "m" to mallory, "ada" to ada, "p" to pete)[token]
     private val members = mapOf("brave-otter" to setOf(alice), "quiet-fox" to setOf(pete))
-    override suspend fun mayEnter(user: User) = user.admin || members.values.any { user in it }
     override fun maySee(user: User, id: String) = user.admin || user in members[id].orEmpty()
   }
 
@@ -78,10 +77,11 @@ class RequireLoginTest {
   }
 
   @Test
-  fun `a login of someone in no session is forbidden`() = test { handled ->
-    assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions") { cookie(SESSION_COOKIE, "m") }.status)
+  fun `someone in no session gets in, but sees no session`() = test { handled ->
     assertEquals(HttpStatusCode.Forbidden, client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "m") }.status)
     assertFalse(handled())
+    // Their (empty) list of sessions, their settings: an account belongs to a person, not to a session
+    assertEquals("sessions of Mallory", client.get("/api/sessions") { cookie(SESSION_COOKIE, "m") }.bodyAsText())
   }
 
   @Test

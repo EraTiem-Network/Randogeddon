@@ -100,8 +100,15 @@ class LiveSession(
     return s.people.associate { p -> p.name to p.slots.mapNotNull { slot -> s.players.firstOrNull { it.slot == slot }?.name } }
   }
 
-  /** Who [user] is in this session (same name, without regard to case); `null`: not part of it. */
-  fun personOf(user: User): String? = people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
+  /**
+   * Who [user] is in this session: the name they have in it (by their UUID, so a rename doesn't matter); `null`: not
+   * part of it. A seed from before without a setup: by name.
+   */
+  fun personOf(user: User): String? {
+    val members = setup?.members
+    if (!members.isNullOrEmpty()) return members[user.id]
+    return people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
+  }
 
   // ------------------------------------------------------------------------------------------------------ summary
 

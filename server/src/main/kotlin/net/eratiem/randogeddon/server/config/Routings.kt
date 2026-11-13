@@ -8,6 +8,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.Cheats
@@ -33,9 +34,11 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val spoilers by inject<Spoilers>()
   val lifecycle by inject<SessionLifecycle>()
   val cheats by inject<Cheats>()
+  val accounts by inject<AccountService>()
 
   routing {
     loginRoutes(logins, trackerConfig.cookieSecure)
+    signupRoutes(accounts, trackerConfig.cookieSecure)
 
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
@@ -43,6 +46,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       meRoute()
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers)
       adminRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions)
+      adminUserRoutes(accounts)
     }
 
     // Nothing about the session: open for the container's healthcheck

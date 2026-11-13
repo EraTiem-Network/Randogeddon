@@ -79,5 +79,4 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
   fun canSee(user: User, id: String): Boolean = user.admin || sessions.get(id)?.personOf(user) != null
 
   /** [user] plays in some session (and may log in to see it). */
-  fun playsIn(user: User): Boolean = sessions.all().any { it.personOf(user) != null }
 }

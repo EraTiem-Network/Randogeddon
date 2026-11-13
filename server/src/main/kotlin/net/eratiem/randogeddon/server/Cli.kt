@@ -13,11 +13,13 @@ import net.eratiem.randogeddon.server.account.PasswordGenerator
 import net.eratiem.randogeddon.server.account.PasswordHasher
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.shared.UserNames
 import org.slf4j.LoggerFactory
 import kotlin.system.exitProcess
 
 private const val USAGE = """Usage: randogeddon [command]
   (no command)              run the tracker
+  logins --create <person>  a login for <person> right away (local use, the demo; people are invited otherwise)
   logins --reset <person>   a new password for <person>; their logins end
   admins                    who is an admin
   admins --create <person>  a new login for <person> as an admin (the first one, to create sessions with)
@@ -41,12 +43,13 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
       runBlocking {
         when (args.firstOrNull()) {
           "logins" -> when {
+            args.size == 3 && args[1] == "--create" -> createLogin(args[2], admin = false, UserStore(db))
             args.size == 3 && args[1] == "--reset" -> resetLogin(args[2], UserStore(db))
             else -> usage()
           }
           "admins" -> when {
             args.size == 1 -> listAdmins(UserStore(db))
-            args.size == 3 && args[1] == "--create" -> createAdmin(args[2], UserStore(db))
+            args.size == 3 && args[1] == "--create" -> createLogin(args[2], admin = true, UserStore(db))
             args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db))
             args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db))
             else -> usage()
@@ -74,20 +77,22 @@ private fun usage(): Int {
   return 2
 }
 
-private suspend fun createAdmin(person: String, users: UserStore): Int {
-  if (person.isBlank() || person.length > 64) {
-    System.err.println("A name of 1 to 64 characters")
+/** A login for [person] without an invitation: the first admin, or a player of the local demo. */
+private suspend fun createLogin(person: String, admin: Boolean, users: UserStore): Int {
+  UserNames.problem(person)?.let {
+    System.err.println("Name: $it")
     return 2
   }
   users.findActive(person)?.let { user ->
-    System.err.println("${user.name} has a login already. An admin: randogeddon admins --grant ${user.name}")
+    val hint = if (admin) " An admin: randogeddon admins --grant ${user.name}" else ""
+    System.err.println("${user.name} has a login already.$hint")
     return 1
   }
   val password = PasswordGenerator.generate()
   val user = users.create(person, PasswordHasher.hash(password))
-  users.setAdmin(user.id, true)
+  if (admin) users.setAdmin(user.id, true)
   printLogins(listOf(user.name to password))
-  println("${user.name} is an admin.")
+  if (admin) println("${user.name} is an admin.")
   return 0
 }
 
@@ -105,7 +110,7 @@ private suspend fun listSessions(store: SessionStore): Int {
 
 private suspend fun resetLogin(person: String, users: UserStore): Int {
   val user = users.findActive(person) ?: run {
-    System.err.println("No login for '$person'. Logins are made when an admin creates a session with them.")
+    System.err.println("No login for '$person'. An admin invites people in the admin panel.")
     return 1
   }
   val password = PasswordGenerator.generate()
