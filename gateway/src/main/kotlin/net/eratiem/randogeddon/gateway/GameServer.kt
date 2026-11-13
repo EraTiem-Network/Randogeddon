@@ -70,6 +70,12 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   private var stdin: BufferedWriter? = null
   private var supervisor: Job? = null
 
+  // A stop right after a start, before the process is there: the supervisor doesn't start it then (a blocking start
+  // isn't cancelled, and the stop would wait for it forever). Both under [processLock].
+  @Volatile
+  private var stopping = false
+  private val processLock = Any()
+
   @Volatile
   var state = GameServerState(GameServerStatus.STOPPED)
     private set
@@ -77,8 +83,18 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   /** Starts it (again) if it isn't running; resets the restart count. */
   suspend fun start() = mutex.withLock {
     if (supervisor?.isActive == true) return@withLock
+    // A refused seed (its session is finished) stays stopped right away: not starting even for a moment, it takes no
+    // port from a session that runs (the gateway starts them all at once)
+    val seed = withContext(Dispatchers.IO) { newestSeed() }
+    val refusal = seed?.let { withContext(Dispatchers.IO) { runCatching { config.refuse(it) }.getOrNull() } }
+    if (seed != null && refusal != null) {
+      note("Not starting ${seed.name}: $refusal")
+      state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
+      return@withLock
+    }
     // Right away, so the answer to a start says so; the supervisor goes on to running (or waiting for a seed)
     state = state.copy(status = GameServerStatus.STARTING, restarts = 0)
+    stopping = false
     supervisor = scope.launch(Dispatchers.IO) { supervise() }
   }
 
@@ -86,6 +102,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   suspend fun stop() = mutex.withLock {
     val job = supervisor ?: return@withLock
     supervisor = null
+    stopping = true
     job.cancel()
     withContext(Dispatchers.IO) { endProcess() }
     job.join()
@@ -151,15 +168,17 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       return -1
     }
     note("Starting the game server on ${seed.name}")
-    val proc = ProcessBuilder(launch.command)
-      .apply {
-        launch.workDir?.let { directory(it.toFile()) }
-        environment().putAll(launch.environment)
-      }
-      .redirectErrorStream(true)
-      .start()
-    process = proc
-    stdin = proc.outputStream.bufferedWriter()
+    val proc = synchronized(processLock) {
+      if (stopping) return -1
+      ProcessBuilder(launch.command)
+        .apply {
+          launch.workDir?.let { directory(it.toFile()) }
+          environment().putAll(launch.environment)
+        }
+        .redirectErrorStream(true)
+        .start()
+        .also { process = it; stdin = it.outputStream.bufferedWriter() }
+    }
     proc.inputStream.bufferedReader().useLines { lines -> lines.forEach(::output) }
     val code = proc.waitFor()
     process = null
@@ -169,7 +188,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   }
 
   private fun endProcess() {
-    val proc = process ?: return
+    val proc = synchronized(processLock) { process } ?: return
     runCatching {
       stdin?.apply { write("/exit"); newLine(); flush() }
     }
