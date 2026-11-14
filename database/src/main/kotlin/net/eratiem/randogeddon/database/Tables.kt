@@ -70,8 +70,10 @@ object LoginSessionsTable : Table("login_sessions") {
   val userId = uuid("user_id") references UsersTable.id
   val createdAt = timestamp("created_at")
   val expiresAt = timestamp("expires_at")
-  /** `password`, `oidc` or `link` (V11). */
+  /** `password`, `oidc` or `link` (V11), `bridge` (V14: a key of Randogeddon Bridge). */
   val method = varchar("method", 16).default("password")
+  /** When a bridge key was last used (V14; updated every few minutes at most); `null`: not yet, or not a key. */
+  val lastUsedAt = timestamp("last_used_at").nullable()
   override val primaryKey = PrimaryKey(tokenHash)
 }
 

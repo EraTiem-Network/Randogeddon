@@ -479,7 +479,38 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
   suspend fun deleteExpired(now: Instant = Instant.now()): Int = db.query {
     LoginSessionsTable.deleteWhere { expiresAt less now }
   }
+
+  /** [userId]'s logins made by [method] that haven't expired, newest first. */
+  suspend fun logins(userId: Uuid, method: String, now: Instant = Instant.now()): List<LoginRow> = db.query {
+    LoginSessionsTable.selectAll()
+      .where { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) and (LoginSessionsTable.expiresAt greater now) }
+      .orderBy(LoginSessionsTable.createdAt, SortOrder.DESC)
+      .map {
+        LoginRow(
+          it[LoginSessionsTable.tokenHash], it[LoginSessionsTable.createdAt], it[LoginSessionsTable.expiresAt],
+          it[LoginSessionsTable.lastUsedAt],
+        )
+      }
+  }
+
+  /** Notes that the login was used [now], unless that was noted less than [every] ago. */
+  suspend fun touch(tokenHash: String, now: Instant = Instant.now(), every: java.time.Duration = java.time.Duration.ofMinutes(5)) =
+    db.query {
+      LoginSessionsTable.update({
+        (LoginSessionsTable.tokenHash eq tokenHash) and
+          (LoginSessionsTable.lastUsedAt.isNull() or (LoginSessionsTable.lastUsedAt less now.minus(every)))
+      }) { it[lastUsedAt] = now }
+      Unit
+    }
+
+  /** Ends [userId]'s login [tokenHash] (not someone else's); whether there was one. */
+  suspend fun delete(userId: Uuid, tokenHash: String): Boolean = db.query {
+    LoginSessionsTable.deleteWhere { (LoginSessionsTable.tokenHash eq tokenHash) and (LoginSessionsTable.userId eq userId) } > 0
+  }
 }
+
+/** A login as a list shows it: by the hash of its token. */
+data class LoginRow(val tokenHash: String, val createdAt: Instant, val expiresAt: Instant, val lastUsedAt: Instant?)
 
 /** One-time login links (`randogeddon admins --login`), by the SHA-256 of their token. */
 class LoginLinkStore(private val db: RandogeddonDatabase) {
