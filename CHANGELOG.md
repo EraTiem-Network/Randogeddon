@@ -6,6 +6,25 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 it the release, and the merge is tagged `v<version>`.
 
 ## Phase 8: The Live Server
+The live server is updated with one command from images in our own registry and holds only what runs; the build
+infrastructure (Artifact Keeper at `pkg.example.org`, Authentik at `auth.example.org`) runs in VMs of its own, and
+Randogeddon's Administrators log in through Authentik. Updating: `OIDC_*` in `.env` (README); the images come from
+`pkg.example.org` (`docker login` with the read-only token). The machines: `.docs/INFRA.md`.
+
+### 0.8.4: Phase 8 done
+- `.docs/INFRA.md`: the three VMs, what each keeps, updating each stack, the tokens and where they live.
+- Daily database dumps of Authentik and Artifact Keeper too (`infra/stack-dump.sh`, `authentik-backup.timer`,
+  `artifact-keeper-backup.timer`), kept 14 days like Randogeddon's. A restore of Randogeddon's daily dump was tested
+  (into a scratch database: every table as live).
+- `scripts/deploy.sh` cleans up the images: the server keeps the running and the previous ones (for a rollback), WSL
+  only what was just pushed.
+- `scripts/deploy.sh` pushes a release's images under its version and `latest` (`…/tracker:0.8.4`,
+  `…/gateway:0.8.4`) when the deployed commit is the one tagged `v<version>`, and the server runs them by the
+  version; any other commit's go out under the commit and `edge`. 0.8.3 and 0.8.2.1 got their version tags
+  afterwards (0.8.3 `latest` too), the commit tags are gone.
+- The images are plain `linux/amd64` images (`provenance: false`, `sbom: false` in the compose file): BuildKit's
+  attestations had made each one an index, which the registry showed as multi-arch. The pushed ones were pointed at
+  their amd64 image.
 
 ### 0.8.3: Administrators' accounts follow Authentik
 - With single sign-on, Administrators need no two-factor login of Randogeddon's own (Authentik checks theirs): the

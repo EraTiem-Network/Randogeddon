@@ -244,42 +244,52 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] How long: as long as the session exists, finished ones too (until it is deleted, by hand or after
       `SESSION_RETENTION_DAYS`)
 
-## Phase 8: The Live Server
+## Phase 8: The Live Server (done)
 
 *Updating the live server is one command, from images in our own registry; it holds only what runs.*
 
-- [ ] Two new VMs for the build infrastructure (the host's services), Docker Compose with pinned
+- [x] Two new VMs for the build infrastructure (the host's services), Docker Compose with pinned
       tags (every stack updates the same way: bump the tag, pull, `up -d`), behind the host's Traefik
     - **1020 `registry`** (`<internal-ip>`): **Artifact Keeper** at `pkg.example.org`: the tracker and gateway images
       (Docker/OCI) and the Maven repositories for the Gradle dependencies, in place of the Nexus; its data on its own
       disk. (Zot and Reposilite were tried first: no real single sign-on for Reposilite, so one registry for both.)
     - **1010 `auth`** (`<internal-ip>`): **Authentik** at `auth.example.org`, apart from the registry.
     - Their compose files in the repo (`infra/`), secrets only in their `.env`.
-- [ ] Maven in Artifact Keeper: the Nexus's proxies (Maven Central, Gradle plugins, Google, JitPack, PaperMC,
+- [x] Maven in Artifact Keeper: the Nexus's proxies (Maven Central, Gradle plugins, Google, JitPack, PaperMC,
       Sonatype, …), one virtual `public` mirroring them all, and hosted repositories of our own; reading needs a token
       too (`infra/registry/provision.py`)
-- [ ] Authentik: one login for the infrastructure instead of one per service
+- [x] Authentik: one login for the infrastructure instead of one per service
     - Artifact Keeper by OIDC (the group `infrastructure` are its admins); machines use service accounts' tokens
       (`<service-account>` reads Maven, `<service-account>` pushes, `<service-account>` on the live VM pulls).
-- [ ] Randogeddon's Administrators log in through Authentik
+- [x] Randogeddon's Administrators log in through Authentik
     - An Authentik group (`randogeddon-administrators`) decides who is one; the account is linked by its verified
       e-mail address on the first login. Authentik's MFA replaces the app's two-factor login for them.
     - No password login for Administrators; if Authentik is away, `randogeddon admins --login` prints a one-time
       link. Players keep the normal login.
-- [ ] Images through the registry: built locally (WSL) as now, pushed to Artifact Keeper with the commit as tag
-      (`pkg.example.org/eratiem-network/randogeddon/{tracker,gateway}`); the live VM pulls them (a read-only token)
-      instead of tarballs
-- [ ] The live server holds only what runs
+- [x] Images through the registry: built locally (WSL) as now, pushed to Artifact Keeper
+      (`pkg.example.org/eratiem-network/randogeddon/{tracker,gateway}`): a release as its version and `latest`, any
+      other commit as the commit and `edge`; plain `linux/amd64` images. The live VM pulls them (a read-only token)
+      instead of tarballs.
+- [x] The live server holds only what runs
     - `/srv/randogeddon`: `docker-compose.yml`, `docker-compose.proxy.yml`, `.env`, `data/`, `custom_worlds/`; the
       volumes `postgres-data` and `tracker-state`; no source code.
     - Randogeddon starts from scratch there (only a test account existed); `.env` stays.
     - The compose files work there without the build parts (`build:`, the Gradle secret).
-- [ ] One update command (`scripts/deploy.sh`, run from WSL)
+- [x] One update command (`scripts/deploy.sh`, run from WSL)
     - Builds and pushes the images, copies the compose files over SSH, dumps the database to `/srv/backups/`, pulls
       and restarts, checks `/healthz`, the dashboard and the migrations.
     - `--rollback`: back to the previous image tag (code only; a migration that ran needs the dump).
-- [ ] Backups on the VM: each update's dump and a daily one, kept for a while; a restore tested once
-- [ ] README runbook: what is on the server, updating, rolling back, restoring, the `.env` keys
+- [x] Backups on the VMs: each update's dump and a daily one, kept 14 days; a restore tested once
+    - Randogeddon's (`randogeddon-backup.timer`), Authentik's and Artifact Keeper's (`infra/stack-dump.sh` and their
+      timers), on top of the Proxmox backup: a point before each update, and the database alone without the rest of
+      the VM. Restored once into a scratch database on the live VM: every table as live.
+    - Old images go too: `scripts/deploy.sh` keeps the running and the previous ones on the server, in WSL only
+      what it just pushed.
+- [x] README runbook: what is on the server, updating, rolling back, restoring, the `.env` keys
+- [x] Versions: `0.<phase>.<step>`, every release tagged in git (`v…`) and in the registry; the changelog by version
+- [x] Administrators' accounts follow Authentik: no two-factor login of the app's own for them, deleted when
+      Authentik deletes the person (its webhook)
+- [x] `.docs/INFRA.md`: the machines, what they keep, updating each stack, the tokens and where they live
 
 ## Phase 9: Multi-Language
 
