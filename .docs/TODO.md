@@ -367,6 +367,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - States: waiting for the game, connected, error (the server's words); a new game connection tries again.
 - [ ] Download from the dashboard (*Your connection*, per OS), with how to start an unsigned app (SmartScreen,
       Gatekeeper)
+- [ ] Each tagged release publishes the bridge's builds to Artifact Keeper (`pkg.example.org`, a generic repository,
+      with their SHA-256 sums); from 1.0.0 on also as a GitHub release (with the version's changelog)
 - [ ] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
 ## Phase 13: Polish and Bug Fixes
