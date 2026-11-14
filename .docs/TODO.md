@@ -308,18 +308,23 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] The language is a user setting, stored with the account (*Your account*; automatic follows the browser)
     - Before login: the language last used in this browser, else the browser's; the login page has a switch.
 
-## Phase 10: More Themes
+## Phase 10: More Themes (done)
 
 *Everyone picks how the dashboard looks for them.*
 
-- [ ] Several themes, each with a light and a dark variant
-    - The current colours (`webApp/…/Theme.kt`) become the default theme; a theme is a pair of palettes.
-- [ ] A theme applies to every page: dashboard, person and world views, the panel, settings, login
-- [ ] Theme and mode are a user setting, stored with the account (settings page from Phase 5)
-    - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it).
+- [x] Several themes, each with a light and a dark variant
+    - The colours of before are the default theme (Randogeddon); a theme is a pair of palettes (`:shared`'s
+      `Themes.kt`), each with its own item and status colours.
+    - Ocean, Forest, Ember, High contrast, and inspired by Nintendo's consoles (colours only): N64, GameCube, Wii,
+      Wii U, Switch, Switch 2.
+    - `ThemesTest`: every palette at least as readable as the default, its item and status colours apart.
+- [x] A theme applies to every page: dashboard, person and world views, the panel, settings, login, the share link
+- [x] Theme and mode are a user setting, stored with the account (*Your account*, *Appearance*)
+    - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it); the top card's
+      button cycles it.
     - Active for that user on every device they log in with; other users are not affected.
-    - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
-      used in this browser.
+    - Before login: the theme last used in this browser (the login page takes its colours), else the default theme in
+      automatic mode.
 
 ## Phase 11: The Administrators' Account Page
 

@@ -6,6 +6,12 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 it the release, and the merge is tagged `v<version>`.
 
 ## Phase 10: More Themes
+Everyone picks how Randogeddon looks for them: eleven themes, each light and dark, and the mode (light, dark,
+automatic), stored with the account. Updating: nothing to set (migration V13); everyone starts with the default theme,
+in the mode their browser had.
+
+### 0.10.3: Phase 10 done
+- README: *Appearance* (the themes, the mode, a new theme); TODO: Phase 10 done.
 
 ### 0.10.2: The themes
 - Ten new themes, each light and dark, with their own item and status colours: Ocean (teal → blue), Forest
