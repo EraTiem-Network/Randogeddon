@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.server.session
 
+import net.eratiem.randogeddon.server.config.toApiError
+import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
@@ -21,23 +25,23 @@ private val YAML_FILE = Regex("(?i).+\\.ya?ml")
 object PlayerYamls {
   fun inspect(files: List<UploadedYaml>): InspectResult {
     val worlds = mutableListOf<YamlWorld>()
-    val problems = mutableListOf<String>()
+    val problems = mutableListOf<ApiError>()
     val invalid = mutableSetOf<String>()
-    fun refuse(file: UploadedYaml, why: String) {
-      problems += "${file.fileName}: $why"
+    fun refuse(file: UploadedYaml, problem: Problem, vararg args: Pair<String, Any?>) {
+      problems += Refusal.of(problem, "file" to file.fileName, *args).toApiError()
       invalid += file.fileName
     }
     for (file in files) {
       if (!YAML_FILE.matches(file.fileName)) {
-        refuse(file, "not a .yaml or .yml file")
+        refuse(file, Problem.YAML_FILE)
         continue
       }
       val documents = file.content.split(DOCUMENT_SEPARATOR).filter { it.isNotBlank() }
-      if (documents.isEmpty()) refuse(file, "empty")
+      if (documents.isEmpty()) refuse(file, Problem.YAML_EMPTY)
       for (document in documents) {
         val map = runCatching { Yaml.default.parseToYamlNode(document) }.getOrNull() as? YamlMap
         if (map == null) {
-          refuse(file, "not a player YAML")
+          refuse(file, Problem.YAML_NOT_PLAYER)
           continue
         }
         val name = (map.get<YamlNode>("name") as? YamlScalar)?.content?.trim()
@@ -47,16 +51,18 @@ object PlayerYamls {
           else -> null
         }
         when {
-          name.isNullOrEmpty() -> refuse(file, "no name")
-          game.isNullOrEmpty() -> refuse(file, "no game for $name")
+          name.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_NAME)
+          game.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_GAME, "name" to name)
           // The World Locks slot comes from "starts locked" in the panel
-          game == WORLD_LOCKS_GAME -> refuse(file, "$name is a World Locks YAML; tick \"starts locked\" instead")
+          game == WORLD_LOCKS_GAME -> refuse(file, Problem.YAML_WORLD_LOCKS, "name" to name)
           else -> worlds += YamlWorld(file.fileName, name, game)
         }
       }
     }
     worlds.groupBy { it.name.lowercase() }.filterValues { it.size > 1 }.forEach { (_, same) ->
-      problems += "${same.size} slots are called ${same.first().name} (${same.joinToString { it.fileName }}); names must be unique"
+      problems += Refusal.of(
+        Problem.YAML_DUPLICATE, "n" to same.size, "name" to same.first().name, "files" to same.joinToString { it.fileName },
+      ).toApiError()
     }
     // A refused file's slots don't count
     return InspectResult(worlds.filter { it.fileName !in invalid }, problems, invalid.toList())

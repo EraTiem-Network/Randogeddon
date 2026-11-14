@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.refuse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.ratelimit.rateLimit
@@ -68,12 +71,12 @@ fun Route.watcherRoutes(people: SessionPeopleService, links: ShareLinks, logins:
       get { accountCall { call.respond(people.watchers(id())) } }
       get("/choices") { accountCall { call.respond(people.choices(id())) } }
       post {
-        accountCall { call.respond(HttpStatusCode.Created, people.addWatcher(id(), call.receive<WatcherRequest>(), call.loggedIn.user)) }
+        accountCall { call.respond(HttpStatusCode.Created, people.addWatcher(id(), call.receive<WatcherRequest>(), call.loggedIn.user, call.language())) }
       }
       delete("/{user}") {
         accountCall {
           val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-            ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
+            ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
           people.removeWatcher(id(), user, call.loggedIn.user)
           call.respond(HttpStatusCode.NoContent)
         }
@@ -114,6 +117,6 @@ fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
 /** The session of the path's share link `{token}`, or 404. */
 private suspend fun RoutingContext.shared(links: ShareLinks, block: suspend (LiveSession) -> Unit) {
   val live = links.sessionOf(call.parameters["token"].orEmpty())
-    ?: return call.respond(HttpStatusCode.NotFound, ApiError("This link doesn't work (any more)"))
+    ?: return call.refuse(HttpStatusCode.NotFound, Refusal(Problem.SHARE_LINK_GONE))
   block(live)
 }

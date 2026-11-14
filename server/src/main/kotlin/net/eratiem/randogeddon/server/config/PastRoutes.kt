@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.refuse
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -66,7 +69,7 @@ fun Route.sessionRoutes(
     // A finished session as it was when it finished, with every slot's details
     get("/archive") {
       session(sessions) { live ->
-        val archived = archives.read(live.id) ?: return@session call.respond(HttpStatusCode.NotFound, ApiError("${live.id} isn't finished"))
+        val archived = archives.read(live.id) ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NOT_FINISHED, "id" to live.id))
         call.respond(archived)
       }
     }
@@ -88,14 +91,14 @@ fun Route.sessionRoutes(
         val user = call.loggedIn.user
         val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
         if (!helps && !live.finished) {
-          return@session call.respond(HttpStatusCode.Forbidden, ApiError("The spoiler log is shown once the session is finished"))
+          return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
         }
         try {
           val spoiler = spoilers.of(live.id, live.seedName)
-            ?: return@session call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for ${live.id}"))
+            ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
           call.respond(spoiler)
         } catch (e: GameServerUnavailable) {
-          call.respond(e.status, ApiError(e.message ?: "The gateway can't be reached"))
+          call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
         }
       }
     }
@@ -140,6 +143,6 @@ internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend ()
 /** The session of the path's `{id}`, or 404. */
 internal suspend fun RoutingContext.session(sessions: LiveSessions, block: suspend (LiveSession) -> Unit) {
   val id = call.parameters["id"].orEmpty()
-  val live = sessions.get(id) ?: return call.respond(HttpStatusCode.NotFound, ApiError("No session $id"))
+  val live = sessions.get(id) ?: return call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SESSION, "id" to id))
   block(live)
 }

@@ -144,6 +144,7 @@ class LiveSession(
     val finish = finish
     return tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }.copy(
       sessionId = id,
+      errorRefused = error != null && tracker.lastErrorRefused,
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),

@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.refuse
+import net.eratiem.randogeddon.server.config.apiError
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -80,7 +84,7 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
   onCall { call ->
     val user = call.request.cookies[SESSION_COOKIE]?.let { logins.userOf(it) }
     if (user == null) {
-      call.respond(HttpStatusCode.Unauthorized, ApiError("Not logged in"))
+      call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.NOT_LOGGED_IN))
       return@onCall
     }
     call.attributes.put(LOGGED_IN, LoggedIn(user))
@@ -96,7 +100,7 @@ val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::Req
   onCall { call ->
     val me = call.loggedIn
     val id = call.parameters["id"].orEmpty()
-    if (!logins.maySee(me.user, id)) call.respond(HttpStatusCode.Forbidden, ApiError("${me.user.name} is not part of session $id"))
+    if (!logins.maySee(me.user, id)) call.refuse(HttpStatusCode.Forbidden, Refusal.of(Problem.NOT_PART, "name" to me.user.name, "id" to id))
   }
 }
 
@@ -108,7 +112,7 @@ val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::Req
 val RequireAdministrator = createRouteScopedPlugin("RequireAdministrator", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
-    logins.administratorProblem(call.loggedIn.user)?.let { call.respond(HttpStatusCode.Forbidden, ApiError(it)) }
+    logins.administratorProblem(call.loggedIn.user)?.let { call.refuse(HttpStatusCode.Forbidden, it) }
   }
 }
 
@@ -130,20 +134,11 @@ val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::Require
     val problem = logins.administratorProblem(user)
     when {
       problem == null -> Unit
-      user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError(problem))
-      else -> call.respond(HttpStatusCode.Forbidden, ApiError("Only the session's ${roles.joinToString(" or ") { it.label }} can do this"))
+      user.administrator -> call.refuse(HttpStatusCode.Forbidden, problem)
+      else -> call.refuse(HttpStatusCode.Forbidden, Refusal.of(Problem.ONLY_ROLES, "roles" to roles.joinToString(",") { it.code }))
     }
   }
 }
-
-/** How a role is called in messages. */
-val SessionRole.label: String
-  get() = when (this) {
-    SessionRole.PLAYER -> "players"
-    SessionRole.MANAGER -> "Session-Managers"
-    SessionRole.SUPPORT -> "support"
-    SessionRole.WATCHER -> "watchers"
-  }
 
 /**
  * `POST /api/login`, then for users with two-factor login `POST /api/login/code`, for an admin without it
@@ -167,7 +162,7 @@ fun Route.loginRoutes(
   rateLimit(SSO_RATE_LIMIT) {
     get("/api/login/options") { call.respond(LoginOptions(singleSignOn = sso.name.takeIf { sso.enabled })) }
     get("/api/login/oidc") {
-      if (!sso.enabled) return@get call.respond(HttpStatusCode.NotFound, ApiError("No single sign-on here"))
+      if (!sso.enabled) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_SSO))
       val (state, url) = try {
         sso.start()
       } catch (e: Exception) {
@@ -183,31 +178,31 @@ fun Route.loginRoutes(
       call.response.cookies.append(oidcCookie("", 0, secure))
       // The state must be this browser's (no logins slipped in from elsewhere)
       val problem = when {
-        code == null -> call.request.queryParameters["error_description"] ?: "The login was cancelled"
-        cookie == null || cookie != state -> "The login didn't start here: start it again"
+        code == null -> Refusal(Problem.SSO_CANCELLED, detail = call.request.queryParameters["error_description"])
+        cookie == null || cookie != state -> Refusal(Problem.SSO_NOT_HERE)
         else -> try {
           loggedIn(sso.finish(state, code), LoginMethods.OIDC)
           null
         } catch (e: SsoRefused) {
-          e.message
+          e.refusal
         } catch (e: kotlinx.coroutines.CancellationException) {
           throw e
         } catch (e: Exception) {
-          "The login didn't work: ${sso.name} can't be reached"
+          Refusal.of(Problem.SSO_UNREACHABLE, "provider" to sso.name)
         }
-      }
+      }?.let { call.apiError(it).let { e -> e.message + (e.detail?.let { d -> " ($d)" } ?: "") } }
       // Back to the app; a problem shows on its login form
       call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
     }
     // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
     post("/api/login/oidc/deleted") {
       if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
-        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong token"))
+        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_TOKEN))
       }
       val subject = runCatching {
         Json.parseToJsonElement(call.receiveText()).jsonObject["subject"]?.jsonPrimitive?.contentOrNull
       }.getOrNull()?.takeIf { it.isNotBlank() }
-        ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("No subject"))
+        ?: return@post call.refuse(HttpStatusCode.BadRequest, Refusal(Problem.NO_SUBJECT))
       sso.deleted(subject)
       call.respond(HttpStatusCode.NoContent)
     }
@@ -217,7 +212,7 @@ fun Route.loginRoutes(
       val user = sso.useLink(call.receive<LinkLoginRequest>().token)
       if (user == null) {
         delay(1.seconds)
-        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("This link doesn't work (any more): ask for a new one"))
+        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.LINK_GONE))
       }
       loggedIn(user, LoginMethods.LINK)
       call.respond(HttpStatusCode.NoContent)
@@ -226,7 +221,7 @@ fun Route.loginRoutes(
   /** The pending login's user, or an answer that it's gone. */
   suspend fun RoutingContext.pendingUser(token: String): User? {
     val user = pending.userOf(token)?.let { logins.user(it) }
-    if (user == null) call.respond(HttpStatusCode.Unauthorized, ApiError("The login has expired: log in again"))
+    if (user == null) call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.LOGIN_EXPIRED))
     return user
   }
   rateLimit(LOGIN_RATE_LIMIT) {
@@ -236,9 +231,9 @@ fun Route.loginRoutes(
       if (user == null) {
         // Slows down guessing on top of the rate limit
         delay(1.seconds)
-        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong name or password"))
+        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_LOGIN))
       }
-      logins.passwordLoginProblem(user)?.let { return@post call.respond(HttpStatusCode.Forbidden, ApiError(it)) }
+      logins.passwordLoginProblem(user)?.let { return@post call.refuse(HttpStatusCode.Forbidden, it) }
       when {
         user.twoFactor -> call.respond(LoginStep(LoginNext.CODE, pending.create(user.id)))
         // Admins can cheat and delete sessions: they set up two-factor login before anything else
@@ -256,7 +251,7 @@ fun Route.loginRoutes(
       if (!twoFactor.check(user, request.code)) {
         pending.wrongCode(token)
         delay(1.seconds)
-        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("That code doesn't fit"))
+        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_CODE))
       }
       pending.finish(token)
       loggedIn(user)

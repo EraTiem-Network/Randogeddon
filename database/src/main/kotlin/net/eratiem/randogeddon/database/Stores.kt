@@ -48,6 +48,8 @@ data class Account(
   /** `null` while invited. */
   val signedUpAt: Instant?,
   val autoDelete: String,
+  /** The language's code they chose (`en`, `de`); `null`: their browser's. */
+  val language: String? = null,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -265,7 +267,7 @@ class UserStore(private val db: RandogeddonDatabase) {
 
   private fun account(row: ResultRow) = Account(
     row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
-    row[UsersTable.signedUpAt], row[UsersTable.autoDelete],
+    row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
   )
 }
 

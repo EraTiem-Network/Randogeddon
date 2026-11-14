@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.PasswordRules
@@ -34,7 +35,7 @@ class AccountRulesTest {
   @Test
   fun `passwords need 12 characters`() {
     assertNull(PasswordRules.problem("correct horse"))
-    assertEquals("At least 12 characters", PasswordRules.problem("short"))
+    assertEquals(Problem.PASSWORD_TOO_SHORT, PasswordRules.problem("short")?.problem)
   }
 
   @Test

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.Problem
 import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.User
 import kotlin.test.Test
@@ -52,10 +54,10 @@ class SingleSignOnTest {
     assertNull(ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.OIDC), "Authentik"))
     assertNull(ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.LINK), "Authentik"))
     assertEquals(
-      "Administrators log in with Authentik: log out and use its button",
+      Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to "Authentik"),
       ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.PASSWORD, twoFactor = true), "Authentik"),
     )
-    assertEquals(ONLY_ADMINISTRATORS, ssoAdministratorProblem(bob.copy(loginMethod = LoginMethods.OIDC), "Authentik"))
+    assertEquals(Refusal(Problem.ONLY_ADMINISTRATORS), ssoAdministratorProblem(bob.copy(loginMethod = LoginMethods.OIDC), "Authentik"))
   }
 
   @Test

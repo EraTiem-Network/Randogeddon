@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.session.LiveSession
@@ -46,8 +48,8 @@ class SlotDownloads(
 
   /** One of [of]'s files, with its bytes; 404 for one [user] may not have, as for one that doesn't exist. */
   suspend fun file(id: String, name: String, user: User): Pair<SlotFile, ByteArray> {
-    val file = of(id, user).firstOrNull { it.name == name } ?: throw SessionProblem(HttpStatusCode.NotFound, "No such file")
-    val bytes = gameServer.slotFile(id, name) ?: throw SessionProblem(HttpStatusCode.NotFound, "No such file")
+    val file = of(id, user).firstOrNull { it.name == name } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_FILE)
+    val bytes = gameServer.slotFile(id, name) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_FILE)
     logger.info("{} downloaded {} of {}", user.name, name, id)
     return file to bytes
   }
@@ -62,5 +64,5 @@ class SlotDownloads(
     return runCatching { live.summary().players.associate { it.slot to SeedSlot(it.name, it.game) } }.getOrDefault(emptyMap())
   }
 
-  private fun session(id: String): LiveSession = sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+  private fun session(id: String): LiveSession = sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }

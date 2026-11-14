@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.session
 
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.database.FinishState
 import net.eratiem.randogeddon.database.legacySessionId
 import net.eratiem.randogeddon.server.admin.suggestId
@@ -21,9 +23,9 @@ class SessionIdsTest {
       assertFalse(SessionIds.valid(id), id)
     }
     assertNull(SessionIds.problem("friday-chaos"))
-    assertEquals("Starts with a letter (a–z)", SessionIds.problem("1abc"))
-    assertEquals("Only a–z, 0–9 and -", SessionIds.problem("friDay"))
-    assertEquals("inspect is reserved", SessionIds.problem("inspect"))
+    assertEquals(Problem.ID_LETTER_FIRST, SessionIds.problem("1abc")?.problem)
+    assertEquals(Problem.ID_CHARACTERS, SessionIds.problem("friDay")?.problem)
+    assertEquals(Refusal.of(Problem.ID_RESERVED, "id" to "inspect"), SessionIds.problem("inspect"))
     // A seed from before gets an ID that passes too
     assertTrue(SessionIds.valid(legacySessionId("23018521088033805910")))
   }

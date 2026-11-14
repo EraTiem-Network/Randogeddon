@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.i18n.Language
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.User
@@ -58,25 +61,25 @@ class SessionPeopleService(
   }
 
   /** Gives someone a part in session [id]: an account, or a new address (invited). */
-  suspend fun add(id: String, request: AddPersonRequest, by: User): SessionPerson {
+  suspend fun add(id: String, request: AddPersonRequest, by: User, language: Language): SessionPerson {
     val live = session(id)
-    if (request.role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, "Players come with the slots")
+    if (request.role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, Problem.PLAYERS_WITH_SLOTS)
     val (userId, name) = when {
       request.userId != null -> {
         val user = runCatching { Uuid.parse(request.userId!!) }.getOrNull()?.let { users.findActive(it) }
-          ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
-        if (user.administrator) throw AccountProblem(HttpStatusCode.Conflict, "${user.name} is an Administrator and reaches every session")
+          ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+        if (user.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.ADMINISTRATOR_EVERYWHERE, "name" to user.name)
         user.id to user.name
       }
       request.email != null -> {
-        val invited = inviteNew(request.email!!, request.suggestedName, by)
+        val invited = inviteNew(request.email!!, request.suggestedName, by, language)
         Uuid.parse(invited.id) to (invited.name ?: request.email!!.substringBefore('@'))
       }
-      else -> throw AccountProblem(HttpStatusCode.BadRequest, "Whom: an account or an e-mail address")
+      else -> throw AccountProblem(HttpStatusCode.BadRequest, Problem.WHOM)
     }
-    if (userId in taken(live)) throw AccountProblem(HttpStatusCode.Conflict, "$name has a part in ${live.id} already")
+    if (userId in taken(live)) throw AccountProblem(HttpStatusCode.Conflict, Problem.HAS_PART, "name" to name, "id" to live.id)
     if (!roles.add(live.id, userId, request.role.code, name, by.name)) {
-      throw AccountProblem(HttpStatusCode.Conflict, "$name has a part in ${live.id} already")
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.HAS_PART, "name" to name, "id" to live.id)
     }
     sessions.refresh()
     logger.info("{} made {} {} of {}", by.name, name, request.role.code, live.id)
@@ -86,9 +89,9 @@ class SessionPeopleService(
   /** Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator. */
   suspend fun remove(id: String, userId: Uuid, by: User) {
     val live = session(id)
-    val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, "They have no part to take")
+    val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
     if (entry.role == SessionRole.MANAGER.code && live.managers().size <= 1 && !by.administrator) {
-      throw AccountProblem(HttpStatusCode.Conflict, "A session keeps at least one Session-Manager")
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
     }
     roles.remove(live.id, userId)
     sessions.refresh()
@@ -99,23 +102,23 @@ class SessionPeopleService(
   fun watchers(id: String): SessionPeople = SessionPeople(list(id).people.filter { it.role == SessionRole.WATCHER })
 
   /** A watcher of session [id], added by a player or a Session-Manager: the same rules as [add]. */
-  suspend fun addWatcher(id: String, request: WatcherRequest, by: User): SessionPerson =
-    add(id, AddPersonRequest(SessionRole.WATCHER, request.userId, request.email, request.suggestedName), by)
+  suspend fun addWatcher(id: String, request: WatcherRequest, by: User, language: Language): SessionPerson =
+    add(id, AddPersonRequest(SessionRole.WATCHER, request.userId, request.email, request.suggestedName), by, language)
 
   /** Takes a watcher away; players take only watchers, not support or Session-Managers. */
   suspend fun removeWatcher(id: String, userId: Uuid, by: User) {
-    val entry = session(id).setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, "They aren't watching")
-    if (entry.role != SessionRole.WATCHER.code) throw AccountProblem(HttpStatusCode.Forbidden, "${entry.name} isn't a watcher")
+    val entry = session(id).setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NOT_WATCHING)
+    if (entry.role != SessionRole.WATCHER.code) throw AccountProblem(HttpStatusCode.Forbidden, Problem.NOT_A_WATCHER, "name" to entry.name)
     remove(id, userId, by)
   }
 
   /** Invites [email] for a session (a player, or a part in it): only if no account has that address. */
-  suspend fun inviteNew(email: String, suggestedName: String?, by: User): UserRef {
-    val account = accounts.invite(email, suggestedName, by.name, existing = "That address has an account: pick them by name")
+  suspend fun inviteNew(email: String, suggestedName: String?, by: User, language: Language): UserRef {
+    val account = accounts.invite(email, suggestedName, by.name, language, existing = Refusal(Problem.ADDRESS_HAS_ACCOUNT))
     return UserRef(account.id.toString(), account.name, account.email.takeIf { account.name == null })
   }
 
   private fun taken(live: LiveSession): Set<Uuid> = live.setup?.members.orEmpty().keys + live.setup?.roles.orEmpty().keys
 
-  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, "No session $id")
+  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }

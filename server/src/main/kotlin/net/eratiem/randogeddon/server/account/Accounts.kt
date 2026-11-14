@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -48,22 +50,19 @@ interface LoginCheck {
    * Why [user]'s login can't act as an Administrator; `null`: it can. Without single sign-on: an Administrator with
    * two-factor login.
    */
-  fun administratorProblem(user: User): String? = when {
-    !user.administrator -> ONLY_ADMINISTRATORS
-    !user.twoFactor -> NEEDS_TWO_FACTOR
+  fun administratorProblem(user: User): Refusal? = when {
+    !user.administrator -> Refusal(Problem.ONLY_ADMINISTRATORS)
+    !user.twoFactor -> Refusal(Problem.NEEDS_TWO_FACTOR)
     else -> null
   }
 }
 
-const val ONLY_ADMINISTRATORS = "Only Administrators can do this"
-
 /** With single sign-on through [provider]: only a login through it (or a CLI link) acts as an Administrator. */
-internal fun ssoAdministratorProblem(user: User, provider: String): String? = when {
-  !user.administrator -> ONLY_ADMINISTRATORS
+internal fun ssoAdministratorProblem(user: User, provider: String): Refusal? = when {
+  !user.administrator -> Refusal(Problem.ONLY_ADMINISTRATORS)
   user.loginMethod == LoginMethods.OIDC || user.loginMethod == LoginMethods.LINK -> null
-  else -> "Administrators log in with $provider: log out and use its button"
+  else -> Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to provider)
 }
-const val NEEDS_TWO_FACTOR = "Administrators need two-factor login: set it up under Your account first"
 
 /**
  * Logging in and out, and which sessions the logged-in users are part of. With single sign-on configured
@@ -77,14 +76,14 @@ class LoginService(
   private val sessions: SessionList,
   private val config: TrackerConfig,
 ) : LoginCheck {
-  override fun administratorProblem(user: User): String? {
+  override fun administratorProblem(user: User): Refusal? {
     val oidc = config.oidc ?: return super.administratorProblem(user)
     return ssoAdministratorProblem(user, oidc.name)
   }
 
   /** Why [user] can't log in with their password; `null`: they can. With single sign-on, Administrators can't. */
-  fun passwordLoginProblem(user: User): String? =
-    config.oidc?.takeIf { user.administrator }?.let { "Administrators log in with ${it.name}" }
+  fun passwordLoginProblem(user: User): Refusal? =
+    config.oidc?.takeIf { user.administrator }?.let { Refusal.of(Problem.ADMINISTRATOR_PASSWORD, "provider" to it.name) }
 
   /**
    * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited

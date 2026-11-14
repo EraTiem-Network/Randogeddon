@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.server.config.toApiError
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.english
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.NewSessionView
 import net.eratiem.randogeddon.server.config.sessionsPerUser
@@ -55,7 +59,9 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 private const val LOCKS_SLOT = "Locks"
 
 /** A request the admin panel can't carry out, with what to tell the admin. */
-class SessionProblem(val status: HttpStatusCode, message: String) : Exception(message)
+class SessionProblem(val status: HttpStatusCode, val refusal: Refusal) : Exception(refusal.english()) {
+  constructor(status: HttpStatusCode, problem: Problem, vararg args: Pair<String, Any?>) : this(status, Refusal.of(problem, *args))
+}
 
 /** Two words for a session ID that is easy to say: `brave-otter`, `friday-chaos`. */
 private val ID_WORDS = listOf(
@@ -186,7 +192,7 @@ class SessionAdmin(
     if (release == null || release.error != null) return inspected
     val missing = PlayerYamls.missingGames(inspected.worlds, release.games.map { it.game }.toSet())
     return inspected.copy(problems = inspected.problems + missing.map { game ->
-      "No APWorld for $game in Archipelago ${release.version}: upload it under APWorlds"
+      Refusal.of(Problem.NO_APWORLD, "game" to game, "version" to release.version).toApiError()
     })
   }
 
@@ -199,37 +205,37 @@ class SessionAdmin(
       if (running >= limit) {
         throw SessionProblem(
           HttpStatusCode.Forbidden,
-          if (limit == 0) "Only Administrators create sessions here"
-          else "You manage $running running session${if (running == 1) "" else "s"}; $limit at once (finish one first)",
+          if (limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_CREATE)
+          else Refusal.of(Problem.SESSION_LIMIT, "running" to running, "limit" to limit),
         )
       }
     }
     val id = request.id.trim()
-    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, "Session ID: $it") }
-    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, "There is a session $id already")
+    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
+    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
     val servers = gameServer.sessions()
     if (servers.sessions.count { it.port != null } >= servers.capacity) {
-      throw SessionProblem(HttpStatusCode.Conflict, "All ${servers.capacity} game servers are in use; finish or stop a session first")
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVERS_IN_USE, "capacity" to servers.capacity)
     }
     val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
-    if (inspected.problems.isNotEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, inspected.problems.joinToString("\n"))
-    if (inspected.worlds.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, "No slots: upload the player YAMLs")
+    inspected.problems.firstOrNull()?.let { throw SessionProblem(HttpStatusCode.BadRequest, Refusal(it.code ?: Problem.NOT_POSSIBLE, it.args)) }
+    if (inspected.worlds.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOTS)
     val names = inspected.worlds.map { it.name }.toSet()
     request.worlds.map { it.name }.filter { it !in names }.takeIf { it.isNotEmpty() }?.let {
-      throw SessionProblem(HttpStatusCode.BadRequest, "Not in the YAMLs: ${it.joinToString()}")
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_IN_YAMLS, "names" to it.joinToString())
     }
     val plans = inspected.worlds.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
     // Who plays: accounts by ID, invited ones too (they sign up later; the session shows them meanwhile)
     val accounts = users.accounts().associateBy { it.id.toString() }
     val people = plans.values.flatMap { it.userIds }.distinct()
     people.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
-      throw SessionProblem(HttpStatusCode.BadRequest, "No such users: ${it.joinToString()}")
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_USERS, "ids" to it.joinToString())
     }
     val versions = gameServer.versions()
     val version = request.apVersion ?: versions.firstOrNull()
-      ?: throw SessionProblem(HttpStatusCode.ServiceUnavailable, "The gateway has no Archipelago release")
+      ?: throw SessionProblem(HttpStatusCode.ServiceUnavailable, Problem.NO_RELEASE)
     if (version !in versions) {
-      throw SessionProblem(HttpStatusCode.BadRequest, "Archipelago $version isn't supported here (${versions.joinToString()})")
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.RELEASE_UNSUPPORTED, "version" to version, "versions" to versions.joinToString())
     }
 
     val locked = when (val open = request.options.openSlots) {
@@ -237,7 +243,7 @@ class SessionAdmin(
       else -> if (plans.values.any { it.random }) pickMixed(plans.values.toList(), open, random) else pickLocked(plans.keys.toList(), open, random)
     }
     // Someone has to start: the keys are found in the open slots
-    if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, "At least one slot has to start open")
+    if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ONE_OPEN)
     logger.info("{} creates session {}: {} slots, {} players, Archipelago {}", admin, id, plans.size, people.size, version)
     val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
     val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
@@ -304,13 +310,13 @@ class SessionAdmin(
   /** [keep] disables the session's auto-deletion; deleting it by hand stays possible. */
   suspend fun setKeep(id: String, keep: Boolean, admin: String) {
     val live = session(id)
-    if (!finishes.setKeep(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+    if (!finishes.setKeep(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     sessions.refresh()
     logger.info("{} {} the auto-deletion of {}", admin, if (keep) "disabled" else "enabled", id)
   }
 
   private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 
   /** The IDs in use: in the database, and the gateway's session directories (a deleted one's files are in old/). */
   private suspend fun takenIds(): Set<String> =
@@ -322,10 +328,10 @@ class SessionAdmin(
  * open (or no key could ever be found), and there must be something to lock.
  */
 internal fun pickLocked(slots: List<String>, open: Int, random: Random): List<String> {
-  if (slots.size < 2) throw SessionProblem(HttpStatusCode.BadRequest, "Random locks need at least 2 slots")
-  if (open < 1) throw SessionProblem(HttpStatusCode.BadRequest, "At least one slot has to start open")
+  if (slots.size < 2) throw SessionProblem(HttpStatusCode.BadRequest, Problem.RANDOM_TWO_SLOTS)
+  if (open < 1) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ONE_OPEN)
   if (open >= slots.size) {
-    throw SessionProblem(HttpStatusCode.BadRequest, "With ${slots.size} slots, at most ${slots.size - 1} can start open for random locks")
+    throw SessionProblem(HttpStatusCode.BadRequest, Problem.RANDOM_MAX_OPEN, "slots" to slots.size, "max" to slots.size - 1)
   }
   val openSlots = slots.shuffled(random).take(open).toSet()
   return slots.filter { it !in openSlots }
@@ -341,8 +347,8 @@ internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<
   val least = maxOf(1, sure)
   if (open < least || open > sure + pool.size) {
     throw SessionProblem(
-      HttpStatusCode.BadRequest,
-      "With $sure slots open for sure and ${pool.size} left to chance, between $least and ${sure + pool.size} can start open",
+      HttpStatusCode.BadRequest, Problem.MIXED_RANGE,
+      "sure" to sure, "chance" to pool.size, "least" to least, "most" to sure + pool.size,
     )
   }
   val picked = pool.shuffled(random).take(open - sure).toSet()
@@ -350,19 +356,12 @@ internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<
 }
 
 /** What to tell the admin when Generate.py made no seed: the games that may be the cause, then its output. */
-internal fun failure(result: GenerateResult): String = buildString {
-  if (result.suspects.isEmpty()) {
-    append("Generation failed. Perhaps a game isn't supported by this Archipelago release, or a YAML has an option ")
-    append("it doesn't know. Generate.py said:")
-  } else {
-    append("Generation failed, possibly because of:")
-    result.suspects.forEach { s ->
-      append("\n• ${s.game}")
-      val file = listOfNotNull(s.apworld?.let { "APWorld $it" }, s.from?.let { "from Archipelago $it" })
-      if (file.isNotEmpty()) append(" (${file.joinToString(", ")})")
-      append(": ${s.reason}")
-    }
-    append("\n\nGenerate.py said:")
+internal fun failure(result: GenerateResult): Refusal {
+  val output = result.log.joinToString("\n")
+  if (result.suspects.isEmpty()) return Refusal(Problem.GENERATION_FAILED, detail = output)
+  val suspects = result.suspects.joinToString("\n") { s ->
+    val file = listOfNotNull(s.apworld, s.from?.let { "Archipelago $it" })
+    "• ${s.game}" + (if (file.isNotEmpty()) " (${file.joinToString(", ")})" else "") + ": ${s.reason}"
   }
-  result.log.forEach { append("\n").append(it) }
+  return Refusal.of(Problem.GENERATION_SUSPECTS, "suspects" to suspects, detail = output)
 }
