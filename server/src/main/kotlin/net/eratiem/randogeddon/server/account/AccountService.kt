@@ -141,6 +141,7 @@ class AccountService(
       administrator = user.administrator,
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
+      singleSignOn = config.oidc?.takeIf { user.administrator }?.name,
     )
   }
 
@@ -199,7 +200,12 @@ class AccountService(
     return change.email
   }
 
-  suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) = users.setAutoDelete(user.id, autoDelete.code)
+  suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) {
+    config.oidc?.takeIf { user.administrator }?.let {
+      throw AccountProblem(HttpStatusCode.Conflict, "Your account goes when ${it.name} deletes you")
+    }
+    users.setAutoDelete(user.id, autoDelete.code)
+  }
 
   /** Every account for the admin panel, invited ones too. */
   suspend fun list(now: Instant = Instant.now()): List<AdminUser> {

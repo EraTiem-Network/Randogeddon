@@ -191,8 +191,8 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   /**
-   * Deletes the account: its password, e-mail address and settings go, its logins, invitations and pending addresses
-   * too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
+   * Deletes the account: its password, e-mail address, settings and link to Authentik go, its logins, invitations and
+   * pending addresses too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
    * is free again.
    */
   suspend fun delete(id: Uuid, now: Instant = Instant.now()) = db.query {
@@ -205,6 +205,7 @@ class UserStore(private val db: RandogeddonDatabase) {
       it[totpSecret] = null
       it[totpEnabledAt] = null
       it[totpLastStep] = null
+      it[oidcSubject] = null
       it[deletedAt] = now
     }
     LoginSessionsTable.deleteWhere { userId eq id }

@@ -45,6 +45,9 @@ randogeddon:
     clientSecret: "$OIDC_CLIENT_SECRET:"
     # Who is an Administrator: the members of this group (the ID token's groups)
     adminGroup: "$OIDC_ADMIN_GROUP:randogeddon-administrators"
+    # The bearer token of the provider's webhook when it deletes a person (POST /api/login/oidc/deleted): their account
+    # here is deleted too. Empty: no webhook
+    deletionToken: "$OIDC_DELETION_TOKEN:"
     # The login button says "Log in with <name>"
     name: "$OIDC_NAME:Authentik"
   server:

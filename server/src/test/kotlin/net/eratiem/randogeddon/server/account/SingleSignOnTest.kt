@@ -4,8 +4,10 @@ import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.User
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class SingleSignOnTest {
@@ -54,5 +56,14 @@ class SingleSignOnTest {
       ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.PASSWORD, twoFactor = true), "Authentik"),
     )
     assertEquals(ONLY_ADMINISTRATORS, ssoAdministratorProblem(bob.copy(loginMethod = LoginMethods.OIDC), "Authentik"))
+  }
+
+  @Test
+  fun `the provider's webhook needs its bearer token, and none works without one`() {
+    assertTrue(bearerMatches("s3cret", "Bearer s3cret"))
+    assertFalse(bearerMatches("s3cret", "Bearer s3cre"))
+    assertFalse(bearerMatches("s3cret", "s3cret"))
+    assertFalse(bearerMatches("s3cret", null))
+    assertFalse(bearerMatches("", "Bearer "))
   }
 }

@@ -1,12 +1,14 @@
 package net.eratiem.randogeddon.server.config
 
 import io.ktor.http.Cookie
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLPathPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.Route
@@ -15,6 +17,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.server.account.LoginCheck
@@ -142,7 +148,8 @@ val SessionRole.label: String
  * `POST /api/login`, then for users with two-factor login `POST /api/login/code`, for an admin without it
  * `POST /api/login/setup` and `.../setup/confirm`; `POST /api/logout`. With single sign-on: `GET /api/login/options`
  * (whether the login form shows its button), `GET /api/login/oidc` (to the provider) and `.../callback` (back from it),
- * and `POST /api/login/link` (a CLI login link). `GET /api/me` ([meRoute]) is in the protected routes.
+ * `POST /api/login/oidc/deleted` (its webhook: a person was deleted there) and `POST /api/login/link` (a CLI login
+ * link). `GET /api/me` ([meRoute]) is in the protected routes.
  */
 fun Route.loginRoutes(
   logins: LoginService,
@@ -190,6 +197,18 @@ fun Route.loginRoutes(
       }
       // Back to the app; a problem shows on its login form
       call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
+    }
+    // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
+    post("/api/login/oidc/deleted") {
+      if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
+        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong token"))
+      }
+      val subject = runCatching {
+        Json.parseToJsonElement(call.receiveText()).jsonObject["subject"]?.jsonPrimitive?.contentOrNull
+      }.getOrNull()?.takeIf { it.isNotBlank() }
+        ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("No subject"))
+      sso.deleted(subject)
+      call.respond(HttpStatusCode.NoContent)
     }
   }
   rateLimit(LOGIN_RATE_LIMIT) {

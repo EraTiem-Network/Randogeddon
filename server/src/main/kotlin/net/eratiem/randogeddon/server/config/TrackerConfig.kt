@@ -74,6 +74,7 @@ data class TrackerConfig(
           clientSecret = value("oidc.clientSecret"),
           adminGroup = value("oidc.adminGroup").trim(),
           name = value("oidc.name").trim(),
+          deletionToken = value("oidc.deletionToken").trim(),
         ).takeIf { it.issuer.isNotEmpty() && it.clientId.isNotEmpty() },
       )
     }
@@ -111,6 +112,8 @@ data class MailConfig(
 /**
  * The OpenID Connect provider (Authentik) Administrators log in through: [issuer] (its discovery document is at
  * `<issuer>.well-known/openid-configuration`), this app's client, and the group whose members are Administrators.
+ * [deletionToken]: what the provider's webhook sends when it deletes a person (their account here goes too); empty: no
+ * webhook.
  */
 data class OidcConfig(
   val issuer: String,
@@ -119,4 +122,5 @@ data class OidcConfig(
   val adminGroup: String = "randogeddon-administrators",
   /** For the login button. */
   val name: String = "Authentik",
+  val deletionToken: String = "",
 )

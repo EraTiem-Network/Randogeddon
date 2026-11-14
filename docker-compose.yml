@@ -109,6 +109,7 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-randogeddon-administrators}
+      OIDC_DELETION_TOKEN: ${OIDC_DELETION_TOKEN:-}
       OIDC_NAME: ${OIDC_NAME:-Authentik}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway

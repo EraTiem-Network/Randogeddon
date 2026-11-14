@@ -79,6 +79,8 @@ class AccountCleanup(
     sessions.refresh()
     for (activity in users.activity()) {
       val user = activity.user
+      // With single sign-on, Administrators' accounts go when the provider deletes them (its webhook)
+      if (config.oidc != null && user.administrator) continue
       when (cleanupStep(activity, now)) {
         CleanupStep.NOTHING -> Unit
         CleanupStep.UNWARN -> users.markWarned(user.id, null)
