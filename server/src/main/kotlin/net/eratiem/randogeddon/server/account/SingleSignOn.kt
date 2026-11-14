@@ -96,6 +96,7 @@ class SingleSignOn(
   private val config: TrackerConfig,
   private val users: UserStore,
   private val links: LoginLinkStore,
+  private val accounts: AccountService,
 ) {
   private data class Pending(val nonce: String, val verifier: String, val expiresAt: Long)
 
@@ -155,7 +156,8 @@ class SingleSignOn(
       }
     }
     if (!user.administrator) users.setAdmin(user.id, true)
-    return user.copy(administrator = true)
+    accounts.syncFromProvider(user, wantedName(identity), identity.email?.takeIf { identity.emailVerified })
+    return users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)
   }
 
   /** A one-time login link for [user] (the CLI), for [LOGIN_LINK_DURATION]. */
@@ -170,6 +172,16 @@ class SingleSignOn(
     val user = users.findBySubject(subject) ?: return null
     users.delete(user.id, now)
     logger.info("Deleted the account of {} ({} deleted the person)", user.name, config.oidc?.name)
+    return user
+  }
+
+  /**
+   * The provider changed the person with [subject] (its webhook): their account here follows (name from [username],
+   * else [name]; [email]). `null`: no account is linked to them.
+   */
+  suspend fun updated(subject: String, username: String?, name: String?, email: String?): User? {
+    val user = users.findBySubject(subject) ?: return null
+    accounts.syncFromProvider(user, wantedName(OidcIdentity(subject, email, true, username, name, emptyList())), email)
     return user
   }
 

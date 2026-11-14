@@ -146,7 +146,7 @@ val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::Require
  * `POST /api/login`, then for users with two-factor login `POST /api/login/code`, for an admin without it
  * `POST /api/login/setup` and `.../setup/confirm`; `POST /api/logout`. With single sign-on: `GET /api/login/options`
  * (whether the login form shows its button), `GET /api/login/oidc` (to the provider) and `.../callback` (back from it),
- * `POST /api/login/oidc/deleted` (its webhook: a person was deleted there) and `POST /api/login/link` (a CLI login
+ * `POST /api/login/oidc/deleted` and `.../updated` (its webhooks: a person was deleted or changed there) and `POST /api/login/link` (a CLI login
  * link). `GET /api/me` ([meRoute]) is in the protected routes.
  */
 fun Route.loginRoutes(
@@ -206,6 +206,17 @@ fun Route.loginRoutes(
       }.getOrNull()?.takeIf { it.isNotBlank() }
         ?: return@post call.refuse(HttpStatusCode.BadRequest, Refusal(Problem.NO_SUBJECT))
       sso.deleted(subject)
+      call.respond(HttpStatusCode.NoContent)
+    }
+    // The provider's webhook: it changed a person (`{"subject", "username", "name", "email"}`), their account follows
+    post("/api/login/oidc/updated") {
+      if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
+        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_TOKEN))
+      }
+      val fields = runCatching { Json.parseToJsonElement(call.receiveText()).jsonObject }.getOrNull()
+      fun field(key: String) = fields?.get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+      val subject = field("subject") ?: return@post call.refuse(HttpStatusCode.BadRequest, Refusal(Problem.NO_SUBJECT))
+      sso.updated(subject, field("username"), field("name"), field("email"))
       call.respond(HttpStatusCode.NoContent)
     }
   }

@@ -26,9 +26,16 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
   private val box = SecretBox.from(config.totpKey, config.stateDir.resolve("totp.key"))
   private val singleSignOn = config.oidc != null
+  private val provider = config.oidc?.name.orEmpty()
+
+  /** With single sign-on, an Administrator's second factor is the provider's. */
+  private fun requireOwn(user: User) {
+    if (user.administrator && singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to provider)
+  }
 
   /** A new secret for [user]; it counts once [enable] confirms it. Refused while two-factor login is on. */
   suspend fun setUp(user: User): TotpSetup {
+    requireOwn(user)
     if (user.twoFactor) throw AccountProblem(HttpStatusCode.Conflict, Problem.TWO_FACTOR_ON)
     val secret = Totp.newSecret()
     store.setUp(user.id, box.seal(secret))
@@ -39,6 +46,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** The first code from the new secret turns it on; the recovery codes, shown once. */
   suspend fun enable(user: User, code: String, now: Instant = Instant.now()): List<String> {
+    requireOwn(user)
     val state = store.of(user.id)
     if (state == null || state.enabledAt != null) {
       throw AccountProblem(HttpStatusCode.Conflict, if (state == null) Problem.SET_UP_FIRST else Problem.TWO_FACTOR_ON)
@@ -67,9 +75,10 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     return store.useStep(user.id, step)
   }
 
-  /** Off, after a code (not for admins without single sign-on: they need it). */
+  /** Off, after a code (not for Administrators: without single sign-on they need it, with it it's the provider's). */
   suspend fun disable(user: User, code: String) {
-    if (user.administrator && !singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, Problem.ADMINISTRATORS_NEED_TWO_FACTOR)
+    requireOwn(user)
+    if (user.administrator) throw AccountProblem(HttpStatusCode.Forbidden, Problem.ADMINISTRATORS_NEED_TWO_FACTOR)
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     store.disable(user.id)
     logger.info("{} turned two-factor login off", user.name)
@@ -77,6 +86,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** New recovery codes after a code; the old ones stop working. */
   suspend fun newCodes(user: User, code: String): List<String> {
+    requireOwn(user)
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     val codes = RecoveryCodes.generate()
     store.replaceCodes(user.id, codes.map(RecoveryCodes::hash))
