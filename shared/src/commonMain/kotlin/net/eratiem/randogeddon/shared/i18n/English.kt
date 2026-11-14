@@ -105,6 +105,12 @@ object English : Texts {
 
   override val account = object : AccountTexts {
     override val title = "Your account"
+    override fun providerAccount(provider: String) = "Your $provider account"
+    override val providerAccountSubtitle = "name, password, e-mail address, two-factor login"
+    override fun providerAccountHint(provider: String) =
+      "You log in through $provider: change these there. Your account here follows at once, at the latest with your " +
+        "next login; it is deleted with yours there."
+    override fun openProvider(provider: String) = "Open $provider"
     override val name = "Name"
     override val nameSubtitle = "what the others see; you log in with it or with your e-mail address"
     override val yourName = "Your name"
@@ -115,10 +121,8 @@ object English : Texts {
     override val changePassword = "Change password"
     override val passwordChanged = "Changed. Your other logins have ended."
     override val twoFactor = "Two-factor login"
-    override fun twoFactorSubtitleSso(provider: String) = "your logins go through $provider, which checks it"
     override val twoFactorSubtitleAdministrator = "Administrators always log in with it"
     override val twoFactorSubtitle = "a code from an authenticator app after your password"
-    override fun twoFactorNotNeeded(provider: String) = "Not needed here: $provider asks for your second factor."
     override val twoFactorAdministratorsNeedIt = "What only Administrators do opens once two-factor login is on."
     override val twoFactorIsOff = "Two-factor login is off."
     override val recoveryCodes = "Your recovery codes"
@@ -170,9 +174,7 @@ object English : Texts {
       ThemeMode.AUTO -> "Automatic (the device's)"
     }
     override val deletion = "Deleting your account"
-    override fun deletionSubtitleSso(provider: String) = "with your $provider account; your sessions keep your name"
     override val deletionSubtitle = "by itself, after your last session; your sessions keep your name"
-    override fun deletedWithSso(provider: String) = "Your account here is deleted when $provider deletes yours there, not by itself."
     override val deleteIt = "Delete it"
     override fun autoDelete(period: AutoDelete) = when (period) {
       AutoDelete.WEEKS_2 -> "2 weeks after my last session"
