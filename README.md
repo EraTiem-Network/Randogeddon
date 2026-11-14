@@ -572,8 +572,8 @@ The schema is in `database/src/main/resources/db/migration`; a new migration mus
 ### Versions
 
 While Randogeddon is in development, its version (root `build.gradle.kts`) is `0.<phase>.<step>`: the phase (as in
-`.docs/TODO.md`) and its PR. A PR's branch builds `0.<phase>.<step>-SNAPSHOT`; when it is merged, that is the release
-`0.<phase>.<step>`, and the next PR starts with the next step's `-SNAPSHOT`.
+`.docs/TODO.md`) and its PR. A PR's branch builds `0.<phase>.<step>-SNAPSHOT`; its last commit before the merge drops
+the suffix (the release `0.<phase>.<step>`), and the next PR starts with the next step's `-SNAPSHOT`.
 
 ### Native build
 
