@@ -163,6 +163,9 @@ app's two-factor login for them. They can't log in with a password any more; if 
 `randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
 (confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
 application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+Their accounts here don't delete themselves after a while: they go when Authentik deletes the person, whose webhook
+calls `POST /api/login/oidc/deleted` with `OIDC_DELETION_TOKEN` (the same token in Authentik; `setup.py` makes the
+rule and prints it). More on the machines around it: `.docs/INFRA.md`.
 
 **Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
 (`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
@@ -199,16 +202,20 @@ only what runs; the images are built on a PC (WSL) and come from the registry `p
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
 `TRACKER_IMAGE=pkg.example.org/eratiem-network/randogeddon/tracker` and `GATEWAY_IMAGE=…/gateway`, `IMAGE_TAG` and
-`GATEWAY_TAG` (the running commit; the gateway's with the Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
+`GATEWAY_TAG` (the running version, e.g. `0.8.3`; for a commit that isn't a release the commit, the gateway's with the
+Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
 `PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,
 but the compose file names the build's secret).
 
-**Updating** (in WSL, from a committed state):
+**Updating** (in WSL, from a committed state; for a release, after its tag `v<version>`, see *Versions*):
 
 ```sh
-./scripts/deploy.sh             # build, push as <commit>, dump, switch, check (healthz, schema version)
+./scripts/deploy.sh             # build, push as <version> (or <commit>), dump, switch, check (healthz, schema)
 ./scripts/deploy.sh --rollback  # back to the previous tag (code only; a migration that ran needs its dump)
 ```
+
+Old images are removed as it goes: the server keeps the running and the previous ones, WSL only what was just
+pushed. The dumps (each update's and the daily ones) are kept 14 days.
 
 It needs once: `docker login pkg.example.org` with the `<service-account>` token as password (`AK_TOKEN_DEPLOY` in
 `<registry-dir>/.secrets` on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see
@@ -573,7 +580,9 @@ The schema is in `database/src/main/resources/db/migration`; a new migration mus
 
 While Randogeddon is in development, its version (root `build.gradle.kts`) is `0.<phase>.<step>`: the phase (as in
 `.docs/TODO.md`) and its PR. A PR's branch builds `0.<phase>.<step>-SNAPSHOT`; its last commit before the merge drops
-the suffix (the release `0.<phase>.<step>`), its merge commit is tagged `v0.<phase>.<step>`, and the next PR starts
+the suffix (the release `0.<phase>.<step>`), its merge commit is tagged `v0.<phase>.<step>` (`scripts/deploy.sh` pushes
+that commit's images under the version and `latest`: `…/tracker:0.<phase>.<step>`, `…/gateway:0.<phase>.<step>`; any
+other commit's under the commit and `edge`), and the next PR starts
 with the next step's `-SNAPSHOT`. A follow-up to a step that was merged already gets a fourth number (`0.8.2.1`),
 which the next step drops again. `CHANGELOG.md` lists every version by phase.
 

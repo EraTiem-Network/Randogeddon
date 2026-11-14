@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Updates the live server (the live VM) from this working tree, run in WSL from the repository:
-#   ./scripts/deploy.sh             build the native images, push them to the registry tagged with the commit, dump the
-#                                   database, switch the server to the new tag, check that it runs
+#   ./scripts/deploy.sh             build the native images, push them to the registry tagged with the version and
+#                                   `latest` (the commit tagged v<version>), or else the commit and `edge`; dump the
+#                                   database, switch the server to the new (fixed) tag, check that it runs
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
 #                                   README, restoring)
 #
@@ -63,6 +64,12 @@ for _ in $(seq 1 60); do
 done
 curl -sf http://localhost:8000/healthz >/dev/null || { echo "The tracker isn't healthy: docker compose logs tracker"; exit 1; }
 echo "Running: tracker $tag, gateway $gateway_tag; schema version $(docker compose exec -T postgres psql -U randogeddon -d randogeddon -tAc 'select max(version::int) from flyway_schema_history' </dev/null)"
+# Only the running images and the ones before (for a rollback) stay on the server
+keep=" $(setting IMAGE_TAG) $(setting GATEWAY_TAG) $(setting PREVIOUS_IMAGE_TAG) $(setting PREVIOUS_GATEWAY_TAG) "
+docker images --format '{{.Repository}}:{{.Tag}}' "$IMAGES/*" | while IFS= read -r image; do
+  [[ "$keep" == *" ${image##*:} "* ]] || docker rmi -f "$image" >/dev/null || true
+done
+docker image prune -f >/dev/null
 SH
 
 if [[ "${1:-}" == "--rollback" ]]; then
@@ -71,16 +78,23 @@ if [[ "${1:-}" == "--rollback" ]]; then
 fi
 
 [[ -z "$(git status --porcelain)" ]] || { echo "Uncommitted changes: deploy a commit"; exit 1; }
-tag="$(git rev-parse --short=12 HEAD)"
-gateway_tag="$AP_VERSION-$tag"
+# A release (the commit tagged v<version>, see README, versions) goes out under its version and `latest`, anything else
+# under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
+version="$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
+if [[ "$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)" == "$(git rev-parse HEAD)" ]]; then
+  tag="$version" gateway_tag="$version" moving=latest
+else
+  tag="$(git rev-parse --short=12 HEAD)" gateway_tag="$AP_VERSION-$(git rev-parse --short=12 HEAD)" moving=edge
+fi
 
 echo "== Building $tag"
 export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker gateway
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
-docker push -q "$IMAGES/tracker:$tag"
-docker push -q "$IMAGES/gateway:$gateway_tag"
+docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"
+docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$moving"
+for image in "tracker:$tag" "gateway:$gateway_tag" "tracker:$moving" "gateway:$moving"; do docker push -q "$IMAGES/$image"; done
 
 echo "== The server's files"
 remote "mkdir -p /tmp/randogeddon-deploy"
@@ -99,3 +113,9 @@ SH
 
 echo "== Switching to $tag"
 remote "sudo IMAGES='$IMAGES' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"
+
+# Here too only what was just pushed stays (the build's own images and its cache are kept for the next build)
+docker images --format '{{.Repository}}:{{.Tag}}' "$IMAGES/*" | while IFS= read -r image; do
+  case "${image##*:}" in "$tag" | "$gateway_tag" | "$moving") ;; *) docker rmi "$image" >/dev/null || true ;; esac
+done
+docker image prune -f >/dev/null
