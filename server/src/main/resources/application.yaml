@@ -48,6 +48,9 @@ randogeddon:
     # The bearer token of the provider's webhook when it deletes a person (POST /api/login/oidc/deleted): their account
     # here is deleted too. Empty: no webhook
     deletionToken: "$OIDC_DELETION_TOKEN:"
+    # Where Administrators change their account (name, password, address, second factor); empty: Authentik's user
+    # settings beside the issuer (<host>/if/user/)
+    accountUrl: "$OIDC_ACCOUNT_URL:"
     # The login button says "Log in with <name>"
     name: "$OIDC_NAME:Authentik"
   server:

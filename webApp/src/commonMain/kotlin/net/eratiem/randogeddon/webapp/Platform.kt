@@ -62,6 +62,9 @@ expect object Platform {
   /** Puts [text] on the clipboard. */
   fun copy(text: String)
 
+  /** Opens [url] in a new tab. */
+  fun openLink(url: String)
+
   /** The browser saves the file at [path] (an API path; the login cookie goes along, same origin). */
   fun download(path: String)
 

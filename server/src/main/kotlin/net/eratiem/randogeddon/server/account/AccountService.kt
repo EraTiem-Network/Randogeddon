@@ -157,14 +157,48 @@ class AccountService(
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
       singleSignOn = config.oidc?.takeIf { user.administrator }?.name,
+      singleSignOnAccount = config.oidc?.takeIf { user.administrator }?.account,
       language = Language.of(user.language),
       theme = Theme.of(user.theme),
       themeMode = ThemeMode.of(user.themeMode),
     )
   }
 
+  /** With single sign-on, an Administrator's name, password, address and deletion are the provider's to change. */
+  private fun requireOwn(user: User) {
+    config.oidc?.takeIf { user.administrator }?.let {
+      throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to it.name)
+    }
+  }
+
+  /**
+   * [user]'s account as the provider has it ([wantedName], its verified [email]): at each login through it and when it
+   * says a person changed. The name made unique (another account may have it), the address only if no other account
+   * has it; a two-factor login of before goes (the provider asks for the second factor).
+   */
+  suspend fun syncFromProvider(user: User, wantedName: String, email: String?) {
+    if (wantedName != user.name) {
+      val name = uniqueName(wantedName) { taken -> users.findActive(taken)?.takeIf { it.id != user.id } != null }
+      if (name != user.name) {
+        users.rename(user.id, name)
+        sessions.refresh()
+        logger.info("{} is called {} now ({})", user.name, name, config.oidc?.name)
+      }
+    }
+    val address = email?.let(EmailAddresses::normalize)?.takeIf(EmailAddresses::valid)
+    if (address != null && !address.equals(user.email, ignoreCase = true) && users.accountByEmail(address) == null) {
+      users.setEmail(user.id, address)
+      logger.info("{}'s address is {} now ({})", user.name, address, config.oidc?.name)
+    }
+    if (user.twoFactor) {
+      twoFactor.reset(user.id)
+      logger.info("{}'s two-factor login of before is off: {} asks for the second factor", user.name, config.oidc?.name)
+    }
+  }
+
   /** A new name: unique among active accounts; the running sessions show it, the finished ones keep the old one. */
   suspend fun rename(user: User, name: String) {
+    requireOwn(user)
     val clean = name.trim()
     UserNames.problem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (clean == user.name) return
@@ -179,6 +213,7 @@ class AccountService(
 
   /** A new password after the current one; every login ends, this one gets a new token (for the cookie). */
   suspend fun changePassword(user: User, current: String, password: String): String {
+    requireOwn(user)
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(current, user.passwordHash) }
     if (!valid) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_PASSWORD)
     PasswordRules.problem(password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
@@ -189,6 +224,7 @@ class AccountService(
 
   /** A new e-mail address: a confirmation link goes there; until it's opened, the old address stays. */
   suspend fun requestEmail(user: User, email: String, language: Language) {
+    requireOwn(user)
     val address = address(email)
     if (address.equals(user.email, ignoreCase = true)) {
       throw AccountProblem(HttpStatusCode.BadRequest, Problem.SAME_ADDRESS)

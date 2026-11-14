@@ -174,6 +174,8 @@ data class AccountView(
    * app's, and their account here goes when it deletes them, not by itself); `null` otherwise.
    */
   val singleSignOn: String? = null,
+  /** With [singleSignOn]: the provider's page where they change their name, password, address, second factor. */
+  val singleSignOnAccount: String? = null,
   /** The language they chose; `null`: their browser's. */
   val language: Language? = null,
   /** The theme and mode they chose; `null`: the default theme, automatic. */

@@ -107,9 +107,17 @@ interface SessionListTexts {
   fun slots(n: Int): String
 }
 
-/** *Your account*: name, password, two-factor login, e-mail address, language, deletion. */
+/**
+ * *Your account*: name, password, two-factor login, e-mail address, language, appearance, deletion; for Administrators
+ * with single sign-on the provider's account instead of the first four and the deletion.
+ */
 interface AccountTexts {
   val title: String
+  // The provider's account (single sign-on)
+  fun providerAccount(provider: String): String
+  val providerAccountSubtitle: String
+  fun providerAccountHint(provider: String): String
+  fun openProvider(provider: String): String
   // The name
   val name: String
   val nameSubtitle: String
@@ -123,10 +131,8 @@ interface AccountTexts {
   val passwordChanged: String
   // Two-factor login
   val twoFactor: String
-  fun twoFactorSubtitleSso(provider: String): String
   val twoFactorSubtitleAdministrator: String
   val twoFactorSubtitle: String
-  fun twoFactorNotNeeded(provider: String): String
   val twoFactorAdministratorsNeedIt: String
   val twoFactorIsOff: String
   val recoveryCodes: String
@@ -164,9 +170,7 @@ interface AccountTexts {
   fun mode(mode: ThemeMode): String
   // Deleting the account
   val deletion: String
-  fun deletionSubtitleSso(provider: String): String
   val deletionSubtitle: String
-  fun deletedWithSso(provider: String): String
   val deleteIt: String
   /** An auto-deletion period in the choice: `never`, `3 months after my last session`. */
   fun autoDelete(period: AutoDelete): String

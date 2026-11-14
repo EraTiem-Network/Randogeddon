@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`.
 
+## Phase 11: The Administrators' Account Page
+Administrators who log in through Authentik manage their account there: *Your account* links to it, and their name
+and address here follow it. Updating: run `infra/auth/setup.py` again in Authentik (the rule for changed people);
+`OIDC_ACCOUNT_URL` is optional.
+
+### 0.11.2: Phase 11 done
+- README: Authentik holds the Administrators' account, the webhooks; `.env.example`: `OIDC_ACCOUNT_URL`, the token for
+  both webhooks; TODO: Phase 11 done.
+
+### 0.11.1: Authentik holds their account
+- With single sign-on, an Administrator's *Your account* starts with *Your Authentik account*: a link to Authentik's
+  user settings (`<issuer's host>/if/user/`, else `OIDC_ACCOUNT_URL`). The name, password, e-mail address, two-factor
+  login and deletion panels are gone for them; language and appearance stay. Without single sign-on nothing changes.
+- The server refuses those changes for them too (`MANAGED_BY_SSO`): the name, the password, the address and the
+  two-factor routes.
+- Their name and address follow Authentik's: at every login through it, and at once through a new webhook
+  (`POST /api/login/oidc/updated`, the deletion webhook's token; `infra/auth/setup.py` adds the rule). A two-factor
+  login of before is removed at their next login through Authentik.
+
 ## Phase 10: More Themes
 Everyone picks how Randogeddon looks for them: eleven themes, each light and dark, and the mode (light, dark,
 automatic), stored with the account. Updating: nothing to set (migration V13); everyone starts with the default theme,
