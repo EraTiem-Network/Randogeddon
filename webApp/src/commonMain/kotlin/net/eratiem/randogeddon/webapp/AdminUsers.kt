@@ -103,6 +103,7 @@ fun UsersAdmin(onChanged: () -> Unit) {
 @Composable
 private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   var editing by remember { mutableStateOf(false) }
   var address by remember { mutableStateOf(user.email.orEmpty()) }
@@ -124,9 +125,9 @@ private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
             else -> "in ${user.sessions.size} sessions"
           },
           user.invitationExpiresAt?.let {
-            if (it < Platform.now()) "the link has expired" else "the link works until ${Platform.date(it)}"
+            if (it < Platform.now()) "the link has expired" else "the link works until ${t.date(it)}"
           },
-          user.deletesAt?.let { "deleted on ${Platform.date(it)}" }
+          user.deletesAt?.let { "deleted on ${t.date(it)}" }
             ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && user.state == AccountState.ACTIVE }?.let { "auto-deletion: ${it.label}" },
         )
         Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.number
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -130,6 +132,7 @@ fun WatchApp(token: String) {
 
   RandogeddonTheme(dark) {
     val p = LocalPalette.current
+  val t = LocalTexts.current
     BoxWithConstraints(
       Modifier.fillMaxSize().background(p.background).background(
         Brush.verticalGradient(listOf(p.brandEnd.copy(alpha = if (p.dark) 0.06f else 0.07f), p.background, p.background))
@@ -159,7 +162,7 @@ fun WatchApp(token: String) {
                   Column(Modifier.weight(1f)) {
                     Txt(s.sessionId ?: s.title, size = 22.sp, weight = FontWeight.Bold)
                     Txt(
-                      "${oneDecimal(s.totals.percent)} % of ${grouped(s.totals.total)} checks done · watching, read-only",
+                      "${t.decimal(s.totals.percent)} % of ${t.number(s.totals.total)} checks done · watching, read-only",
                       size = 12.5.sp, color = p.muted,
                     )
                   }

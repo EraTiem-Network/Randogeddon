@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -125,10 +126,11 @@ internal const val PATCH_HOW_TO = "Your slot's file from the seed: a patch, or a
 /** One of the slot's files from the seed: its name and size, and the download. */
 @Composable
 private fun FileField(sessionId: String, file: SlotFile) {
+  val t = LocalTexts.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label("File")
     Mono(file.name, Modifier.weight(1f))
-    Txt(fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
+    Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
     InfoTip(PATCH_HOW_TO)
     SmallButton("Download", { Platform.download(slotFilePath(sessionId, file.name)) })
   }

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,6 +51,7 @@ fun PersonDialog(
   onClose: () -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val person = s.people.firstOrNull { it.name == name }
   if (person == null) {
     // e.g. session.yaml changed while it was open
@@ -95,14 +98,14 @@ fun PersonDialog(
                 size = 12.5.sp, color = if (person.online) p.ok else p.muted,
               )
             }
-            Txt("${oneDecimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
+            Txt("${t.decimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
             IconButton(onClose, Icon.CLOSE)
           }
           Divider()
           Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             ProgressBar((person.percent / 100).toFloat())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Fact("Played", duration(played))
+              Fact("Played", t.duration(played))
               Fact("Goals", "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
               Fact("Locked", "${worlds.count { it.status == PlayerStatus.LOCKED }}")
               if (s.hintSettings.pointHints) Fact("Hint points", "${worlds.sumOf { it.hintPoints ?: 0 }}")
@@ -120,8 +123,8 @@ fun PersonDialog(
                         Txt(w.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
                         Pill(statusLabel(w), statusColor(w.status))
                       }
-                      Txt("${w.checked} / ${w.total} · ${duration(playTime(w, now))} played" +
-                        (w.goalAt?.let { " · done ${Platform.clock(it)}" } ?: ""), size = 11.5.sp, color = p.muted, maxLines = 1)
+                      Txt("${w.checked} / ${w.total} · ${t.duration(playTime(w, now))} played" +
+                        (w.goalAt?.let { " · done ${t.clock(it)}" } ?: ""), size = 11.5.sp, color = p.muted, maxLines = 1)
                       Spacer(Modifier.height(4.dp))
                       ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                     }
@@ -154,12 +157,12 @@ fun PersonDialog(
                   Column(Modifier.weight(1f)) {
                     Txt(world, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
                     Txt(
-                      (if (c.implicit) "seen playing " else "") + Platform.clock(c.start) +
-                        (c.end?.let { " – ${Platform.clock(it)}" } ?: " – now"),
+                      (if (c.implicit) "seen playing " else "") + t.clock(c.start) +
+                        (c.end?.let { " – ${t.clock(it)}" } ?: " – now"),
                       size = 12.sp, color = p.muted,
                     )
                   }
-                  Txt(duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+                  Txt(t.duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
                 }
                 Divider()
               }

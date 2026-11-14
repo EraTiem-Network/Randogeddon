@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,7 @@ fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: (
 @Composable
 fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var detail by remember(slot) { mutableStateOf<PlayerDetail?>(null) }
   var query by remember(slot) { mutableStateOf("") }
   LaunchedEffect(slot, version) {
@@ -72,7 +75,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
           if (d != null) GameChip(d.game, size = 40.dp)
           Column(Modifier.weight(1f)) {
             Txt(d?.name ?: "…", size = 17.sp, weight = FontWeight.SemiBold)
-            if (d != null) Txt("${d.game} · ${d.checked} / ${d.total} checks (${oneDecimal(percent)}%)", size = 12.5.sp, color = p.muted)
+            if (d != null) Txt("${d.game} · ${d.checked} / ${d.total} checks (${t.decimal(percent)}%)", size = 12.5.sp, color = p.muted)
           }
           IconButton(onClose, if (back) Icon.BACK else Icon.CLOSE)
         }
@@ -88,7 +91,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
           ProgressBar((percent / 100).toFloat())
           // Time facts of this world
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Fact("Played", duration(played))
+            Fact("Played", t.duration(played))
             Fact("Sessions", "${d.sessions.size}")
             Fact("Status", if (open != null) "online" else "offline", if (open != null) p.ok else p.muted)
             if (repository.pointHints) d.hintPoints?.let { Fact("Hint points", "$it") }
@@ -122,12 +125,12 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
                   Txt(
                     buildString {
                       append(if (c.implicit) "seen playing " else "")
-                      append(Platform.clock(c.start))
-                      append(c.end?.let { " – ${Platform.clock(it)}" } ?: " – now")
+                      append(t.clock(c.start))
+                      append(c.end?.let { " – ${t.clock(it)}" } ?: " – now")
                     },
                     size = 13.sp, modifier = Modifier.weight(1f),
                   )
-                  Txt(duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+                  Txt(t.duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
                 }
               }
             }

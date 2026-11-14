@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.Texts
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.fileSize
+import net.eratiem.randogeddon.shared.i18n.texts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -179,10 +183,11 @@ internal sealed interface Answer<out T> {
 }
 
 internal suspend fun <T> call(method: String, path: String, body: String?, decode: (String) -> T): Answer<T> {
-  val result = Platform.request(method, path, body) ?: return Answer.Failed("The server can't be reached")
-  if (result.status in 200..299) return runCatching { Answer.Ok(decode(result.body)) }.getOrElse { Answer.Failed("Unexpected answer") }
+  val common = texts(Languages.current).common
+  val result = Platform.request(method, path, body) ?: return Answer.Failed(common.serverUnreachable)
+  if (result.status in 200..299) return runCatching { Answer.Ok(decode(result.body)) }.getOrElse { Answer.Failed(common.unexpectedAnswer) }
   val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }.getOrNull()
-  return Answer.Failed(message ?: "Failed (${result.status})")
+  return Answer.Failed(message ?: common.failed(result.status))
 }
 
 /**
@@ -200,6 +205,7 @@ fun SessionSection(
   server: @Composable () -> Unit = {},
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   // The last one loaded at once, loaded again behind
   val view = cache.views[id]
@@ -219,11 +225,11 @@ fun SessionSection(
   }
 
   val session = view?.session
-  Section("State and Control", subtitle = session?.let(::sessionDetails) ?: "…") {
+  Section("State and Control", subtitle = session?.let { sessionDetails(t, it) } ?: "…") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       val entry = overview?.sessions?.firstOrNull { it.id == id }
       Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        stateLines(entry, overview).forEachIndexed { i, line ->
+        stateLines(t, entry, overview).forEachIndexed { i, line ->
           Txt(line, size = if (i == 0) 13.5.sp else 12.sp, weight = if (i == 0) FontWeight.SemiBold else FontWeight.Normal,
             color = if (i == 0) p.text else p.muted)
         }
@@ -264,6 +270,7 @@ fun SessionSection(
 @Composable
 private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
   val ids = worlds.flatMap { w -> w.users.zip(w.userIds) }.toMap()
   val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
@@ -294,7 +301,7 @@ private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill(file.slotName ?: "slot ${file.slot}", p.hue(file.slotName ?: file.name))
             Mono(file.name, p.text, Modifier.weight(1f))
-            Txt(fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
+            Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
             SmallButton("Download", { Platform.download(slotFilePath(id, file.name)) })
           }
         }
@@ -330,11 +337,12 @@ internal val ADMIN_HEADING = 20.sp
  */
 @Composable
 fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Unit) {
+  val t = LocalTexts.current
   val sessions = overview?.sessions.orEmpty().filter { it.status.running }
   Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
     Txt("Session", size = ADMIN_HEADING, weight = FontWeight.Bold)
     SearchableSelect(
-      sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(it)) },
+      sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(t, it)) },
       page?.takeIf { id -> sessions.any { it.id == id } }, { id -> id?.let(onPage) },
       Modifier.weight(1f), chip = false, heading = ADMIN_HEADING,
       placeholder = if (overview != null && sessions.isEmpty()) "none running" else "pick one…",
@@ -344,10 +352,10 @@ fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Uni
 }
 
 /** How [session] stands (in the switch's list too), and how many of the gateway's game servers are in use. */
-private fun stateLines(session: SessionEntry?, overview: AdminOverview?): List<String> {
+private fun stateLines(t: Texts, session: SessionEntry?, overview: AdminOverview?): List<String> {
   val all = overview?.sessions.orEmpty()
   return listOfNotNull(
-    session?.let(::switchDetails)?.replaceFirstChar { it.uppercase() },
+    session?.let { switchDetails(t, it) }?.replaceFirstChar { it.uppercase() },
     overview?.let {
       "${all.count { s -> s.status.running }} sessions running · ${it.inUse} of " +
         "${it.capacity} game servers in use (a finished session doesn't take one)"
@@ -363,6 +371,7 @@ private fun stateLines(session: SessionEntry?, overview: AdminOverview?): List<S
 @Composable
 fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpoiler: (String) -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   var problem by remember { mutableStateOf<String?>(null) }
   fun act(method: String, path: String, body: String? = null) = scope.launch {
@@ -400,9 +409,9 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
                 }
                 Txt(
                   listOfNotNull(
-                    past.finishedAt?.let { "finished ${Platform.date(it)}" + (past.finishedBy?.let { by -> " by $by" } ?: "") },
-                    "${oneDecimal(past.percent)}%",
-                    deletion(past.deletesAt, past.keep),
+                    past.finishedAt?.let { "finished ${t.date(it)}" + (past.finishedBy?.let { by -> " by $by" } ?: "") },
+                    "${t.decimal(past.percent)}%",
+                    deletion(t, past.deletesAt, past.keep),
                   ).joinToString(" · "),
                   size = 12.sp, color = p.muted, maxLines = if (stacked) 4 else 2,
                 )
@@ -452,6 +461,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
 @Composable
 private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     SelectionContainer {
       Column(
@@ -465,7 +475,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
             Txt(past.id, size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
             Txt("Seed ${past.seedName}", size = 12.5.sp, color = p.muted, maxLines = 1)
           }
-          Txt("${oneDecimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
+          Txt("${t.decimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
           IconButton(onClose, Icon.CLOSE)
         }
         Divider()
@@ -478,15 +488,15 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
           }
           val until = past.reopenUntil
           listOfNotNull(
-            past.createdAt?.let { "Created" to Platform.date(it) },
-            "Finished" to (past.finishedAt?.let { Platform.date(it) } ?: "not yet") +
+            past.createdAt?.let { "Created" to t.date(it) },
+            "Finished" to (past.finishedAt?.let { t.date(it) } ?: "not yet") +
               (past.finishedBy?.let { " by $it" } ?: ", when every slot was done"),
             "Reopen" to when {
               until == null -> "not possible, it was completed"
-              reopenable(until) -> "possible until ${Platform.date(until)}"
+              reopenable(until) -> "possible until ${t.date(until)}"
               else -> "no longer possible"
             },
-            "Deletion" to (deletion(past.deletesAt, past.keep) ?: "not automatic"),
+            "Deletion" to (deletion(t, past.deletesAt, past.keep) ?: "not automatic"),
           ).forEach { (label, value) ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
               Txt(label, size = 12.5.sp, color = p.muted, modifier = Modifier.width(72.dp))
@@ -510,14 +520,9 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
 }
 
 /** A session in the switch's list: how it stands, how far it got, its game server, who is online. */
-private fun switchDetails(session: SessionEntry): String = listOfNotNull(
-  when (session.status) {
-    SessionStatus.LIVE -> "live"
-    SessionStatus.FINISHING -> "ending"
-    SessionStatus.PAUSED -> "paused"
-    SessionStatus.ENDED -> "ended"
-  },
-  "${oneDecimal(session.percent)}%",
+private fun switchDetails(t: Texts, session: SessionEntry): String = listOfNotNull(
+  t.sessions.status(session.status),
+  "${t.decimal(session.percent)}%",
   session.server?.status?.let {
     when (it) {
       GameServerStatus.RUNNING -> "server running"
@@ -528,7 +533,7 @@ private fun switchDetails(session: SessionEntry): String = listOfNotNull(
     }
   },
   session.online.takeIf { it > 0 }?.let { "$it online" },
-  session.finishedAt?.let { "finished ${Platform.date(it)}" },
+  session.finishedAt?.let { "finished ${t.date(it)}" },
 ).joinToString(" · ")
 
 /** A button of the switch; the page that is shown is filled. */
@@ -597,9 +602,9 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
 }
 
 /** Archipelago release, when it was created, the main options: the session section's subtitle. */
-private fun sessionDetails(session: SessionInfo): String = listOfNotNull(
+private fun sessionDetails(t: Texts, session: SessionInfo): String = listOfNotNull(
   session.apVersion?.let { "Archipelago $it" } ?: "deployed with the CLI",
-  session.createdAt?.let { "created ${Platform.date(it)}" },
+  session.createdAt?.let { "created ${t.date(it)}" },
   session.options?.let { o ->
     listOfNotNull(
       if (o.pointHints) "point hints (${o.hintCost} %)" else null,
@@ -610,9 +615,9 @@ private fun sessionDetails(session: SessionInfo): String = listOfNotNull(
 ).joinToString(" · ")
 
 /** When a finished session is deleted by itself, or that it isn't. */
-private fun deletion(deletesAt: Long?, keep: Boolean): String? = when {
+private fun deletion(t: Texts, deletesAt: Long?, keep: Boolean): String? = when {
   keep -> "auto-deletion disabled"
-  deletesAt != null -> "deleted automatically on ${Platform.date(deletesAt)}"
+  deletesAt != null -> "deleted automatically on ${t.date(deletesAt)}"
   else -> null
 }
 
@@ -646,6 +651,7 @@ private fun SessionSummary(
   onDashboard: () -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   // "finish", "spoiler", "delete" or "keep": the question shown instead of the actions
   var pending by remember { mutableStateOf<String?>(null) }
   val finishedAt = session.finishedAt
@@ -655,17 +661,17 @@ private fun SessionSummary(
   when {
     finishedAt != null -> Txt(
       listOfNotNull(
-        "${if (complete) "Ended" else "Paused"} ${Platform.date(finishedAt)}.",
+        "${if (complete) "Ended" else "Paused"} ${t.date(finishedAt)}.",
         when {
           until == null -> "It was completed, so it can't be reopened."
-          reopenable(until) -> "It can be reopened until ${Platform.date(until)}."
+          reopenable(until) -> "It can be reopened until ${t.date(until)}."
           else -> "It was paused more than 14 days ago and can't be reopened any more."
         },
-        deletion(session.deletesAt, session.keep)?.let { "Once a newer session exists: ${it.replaceFirstChar { c -> c.lowercase() }}." },
+        deletion(t, session.deletesAt, session.keep)?.let { "Once a newer session exists: ${it.replaceFirstChar { c -> c.lowercase() }}." },
       ).joinToString(" "),
       size = 13.sp,
     )
-    finishesAt != null -> Txt("Every slot is done: it ends by itself at ${Platform.clock(finishesAt)}.", size = 13.sp)
+    finishesAt != null -> Txt("Every slot is done: it ends by itself at ${t.clock(finishesAt)}.", size = 13.sp)
   }
   when (pending) {
     "finish" -> Confirm(

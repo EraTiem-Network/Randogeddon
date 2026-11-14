@@ -37,20 +37,24 @@ import net.eratiem.randogeddon.shared.AutoDeleteRequest
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.EmailRequest
+import net.eratiem.randogeddon.shared.LanguageRequest
 import net.eratiem.randogeddon.shared.NameRequest
 import net.eratiem.randogeddon.shared.RecoveryCodeList
 import net.eratiem.randogeddon.shared.TokenRequest
 import net.eratiem.randogeddon.shared.TotpSetup
 import net.eratiem.randogeddon.shared.UserNames
+import net.eratiem.randogeddon.shared.i18n.Language
 
 /**
  * The user's own account: their name (unique; a rename shows in the running sessions), their password (the form of
- * index.html, for the password manager), their e-mail address (a new one is confirmed by a link mailed to it) and when
- * the account deletes itself. [onRenamed]: the new name is everywhere else too.
+ * index.html, for the password manager), their e-mail address (a new one is confirmed by a link mailed to it), their
+ * language and when the account deletes itself. [onRenamed]: the new name is everywhere else too.
  */
 @Composable
 fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
+  val acc = t.account
   val scope = rememberCoroutineScope()
   var account by remember { mutableStateOf<AccountView?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
@@ -65,7 +69,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       IconButton(onBack, Icon.BACK)
-      Txt("Your account", size = 20.sp, weight = FontWeight.Bold)
+      Txt(acc.title, size = 20.sp, weight = FontWeight.Bold)
     }
     problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
     val a = account ?: return@Column
@@ -73,34 +77,34 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     // The name
     var name by remember(a.name) { mutableStateOf(a.name) }
     var nameState by remember { mutableStateOf<String?>(null) }
-    Section("Name", subtitle = "what the others see; you log in with it or with your e-mail address") {
+    Section(acc.name, subtitle = acc.nameSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val nameProblem = UserNames.problem(name.trim()).takeIf { name != a.name }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterField(name, { name = it; nameState = null }, "Your name", Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-          Button("Save", enabled = name.trim() != a.name && nameProblem == null) {
+          FilterField(name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+          Button(t.common.save, enabled = name.trim() != a.name && nameProblem == null) {
             scope.launch {
               nameState = when (val r = call("PUT", "api/account/name", body(NameRequest(name.trim()))) { }) {
-                is Answer.Ok -> { load(); onRenamed(); "Saved. The running sessions show it; finished ones keep the old name." }
+                is Answer.Ok -> { load(); onRenamed(); acc.nameSaved }
                 is Answer.Failed -> r.message
               }
             }
           }
         }
         (nameProblem ?: nameState)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
-        Tip("Your account's ID: it tells you apart from someone who had your name before") {
-          Txt("ID ${a.id}", size = 11.5.sp, color = p.muted)
+        Tip(acc.idTip) {
+          Txt(acc.id(a.id), size = 11.5.sp, color = p.muted)
         }
       }
     }
 
     // The password: index.html's form, so the password manager saves the new one
     var passwordState by remember { mutableStateOf<String?>(null) }
-    Section("Password") {
+    Section(acc.password) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Button("Change password") {
-            Platform.showPasswordChange(a.name) { changed -> if (changed) passwordState = "Changed. Your other logins have ended." }
+          Button(acc.changePassword) {
+            Platform.showPasswordChange(a.name) { changed -> if (changed) passwordState = acc.passwordChanged }
           }
         }
         passwordState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
@@ -112,16 +116,16 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     // The e-mail address
     var email by remember { mutableStateOf("") }
     var emailState by remember { mutableStateOf<String?>(null) }
-    Section("E-mail address", subtitle = "for the mails about your account; you can log in with it too") {
+    Section(acc.email, subtitle = acc.emailSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Txt(a.email ?: "No address yet", size = 13.5.sp, weight = FontWeight.SemiBold, color = if (a.email == null) p.muted else p.text)
-        a.pendingEmail?.let { Txt("Waiting for the confirmation of $it: open the link in the mail sent there.", size = 12.5.sp, color = p.muted) }
+        Txt(a.email ?: acc.noAddress, size = 13.5.sp, weight = FontWeight.SemiBold, color = if (a.email == null) p.muted else p.text)
+        a.pendingEmail?.let { Txt(acc.waitingForConfirmation(it), size = 12.5.sp, color = p.muted) }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterField(email, { email = it; emailState = null }, "New address", Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-          Button("Send confirmation", enabled = EmailAddresses.valid(EmailAddresses.normalize(email))) {
+          FilterField(email, { email = it; emailState = null }, acc.newAddress, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+          Button(acc.sendConfirmation, enabled = EmailAddresses.valid(EmailAddresses.normalize(email))) {
             scope.launch {
               emailState = when (val r = call("POST", "api/account/email", body(EmailRequest(email.trim()))) { }) {
-                is Answer.Ok -> { load(); email = ""; "A link went to the new address; your address changes when you open it." }
+                is Answer.Ok -> { load(); email = ""; acc.confirmationSent }
                 is Answer.Failed -> r.message
               }
             }
@@ -131,20 +135,42 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
       }
     }
 
+    // The language: of the app, and of the mails; none chosen follows the browser
+    var languageState by remember { mutableStateOf<String?>(null) }
+    Section(acc.languageTitle, subtitle = acc.languageSubtitle) {
+      Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val browser = Languages.browser ?: Language.DEFAULT
+        Select(
+          listOf<Pair<Language?, String>>(null to acc.automatic(browser)) + Language.entries.map { it to it.label },
+          a.language,
+          { choice ->
+            scope.launch {
+              languageState = when (val r = call("PUT", "api/account/language", body(LanguageRequest(choice))) { }) {
+                is Answer.Ok -> { Languages.apply(choice); load(); null }
+                is Answer.Failed -> r.message
+              }
+            }
+          },
+          Modifier.width(260.dp), minHeight = FIELD_HEIGHT,
+        )
+        languageState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      }
+    }
+
     // When the account deletes itself
     var deletionState by remember { mutableStateOf<String?>(null) }
     val sso = a.singleSignOn
-    val deletionSubtitle = if (sso != null) "with your $sso account; your sessions keep your name" else "by itself, after your last session; your sessions keep your name"
-    Section("Deleting your account", subtitle = deletionSubtitle) {
+    val deletionSubtitle = if (sso != null) acc.deletionSubtitleSso(sso) else acc.deletionSubtitle
+    Section(acc.deletion, subtitle = deletionSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (sso != null) {
-          Txt("Your account here is deleted when $sso deletes yours there, not by itself.", size = 13.sp)
+          Txt(acc.deletedWithSso(sso), size = 13.sp)
           return@Column
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Txt("Delete it", size = 13.sp)
+          Txt(acc.deleteIt, size = 13.sp)
           Select(
-            AutoDelete.entries.map { it to if (it == AutoDelete.NEVER) "never" else "${it.label} after my last session" },
+            AutoDelete.entries.map { it to acc.autoDelete(it) },
             a.autoDelete,
             { choice ->
               scope.launch {
@@ -160,9 +186,9 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
         val due = a.deletesAt
         Txt(
           when {
-            a.autoDelete == AutoDelete.NEVER -> "Your account stays until you change this."
-            due == null -> "Not while one of your sessions runs."
-            else -> "As of now on ${Platform.date(due)}; a mail reminds you 14 days before, and a new session moves it later."
+            a.autoDelete == AutoDelete.NEVER -> acc.staysUntilChanged
+            due == null -> acc.notWhileRunning
+            else -> acc.deletesOn(t.date(due))
           },
           size = 12.5.sp, color = p.muted,
         )
@@ -176,17 +202,18 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
 @Composable
 fun ConfirmEmailView(token: String, onSettings: () -> Unit) {
   val p = LocalPalette.current
+  val acc = LocalTexts.current.account
   var result by remember { mutableStateOf<String?>(null) }
   var ok by remember { mutableStateOf(false) }
   LaunchedEffect(token) {
     when (val r = call("POST", "api/email/confirm", body(TokenRequest(token))) { ApiJson.decodeFromString(EmailRequest.serializer(), it) }) {
-      is Answer.Ok -> { ok = true; result = "Your address is ${r.value.email} now." }
+      is Answer.Ok -> { ok = true; result = acc.addressIsNow(r.value.email) }
       is Answer.Failed -> result = r.message
     }
   }
   Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Txt(result ?: "Confirming your new address…", color = if (ok || result == null) p.text else p.trap)
-    if (result != null) Row { SmallButton("Your account", onSettings) }
+    Txt(result ?: acc.confirmingAddress, color = if (ok || result == null) p.text else p.trap)
+    if (result != null) Row { SmallButton(acc.yourAccount, onSettings) }
   }
 }
 
@@ -202,6 +229,8 @@ private inline fun <reified T> body(value: T): String = ApiJson.encodeToString(v
 @Composable
 private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
+  val acc = t.account
   val scope = rememberCoroutineScope()
   var setup by remember { mutableStateOf<TotpSetup?>(null) }
   var code by remember { mutableStateOf("") }
@@ -216,7 +245,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
         code = ""
         setup = null
         codes = answer.value.takeIf { onCodes }
-        state = if (onCodes) null else "Two-factor login is off."
+        state = if (onCodes) null else acc.twoFactorIsOff
         onChanged()
       }
       is Answer.Failed -> state = answer.message
@@ -224,47 +253,44 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
   }
   val sso = a.singleSignOn
   val subtitle = when {
-    sso != null -> "your logins go through $sso, which checks it"
-    a.administrator -> "Administrators always log in with it"
-    else -> "a code from an authenticator app after your password"
+    sso != null -> acc.twoFactorSubtitleSso(sso)
+    a.administrator -> acc.twoFactorSubtitleAdministrator
+    else -> acc.twoFactorSubtitle
   }
-  Section("Two-factor login", subtitle = subtitle) {
+  Section(acc.twoFactor, subtitle = subtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       if (sso != null && !a.twoFactor && codes == null) {
-        Txt("Not needed here: $sso asks for your second factor.", size = 13.sp)
+        Txt(acc.twoFactorNotNeeded(sso), size = 13.sp)
         return@Column
       }
       if (a.administrator && sso == null && !a.twoFactor) {
-        Txt("What only Administrators do opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
+        Txt(acc.twoFactorAdministratorsNeedIt, size = 12.5.sp, color = p.trap)
       }
       codes?.let { list ->
-        Txt("Your recovery codes", size = 13.5.sp, weight = FontWeight.SemiBold)
-        Txt(
-          "Each works once, in place of a code, if you lose your authenticator. They are shown only now: keep them safe.",
-          size = 12.5.sp, color = p.muted,
-        )
+        Txt(acc.recoveryCodes, size = 13.5.sp, weight = FontWeight.SemiBold)
+        Txt(acc.recoveryCodesHint, size = 12.5.sp, color = p.muted)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
           list.forEach { Mono(it, p.text) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          SmallButton("Copy", { Platform.copy(list.joinToString("\n")) })
-          Button("I have saved them") { codes = null }
+          SmallButton(t.common.copy, { Platform.copy(list.joinToString("\n")) })
+          Button(acc.savedThem) { codes = null }
         }
         return@Column
       }
       val current = setup
       when {
         current != null -> {
-          Txt("Scan this with an authenticator app (any TOTP app), or type the key in; then enter the code it shows.", size = 12.5.sp)
+          Txt(acc.scanThis, size = 12.5.sp)
           QrCode(current.rows, Modifier.size(200.dp))
           Mono(current.secret.chunked(4).joinToString(" "), p.text)
-          CodeRow(code, { code = it; state = null }, "Turn it on") { request("api/account/2fa/enable", onCodes = true) }
-          SmallButton("Cancel", { setup = null; code = "" })
+          CodeRow(code, { code = it; state = null }, acc.turnItOn) { request("api/account/2fa/enable", onCodes = true) }
+          SmallButton(t.common.cancel, { setup = null; code = "" })
         }
         !a.twoFactor -> {
-          Txt("Off.", size = 13.sp)
+          Txt(acc.off, size = 13.sp)
           Row {
-            Button("Set it up") {
+            Button(acc.setItUp) {
               scope.launch {
                 when (val r = call("POST", "api/account/2fa/setup", null) { ApiJson.decodeFromString(TotpSetup.serializer(), it) }) {
                   is Answer.Ok -> { setup = r.value; state = null }
@@ -275,10 +301,10 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           }
         }
         else -> {
-          Txt("On · ${a.recoveryCodesLeft} recovery codes left", size = 13.sp, weight = FontWeight.SemiBold)
-          Txt("A code from your authenticator (or a recovery code) for:", size = 12.5.sp, color = p.muted)
-          CodeRow(code, { code = it; state = null }, "New recovery codes") { request("api/account/2fa/codes", onCodes = true) }
-          if (!a.administrator || sso != null) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
+          Txt(acc.on(a.recoveryCodesLeft), size = 13.sp, weight = FontWeight.SemiBold)
+          Txt(acc.codeFor, size = 12.5.sp, color = p.muted)
+          CodeRow(code, { code = it; state = null }, acc.newRecoveryCodes) { request("api/account/2fa/codes", onCodes = true) }
+          if (!a.administrator || sso != null) Row { SmallButton(acc.turnItOff, { request("api/account/2fa/disable", onCodes = false) }) }
         }
       }
       state?.let { Txt(it, size = 12.5.sp, color = p.muted) }
@@ -290,7 +316,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
 @Composable
 private fun CodeRow(code: String, onCode: (String) -> Unit, action: String, onAction: () -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    FilterField(code, onCode, "Code", Modifier.width(140.dp), minHeight = FIELD_HEIGHT)
+    FilterField(code, onCode, LocalTexts.current.account.code, Modifier.width(140.dp), minHeight = FIELD_HEIGHT)
     Button(action, enabled = code.isNotBlank(), onClick = onAction)
   }
 }

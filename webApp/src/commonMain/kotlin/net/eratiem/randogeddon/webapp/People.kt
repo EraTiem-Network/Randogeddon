@@ -237,6 +237,7 @@ private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () ->
 @Composable
 private fun ShareLinkPart(id: String) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   var view by remember { mutableStateOf<ShareLinkView?>(null) }
   var link by remember { mutableStateOf<String?>(null) }
@@ -261,7 +262,7 @@ private fun ShareLinkPart(id: String) {
         when {
           current == null -> "…"
           !current.on -> "off"
-          else -> "on since ${current.createdAt?.let(Platform::date) ?: "…"}" + (current.createdBy?.let { ", made by $it" } ?: "")
+          else -> "on since ${current.createdAt?.let { t.date(it) } ?: "…"}" + (current.createdBy?.let { ", made by $it" } ?: "")
         },
         size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f),
       )
