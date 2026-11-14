@@ -23,6 +23,8 @@ object German : Texts {
   override val users: UserAdminTexts = GermanUserAdmin
   override val sessionAdmin: SessionAdminTexts = GermanSessionAdmin
   override val tips: SessionTips = GermanSessionTips
+  override val problems: ProblemTexts = GermanProblems
+  override val mails: MailTexts = GermanMails
 
   override val format = object : FormatTexts {
     override val decimalSeparator = ','

@@ -28,6 +28,8 @@ interface CheatTexts {
   fun logTitle(support: Boolean): String
   /** A cheat in the session's list: `18:21 · Bob: gave Mantis Claw to Alice-HK`. */
   fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?): String
+  /** In the live feed: `Bob (support) gave Mantis Claw to Alice-HK`; [role] `manager`, `support` or none. */
+  fun feedLine(by: String, role: String?, action: CheatAction, slot: String, value: String?): String
 }
 
 internal object EnglishCheats : CheatTexts {
@@ -80,6 +82,12 @@ internal object EnglishCheats : CheatTexts {
   override fun logTitle(support: Boolean) = if (support) "Help and cheats of this session" else "Cheats of this session"
   override fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?) =
     "$time · $by: ${what(action, slot, value)}"
+  override fun feedLine(by: String, role: String?, action: CheatAction, slot: String, value: String?) =
+    when (role) {
+      "manager" -> "$by (Session-Manager)"
+      "support" -> "$by (support)"
+      else -> by
+    } + " " + what(action, slot, value)
 }
 
 internal object GermanCheats : CheatTexts {
@@ -133,4 +141,10 @@ internal object GermanCheats : CheatTexts {
   override fun logTitle(support: Boolean) = if (support) "Hilfe und Cheats dieser Session" else "Cheats dieser Session"
   override fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?) =
     "$time · $by: ${what(action, slot, value)}"
+  override fun feedLine(by: String, role: String?, action: CheatAction, slot: String, value: String?) =
+    when (role) {
+      "manager" -> "$by (Session-Manager)"
+      "support" -> "$by (Support)"
+      else -> by
+    } + ": " + what(action, slot, value)
 }

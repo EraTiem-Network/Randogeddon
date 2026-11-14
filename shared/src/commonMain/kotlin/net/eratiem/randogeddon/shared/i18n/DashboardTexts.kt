@@ -40,6 +40,8 @@ interface DashboardTexts {
   fun doneAt(time: String): String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
+  /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
+  fun hintPlace(location: String, slot: String): String
   fun waitingForKey(key: String): String
   fun points(n: Int): String
   val hintsFree: String
@@ -172,6 +174,7 @@ internal object EnglishDashboard : DashboardTexts {
   override fun doneAt(time: String) = "done $time"
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
+  override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
   override fun waitingForKey(key: String) = "Locked · waiting for $key"
   override fun points(n: Int) = "$n pts"
   override val hintsFree = "hints free"
@@ -242,6 +245,7 @@ internal object GermanDashboard : DashboardTexts {
   override fun doneAt(time: String) = "fertig $time"
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
+  override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
   override fun waitingForKey(key: String) = "Gesperrt · wartet auf $key"
   override fun points(n: Int) = "$n Pkt."
   override val hintsFree = "Hinweise gratis"

@@ -16,14 +16,14 @@ object UserNames {
   fun valid(name: String): Boolean = problem(name) == null
 
   /** What's wrong with [name]; `null`: nothing (except maybe being taken). */
-  fun problem(name: String): String? = when {
-    name.length < MIN_LENGTH -> "At least $MIN_LENGTH characters"
-    name.length > MAX_LENGTH -> "At most $MAX_LENGTH characters"
-    name != name.trim() -> "No spaces at the start or the end"
-    '@' in name -> "No @ (that's for e-mail addresses)"
-    name.any { it.isISOControl() } -> "No control characters"
+  fun problem(name: String): Refusal? = when {
+    name.length < MIN_LENGTH -> Problem.NAME_TOO_SHORT
+    name.length > MAX_LENGTH -> Problem.NAME_TOO_LONG
+    name != name.trim() -> Problem.NAME_SPACES
+    '@' in name -> Problem.NAME_AT
+    name.any { it.isISOControl() } -> Problem.NAME_CONTROL
     else -> null
-  }
+  }?.let { Refusal(it) }
 }
 
 /** What a password needs: length; a password manager makes the rest. */
@@ -32,9 +32,9 @@ object PasswordRules {
   const val MAX_LENGTH = 256
 
   /** What's wrong with [password]; `null`: nothing. */
-  fun problem(password: String): String? = when {
-    password.length < MIN_LENGTH -> "At least $MIN_LENGTH characters"
-    password.length > MAX_LENGTH -> "At most $MAX_LENGTH characters"
+  fun problem(password: String): Refusal? = when {
+    password.length < MIN_LENGTH -> Refusal(Problem.PASSWORD_TOO_SHORT)
+    password.length > MAX_LENGTH -> Refusal(Problem.PASSWORD_TOO_LONG)
     else -> null
   }
 }
@@ -100,8 +100,9 @@ data class InvitationInfo(
   val valid: Boolean,
   val email: String? = null,
   val suggestedName: String? = null,
-  /** Why it doesn't work (used, expired, replaced by a newer one). */
+  /** Why it doesn't work (used, expired, replaced by a newer one), in the request's language, and as a code. */
   val problem: String? = null,
+  val code: Problem? = null,
 )
 
 /** `POST /api/signup`: the invitation's token, and what the new user chose. Logs them in. */

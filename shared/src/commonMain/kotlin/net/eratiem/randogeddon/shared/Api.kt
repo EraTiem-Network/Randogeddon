@@ -17,6 +17,7 @@ val ApiJson: Json = Json {
  * starts with a letter (so it never looks like a seed name), 3 to 40 lowercase letters, digits and hyphens.
  */
 object SessionIds {
+  const val MIN_LENGTH = 3
   const val MAX_LENGTH = 40
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
@@ -29,14 +30,14 @@ object SessionIds {
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
   /** What's wrong with [id] as a session ID; `null`: nothing. */
-  fun problem(id: String): String? = when {
-    id.length < 3 -> "At least 3 characters"
-    id.length > MAX_LENGTH -> "At most $MAX_LENGTH characters"
-    id[0] !in 'a'..'z' -> "Starts with a letter (a–z)"
-    id.any { it !in 'a'..'z' && it !in '0'..'9' && it != '-' } -> "Only a–z, 0–9 and -"
-    id.endsWith('-') -> "Doesn't end with -"
-    "--" in id -> "No two - in a row"
-    id in RESERVED -> "$id is reserved"
+  fun problem(id: String): Refusal? = when {
+    id.length < MIN_LENGTH -> Refusal(Problem.ID_TOO_SHORT)
+    id.length > MAX_LENGTH -> Refusal(Problem.ID_TOO_LONG)
+    id[0] !in 'a'..'z' -> Refusal(Problem.ID_LETTER_FIRST)
+    id.any { it !in 'a'..'z' && it !in '0'..'9' && it != '-' } -> Refusal(Problem.ID_CHARACTERS)
+    id.endsWith('-') -> Refusal(Problem.ID_TRAILING_DASH)
+    "--" in id -> Refusal(Problem.ID_DOUBLE_DASH)
+    id in RESERVED -> Refusal.of(Problem.ID_RESERVED, "id" to id)
     else -> null
   }
 }
@@ -60,7 +61,10 @@ data class Summary(
   /** The session's ID (see [SessionIds]). */
   val sessionId: String? = null,
   val connected: Boolean,
+  /** Why the tracker can't follow the game server: what the connection said, as it is. */
   val error: String? = null,
+  /** [error] came from the game server turning the tracker away (not from a broken connection). */
+  val errorRefused: Boolean = false,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,
@@ -204,8 +208,11 @@ data class LockInfo(
   /** Who found the key. */
   val foundBy: String? = null,
   val foundAt: Long? = null,
-  /** Where the key is, if someone hinted it: "Location (in Slot)". */
+  /** Where the key is, if someone hinted it: "Location (in Slot)" (for clients before 0.9.3). */
   val hintedAt: String? = null,
+  /** The same in its parts: the location, and the slot it is in. */
+  val hintLocation: String? = null,
+  val hintSlot: String? = null,
 )
 
 @Serializable
@@ -247,7 +254,15 @@ data class FeedEvent(
   val flags: Int = 0,
   val found: Boolean = false,
   val cheat: Boolean = false,
+  /** A chat line, a countdown; for a cheat the English sentence (for clients before 0.9.3, and events before it). */
   val message: String? = null,
+  /** A cheat, in its parts: what was done, by whom (and in which role), to which slot, with what. */
+  val cheatAction: CheatAction? = null,
+  val cheatBy: String? = null,
+  /** `administrator`, `manager` or `support`. */
+  val cheatRole: String? = null,
+  val cheatSlot: String? = null,
+  val cheatValue: String? = null,
   val playerName: String? = null,
   val senderName: String? = null,
   val receiverName: String? = null,
@@ -300,9 +315,18 @@ data class ReceivedItemView(
 @Serializable
 data class LoginRequest(val username: String, val password: String)
 
-/** An answer that isn't data: why a login failed, or why access was refused. */
+/**
+ * An answer that isn't data: why a login failed, or why access was refused. [message] is worded in the request's
+ * language (the `ap-language` cookie, else its Accept-Language); [code] and [args] let the web app word it itself,
+ * [detail] is what another program said (shown as it is).
+ */
 @Serializable
-data class ApiError(val message: String)
+data class ApiError(
+  val message: String,
+  val code: Problem? = null,
+  val args: Map<String, String> = emptyMap(),
+  val detail: String? = null,
+)
 
 /** `GET /api/me`: who is logged in. Their sessions are `GET /api/sessions`. */
 @Serializable
@@ -419,7 +443,8 @@ data class InspectRequest(
 @Serializable
 data class InspectResult(
   val worlds: List<YamlWorld>,
-  val problems: List<String> = emptyList(),
+  /** What's wrong with the YAMLs; a file's problems name it in their `file` value. */
+  val problems: List<ApiError> = emptyList(),
   /** The files that aren't player YAMLs at all (or not all of them): the panel doesn't take them. */
   val invalid: List<String> = emptyList(),
 )

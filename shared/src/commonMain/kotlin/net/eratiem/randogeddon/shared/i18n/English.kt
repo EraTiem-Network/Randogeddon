@@ -20,6 +20,8 @@ object English : Texts {
   override val users: UserAdminTexts = EnglishUserAdmin
   override val sessionAdmin: SessionAdminTexts = EnglishSessionAdmin
   override val tips: SessionTips = EnglishSessionTips
+  override val problems: ProblemTexts = EnglishProblems
+  override val mails: MailTexts = EnglishMails
 
   override val format = object : FormatTexts {
     override val decimalSeparator = '.'

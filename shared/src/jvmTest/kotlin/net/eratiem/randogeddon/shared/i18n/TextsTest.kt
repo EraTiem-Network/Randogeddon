@@ -35,7 +35,8 @@ class TextsTest {
       val texts = texts(language)
       for (group in groups) {
         val instance = group.groupOf(texts)
-        for (method in group.returnType.methods.filter { it.parameterCount > 0 }) {
+        // The problems have a test of their own (their values come as a map)
+        for (method in group.returnType.methods.filter { it.parameterCount > 0 && Map::class.java !in it.parameterTypes }) {
           for (args in arguments(method)) {
             val text = method.invoke(instance, *args) as String
             val where = "${language.label} ${group.name}.${method.name}"
@@ -65,6 +66,24 @@ class TextsTest {
           assertEquals(expected, marks.findAll(text).map { it.value }.sorted().toList(), "${language.label} ${group.name}.${method.name}: $text")
         }
       }
+    }
+  }
+
+  @Test
+  fun `every problem is worded in every language, with the same values`() {
+    val keys = listOf(
+      "name", "id", "address", "provider", "roles", "status", "reason", "running", "limit", "capacity", "names", "ids",
+      "version", "versions", "slots", "max", "sure", "chance", "least", "most", "suspects", "slot", "value", "days",
+      "action", "file", "files", "n", "game",
+    )
+    val args = keys.associateWith { "⟦$it⟧" } + mapOf("roles" to "manager,support", "action" to "RELEASE")
+    for (problem in net.eratiem.randogeddon.shared.Problem.entries) {
+      val used = Language.entries.associateWith { language ->
+        val text = texts(language).problems.text(problem, args)
+        assertTrue(text.isNotBlank(), "${language.label} $problem is empty")
+        keys.filter { "⟦$it⟧" in text }.toSet()
+      }
+      assertEquals(used.getValue(Language.EN), used.getValue(Language.DE), "$problem uses other values in German")
     }
   }
 

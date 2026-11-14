@@ -49,7 +49,6 @@ interface UserAdminTexts {
   val suggestedName: String
   val invite: String
   fun invited(address: String): String
-  fun nameProblem(problem: String): String
   val invitedPill: String
   val administrator: String
   val noSession: String
@@ -165,7 +164,6 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val suggestedName = "Their name (a suggestion)"
   override val invite = "Invite"
   override fun invited(address: String) = "Invited $address: the link works for 7 days."
-  override fun nameProblem(problem: String) = "Name: $problem"
   override val invitedPill = "invited"
   override val administrator = "Administrator"
   override val noSession = "no session"
@@ -198,7 +196,6 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val suggestedName = "Ihr Name (ein Vorschlag)"
   override val invite = "Einladen"
   override fun invited(address: String) = "$address eingeladen: Der Link funktioniert 7 Tage."
-  override fun nameProblem(problem: String) = "Name: $problem"
   override val invitedPill = "eingeladen"
   override val administrator = "Administrator"
   override val noSession = "keine Session"
