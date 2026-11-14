@@ -19,8 +19,8 @@ version = "0.1.0-SNAPSHOT"
 allprojects {
   repositories {
     maven {
-      name = "empirerp-public"
-      url = uri("https://nexus.empirerp.de/repository/public/")
+      name = "example"
+      url = uri("https://pkg.example.org/maven/public/")
     }
   }
 }

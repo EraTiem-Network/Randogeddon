@@ -5,8 +5,8 @@
 #                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`)
 # The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once.
 #
-# The Nexus credentials come from your Gradle init script as a BuildKit secret (see docker-compose.yml); they are only
-# mounted while Gradle runs and never end up in an image layer.
+# The token for pkg.example.org comes from your Gradle init script as a BuildKit secret (see docker-compose.yml); it is
+# only mounted while Gradle runs and never ends up in an image layer.
 
 FROM ghcr.io/graalvm/native-image-community:25 AS build
 # Node.js, which the Kotlin/Wasm build downloads for webpack, needs libatomic; gradlew needs xargs (findutils)
