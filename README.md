@@ -646,3 +646,9 @@ To update: set `AP_VERSION` to the new release tag, `docker compose build`, and 
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
 other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.
+
+## License
+
+Randogeddon is released under the [EraTiem-Network Non-Commercial License 1.0](LICENSE): free to use and to pass on
+unchanged for non-commercial purposes; no modified copies, no paid use without a separate license
+(info@eratiem.net). Archipelago and the libraries Randogeddon uses keep their own licenses.
