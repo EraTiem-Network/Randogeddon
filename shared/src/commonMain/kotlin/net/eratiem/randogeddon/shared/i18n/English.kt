@@ -153,6 +153,16 @@ object English : Texts {
     override val appearanceSubtitle = "the theme, light or dark; the button on the top card switches the mode too"
     override fun theme(theme: Theme) = when (theme) {
       Theme.RANDOGEDDON -> "Randogeddon"
+      Theme.OCEAN -> "Ocean"
+      Theme.FOREST -> "Forest"
+      Theme.EMBER -> "Ember"
+      Theme.CONTRAST -> "High contrast"
+      Theme.N64 -> "N64"
+      Theme.GAMECUBE -> "GameCube"
+      Theme.WII -> "Wii"
+      Theme.WIIU -> "Wii U"
+      Theme.SWITCH -> "Switch"
+      Theme.SWITCH2 -> "Switch 2"
     }
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Light"

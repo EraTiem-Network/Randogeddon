@@ -158,6 +158,16 @@ object German : Texts {
     override val appearanceSubtitle = "das Design, hell oder dunkel; der Knopf auf der oberen Karte wechselt den Modus auch"
     override fun theme(theme: Theme) = when (theme) {
       Theme.RANDOGEDDON -> "Randogeddon"
+      Theme.OCEAN -> "Ozean"
+      Theme.FOREST -> "Wald"
+      Theme.EMBER -> "Glut"
+      Theme.CONTRAST -> "Hoher Kontrast"
+      Theme.N64 -> "N64"
+      Theme.GAMECUBE -> "GameCube"
+      Theme.WII -> "Wii"
+      Theme.WIIU -> "Wii U"
+      Theme.SWITCH -> "Switch"
+      Theme.SWITCH2 -> "Switch 2"
     }
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Hell"
