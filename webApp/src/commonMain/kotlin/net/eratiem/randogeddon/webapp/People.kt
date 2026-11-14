@@ -32,23 +32,8 @@ import net.eratiem.randogeddon.shared.ShareLinkView
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WatcherRequest
 
-/** How a role is called on the page. */
-internal val SessionRole.label: String
-  get() = when (this) {
-    SessionRole.PLAYER -> "Player"
-    SessionRole.MANAGER -> "Session-Manager"
-    SessionRole.SUPPORT -> "Support"
-    SessionRole.WATCHER -> "Watcher"
-  }
-
 /** The parts a Session-Manager gives (players come with the slots). */
 private val GIVEN = listOf(SessionRole.WATCHER, SessionRole.SUPPORT, SessionRole.MANAGER)
-
-private val ROLE_TIPS = mapOf(
-  SessionRole.MANAGER to "Manages the session as you do: its state, game server, console, cheats and people.",
-  SessionRole.SUPPORT to "Helps the players: gives items, checks locations and free hints, and sees the spoiler log while it runs. Logged in the feed.",
-  SessionRole.WATCHER to "Follows the session: dashboard, feed and hints; no slots, the spoiler log once it is finished.",
-)
 
 /**
  * The session's people, in the panel (its Session-Managers and Administrators): everyone with a part in it, each with
@@ -58,6 +43,7 @@ private val ROLE_TIPS = mapOf(
 @Composable
 fun PeopleSection(id: String) {
   val p = LocalPalette.current
+  val texts = LocalTexts.current.people
   val scope = rememberCoroutineScope()
   var people by remember { mutableStateOf<List<SessionPerson>?>(null) }
   var choices by remember { mutableStateOf<List<UserRef>>(emptyList()) }
@@ -72,8 +58,8 @@ fun PeopleSection(id: String) {
   }
   LaunchedEffect(id) { load() }
   val list = people.orEmpty()
-  Section("People", subtitle = list.groupBy { it.role }.entries.sortedBy { it.key.ordinal }
-    .joinToString(" · ") { (role, all) -> "${all.size} ${role.label.lowercase()}${if (all.size == 1) "" else "s"}" }.ifEmpty { "…" }) {
+  Section(texts.title, subtitle = list.groupBy { it.role }.entries.sortedBy { it.key.ordinal }
+    .joinToString(" · ") { (role, all) -> texts.roleCount(role, all.size) }.ifEmpty { "…" }) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       AddPerson(GIVEN, choices) { role, userId, email ->
         val body = ApiJson.encodeToString(AddPersonRequest.serializer(), AddPersonRequest(role, userId, email))
@@ -105,6 +91,7 @@ fun PeopleSection(id: String) {
 @Composable
 fun WatchersSection(id: String) {
   val p = LocalPalette.current
+  val texts = LocalTexts.current.people
   val scope = rememberCoroutineScope()
   var watchers by remember { mutableStateOf<List<SessionPerson>?>(null) }
   var choices by remember { mutableStateOf<List<UserRef>>(emptyList()) }
@@ -120,8 +107,8 @@ fun WatchersSection(id: String) {
   LaunchedEffect(id) { load() }
   val list = watchers.orEmpty()
   Section(
-    "Watchers", subtitle = if (watchers == null) "…" else if (list.isEmpty()) "nobody watches yet" else "${list.size} watching",
-    actions = { InfoTip(ROLE_TIPS.getValue(SessionRole.WATCHER)) },
+    texts.watchers, subtitle = if (watchers == null) "…" else if (list.isEmpty()) texts.nobodyWatches else texts.watching(list.size),
+    actions = { InfoTip(texts.roleTip(SessionRole.WATCHER)) },
   ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       AddPerson(emptyList(), choices) { _, userId, email ->
@@ -159,6 +146,7 @@ private fun AddPerson(
   onAdd: suspend (role: SessionRole, userId: String?, email: String?) -> String?,
 ) {
   val p = LocalPalette.current
+  val texts = LocalTexts.current.people
   val scope = rememberCoroutineScope()
   var role by remember { mutableStateOf(roles.firstOrNull() ?: SessionRole.WATCHER) }
   var user by remember { mutableStateOf<String?>(null) }
@@ -172,7 +160,7 @@ private fun AddPerson(
     scope.launch {
       val name = choices.firstOrNull { it.id == user }?.label ?: address
       state = onAdd(role, user.takeIf { !byAddress }, address.takeIf { byAddress })?.let { false to it }
-        ?: (true to if (byAddress) "Invited $address as ${role.label.lowercase()}: the link works for 7 days." else "$name is ${role.label.lowercase()} now.")
+        ?: (true to if (byAddress) texts.invited(address, role) else texts.isNow(name, role))
       if (state?.first == true) { user = null; email = "" }
       busy = false
     }
@@ -181,19 +169,19 @@ private fun AddPerson(
     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
     itemVerticalAlignment = Alignment.CenterVertically,
   ) {
-    if (roles.isNotEmpty()) Tip(ROLE_TIPS.getValue(role)) {
-      SearchableSelect(roles.map { Triple(it, it.label, "") }, role, { role = it }, Modifier.width(170.dp), chip = false, minHeight = FIELD_HEIGHT)
+    if (roles.isNotEmpty()) Tip(texts.roleTip(role)) {
+      SearchableSelect(roles.map { Triple(it, texts.role(it), "") }, role, { role = it }, Modifier.width(170.dp), chip = false, minHeight = FIELD_HEIGHT)
     }
     SearchableSelect(
       choices.map { Triple<String?, String, String>(it.id, it.label, "") }, user, { user = it; email = "" },
       Modifier.width(200.dp), chip = false, minHeight = FIELD_HEIGHT,
-      placeholder = if (choices.isEmpty()) "Nobody left to add" else "Someone…",
+      placeholder = if (choices.isEmpty()) texts.nobodyLeft else texts.someone,
     )
-    Txt("or", size = 12.5.sp, color = p.muted)
-    FilterField(email, { email = it; user = null; state = null }, "A new e-mail address", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+    Txt(texts.or, size = 12.5.sp, color = p.muted)
+    FilterField(email, { email = it; user = null; state = null }, texts.newAddress, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      Button(if (busy) "Adding…" else if (byAddress) "Invite" else "Add", enabled = !busy && (if (byAddress) EmailAddresses.valid(address) else user != null)) { add() }
-      InfoTip("Only an address that has no account gets an invitation; someone who has one is picked by name.")
+      Button(if (busy) texts.adding else if (byAddress) texts.invite else texts.add, enabled = !busy && (if (byAddress) EmailAddresses.valid(address) else user != null)) { add() }
+      InfoTip(texts.inviteTip)
     }
   }
   state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
@@ -203,13 +191,14 @@ private fun AddPerson(
 @Composable
 private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var confirm by remember { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
     Avatar(person.name, 28.dp)
     Column(Modifier.weight(1f)) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PersonName(person.name, person.id, deleted = person.deleted, size = 13.5.sp)
-        Pill(person.role.label, when (person.role) {
+        Pill(t.people.role(person.role), when (person.role) {
           SessionRole.MANAGER -> p.accent
           SessionRole.SUPPORT -> p.useful
           SessionRole.WATCHER -> p.muted
@@ -220,11 +209,11 @@ private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () ->
     }
     if (removable) {
       if (confirm) {
-        Txt("Take ${person.role.label.lowercase()} away?", size = 12.5.sp)
-        Button("Yes", danger = true) { confirm = false; onRemove() }
-        Button("Cancel") { confirm = false }
+        Txt(t.people.takeAway(person.role), size = 12.5.sp)
+        Button(t.people.yes, danger = true) { confirm = false; onRemove() }
+        Button(t.common.cancel) { confirm = false }
       } else {
-        SmallButton("Remove", { confirm = true })
+        SmallButton(t.people.remove, { confirm = true })
       }
     }
   }
@@ -252,21 +241,18 @@ private fun ShareLinkPart(id: String) {
   LaunchedEffect(id) { load() }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt("Share link", size = 13.5.sp, weight = FontWeight.SemiBold)
-      InfoTip(
-        "For a stream, or friends without an account: whoever has the link sees the dashboard, read-only and without a " +
-          "login. No slot passwords, no spoiler log. A new link replaces the old one."
-      )
+      Txt(t.people.shareLink, size = 13.5.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.people.shareLinkTip)
       val current = view
       Txt(
         when {
           current == null -> "…"
-          !current.on -> "off"
-          else -> "on since ${current.createdAt?.let { t.date(it) } ?: "…"}" + (current.createdBy?.let { ", made by $it" } ?: "")
+          !current.on -> t.people.off
+          else -> t.people.onSince(current.createdAt?.let { t.date(it) } ?: "…", current.createdBy)
         },
         size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f),
       )
-      Button(if (current?.on == true) "New link" else "Make a link") {
+      Button(if (current?.on == true) t.people.newLink else t.people.makeLink) {
         scope.launch {
           when (val r = call("POST", "api/sessions/$id/share", null) { ApiJson.decodeFromString(ShareLinkView.serializer(), it) }) {
             is Answer.Ok -> { view = r.value; link = r.value.token?.let { Platform.pageUrl() + Route.Watch(it).hash }; problem = null }
@@ -276,7 +262,7 @@ private fun ShareLinkPart(id: String) {
       }
       if (current?.on == true) {
         if (confirm) {
-          Button("Yes, off", danger = true) {
+          Button(t.people.yesOff, danger = true) {
             confirm = false
             scope.launch {
               problem = (call("DELETE", "api/sessions/$id/share", null) { } as? Answer.Failed)?.message
@@ -284,18 +270,18 @@ private fun ShareLinkPart(id: String) {
               load()
             }
           }
-          Button("Cancel") { confirm = false }
+          Button(t.common.cancel) { confirm = false }
         } else {
-          Button("Turn off", danger = true) { confirm = true }
+          Button(t.people.turnOff, danger = true) { confirm = true }
         }
       }
     }
     link?.let {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Mono(it, p.text, Modifier.weight(1f))
-        SmallButton("Copy", { Platform.copy(it) })
+        SmallButton(t.common.copy, { Platform.copy(it) })
       }
-      Txt("Shown only now: copy it. The old link doesn't work any more.", size = 12.sp, color = p.muted)
+      Txt(t.people.shownOnlyNow, size = 12.sp, color = p.muted)
     }
     problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   }

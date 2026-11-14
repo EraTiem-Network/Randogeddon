@@ -51,6 +51,7 @@ fun ConnectionSection(
   fillHeight: Boolean = false,
 ) {
   val p = LocalPalette.current
+  val c = LocalTexts.current.connection
   var picked by remember { mutableStateOf<String?>(null) }
   val slots = connection?.slots.orEmpty()
   val worlds = summary.players.associateBy { it.name }
@@ -64,12 +65,12 @@ fun ConnectionSection(
   }
   val slot = slots.firstOrNull { it.name == picked } ?: lastPlayed
   Section(
-    "Your connection", modifier, subtitle = "Logged in as $name",
+    c.title, modifier, subtitle = c.loggedInAs(name),
     actions = {
       when (role) {
-        SessionRole.WATCHER -> Pill("Watching", p.muted)
-        SessionRole.SUPPORT -> Pill("Support", p.useful)
-        SessionRole.MANAGER -> Pill("Session-Manager", p.accent)
+        SessionRole.WATCHER -> Pill(c.watching, p.muted)
+        SessionRole.SUPPORT -> Pill(c.support, p.useful)
+        SessionRole.MANAGER -> Pill(c.sessionManager, p.accent)
         else -> {}
       }
     },
@@ -78,17 +79,17 @@ fun ConnectionSection(
       Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Field("Server", connection?.server ?: "…")
+      Field(c.server, connection?.server ?: "…")
       when {
         !mine -> Txt(
           when (role) {
-            SessionRole.WATCHER -> "You watch this session: no slots, the spoiler log once it is finished."
-            SessionRole.SUPPORT -> "You support this session: you help its players below."
-            else -> "You don't play in this session."
+            SessionRole.WATCHER -> c.watcherNote
+            SessionRole.SUPPORT -> c.supportNote
+            else -> c.notPlaying
           },
           size = 13.sp, color = p.muted,
         )
-        slot == null -> Txt("Your slots appear here once the seed is running.", size = 13.sp, color = p.muted)
+        slot == null -> Txt(c.slotsAppear, size = 13.sp, color = p.muted)
         slots.size > 1 -> SearchableSelect(
           slots.map { Triple(it.name, shortSlotName(it.name, name), it.game) }, slot.name, { picked = it },
           Modifier.fillMaxWidth(),
@@ -99,7 +100,7 @@ fun ConnectionSection(
         }
       }
       if (slot != null) {
-        Field("Slot", slot.name)
+        Field(c.slot, slot.name)
         PasswordField(slot)
         files.filter { it.slotName == slot.name }.forEach { file -> FileField(sessionId, file) }
       }
@@ -111,28 +112,24 @@ fun ConnectionSection(
 private fun PasswordField(slot: MySlot) {
   var shown by remember(slot.name) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Label("Password")
+    Label(LocalTexts.current.connection.password)
     Mono(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f))
-    SmallButton(if (shown) "Hide" else "Show", { shown = !shown })
-    SmallButton("Copy", { Platform.copy(slot.password) })
+    SmallButton(if (shown) LocalTexts.current.connection.hide else LocalTexts.current.connection.show, { shown = !shown })
+    SmallButton(LocalTexts.current.common.copy, { Platform.copy(slot.password) })
   }
 }
 
 /** How a slot's file is used: on the download's tip. */
-internal const val PATCH_HOW_TO = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
-  "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
-  "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
-
 /** One of the slot's files from the seed: its name and size, and the download. */
 @Composable
 private fun FileField(sessionId: String, file: SlotFile) {
   val t = LocalTexts.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Label("File")
+    Label(LocalTexts.current.connection.file)
     Mono(file.name, Modifier.weight(1f))
     Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
-    InfoTip(PATCH_HOW_TO)
-    SmallButton("Download", { Platform.download(slotFilePath(sessionId, file.name)) })
+    InfoTip(LocalTexts.current.connection.patchHowTo)
+    SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
   }
 }
 
@@ -141,7 +138,7 @@ private fun Field(label: String, value: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(label)
     Mono(value, Modifier.weight(1f))
-    SmallButton("Copy", { Platform.copy(value) })
+    SmallButton(LocalTexts.current.common.copy, { Platform.copy(value) })
   }
 }
 

@@ -140,6 +140,7 @@ fun FinishBanner(
     }
   }
   val color = if (finishedAt != null) p.ok else p.key
+  val f = t.finish
   Row(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.14f))
       .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -149,33 +150,20 @@ fun FinishBanner(
     Column(Modifier.weight(1f)) {
       if (finishedAt != null) {
         val ended = s.totals.percent >= 100.0
-        Txt(if (ended) "The session has ended" else "The session is paused", size = 14.sp, weight = FontWeight.SemiBold)
-        Txt(
-          "${if (ended) "Ended" else "Paused"} ${t.date(finishedAt)}. " +
-            (if (ended) "This is how it ended" else "This is how far it got") + "; the spoiler log shows the whole seed.",
-          size = 12.5.sp, color = p.muted,
-        )
+        Txt(if (ended) f.ended else f.paused, size = 14.sp, weight = FontWeight.SemiBold)
+        Txt(f.finishedAt(ended, t.date(finishedAt)), size = 12.5.sp, color = p.muted)
       } else {
         val left = ((finishesAt!! - now) / 1000).coerceAtLeast(0)
-        Txt("Every slot is done!", size = 14.sp, weight = FontWeight.SemiBold)
-        Txt(
-          "The session ends in ${left / 60}:${(left % 60).toString().padStart(2, '0')}; then the game server stops " +
-            "and the spoiler log is revealed.",
-          size = 12.5.sp, color = p.muted,
-        )
+        Txt(f.everySlotDone, size = 14.sp, weight = FontWeight.SemiBold)
+        Txt(f.endsIn("${left / 60}:${(left % 60).toString().padStart(2, '0')}"), size = 12.5.sp, color = p.muted)
       }
     }
     if (finishedAt != null) {
-      SmallButton("Spoiler log", onSpoiler)
+      SmallButton(f.spoilerLog, onSpoiler)
     } else if (admin) {
-      SmallButton("End now", onFinishNow)
-      SmallButton("Cancel", onCancel)
+      SmallButton(f.endNow, onFinishNow)
+      SmallButton(t.common.cancel, onCancel)
     }
-    InfoTip(
-      "A session ends 2 minutes after every slot reached its goal or was released; its Session-Managers can also " +
-        "pause or end it earlier. Then it is read-only: the game server stops, and its players see the spoiler log. " +
-        "Unless it was completed (100 %), its Session-Managers can reopen it within 14 days.",
-      Modifier.width(16.dp),
-    )
+    InfoTip(f.tip, Modifier.width(16.dp))
   }
 }

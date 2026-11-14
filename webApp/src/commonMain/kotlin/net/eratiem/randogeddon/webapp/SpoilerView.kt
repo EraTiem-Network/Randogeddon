@@ -59,15 +59,16 @@ import net.eratiem.randogeddon.shared.Spoiler
 @Composable
 fun SpoilerView(id: String, onBack: () -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var spoiler by remember(id) { mutableStateOf<Spoiler?>(null) }
   var problem by remember(id) { mutableStateOf<String?>(null) }
   LaunchedEffect(id) {
     val result = Platform.request("GET", "api/sessions/$id/spoiler")
     when {
-      result == null -> problem = "The server can't be reached"
+      result == null -> problem = t.common.serverUnreachable
       result.status == 200 -> spoiler = runCatching { ApiJson.decodeFromString(Spoiler.serializer(), result.body) }.getOrNull()
       else -> problem = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }
-        .getOrDefault("Failed (${result.status})")
+        .getOrDefault(t.common.failed(result.status))
     }
   }
 
@@ -78,9 +79,9 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         IconButton(onBack, Icon.BACK)
         Column(Modifier.weight(1f)) {
-          Txt("Spoiler log", size = 20.sp, weight = FontWeight.Bold)
+          Txt(t.spoiler.title, size = 20.sp, weight = FontWeight.Bold)
           Txt(
-            listOfNotNull(id, spoiler?.let { "Seed ${it.seedName}" }, spoiler?.let { "${it.spheres.size} spheres" }).joinToString(" · "),
+            listOfNotNull(id, spoiler?.let { t.frame.seed(it.seedName) }, spoiler?.let { t.spoiler.spheres(it.spheres.size) }).joinToString(" · "),
             size = 12.5.sp, color = p.muted,
           )
         }
@@ -88,7 +89,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
       problem?.let { Txt(it, size = 13.sp, color = p.trap) }
       val s = spoiler
       if (s == null) {
-        if (problem == null) Txt("Loading…", color = p.muted)
+        if (problem == null) Txt(t.dialogs.loading, color = p.muted)
         return@Column
       }
       if (s.spheres.isNotEmpty()) Playthrough(s.spheres, narrow)
@@ -123,6 +124,7 @@ private fun step(entry: String): Step {
 @Composable
 private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val steps = remember(spheres) { spheres.associate { it.number to it.entries.map(::step) } }
   val slots = remember(steps) {
     steps.values.flatten().flatMap { listOfNotNull(it.itemSlot, it.locationSlot) }.distinct().sortedBy { it.lowercase() }
@@ -132,19 +134,19 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
   var slot by remember { mutableStateOf<String?>(null) }
   fun shown(number: Int) = steps[number].orEmpty().filter { slot == null || it.itemSlot == slot || it.locationSlot == slot }
   val controls: @Composable () -> Unit = {
-    Select(listOf<Pair<String?, String>>(null to "Every slot") + slots.map { it to it }, slot, { slot = it })
-    SmallButton(if (open.size == spheres.size) "Fold all" else "Unfold all", {
+    Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, slot, { slot = it })
+    SmallButton(if (open.size == spheres.size) t.spoiler.foldAll else t.spoiler.unfoldAll, {
       open = if (open.size == spheres.size) emptySet() else spheres.map { it.number }.toSet()
     })
   }
   Section(
-    "Playthrough", subtitle = "the way through the seed, sphere by sphere: what becomes reachable, and is needed, at each step",
+    t.spoiler.playthrough, subtitle = t.spoiler.playthroughSubtitle,
     actions = { if (!narrow) controls() },
   ) {
     if (narrow) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
     Column(Modifier.fillMaxWidth().card(p)) {
       val visible = spheres.filter { shown(it.number).isNotEmpty() }
-      if (visible.isEmpty()) Txt("Nothing for $slot.", color = p.muted, modifier = Modifier.padding(16.dp))
+      if (visible.isEmpty()) Txt(t.spoiler.nothingFor(slot.orEmpty()), color = p.muted, modifier = Modifier.padding(16.dp))
       visible.forEachIndexed { i, sphere ->
         if (i > 0) Divider()
         val entries = shown(sphere.number)
@@ -157,10 +159,10 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
         ) {
           Txt(if (unfolded) "▾" else "▸", size = 13.sp, color = p.muted, modifier = Modifier.width(12.dp))
           Txt(
-            if (sphere.number == 0) "Sphere 0 · what everyone starts with" else "Sphere ${sphere.number}",
+            if (sphere.number == 0) t.spoiler.sphereZero else t.spoiler.sphere(sphere.number),
             size = 13.5.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
           )
-          Pill("${entries.size} ${if (entries.size == 1) "step" else "steps"}", p.muted)
+          Pill(t.spoiler.steps(entries.size), p.muted)
         }
         if (unfolded) {
           if (narrow) {
@@ -186,12 +188,13 @@ private val ARROW_COLUMN = 28.dp
 @Composable
 private fun StepHeader() {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-    Txt("Slot", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
-    Txt("Item", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    Txt(t.spoiler.slot, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
+    Txt(t.spoiler.item, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     Spacer(Modifier.width(ARROW_COLUMN))
-    Txt("Slot", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
-    Txt("Check", size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+    Txt(t.spoiler.slot, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
+    Txt(t.spoiler.check, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
   }
 }
 
@@ -270,6 +273,7 @@ internal fun findings(text: String, query: String): List<Int> {
 @Composable
 private fun FullLog(text: String, narrow: Boolean) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var query by remember { mutableStateOf("") }
   val q = query.trim()
   val found = remember(text, q) { findings(text, q) }
@@ -300,7 +304,7 @@ private fun FullLog(text: String, narrow: Boolean) {
   val search: @Composable (Modifier) -> Unit = { modifier ->
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       FilterField(
-        query, { query = it }, "Search…",
+        query, { query = it }, t.common.search,
         (if (narrow) Modifier.weight(1f) else Modifier.width(200.dp)).onPreviewKeyEvent { event ->
           if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
             step(if (event.isShiftPressed) -1 else 1)
@@ -311,7 +315,7 @@ private fun FullLog(text: String, narrow: Boolean) {
       if (q.length >= 2) {
         Txt(
           when {
-            found.isEmpty() -> "none"
+            found.isEmpty() -> t.spoiler.none
             found.size >= MAX_FINDINGS -> "${current + 1} / ${MAX_FINDINGS}+"
             else -> "${current + 1} / ${found.size}"
           },
@@ -322,7 +326,7 @@ private fun FullLog(text: String, narrow: Boolean) {
       }
     }
   }
-  Section("Full spoiler log", subtitle = "every check of every slot, the options and the playthrough", actions = {
+  Section(t.spoiler.fullLog, subtitle = t.spoiler.fullLogSubtitle, actions = {
     if (!narrow) search(Modifier)
   }) {
     if (narrow) search(Modifier.fillMaxWidth())
