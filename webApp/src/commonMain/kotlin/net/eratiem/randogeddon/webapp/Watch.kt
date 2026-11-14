@@ -149,10 +149,10 @@ fun WatchApp(token: String) {
             val s = summary
             when {
               gone -> Txt(
-                "This link doesn't work (any more): it was turned off or replaced by a new one.",
+                t.watch.linkGone,
                 color = p.muted, modifier = Modifier.padding(top = 40.dp).align(Alignment.CenterHorizontally),
               )
-              s == null -> Txt("Loading…", color = p.muted, modifier = Modifier.padding(top = 40.dp).align(Alignment.CenterHorizontally))
+              s == null -> Txt(t.dialogs.loading, color = p.muted, modifier = Modifier.padding(top = 40.dp).align(Alignment.CenterHorizontally))
               else -> {
                 Row(
                   Modifier.fillMaxWidth().card(p).padding(horizontal = 20.dp, vertical = 16.dp),
@@ -162,16 +162,16 @@ fun WatchApp(token: String) {
                   Column(Modifier.weight(1f)) {
                     Txt(s.sessionId ?: s.title, size = 22.sp, weight = FontWeight.Bold)
                     Txt(
-                      "${t.decimal(s.totals.percent)} % of ${t.number(s.totals.total)} checks done · watching, read-only",
+                      t.watch.progress(t.decimal(s.totals.percent), t.number(s.totals.total)),
                       size = 12.5.sp, color = p.muted,
                     )
                   }
                   Pill(
                     when {
-                      !streamOpen -> "reconnecting…"
-                      s.finishedAt != null -> "finished"
-                      s.connected -> "live"
-                      else -> "server offline"
+                      !streamOpen -> t.frame.reconnecting
+                      s.finishedAt != null -> t.frame.finished
+                      s.connected -> t.frame.live
+                      else -> t.frame.serverOffline
                     },
                     if (streamOpen && s.connected) p.ok else p.muted,
                   )

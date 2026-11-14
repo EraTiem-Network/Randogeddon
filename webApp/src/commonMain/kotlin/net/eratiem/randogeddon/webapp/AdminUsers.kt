@@ -55,6 +55,7 @@ internal suspend fun inviteForSession(email: String): Answer<UserRef> = call(
 @Composable
 fun UsersAdmin(onChanged: () -> Unit) {
   val p = LocalPalette.current
+  val texts = LocalTexts.current.users
   val scope = rememberCoroutineScope()
   var users by remember { mutableStateOf<List<AdminUser>?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
@@ -67,7 +68,7 @@ fun UsersAdmin(onChanged: () -> Unit) {
   LaunchedEffect(Unit) { load() }
   val list = users.orEmpty()
   val invited = list.count { it.state == AccountState.INVITED }
-  Section("Users", subtitle = "${list.size - invited} accounts" + if (invited > 0) ", $invited invited" else "") {
+  Section(texts.title, subtitle = texts.subtitle(list.size - invited, invited)) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       // Inviting someone
       var email by remember { mutableStateOf("") }
@@ -75,21 +76,21 @@ fun UsersAdmin(onChanged: () -> Unit) {
       var state by remember { mutableStateOf<String?>(null) }
       val nameProblem = name.trim().takeIf { it.isNotEmpty() }?.let(UserNames::problem)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(email, { email = it; state = null }, "E-mail address", Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        FilterField(name, { name = it; state = null }, "Their name (a suggestion)", Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
+        FilterField(email, { email = it; state = null }, texts.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+        FilterField(name, { name = it; state = null }, texts.suggestedName, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          Button("Invite", enabled = EmailAddresses.valid(EmailAddresses.normalize(email)) && nameProblem == null) {
+          Button(texts.invite, enabled = EmailAddresses.valid(EmailAddresses.normalize(email)) && nameProblem == null) {
             scope.launch {
               state = when (val r = invite(email, name)) {
-                is Answer.Ok -> { email = ""; name = ""; load(); onChanged(); "Invited ${r.value.email}: the link works for 7 days." }
+                is Answer.Ok -> { email = ""; name = ""; load(); onChanged(); texts.invited(r.value.email.orEmpty()) }
                 is Answer.Failed -> r.message
               }
             }
           }
-          InfoTip(Tips.INVITE)
+          InfoTip(LocalTexts.current.tips.invite)
         }
       }
-      (nameProblem?.let { "Name: $it" } ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
+      (nameProblem?.let { texts.nameProblem(it) } ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       list.forEach { user ->
         Divider()
@@ -114,43 +115,44 @@ private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
       Column(Modifier.weight(1f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           PersonName(user.name ?: user.email.orEmpty(), user.id, deleted = false, size = 13.5.sp)
-          if (user.state == AccountState.INVITED) Pill("invited", p.accent)
-          if (user.administrator) Pill("Administrator", p.ok)
+          if (user.state == AccountState.INVITED) Pill(t.users.invitedPill, p.accent)
+          if (user.administrator) Pill(t.users.administrator, p.ok)
         }
         val parts = listOfNotNull(
           user.email.takeIf { user.name != null },
           when (user.sessions.size) {
-            0 -> "no session"
-            1 -> "in ${user.sessions.single()}"
-            else -> "in ${user.sessions.size} sessions"
+            0 -> t.users.noSession
+            1 -> t.users.inSession(user.sessions.single())
+            else -> t.users.inSessions(user.sessions.size)
           },
           user.invitationExpiresAt?.let {
-            if (it < Platform.now()) "the link has expired" else "the link works until ${t.date(it)}"
+            if (it < Platform.now()) t.users.linkExpired else t.users.linkWorksUntil(t.date(it))
           },
-          user.deletesAt?.let { "deleted on ${t.date(it)}" }
-            ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && user.state == AccountState.ACTIVE }?.let { "auto-deletion: ${it.label}" },
+          user.deletesAt?.let { t.users.deletedOn(t.date(it)) }
+            ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && user.state == AccountState.ACTIVE }
+              ?.let { t.users.autoDeletion(t.account.autoDelete(it)) },
         )
         Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)
       }
       if (user.state == AccountState.INVITED) {
-        SmallButton("Send again", {
+        SmallButton(t.users.sendAgain, {
           scope.launch {
             state = (call("POST", "api/admin/users/${user.id}/invite", null) { } as? Answer.Failed)?.message
-              ?: "A new link went to ${user.email}; the old one stops working."
+              ?: t.users.newLinkWent(user.email.orEmpty())
             onChanged()
           }
         })
-        SmallButton(if (editing) "Cancel" else "Other address", { editing = !editing; address = user.email.orEmpty() })
+        SmallButton(if (editing) t.common.cancel else t.users.otherAddress, { editing = !editing; address = user.email.orEmpty() })
       }
     }
     if (editing) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(address, { address = it }, "E-mail address", Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        Button("Send the link there", enabled = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email) {
+        FilterField(address, { address = it }, t.users.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+        Button(t.users.sendThere, enabled = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email) {
           scope.launch {
             val body = ApiJson.encodeToString(EmailRequest.serializer(), EmailRequest(address.trim()))
             state = when (val r = call("PUT", "api/admin/users/${user.id}/email", body) { }) {
-              is Answer.Ok -> { editing = false; onChanged(); "A new link went to ${address.trim()}." }
+              is Answer.Ok -> { editing = false; onChanged(); t.users.linkWentTo(address.trim()) }
               is Answer.Failed -> r.message
             }
           }
@@ -165,6 +167,7 @@ private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
 @Composable
 fun AppSettingsSection() {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   var saved by remember { mutableStateOf<AppSettings?>(null) }
   var perUser by remember { mutableStateOf("") }
@@ -176,26 +179,23 @@ fun AppSettingsSection() {
     }
   }
   val value = perUser.trim().toIntOrNull()?.takeIf { it in 0..20 }
-  Section("Settings", subtitle = "for everyone") {
+  Section(t.users.settings, subtitle = t.users.settingsSubtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt("Sessions per user", size = 13.sp, weight = FontWeight.SemiBold)
-        InfoTip(
-          "How many running sessions one user may create and manage at once (0 to 20; 0: only Administrators create " +
-            "sessions). Administrators have no limit; the game servers' number applies to everyone."
-        )
+        Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
+        InfoTip(t.users.sessionsPerUserTip)
         FilterField(perUser, { perUser = it; state = null }, "1", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
-        Button("Save", enabled = value != null && value != saved?.sessionsPerUser) {
+        Button(t.common.save, enabled = value != null && value != saved?.sessionsPerUser) {
           scope.launch {
             val settings = AppSettings(value!!)
             state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), settings)) { }) {
-              is Answer.Ok -> { saved = settings; true to "Saved." }
+              is Answer.Ok -> { saved = settings; true to t.users.saved }
               is Answer.Failed -> false to r.message
             }
           }
         }
       }
-      if (value == null && perUser.isNotBlank()) Txt("0 to 20", size = 12.5.sp, color = p.trap)
+      if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
       state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
     }
   }

@@ -94,83 +94,11 @@ import net.eratiem.randogeddon.shared.YamlWorld
 private val RELEASE_MODES = listOf("auto", "enabled", "disabled", "goal", "auto-enabled")
 private val REMAINING_MODES = listOf("enabled", "disabled", "goal")
 
-/** What each option of a new session does, for its info tip. */
-internal object Tips {
-  const val PLAYERS = "Who plays this slot. A slot with several players is played together: they share it and its " +
-    "slot password. Someone without an account: type their e-mail address to invite them."
-  const val INVITE = "An invitation mail with a link, valid for 7 days: they choose their name and password themselves. " +
-    "The name you give is only a suggestion; until they sign up, sessions show them by it."
-  const val LOCKS = "A locked slot can't be played until its key is found, somewhere in another slot (World Locks). " +
-    "At least one slot starts open."
-  val LOCK_MODES = listOf(
-    "Choose" to "Tick \"starts locked\" for each slot that waits for its key.",
-    "Random" to "The given number of slots, picked at random, start open; all others start locked.",
-    "Mixed" to "Each slot starts open, starts locked, or is left to chance (its switch: left, right, middle). The " +
-      "slider says how many slots start open in all.",
-  )
-  const val OPEN_SLOTS = "How many slots start open in all; at least one. Which of the slots left to chance is " +
-    "picked at random when the session is generated."
-  const val STARTS_LOCKED = "This slot waits for its key, which lies somewhere in another slot."
-  const val LAST_OPEN = "The last slot that starts open: someone has to start, and the keys lie in the open slots."
-  const val LOCK_SWITCH = "Left: starts open. Middle: left to chance. Right: starts locked, as long as another slot " +
-    "can still start open."
-  const val POINT_HINTS = "Players buy hints with !hint in their client and pay with points they earn by checking " +
-    "locations. Off: !hint and !hint_location are refused; the server console can still give hints."
-  const val AUTO_HINTS = "Games may create hints by themselves, e.g. a shop that shows whose item it sells. Off: " +
-    "those only show the item to the game, no hint is made."
-  const val EARLY_KEYS = "The keys of the locked slots are placed early: somewhere reachable from the start, so " +
-    "the locked slots open soon instead of whenever the logic needs them."
-  const val HINT_COST = "What one hint costs, in % of the slot's locations. With 10 % and 200 locations a hint " +
-    "costs 20 points. 0: hints are free."
-  const val CHECK_POINTS = "Points a slot earns for each location it checks; hints are paid with them."
-  const val RELEASE = "When a slot's remaining items are sent to their owners."
-  val RELEASE_CHOICES = listOf(
-    "auto" to "By itself when the slot reaches its goal.",
-    "enabled" to "Any time, with !release.",
-    "disabled" to "Never; only its Session-Managers can, with a cheat.",
-    "goal" to "With !release, once the slot reached its goal.",
-    "auto-enabled" to "By itself at the goal, and any time with !release.",
-  )
-  const val COLLECT = "When a slot gets its own items that are still in other slots."
-  val COLLECT_CHOICES = listOf(
-    "auto" to "By itself when the slot reaches its goal.",
-    "enabled" to "Any time, with !collect.",
-    "disabled" to "Never; only its Session-Managers can, with a cheat.",
-    "goal" to "With !collect, once the slot reached its goal.",
-    "auto-enabled" to "By itself at the goal, and any time with !collect.",
-  )
-  const val REMAINING = "Whether a player may ask which of their items are still out there."
-  val REMAINING_CHOICES = listOf(
-    "enabled" to "Any time.",
-    "disabled" to "Never.",
-    "goal" to "Once the slot reached its goal.",
-  )
-  const val RELEASE_VERSION = "The Archipelago release that generates and serves this session; the session stays on " +
-    "it. Which games it has is listed under APWorlds."
-  const val CHEAT_HINTS = "Session-Managers may give free hints with the cheats (support always may). Every one is " +
-    "logged and shown in the live feed. Giving items and checks works without this."
-  const val SESSION_ID = "The session's name in the links, and its address for game clients (<ID>.<domain>). " +
-    "Lowercase letters, digits and -, starting with a letter; it can't be changed later."
-  const val DASHBOARD = "The session's dashboard as its players see it (slot passwords only for your own slots)."
-  const val PAUSE = "Pausing stops the game server: the session is read-only, the dashboard shows how far it got, " +
-    "and its players see the spoiler log. It can be reopened within 14 days."
-  const val END = "Every check is done. Ending stops the game server for good: the dashboard keeps showing how it " +
-    "ended, and its players see the spoiler log. A completed session can't be reopened. It also ends by itself 2 " +
-    "minutes after every slot is done."
-  const val REOPEN = "A finished session can be reopened within 14 days, unless it was completed (100 %): the game " +
-    "server serves it again, if one is free."
-  const val KEEP = "A finished session is deleted by itself some time after it finished (SESSION_RETENTION_DAYS, 90 by " +
-    "default). With its auto-deletion disabled it stays until it is deleted by hand; enabled again, the time counts " +
-    "from then."
-  const val SPOILER = "The spoiler log shows where every item of the seed is, and the playthrough sphere by sphere. " +
-    "Players see it once the session is finished."
-}
-
 /** How the locks of a new session are chosen. */
-private enum class LockMode(val label: String) { CHOOSE("Choose per slot"), RANDOM("Random"), MIXED("Mixed") }
+private enum class LockMode { CHOOSE, RANDOM, MIXED }
 
 /** A slot's lock with mixed locks: the switch's three stops, left to right. */
-private enum class LockChoice(val label: String) { OPEN("open"), RANDOM("random"), LOCKED("locked") }
+private enum class LockChoice { OPEN, RANDOM, LOCKED }
 
 /** POST without a body; the error message, or `null`. */
 private suspend fun post(path: String, body: String? = null): String? =
@@ -225,7 +153,7 @@ fun SessionSection(
   }
 
   val session = view?.session
-  Section("State and Control", subtitle = session?.let { sessionDetails(t, it) } ?: "…") {
+  Section(t.sessionAdmin.stateAndControl, subtitle = session?.let { sessionDetails(t, it) } ?: "…") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       val entry = overview?.sessions?.firstOrNull { it.id == id }
       Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -236,7 +164,7 @@ fun SessionSection(
       }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       when {
-        gone -> Txt("Deleted.", color = p.muted)
+        gone -> Txt(t.sessionAdmin.deleted, color = p.muted)
         session == null -> Txt("…", color = p.muted)
         else -> SessionSummary(
           session,
@@ -279,14 +207,14 @@ private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
     (call("GET", "api/sessions/$id/files", null) { ApiJson.decodeFromString(SlotFiles.serializer(), it) } as? Answer.Ok)
       ?.let { files = it.value.files }
   }
-  Section("Players", subtitle = "${players.size} players, ${worlds.size} slots") {
+  Section(t.dashboard.players, subtitle = t.sessionAdmin.playersSubtitle(players.size, worlds.size)) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (players.isEmpty() && nobody.isEmpty()) Txt("Nobody is named for its slots.", size = 13.sp, color = p.muted)
+      if (players.isEmpty() && nobody.isEmpty()) Txt(t.sessionAdmin.nobodyNamed, size = 13.sp, color = p.muted)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots, ids[name]) }
       }
       if (nobody.isNotEmpty()) {
-        Txt("Nobody plays", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+        Txt(t.sessionAdmin.nobodyPlays, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           nobody.forEach { Pill(it, p.muted) }
         }
@@ -294,15 +222,15 @@ private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
       if (files.isNotEmpty()) {
         Divider()
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          Txt("Files of the slots", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-          InfoTip("Each player downloads their own under Your connection; here every slot's. $PATCH_HOW_TO")
+          Txt(t.sessionAdmin.filesOfSlots, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}")
         }
         files.forEach { file ->
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(file.slotName ?: "slot ${file.slot}", p.hue(file.slotName ?: file.name))
+            Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
             Mono(file.name, p.text, Modifier.weight(1f))
             Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
-            SmallButton("Download", { Platform.download(slotFilePath(id, file.name)) })
+            SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
           }
         }
       }
@@ -340,14 +268,14 @@ fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Uni
   val t = LocalTexts.current
   val sessions = overview?.sessions.orEmpty().filter { it.status.running }
   Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    Txt("Session", size = ADMIN_HEADING, weight = FontWeight.Bold)
+    Txt(t.dashboard.session, size = ADMIN_HEADING, weight = FontWeight.Bold)
     SearchableSelect(
       sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(t, it)) },
       page?.takeIf { id -> sessions.any { it.id == id } }, { id -> id?.let(onPage) },
       Modifier.weight(1f), chip = false, heading = ADMIN_HEADING,
-      placeholder = if (overview != null && sessions.isEmpty()) "none running" else "pick one…",
+      placeholder = if (overview != null && sessions.isEmpty()) t.sessionAdmin.noneRunning else t.sessionAdmin.pickOne,
     )
-    PageButton("New session", page == NEW_PAGE) { onPage(NEW_PAGE) }
+    PageButton(t.sessionAdmin.newSession, page == NEW_PAGE) { onPage(NEW_PAGE) }
   }
 }
 
@@ -356,10 +284,7 @@ private fun stateLines(t: Texts, session: SessionEntry?, overview: AdminOverview
   val all = overview?.sessions.orEmpty()
   return listOfNotNull(
     session?.let { switchDetails(t, it) }?.replaceFirstChar { it.uppercase() },
-    overview?.let {
-      "${all.count { s -> s.status.running }} sessions running · ${it.inUse} of " +
-        "${it.capacity} game servers in use (a finished session doesn't take one)"
-    },
+    overview?.let { t.sessionAdmin.sessionsRunning(all.count { s -> s.status.running }, it.inUse, it.capacity) },
   )
 }
 
@@ -387,15 +312,15 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
   var pending by remember { mutableStateOf<Pair<String, String>?>(null) }
   var overview by remember { mutableStateOf<SessionEntry?>(null) }
   overview?.let { PastSessionOverview(it, onClose = { overview = null }) }
-  Section("Past sessions", subtitle = "deleted automatically after a while, unless that is disabled", actions = {
-    InfoTip(Tips.KEEP)
+  Section(t.sessionAdmin.pastSessions, subtitle = t.sessionAdmin.pastSubtitle, actions = {
+    InfoTip(t.tips.keep)
   }) {
     BoxWithConstraints(Modifier.fillMaxWidth().card(p).padding(16.dp)) {
       // A phone: the title, the details and the buttons one below the other
       val stacked = maxWidth < NARROW
       Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
-        if (sessions.isEmpty()) Txt("None yet.", size = 13.sp, color = p.muted)
+        if (sessions.isEmpty()) Txt(t.sessionAdmin.noneYet, size = 13.sp, color = p.muted)
         sessions.forEachIndexed { i, past ->
           if (i > 0) Divider()
           val seed = past.id
@@ -409,7 +334,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
                 }
                 Txt(
                   listOfNotNull(
-                    past.finishedAt?.let { "finished ${t.date(it)}" + (past.finishedBy?.let { by -> " by $by" } ?: "") },
+                    past.finishedAt?.let { t.sessionAdmin.finishedOn(t.date(it), past.finishedBy) },
                     "${t.decimal(past.percent)}%",
                     deletion(t, past.deletesAt, past.keep),
                   ).joinToString(" · "),
@@ -421,12 +346,12 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
           }
           val buttons: @Composable () -> Unit = {
             if (pending?.first != seed) {
-              if (reopenable(past.reopenUntil)) Tip(Tips.REOPEN) { SmallButton("Reopen", { onReopen(seed) }) }
-              Tip(Tips.SPOILER) { SmallButton("Spoiler log", { onSpoiler(seed) }) }
-              Tip(Tips.KEEP) {
-                SmallButton(if (past.keep) "Enable auto-deletion" else "Disable auto-deletion", { pending = seed to "keep" })
+              if (reopenable(past.reopenUntil)) Tip(t.tips.reopen) { SmallButton(t.sessionAdmin.reopen, { onReopen(seed) }) }
+              Tip(t.tips.spoiler) { SmallButton(t.finish.spoilerLog, { onSpoiler(seed) }) }
+              Tip(t.tips.keep) {
+                SmallButton(if (past.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = seed to "keep" })
               }
-              SmallButton("Delete", { pending = seed to "delete" })
+              SmallButton(t.sessionAdmin.delete, { pending = seed to "delete" })
             }
           }
           if (stacked) {
@@ -440,13 +365,12 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
           }
           when (pending?.takeIf { it.first == seed }?.second) {
             "delete" -> Confirm(
-              "Delete it for good? Its seed, save and history go; the logins stay.", "Yes, delete", danger = true,
+              t.sessionAdmin.confirmDeleteFinished, t.sessionAdmin.yesDelete, danger = true,
               onYes = { pending = null; onDelete(seed) }, onCancel = { pending = null },
             )
             "keep" -> Confirm(
-              if (past.keep) "Enable its auto-deletion again? Its time counts from now."
-              else "Disable its auto-deletion? It stays until it is deleted by hand.",
-              if (past.keep) "Yes, enable" else "Yes, disable", danger = false,
+              if (past.keep) t.sessionAdmin.confirmEnable else t.sessionAdmin.confirmDisable,
+              if (past.keep) t.sessionAdmin.yesEnable else t.sessionAdmin.yesDisable, danger = false,
               onYes = { pending = null; onKeep(seed, !past.keep) }, onCancel = { pending = null },
             )
           }
@@ -473,7 +397,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
         ) {
           Column(Modifier.weight(1f)) {
             Txt(past.id, size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
-            Txt("Seed ${past.seedName}", size = 12.5.sp, color = p.muted, maxLines = 1)
+            Txt(t.frame.seed(past.seedName), size = 12.5.sp, color = p.muted, maxLines = 1)
           }
           Txt("${t.decimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
           IconButton(onClose, Icon.CLOSE)
@@ -482,29 +406,28 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           ProgressBar((past.percent / 100).toFloat())
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Fact("Slots", "${past.slots}")
-            Fact("Goals", "${past.goals} / ${past.slots}", if (past.goals > 0) p.ok else p.text)
-            Fact("Players", "${past.players.size}")
+            Fact(t.dialogs.slots, "${past.slots}")
+            Fact(t.dialogs.goals, "${past.goals} / ${past.slots}", if (past.goals > 0) p.ok else p.text)
+            Fact(t.dashboard.players, "${past.players.size}")
           }
           val until = past.reopenUntil
           listOfNotNull(
-            past.createdAt?.let { "Created" to t.date(it) },
-            "Finished" to (past.finishedAt?.let { t.date(it) } ?: "not yet") +
-              (past.finishedBy?.let { " by $it" } ?: ", when every slot was done"),
-            "Reopen" to when {
-              until == null -> "not possible, it was completed"
-              reopenable(until) -> "possible until ${t.date(until)}"
-              else -> "no longer possible"
+            past.createdAt?.let { t.sessionAdmin.createdLabel to t.date(it) },
+            t.sessionAdmin.finishedLabel to t.sessionAdmin.finishedValue(past.finishedAt?.let { t.date(it) }, past.finishedBy),
+            t.sessionAdmin.reopenLabel to when {
+              until == null -> t.sessionAdmin.reopenNotPossible
+              reopenable(until) -> t.sessionAdmin.reopenPossibleUntil(t.date(until))
+              else -> t.sessionAdmin.reopenNoLonger
             },
-            "Deletion" to (deletion(t, past.deletesAt, past.keep) ?: "not automatic"),
+            t.sessionAdmin.deletionLabel to (deletion(t, past.deletesAt, past.keep) ?: t.sessionAdmin.notAutomatic),
           ).forEach { (label, value) ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
               Txt(label, size = 12.5.sp, color = p.muted, modifier = Modifier.width(72.dp))
               Txt(value, size = 13.sp, modifier = Modifier.weight(1f))
             }
           }
-          Txt("PLAYERS", size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-          if (past.players.isEmpty()) Txt("Nobody was named for its slots.", size = 13.sp, color = p.muted)
+          Txt(t.sessionAdmin.playersHeading, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          if (past.players.isEmpty()) Txt(t.sessionAdmin.nobodyWasNamed, size = 13.sp, color = p.muted)
           FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             past.players.forEach { name ->
               Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -523,17 +446,9 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
 private fun switchDetails(t: Texts, session: SessionEntry): String = listOfNotNull(
   t.sessions.status(session.status),
   "${t.decimal(session.percent)}%",
-  session.server?.status?.let {
-    when (it) {
-      GameServerStatus.RUNNING -> "server running"
-      GameServerStatus.STARTING -> "server starting"
-      GameServerStatus.CRASHED -> "server crashed"
-      GameServerStatus.STOPPED -> "server stopped"
-      GameServerStatus.NO_SEED -> "no seed"
-    }
-  },
-  session.online.takeIf { it > 0 }?.let { "$it online" },
-  session.finishedAt?.let { "finished ${t.date(it)}" },
+  session.server?.status?.let { t.sessionAdmin.server(it) },
+  session.online.takeIf { it > 0 }?.let { t.sessions.online(it) },
+  session.finishedAt?.let { t.sessions.finishedOn(t.date(it)) },
 ).joinToString(" · ")
 
 /** A button of the switch; the page that is shown is filled. */
@@ -560,6 +475,7 @@ private val RUNNING = setOf(GameServerStatus.STARTING, GameServerStatus.RUNNING,
 @Composable
 fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult) -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var id by remember { mutableStateOf<String?>(null) }
   var created by remember { mutableStateOf<CreateSessionResult?>(null) }
   // A new form (and a new suggestion) after each session
@@ -567,21 +483,21 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
   val suggested = overview?.suggestedId.orEmpty()
   val chosen = id ?: suggested
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
-  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen) ?: if (taken) "Taken" else null
+  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen) ?: if (taken) t.sessionAdmin.taken else null
   val full = overview != null && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
-  Section("New session", subtitle = "as many run at once as the gateway has game servers (${overview?.capacity ?: "…"})") {
+  Section(t.sessionAdmin.newSession, subtitle = t.sessionAdmin.newSessionSubtitle(overview?.capacity?.toString() ?: "…")) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       created?.let { result ->
         Created(result.locked, onDone = { created = null })
       }
-      if (full) Txt("Every game server is in use: finish or stop a session first.", size = 12.5.sp, color = p.trap)
-      if (atLimit) Txt("You manage as many running sessions as you may at once: finish one first.", size = 12.5.sp, color = p.trap)
-      overview?.left?.takeIf { it > 0 }?.let { Txt("You may create $it more running session${if (it == 1) "" else "s"}.", size = 12.5.sp, color = p.muted) }
+      if (full) Txt(t.sessionAdmin.everyServerInUse, size = 12.5.sp, color = p.trap)
+      if (atLimit) Txt(t.sessionAdmin.atLimit, size = 12.5.sp, color = p.trap)
+      overview?.left?.takeIf { it > 0 }?.let { Txt(t.sessionAdmin.mayCreate(it), size = 12.5.sp, color = p.muted) }
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt("Session ID", size = 13.sp, weight = FontWeight.SemiBold)
-        InfoTip(Tips.SESSION_ID)
+        Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
+        InfoTip(t.tips.sessionId)
         FilterField(chosen, { id = it.lowercase().trim() }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
         idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }
@@ -603,21 +519,21 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
 
 /** Archipelago release, when it was created, the main options: the session section's subtitle. */
 private fun sessionDetails(t: Texts, session: SessionInfo): String = listOfNotNull(
-  session.apVersion?.let { "Archipelago $it" } ?: "deployed with the CLI",
-  session.createdAt?.let { "created ${t.date(it)}" },
+  session.apVersion?.let { t.sessionAdmin.archipelagoVersion(it) } ?: t.sessionAdmin.deployedWithCli,
+  session.createdAt?.let { t.sessionAdmin.created(t.date(it)) },
   session.options?.let { o ->
     listOfNotNull(
-      if (o.pointHints) "point hints (${o.hintCost} %)" else null,
-      if (o.autoHints) "automatic hints" else null,
-      "release ${o.releaseMode}",
+      if (o.pointHints) t.sessionAdmin.pointHints(o.hintCost) else null,
+      if (o.autoHints) t.sessionAdmin.automaticHints else null,
+      t.sessionAdmin.releaseMode(o.releaseMode),
     ).joinToString(", ")
   },
 ).joinToString(" · ")
 
 /** When a finished session is deleted by itself, or that it isn't. */
 private fun deletion(t: Texts, deletesAt: Long?, keep: Boolean): String? = when {
-  keep -> "auto-deletion disabled"
-  deletesAt != null -> "deleted automatically on ${t.date(deletesAt)}"
+  keep -> t.sessionAdmin.autoDeletionDisabled
+  deletesAt != null -> t.sessionAdmin.deletedAutomaticallyOn(t.date(deletesAt))
   else -> null
 }
 
@@ -630,7 +546,7 @@ private fun Confirm(question: String, yes: String, danger: Boolean, onYes: () ->
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Txt(question, size = 13.sp, modifier = Modifier.weight(1f))
     Button(yes, danger = danger) { onYes() }
-    Button("Cancel") { onCancel() }
+    Button(LocalTexts.current.common.cancel) { onCancel() }
   }
 }
 
@@ -661,58 +577,56 @@ private fun SessionSummary(
   when {
     finishedAt != null -> Txt(
       listOfNotNull(
-        "${if (complete) "Ended" else "Paused"} ${t.date(finishedAt)}.",
+        t.sessionAdmin.finishedSentence(complete, t.date(finishedAt)),
         when {
-          until == null -> "It was completed, so it can't be reopened."
-          reopenable(until) -> "It can be reopened until ${t.date(until)}."
-          else -> "It was paused more than 14 days ago and can't be reopened any more."
+          until == null -> t.sessionAdmin.completedNoReopen
+          reopenable(until) -> t.sessionAdmin.reopenUntilSentence(t.date(until))
+          else -> t.sessionAdmin.pausedTooLong
         },
-        deletion(t, session.deletesAt, session.keep)?.let { "Once a newer session exists: ${it.replaceFirstChar { c -> c.lowercase() }}." },
+        deletion(t, session.deletesAt, session.keep)?.let { t.sessionAdmin.onceNewer(it) },
       ).joinToString(" "),
       size = 13.sp,
     )
-    finishesAt != null -> Txt("Every slot is done: it ends by itself at ${t.clock(finishesAt)}.", size = 13.sp)
+    finishesAt != null -> Txt(t.sessionAdmin.endsByItselfAt(t.clock(finishesAt)), size = 13.sp)
   }
   when (pending) {
     "finish" -> Confirm(
-      if (complete) "End it? The game server stops for good; a completed session can't be reopened."
-      else "Pause it? The game server stops; it can be reopened within 14 days.",
-      if (complete) "Yes, end it" else "Yes, pause it", danger = true,
+      if (complete) t.sessionAdmin.confirmEnd else t.sessionAdmin.confirmPause,
+      if (complete) t.sessionAdmin.yesEnd else t.sessionAdmin.yesPause, danger = true,
       onYes = { pending = null; onFinish() }, onCancel = { pending = null },
     )
     "spoiler" -> Confirm(
-      "A full spoiler: where every item of the running session is. Show it?", "Show it", danger = true,
+      t.sessionAdmin.confirmSpoiler, t.sessionAdmin.showIt, danger = true,
       onYes = { pending = null; onSpoiler() }, onCancel = { pending = null },
     )
     "delete" -> Confirm(
-      if (finishedAt != null) "Delete it for good? Its seed, save and history go; the logins stay."
-      else "Delete it? The game server stops; the seed and its save go to data/old. The logins stay.",
-      "Yes, delete", danger = true,
+      if (finishedAt != null) t.sessionAdmin.confirmDeleteFinished else t.sessionAdmin.confirmDeleteRunning,
+      t.sessionAdmin.yesDelete, danger = true,
       onYes = { pending = null; onDelete() }, onCancel = { pending = null },
     )
     "keep" -> Confirm(
-      if (session.keep) "Enable its auto-deletion again? Its time counts from now." else "Disable its auto-deletion? It stays until it is deleted by hand.",
-      if (session.keep) "Yes, enable" else "Yes, disable", danger = false,
+      if (session.keep) t.sessionAdmin.confirmEnable else t.sessionAdmin.confirmDisable,
+      if (session.keep) t.sessionAdmin.yesEnable else t.sessionAdmin.yesDisable, danger = false,
       onYes = { pending = null; onKeep(!session.keep) }, onCancel = { pending = null },
     )
     else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       when {
-        finishedAt != null -> if (reopenable(until)) Tip(Tips.REOPEN) { Button("Reopen") { onReopen() } }
+        finishedAt != null -> if (reopenable(until)) Tip(t.tips.reopen) { Button(t.sessionAdmin.reopen) { onReopen() } }
         finishesAt != null -> {
-          Tip(Tips.END) { Button("End now") { onFinish() } }
-          Button("Cancel") { onCancelFinish() }
+          Tip(t.tips.end) { Button(t.finish.endNow) { onFinish() } }
+          Button(t.common.cancel) { onCancelFinish() }
         }
-        else -> Tip(if (complete) Tips.END else Tips.PAUSE) {
-          Button(if (complete) "End session" else "Pause session") { pending = "finish" }
+        else -> Tip(if (complete) t.tips.end else t.tips.pause) {
+          Button(if (complete) t.sessionAdmin.endSession else t.sessionAdmin.pauseSession) { pending = "finish" }
         }
       }
-      Button("Delete session", danger = true) { pending = "delete" }
+      Button(t.sessionAdmin.deleteSession, danger = true) { pending = "delete" }
       Spacer(Modifier.weight(1f))
       if (finishedAt != null) {
-        Tip(Tips.KEEP) { SmallButton(if (session.keep) "Enable auto-deletion" else "Disable auto-deletion", { pending = "keep" }) }
+        Tip(t.tips.keep) { SmallButton(if (session.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = "keep" }) }
       }
-      Tip(Tips.DASHBOARD) { SmallButton("Dashboard", onDashboard) }
-      Tip(Tips.SPOILER) { SmallButton("Spoiler log…", { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
+      Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, onDashboard) }
+      Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
     }
   }
 }
@@ -721,6 +635,7 @@ private fun SessionSummary(
 @Composable
 private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, onCreated: (CreateSessionResult) -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
   var worlds by remember { mutableStateOf<List<YamlWorld>>(emptyList()) }
@@ -771,9 +686,9 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   // Another release may have other games
   LaunchedEffect(version) { if (yamls.isNotEmpty()) inspect() }
 
-  Txt("1. The YAMLs, one per slot", size = 13.sp, weight = FontWeight.SemiBold)
+  Txt(t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Button("Add YAMLs…") {
+    Button(t.sessionAdmin.addYamls) {
       Platform.pickFiles(".yaml,.yml") { json ->
         val picked = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
         // Choosing again adds files; one with the same name replaces the earlier one
@@ -782,13 +697,13 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         inspect()
       }
     }
-    if (yamls.isNotEmpty() && removing == null) Button("Clear all", danger = true) { removing = "" }
+    if (yamls.isNotEmpty() && removing == null) Button(t.sessionAdmin.clearAll, danger = true) { removing = "" }
   }
   // Asked once more: removing all of them right below their buttons, one of them below the YAMLs
   @Composable
   fun ConfirmRemoval(file: String) = Confirm(
-    if (file.isEmpty()) "Remove all ${yamls.size} YAMLs? The players and locks chosen so far go too." else "Remove $file?",
-    "Yes, remove", danger = true,
+    if (file.isEmpty()) t.sessionAdmin.removeAll(yamls.size) else t.sessionAdmin.removeFile(file),
+    t.apworlds.yesRemove, danger = true,
     onYes = {
       removing = null
       if (file.isEmpty()) yamls.clear() else yamls.removeAll { it.fileName == file }
@@ -809,12 +724,12 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     }
   }
   removing?.takeIf { it.isNotEmpty() }?.let { ConfirmRemoval(it) }
-  refused.forEach { Txt("Not added: $it", size = 12.5.sp, color = p.trap) }
+  refused.forEach { Txt(t.sessionAdmin.notAdded(it), size = 12.5.sp, color = p.trap) }
   problems.forEach { Txt(it, size = 12.5.sp, color = p.trap) }
   if (problems.any { it.startsWith("No APWorld for") }) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt("Upload the missing APWorlds below, then:", size = 12.5.sp, color = p.muted)
-      SmallButton("Check again", { inspect() })
+      Txt(t.sessionAdmin.uploadMissing, size = 12.5.sp, color = p.muted)
+      SmallButton(t.sessionAdmin.checkAgain, { inspect() })
     }
   }
 
@@ -860,17 +775,21 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     // A slot can be locked while another one can still start open
     val canLock = n - lockedNow.size > 1
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      Txt("2. Who plays which slot", size = 13.sp, weight = FontWeight.SemiBold)
-      InfoTip(Tips.PLAYERS)
+      Txt(t.sessionAdmin.stepPlayers, size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.tips.players)
     }
-    Txt(
-      "One slot per YAML. A slot can have several players (they play it together). New names get a login when the " +
-        "session is created.",
-      size = 12.sp, color = p.muted,
-    )
+    Txt(t.sessionAdmin.playersHint, size = 12.sp, color = p.muted)
     if (lockable) {
-      Labeled("Locks", Tips.LOCKS, Tips.LOCK_MODES) {
-        Select(LockMode.entries.map { it to it.label }, mode, { lockMode = it }, minHeight = FIELD_HEIGHT)
+      Labeled(t.sessionAdmin.locks, t.tips.locks, t.tips.lockModes) {
+        Select(
+          LockMode.entries.map {
+            it to when (it) {
+              LockMode.CHOOSE -> t.sessionAdmin.lockChoose
+              LockMode.RANDOM -> t.sessionAdmin.lockRandom
+              LockMode.MIXED -> t.sessionAdmin.lockMixed
+            }
+          },
+          mode, { lockMode = it }, minHeight = FIELD_HEIGHT)
       }
       // On a line of its own: room for the slider on a phone
       if (open != null && openRange != null) {
@@ -878,8 +797,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
           Modifier.widthIn(max = 480.dp).fillMaxWidth().heightIn(min = FIELD_HEIGHT),
           verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          Txt("Start open", size = 12.5.sp, color = p.muted, maxLines = 1)
-          InfoTip(Tips.OPEN_SLOTS)
+          Txt(t.sessionAdmin.startOpen, size = 12.5.sp, color = p.muted, maxLines = 1)
+          InfoTip(t.tips.openSlots)
           if (openRange.first < openRange.last) {
             // The slider's own ends, then what it is set to
             Txt("${openRange.first}", size = 12.sp, color = p.muted, maxLines = 1)
@@ -888,7 +807,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
           } else {
             Spacer(Modifier.weight(1f))
           }
-          Txt("$open of $n slots", size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+          Txt(t.sessionAdmin.openOf(open, n), size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
         }
       }
     }
@@ -907,7 +826,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
             // The last open slot stays open
             LockMode.CHOOSE -> if (lockable) {
               val enabled = isLocked || canLock
-              Check("starts locked", isLocked, if (enabled) Tips.STARTS_LOCKED else Tips.LAST_OPEN, enabled = enabled) {
+              Check(t.sessionAdmin.startsLocked, isLocked, if (enabled) t.tips.startsLocked else t.tips.lastOpen, enabled = enabled) {
                 locked[world.name] = it
               }
             }
@@ -919,36 +838,36 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
       )
     }
 
-    Txt("3. Options", size = 13.sp, weight = FontWeight.SemiBold)
+    Txt(t.sessionAdmin.stepOptions, size = 13.sp, weight = FontWeight.SemiBold)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Check("Point hints", options.pointHints, Tips.POINT_HINTS) { options = options.copy(pointHints = it) }
-      Check("Automatic hints", options.autoHints, Tips.AUTO_HINTS) { options = options.copy(autoHints = it) }
+      Check(t.sessionAdmin.pointHintsCheck, options.pointHints, t.tips.pointHints) { options = options.copy(pointHints = it) }
+      Check(t.sessionAdmin.automaticHintsCheck, options.autoHints, t.tips.autoHints) { options = options.copy(autoHints = it) }
       if (pool > 0 || lockedNow.isNotEmpty()) {
-        Check("Keys early", options.earlyKeys, Tips.EARLY_KEYS) { options = options.copy(earlyKeys = it) }
+        Check(t.sessionAdmin.keysEarly, options.earlyKeys, t.tips.earlyKeys) { options = options.copy(earlyKeys = it) }
       }
-      Check("Cheat hints", options.cheatHints, Tips.CHEAT_HINTS) { options = options.copy(cheatHints = it) }
+      Check(t.sessionAdmin.cheatHints, options.cheatHints, t.tips.cheatHints) { options = options.copy(cheatHints = it) }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       if (options.pointHints) {
-        NumberField("Hint cost %", options.hintCost, Tips.HINT_COST) { options = options.copy(hintCost = it) }
-        NumberField("Points per check", options.locationCheckPoints, Tips.CHECK_POINTS) { options = options.copy(locationCheckPoints = it) }
+        NumberField(t.sessionAdmin.hintCost, options.hintCost, t.tips.hintCost) { options = options.copy(hintCost = it) }
+        NumberField(t.sessionAdmin.pointsPerCheck, options.locationCheckPoints, t.tips.checkPoints) { options = options.copy(locationCheckPoints = it) }
       }
-      Labeled("Release", Tips.RELEASE, Tips.RELEASE_CHOICES) { Select(RELEASE_MODES.map { it to it }, options.releaseMode, { options = options.copy(releaseMode = it) }, minHeight = FIELD_HEIGHT) }
-      Labeled("Collect", Tips.COLLECT, Tips.COLLECT_CHOICES) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }, minHeight = FIELD_HEIGHT) }
-      Labeled("Remaining", Tips.REMAINING, Tips.REMAINING_CHOICES) { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }, minHeight = FIELD_HEIGHT) }
+      Labeled(t.sessionAdmin.release, t.tips.release, t.tips.releaseChoices) { Select(RELEASE_MODES.map { it to it }, options.releaseMode, { options = options.copy(releaseMode = it) }, minHeight = FIELD_HEIGHT) }
+      Labeled(t.sessionAdmin.collect, t.tips.collect, t.tips.collectChoices) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }, minHeight = FIELD_HEIGHT) }
+      Labeled(t.sessionAdmin.remaining, t.tips.remaining, t.tips.remainingChoices) { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }, minHeight = FIELD_HEIGHT) }
       when {
-        view.apVersions.size > 1 -> Labeled("Archipelago", Tips.RELEASE_VERSION) {
+        view.apVersions.size > 1 -> Labeled(t.sessionAdmin.archipelago, t.tips.releaseVersion) {
           Select(view.apVersions.map { it to it }, version ?: "", { version = it }, minHeight = FIELD_HEIGHT)
         }
-        version != null -> Labeled("Archipelago $version", Tips.RELEASE_VERSION) {}
+        version != null -> Labeled(t.sessionAdmin.archipelagoVersion(version.orEmpty()), t.tips.releaseVersion) {}
       }
     }
-    if (view.apVersions.isEmpty()) Txt("The gateway reports no Archipelago release.", size = 12.5.sp, color = p.trap)
+    if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
-        if (busy) "Generating…" else "Generate and start",
+        if (busy) t.sessionAdmin.generating else t.sessionAdmin.generateAndStart,
         enabled = ready && !busy && problems.isEmpty() && view.apVersions.isNotEmpty() && openOk,
       ) {
         busy = true
@@ -974,7 +893,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
           busy = false
         }
       }
-      if (busy) Txt("Archipelago generates the seed; that can take a minute.", size = 12.5.sp, color = p.muted)
+      if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
     }
     error?.let { GenerationError(it) }
   }
@@ -1010,6 +929,7 @@ private fun WorldRow(
   onUsers: (List<String>) -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   var input by remember { mutableStateOf("") }
   var inviting by remember { mutableStateOf(false) }
@@ -1037,7 +957,7 @@ private fun WorldRow(
           UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
         }
         FilterField(
-          input, { input = it }, if (users.isEmpty()) "Add a player…" else "Add another…",
+          input, { input = it }, if (users.isEmpty()) t.sessionAdmin.addPlayer else t.sessionAdmin.addAnother,
           Modifier.width(170.dp).onPreviewKeyEvent { event ->
             val enter = event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)
             if (enter) suggestions.firstOrNull()?.takeIf { input.isNotBlank() }?.let(::add)
@@ -1051,14 +971,14 @@ private fun WorldRow(
         when {
           suggestions.isNotEmpty() ->
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { suggestions.forEach { SmallButton(it.label, { add(it) }) } }
-          EmailAddresses.valid(address) -> SmallButton(if (inviting) "Inviting…" else "Invite $address", {
+          EmailAddresses.valid(address) -> SmallButton(if (inviting) t.sessionAdmin.inviting else t.sessionAdmin.inviteAddress(address), {
             if (!inviting) scope.launch {
               inviting = true
               onInvite(address)?.let(::add)
               inviting = false
             }
           })
-          else -> Txt("No account matches; type their e-mail address to invite them", size = 12.sp, color = p.muted)
+          else -> Txt(t.sessionAdmin.noAccountMatches, size = 12.sp, color = p.muted)
         }
       }
     }
@@ -1091,7 +1011,7 @@ private fun UserChip(name: String, invited: Boolean, onRemove: () -> Unit) {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    Txt(name + if (invited) " (invited)" else "", size = 12.5.sp, weight = FontWeight.SemiBold, color = p.hue(name), maxLines = 1)
+    Txt(if (invited) LocalTexts.current.sessionAdmin.invitedName(name) else name, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.hue(name), maxLines = 1)
     Box(Modifier.size(18.dp).clip(CircleShape).hand().clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
       DrawnIcon(Icon.CLOSE, p.hue(name), 10.dp)
     }
@@ -1106,9 +1026,10 @@ private fun Created(locked: List<String>, onDone: () -> Unit) {
     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.ok.copy(alpha = 0.1f)).padding(12.dp),
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    Txt("Session created; the game server is starting.", size = 13.sp, weight = FontWeight.SemiBold)
-    if (locked.isNotEmpty()) Txt("Start locked: ${locked.joinToString(", ")}", size = 12.5.sp)
-    Row { Button("Done") { onDone() } }
+    val texts = LocalTexts.current.sessionAdmin
+    Txt(texts.sessionCreated, size = 13.sp, weight = FontWeight.SemiBold)
+    if (locked.isNotEmpty()) Txt(texts.startLocked(locked.joinToString(", ")), size = 12.5.sp)
+    Row { Button(texts.done) { onDone() } }
   }
 }
 
@@ -1119,6 +1040,7 @@ private fun Created(locked: List<String>, onDone: () -> Unit) {
 @Composable
 private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (LockChoice) -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val current by rememberUpdatedState(choice)
   val change by rememberUpdatedState(onChange)
   val color = when (choice) {
@@ -1127,9 +1049,16 @@ private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (Lock
     LockChoice.LOCKED -> p.locked
   }
   val position by animateFloatAsState(choice.ordinal / 2f, tween(160))
-  Tip(Tips.LOCK_SWITCH) {
+  Tip(t.tips.lockSwitch) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt(choice.label, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
+      Txt(
+        when (choice) {
+          LockChoice.OPEN -> t.sessionAdmin.lockOpen
+          LockChoice.RANDOM -> t.sessionAdmin.lockChance
+          LockChoice.LOCKED -> t.sessionAdmin.lockLocked
+        },
+        size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1,
+      )
       BoxWithConstraints(
         Modifier.width(78.dp).height(28.dp).clip(CircleShape).background(color.copy(alpha = 0.16f))
           .border(1.dp, color.copy(alpha = 0.5f), CircleShape).hand()

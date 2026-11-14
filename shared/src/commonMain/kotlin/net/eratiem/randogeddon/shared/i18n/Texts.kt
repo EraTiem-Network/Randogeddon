@@ -17,6 +17,20 @@ interface Texts {
   val frame: FrameTexts
   val sessions: SessionListTexts
   val account: AccountTexts
+  val dashboard: DashboardTexts
+  val feed: FeedTexts
+  val finish: FinishTexts
+  val dialogs: DialogTexts
+  val connection: ConnectionTexts
+  val people: PeopleTexts
+  val watch: WatchTexts
+  val spoiler: SpoilerTexts
+  val panel: PanelTexts
+  val cheats: CheatTexts
+  val apworlds: ApworldTexts
+  val users: UserAdminTexts
+  val sessionAdmin: SessionAdminTexts
+  val tips: SessionTips
 }
 
 /** How numbers and times are written; the functions using them are in `Formatting.kt`. */

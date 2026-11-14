@@ -40,12 +40,29 @@ class TextsTest {
             val text = method.invoke(instance, *args) as String
             val where = "${language.label} ${group.name}.${method.name}"
             assertTrue(text.isNotBlank(), "$where is empty")
-            // A text whose words depend on a yes/no may leave a number out (`free hints` for 0 %); names never
-            val checkNumbers = method.parameterTypes.none { it == Boolean::class.javaPrimitiveType }
-            args.filter { it is String || (checkNumbers && (it is Int || it is Long)) }.forEach {
+            // A text whose words depend on a yes/no may leave a number out (`free hints` for 0 %), one that depends on a
+            // kind of thing a value too (a cheat's release has no item); otherwise every value is in it
+            val byKind = method.parameterTypes.any { it.isEnum }
+            val checkNumbers = !byKind && method.parameterTypes.none { it == Boolean::class.javaPrimitiveType }
+            args.filter { (it is String && !byKind) || (checkNumbers && (it is Int || it is Long)) }.forEach {
               assertTrue(it.toString() in text, "$where drops $it: $text")
             }
           }
+        }
+      }
+    }
+  }
+
+  @Test
+  fun `every template has the same marks in every language`() {
+    val marks = Regex("""\{(\w+)\}""")
+    for (group in groups) {
+      for (method in group.returnType.methods.filter { it.parameterCount == 0 && it.returnType == String::class.java }) {
+        val english = method.invoke(group.groupOf(English)) as String
+        val expected = marks.findAll(english).map { it.value }.sorted().toList()
+        for (language in Language.entries) {
+          val text = method.invoke(group.groupOf(texts(language))) as String
+          assertEquals(expected, marks.findAll(text).map { it.value }.sorted().toList(), "${language.label} ${group.name}.${method.name}: $text")
         }
       }
     }
