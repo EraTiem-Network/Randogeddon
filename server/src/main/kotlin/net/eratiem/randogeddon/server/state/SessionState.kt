@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.state
 
+import net.eratiem.randogeddon.shared.CheatAction
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -413,8 +414,20 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /** An admin cheated from the admin panel: a feed line saying who and what ([message], e.g. "Alice gave …"). */
-  fun onCheat(message: String, now: Long = clock()) {
-    events.addLast(event(now, EventType.CHEAT, message = message, cheat = true))
+  fun onCheat(
+    message: String,
+    action: CheatAction? = null,
+    by: String? = null,
+    role: String? = null,
+    slot: String? = null,
+    value: String? = null,
+    now: Long = clock(),
+  ) {
+    events.addLast(
+      event(now, EventType.CHEAT, message = message, cheat = true).copy(
+        cheatAction = action, cheatBy = by, cheatRole = role, cheatSlot = slot, cheatValue = value,
+      )
+    )
     while (events.size > MAX_EVENTS) events.removeFirst()
     touch()
   }
@@ -473,9 +486,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       }
     }
     val hint = hints.values.firstOrNull { it.receivingPlayer in lockSlots() && itemName(it.item, it.receivingPlayer) == key }
+    val location = hint?.let { locationName(it.location, it.findingPlayer) }
+    val slot = hint?.let { playerName(it.findingPlayer) }
     return LockInfo(
-      key, unlocked = false,
-      hintedAt = hint?.let { "${locationName(it.location, it.findingPlayer)} (in ${playerName(it.findingPlayer)})" },
+      key, unlocked = false, hintedAt = hint?.let { "$location (in $slot)" }, hintLocation = location, hintSlot = slot,
     )
   }
 

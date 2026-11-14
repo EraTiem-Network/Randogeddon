@@ -99,8 +99,7 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
     return when {
       result == null -> common.serverUnreachable
       result.status in 200..299 -> null
-      else -> runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }
-        .getOrDefault(common.failed(result.status))
+      else -> texts(Languages.current).wordError(result.body) ?: common.failed(result.status)
     }
   }
 

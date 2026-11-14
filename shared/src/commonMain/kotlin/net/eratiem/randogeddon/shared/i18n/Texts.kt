@@ -31,6 +31,8 @@ interface Texts {
   val users: UserAdminTexts
   val sessionAdmin: SessionAdminTexts
   val tips: SessionTips
+  val problems: ProblemTexts
+  val mails: MailTexts
 }
 
 /** How numbers and times are written; the functions using them are in `Formatting.kt`. */

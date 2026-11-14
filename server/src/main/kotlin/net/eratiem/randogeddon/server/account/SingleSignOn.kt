@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.english
 import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
@@ -28,7 +31,9 @@ object LoginMethods {
 }
 
 /** A login through the provider that isn't for this app: why, as the person reads it. */
-class SsoRefused(message: String) : Exception(message)
+class SsoRefused(val refusal: Refusal) : Exception(refusal.english()) {
+  constructor(problem: Problem, vararg args: Pair<String, Any?>) : this(Refusal.of(problem, *args))
+}
 
 /** What a login through the provider means for the accounts. */
 internal sealed interface SsoAccount {
@@ -42,10 +47,9 @@ internal sealed interface SsoAccount {
   data class New(val name: String) : SsoAccount
 
   /** Not for them: [demote] an account that was an Administrator and isn't one in the provider any more. */
-  data class Refused(val reason: String, val demote: User? = null) : SsoAccount
+  data class Refused(val reason: Problem, val demote: User? = null) : SsoAccount
 }
 
-internal const val NOT_AN_ADMINISTRATOR = "Only Randogeddon's Administrators log in this way; players log in with their name and password"
 
 /**
  * Who [identity] is here: only members of [adminGroup] get in this way; their account by the provider's subject
@@ -56,8 +60,8 @@ internal fun ssoAccount(identity: OidcIdentity, adminGroup: String, linked: User
   val member = adminGroup in identity.groups
   return when {
     linked != null && member -> SsoAccount.Linked(linked)
-    linked != null -> SsoAccount.Refused(NOT_AN_ADMINISTRATOR, demote = linked.takeIf { it.administrator })
-    !member -> SsoAccount.Refused(NOT_AN_ADMINISTRATOR)
+    linked != null -> SsoAccount.Refused(Problem.SSO_NOT_ADMINISTRATOR, demote = linked.takeIf { it.administrator })
+    !member -> SsoAccount.Refused(Problem.SSO_NOT_ADMINISTRATOR)
     byEmail != null && identity.emailVerified -> SsoAccount.ByEmail(byEmail)
     else -> SsoAccount.New(wantedName(identity))
   }
@@ -105,7 +109,7 @@ class SingleSignOn(
 
   /** Starts a login: its `state` (for the cookie) and the provider's page to go to. */
   suspend fun start(now: Long = System.currentTimeMillis()): Pair<String, String> {
-    val oidc = client ?: throw SsoRefused("No single sign-on here")
+    val oidc = client ?: throw SsoRefused(Problem.NO_SSO)
     pending.entries.removeIf { it.value.expiresAt <= now }
     val state = newToken()
     val login = Pending(newToken(), newToken(), now + PENDING.inWholeMilliseconds)
@@ -115,13 +119,13 @@ class SingleSignOn(
 
   /** Finishes the login of [state] with the callback's [code]: the account to log in, an Administrator. */
   suspend fun finish(state: String, code: String, now: Long = System.currentTimeMillis()): User {
-    val oidc = client ?: throw SsoRefused("No single sign-on here")
-    val login = pending.remove(state)?.takeIf { it.expiresAt > now } ?: throw SsoRefused("The login has expired: start it again")
+    val oidc = client ?: throw SsoRefused(Problem.NO_SSO)
+    val login = pending.remove(state)?.takeIf { it.expiresAt > now } ?: throw SsoRefused(Problem.SSO_EXPIRED)
     val identity = try {
       oidc.identity(code, login.nonce, login.verifier)
     } catch (e: OidcProblem) {
       logger.warn("A login through {} was refused: {}", config.oidc?.name, e.message)
-      throw SsoRefused("The login didn't work: start it again")
+      throw SsoRefused(Problem.SSO_FAILED)
     }
     val group = config.oidc!!.adminGroup
     val linked = users.findBySubject(identity.subject)
@@ -129,7 +133,7 @@ class SingleSignOn(
     val user = when (val decision = ssoAccount(identity, group, linked, byEmail)) {
       is SsoAccount.Linked -> decision.user
       is SsoAccount.ByEmail -> {
-        if (!users.linkSubject(decision.user.id, identity.subject)) throw SsoRefused("${decision.user.name} is linked to another login")
+        if (!users.linkSubject(decision.user.id, identity.subject)) throw SsoRefused(Problem.SSO_LINKED_ELSEWHERE, "name" to decision.user.name)
         logger.info("{} is linked to {} now", decision.user.name, config.oidc?.name)
         decision.user
       }
@@ -147,7 +151,7 @@ class SingleSignOn(
           users.setAdmin(it.id, false)
           logger.info("{} is no Administrator any more (not in {})", it.name, group)
         }
-        throw SsoRefused(decision.reason)
+        throw SsoRefused(Refusal(decision.reason))
       }
     }
     if (!user.administrator) users.setAdmin(user.id, true)

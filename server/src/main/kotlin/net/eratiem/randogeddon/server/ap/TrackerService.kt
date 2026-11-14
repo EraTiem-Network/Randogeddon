@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.ap
 
+import net.eratiem.randogeddon.shared.CheatAction
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -69,7 +70,9 @@ class TrackerService(
 
   /** Why the tracker is not connected, for the dashboard; `null` while connected. */
   @Volatile
+  /** What the connection said last time it failed; [lastErrorRefused]: the game server turned the tracker away. */
   var lastError: String? = null
+  var lastErrorRefused: Boolean = false
     private set
 
   private val http = HttpClient(CIO) {
@@ -106,9 +109,9 @@ class TrackerService(
       } catch (e: CancellationException) {
         throw e
       } catch (e: ConnectionRefused) {
-        error("server refused the connection: ${e.message}")
+        error(e.message.orEmpty(), refused = true)
       } catch (e: Exception) {
-        error("connection problem: ${e.message ?: e::class.simpleName}")
+        error(e.message ?: e::class.simpleName.orEmpty(), refused = false)
       }
       update { onConnectionLost() }
       delay(backoff.seconds)
@@ -130,16 +133,19 @@ class TrackerService(
   suspend fun saveNow() = mutex.withLock { save() }
 
   /** A cheat from the admin panel, for the live feed. */
-  suspend fun cheat(message: String) = update { onCheat(message) }
+  /** A cheat for the live feed: [message] in English, and its parts. */
+  suspend fun cheat(message: String, action: CheatAction, by: String, role: String, slot: String, value: String?) =
+    update { onCheat(message, action, by, role, slot, value) }
 
   fun close() {
     http.close()
     save()
   }
 
-  private fun error(message: String) {
-    if (message != lastError) logger.warn(message)
-    lastError = message
+  private fun error(detail: String, refused: Boolean) {
+    if (detail != lastError) logger.warn(if (refused) "server refused the connection: {}" else "connection problem: {}", detail)
+    lastError = detail
+    lastErrorRefused = refused
   }
 
   private fun slotNames(): List<String> = Room.read(roomJson)?.players.orEmpty().map { it.name }

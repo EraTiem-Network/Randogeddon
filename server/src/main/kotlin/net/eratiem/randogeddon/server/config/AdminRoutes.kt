@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.AppSettings
@@ -64,7 +67,7 @@ fun Route.adminRoutes(
       put {
         val request = call.receive<AppSettings>()
         if (request.sessionsPerUser !in 0..MAX_SESSIONS_PER_USER) {
-          return@put call.respond(HttpStatusCode.BadRequest, ApiError("Sessions per user: 0 to $MAX_SESSIONS_PER_USER"))
+          return@put call.refuse(HttpStatusCode.BadRequest, Refusal.of(Problem.SESSIONS_PER_USER, "max" to MAX_SESSIONS_PER_USER))
         }
         settings.set(SESSIONS_PER_USER, request.sessionsPerUser.toString())
         logger.info("{} set the sessions per user to {}", call.loggedIn.user.name, request.sessionsPerUser)
@@ -76,7 +79,7 @@ fun Route.adminRoutes(
       get { gatewayCall { call.respond(gameServer.archipelago()) } }
       post {
         val upload = call.receive<ApworldUpload>()
-        if (upload.base64.length > MAX_APWORLD_BASE64) return@post call.respond(HttpStatusCode.PayloadTooLarge, ApiError("Larger than 64 MB"))
+        if (upload.base64.length > MAX_APWORLD_BASE64) return@post call.refuse(HttpStatusCode.PayloadTooLarge, Refusal(Problem.APWORLD_TOO_LARGE))
         logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.fileName, upload.release)
         gatewayCall { call.respond(gameServer.uploadApworld(upload)) }
       }
@@ -100,7 +103,7 @@ fun Route.adminRoutes(
 
 /** The session ID of the path; a [SessionProblem] (404) if it isn't one. */
 internal fun RoutingContext.id(): String =
-  call.parameters["id"]?.takeIf(SessionIds::valid) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session ${call.parameters["id"]}")
+  call.parameters["id"]?.takeIf(SessionIds::valid) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to call.parameters["id"])
 
 /**
  * Answers 502 with the reason when the gateway doesn't answer, and what's wrong with a session request (409, 400,
@@ -110,10 +113,10 @@ internal suspend fun RoutingContext.gatewayCall(block: suspend () -> Unit) {
   try {
     block()
   } catch (e: SessionProblem) {
-    call.respond(e.status, ApiError(e.message ?: "Not possible"))
+    call.refuse(e.status, e.refusal)
   } catch (e: GameServerUnavailable) {
     logger.warn("Game server control failed: {}", e.message)
-    call.respond(e.status, ApiError(e.message ?: "The gateway can't be reached"))
+    call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
   }
 }
 
@@ -185,7 +188,7 @@ fun Route.manageRoutes(
     gatewayCall {
       val id = id()
       if (action != "stop" && sessions.get(id)?.finished == true) {
-        throw SessionProblem(HttpStatusCode.Conflict, "The session is finished; reopen it to start the game server")
+        throw SessionProblem(HttpStatusCode.Conflict, Problem.REOPEN_TO_START)
       }
       logger.info("{} asked to {} the game server of {}", call.loggedIn.user.name, action, id)
       val state = gameServer.control(id, action!!)
@@ -195,12 +198,12 @@ fun Route.manageRoutes(
   }
   post("/command") {
     val line = call.receive<CommandRequest>().line.trim()
-    if (line.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("Empty command"))
+    if (line.isEmpty()) return@post call.refuse(HttpStatusCode.BadRequest, Refusal(Problem.EMPTY_COMMAND))
     gatewayCall {
       val id = id()
       logger.info("{} ran on the game server of {}: {}", call.loggedIn.user.name, id, line)
       if (gameServer.command(id, line)) call.respond(HttpStatusCode.NoContent)
-      else call.respond(HttpStatusCode.Conflict, ApiError("The game server isn't running"))
+      else call.refuse(HttpStatusCode.Conflict, Refusal(Problem.SERVER_NOT_RUNNING))
     }
   }
   // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway

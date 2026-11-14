@@ -7,6 +7,21 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 9: Multi-Language
 
+### 0.9.3: The server's words
+- Every refusal of the server is a code (`Problem`, in `:shared`) with its values: `ApiError` carries `code`, `args`
+  and, for what another program said (Generate.py, the gateway), `detail`. Its `message` is worded in the request's
+  language: the `ap-language` cookie (the app and the login page keep it), else `Accept-Language`, else English.
+  The web app words the code itself, so a change of the language applies at once. A test checks that every problem
+  has its words in every language, with the same values.
+- The name, password and session-ID rules (`UserNames`, `PasswordRules`, `SessionIds`) answer with a code too, and
+  so do a new session's YAML checks and a failed generation (its output stays as Generate.py wrote it).
+- The live feed's cheats come in their parts (`cheatAction`, `cheatBy`, `cheatRole`, `cheatSlot`, `cheatValue`) and
+  are worded by the web app; events from before keep their English sentence. A key's hint (`hintLocation`,
+  `hintSlot`) and the tracker's connection error (`errorRefused`) likewise.
+- The mails go out in the recipient's language: an invitation in the inviting person's, the address confirmation in
+  the requester's, the deletion warning in the account's (English without a choice; its date as the language writes
+  it).
+
 ### 0.9.2: Every page in English and German
 - The dashboard (overview, players, hints, live feed, the finish banner), *Your connection*, the person and slot
   overviews, the share link's page, the spoiler log, and the whole panel: the game server, its log and console, the

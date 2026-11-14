@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.session
 
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.UploadedYaml
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +39,9 @@ class PlayerYamlsTest {
         UploadedYaml("half.yaml", "name: Good\ngame: APQuest\n---\njust text"),
       )
     )
-    val problems = result.problems.joinToString("\n")
+    val problems = result.problems.joinToString("\n") { it.message }
+    val codes = result.problems.map { it.args["file"] to it.code }
+    assertTrue("notes.txt" to Problem.YAML_FILE in codes, problems)
     assertTrue("notes.txt: not a .yaml or .yml file" in problems, problems)
     assertEquals(
       setOf("broken.yaml", "noname.yaml", "locks.yaml", "empty.yaml", "notes.txt", "half.yaml"), result.invalid.toSet(),
@@ -50,5 +53,6 @@ class PlayerYamlsTest {
     assertTrue("2 slots are called Same" in problems, problems)
     assertTrue("World Locks" in problems, problems)
     assertTrue("empty.yaml: empty" in problems, problems)
+    assertTrue(result.problems.any { it.code == Problem.YAML_DUPLICATE && it.args["n"] == "2" }, problems)
   }
 }

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
@@ -65,7 +67,7 @@ class GameServerClient(private val config: TrackerConfig) {
     val response = request { http.post("${session(id)}/server/$action") { auth() } }
     if (response.status == HttpStatusCode.Conflict || response.status == HttpStatusCode.NotFound) {
       val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
-      throw SessionProblem(response.status, message ?: "The gateway answered ${response.status}")
+      throw SessionProblem(response.status, Refusal.of(Problem.GATEWAY_ANSWERED, "status" to response.status.value, detail = message))
     }
     if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
     return ApiJson.decodeFromString(GameServerState.serializer(), response.bodyAsText())
@@ -177,7 +179,7 @@ class GameServerClient(private val config: TrackerConfig) {
     val response = request(block)
     if (response.status == HttpStatusCode.BadRequest) {
       val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
-      throw SessionProblem(HttpStatusCode.BadRequest, message ?: "The gateway refused it")
+      throw SessionProblem(HttpStatusCode.BadRequest, Refusal(Problem.GATEWAY_REFUSED, detail = message))
     }
     if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
     return response.bodyAsText()

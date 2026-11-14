@@ -217,6 +217,8 @@
       function apply(code) {
         current = supported(code) || current;
         document.documentElement.lang = current;
+        // The server words its answers in it too (the forms' messages, the login's way back from Authentik)
+        document.cookie = "ap-language=" + current + "; path=/; max-age=31536000; SameSite=Lax";
         document.querySelectorAll("[data-t]").forEach(function (element) { element.textContent = t(element.dataset.t); });
         document.querySelectorAll("#login .languages a").forEach(function (link) {
           if (link.dataset.language === current) link.setAttribute("aria-current", "true");

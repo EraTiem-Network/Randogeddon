@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.text
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -74,7 +75,7 @@ fun UsersAdmin(onChanged: () -> Unit) {
       var email by remember { mutableStateOf("") }
       var name by remember { mutableStateOf("") }
       var state by remember { mutableStateOf<String?>(null) }
-      val nameProblem = name.trim().takeIf { it.isNotEmpty() }?.let(UserNames::problem)
+      val nameProblem = name.trim().takeIf { it.isNotEmpty() }?.let(UserNames::problem)?.let { LocalTexts.current.problems.text(it) }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterField(email, { email = it; state = null }, texts.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
         FilterField(name, { name = it; state = null }, texts.suggestedName, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
@@ -90,7 +91,7 @@ fun UsersAdmin(onChanged: () -> Unit) {
           InfoTip(LocalTexts.current.tips.invite)
         }
       }
-      (nameProblem?.let { texts.nameProblem(it) } ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
+      (nameProblem ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       list.forEach { user ->
         Divider()
