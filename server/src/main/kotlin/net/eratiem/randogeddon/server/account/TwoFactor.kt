@@ -17,11 +17,13 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /**
  * Two-factor login (TOTP): set up with a QR code, confirmed with a first code (then it counts, with 10 recovery
- * codes), checked at every login after the password. Admins can't turn it off; everyone else can, with a code.
+ * codes), checked at every login after the password. Admins can't turn it off without single sign-on (with it, they
+ * log in through the provider and its own two-factor check); everyone else can, with a code.
  */
 @Single
 class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
   private val box = SecretBox.from(config.totpKey, config.stateDir.resolve("totp.key"))
+  private val singleSignOn = config.oidc != null
 
   /** A new secret for [user]; it counts once [enable] confirms it. Refused while two-factor login is on. */
   suspend fun setUp(user: User): TotpSetup {
@@ -63,9 +65,9 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     return store.useStep(user.id, step)
   }
 
-  /** Off, after a code (not for admins: they need it). */
+  /** Off, after a code (not for admins without single sign-on: they need it). */
   suspend fun disable(user: User, code: String) {
-    if (user.administrator) throw AccountProblem(HttpStatusCode.Forbidden, "Admins need two-factor login")
+    if (user.administrator && !singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, "Admins need two-factor login")
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, "That code doesn't fit")
     store.disable(user.id)
     logger.info("{} turned two-factor login off", user.name)

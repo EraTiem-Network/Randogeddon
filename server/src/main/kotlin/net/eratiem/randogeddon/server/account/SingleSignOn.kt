@@ -8,6 +8,7 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.UserNames
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
@@ -156,12 +157,31 @@ class SingleSignOn(
   /** A one-time login link for [user] (the CLI), for [LOGIN_LINK_DURATION]. */
   suspend fun createLink(user: User, now: Instant = Instant.now()): String = createLoginLink(links, config.publicUrl, user, now)
 
+  /** Whether [authorization] (the request's header) carries the provider's deletion token; never without one. */
+  fun deletionAllowed(authorization: String?): Boolean =
+    bearerMatches(config.oidc?.deletionToken.orEmpty(), authorization)
+
+  /** The provider deleted the person with [subject]: the account linked to them goes too. `null`: none was. */
+  suspend fun deleted(subject: String, now: Instant = Instant.now()): User? {
+    val user = users.findBySubject(subject) ?: return null
+    users.delete(user.id, now)
+    logger.info("Deleted the account of {} ({} deleted the person)", user.name, config.oidc?.name)
+    return user
+  }
+
   /** The user of a login link, which works once; `null` if it doesn't (any more). */
   suspend fun useLink(token: String): User? = links.use(tokenHash(token))?.let { users.findActive(it) }
 
   companion object {
     fun callbackUrl(config: TrackerConfig) = "${config.publicUrl}/api/login/oidc/callback"
   }
+}
+
+/** Whether [authorization] is `Bearer <expected>` (compared in constant time); never for an empty [expected]. */
+internal fun bearerMatches(expected: String, authorization: String?): Boolean {
+  if (expected.isEmpty()) return false
+  val given = authorization?.removePrefix("Bearer ")?.takeIf { it != authorization } ?: return false
+  return MessageDigest.isEqual(expected.toByteArray(), given.toByteArray())
 }
 
 /** A one-time login link for [user]: `<publicUrl>/#/login/<token>`; only the token's SHA-256 is stored. */
