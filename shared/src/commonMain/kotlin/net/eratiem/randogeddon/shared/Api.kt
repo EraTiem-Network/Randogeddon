@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.shared
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import net.eratiem.randogeddon.shared.i18n.Language
 
 /** The JSON format of the API, shared so both sides agree on defaults and unknown keys. */
 val ApiJson: Json = Json {
@@ -311,6 +312,8 @@ data class Me(
   val administrator: Boolean = false,
   /** The sessions the user is a Session-Manager of. */
   val manages: List<String> = emptyList(),
+  /** The language they chose; `null`: their browser's. */
+  val language: Language? = null,
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */

@@ -20,6 +20,7 @@ import net.eratiem.randogeddon.shared.InvitationInfo
 import net.eratiem.randogeddon.shared.PasswordRules
 import net.eratiem.randogeddon.shared.SignupRequest
 import net.eratiem.randogeddon.shared.UserNames
+import net.eratiem.randogeddon.shared.i18n.Language
 import org.koin.core.annotation.Single
 import java.io.IOException
 import java.lang.invoke.MethodHandles
@@ -142,6 +143,7 @@ class AccountService(
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
       singleSignOn = config.oidc?.takeIf { user.administrator }?.name,
+      language = Language.of(user.language),
     )
   }
 
@@ -199,6 +201,9 @@ class AccountService(
     logger.info("An account's address is {} now", change.email)
     return change.email
   }
+
+  /** The language [user] reads the app in (and gets their mails in); `null`: their browser's. */
+  suspend fun setLanguage(user: User, language: Language?) = users.setLanguage(user.id, language?.code)
 
   suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) {
     config.oidc?.takeIf { user.administrator }?.let {

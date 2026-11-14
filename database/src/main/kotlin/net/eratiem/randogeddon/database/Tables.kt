@@ -27,6 +27,8 @@ object UsersTable : Table("users") {
   val totpLastStep = long("totp_last_step").nullable()
   /** The Authentik user (the ID token's `sub`) this account is linked to (V11). */
   val oidcSubject = varchar("oidc_subject", 255).nullable()
+  /** The language's code (`en`, `de`; V12); `null`: their browser's. */
+  val language = varchar("language", 8).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 

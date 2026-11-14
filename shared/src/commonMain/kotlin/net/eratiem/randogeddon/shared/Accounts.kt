@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.shared
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import net.eratiem.randogeddon.shared.i18n.Language
 
 /**
  * A user's name (the display name, and what they log in with besides their e-mail address): 3 to 32 characters, no
@@ -172,6 +173,8 @@ data class AccountView(
    * app's, and their account here goes when it deletes them, not by itself); `null` otherwise.
    */
   val singleSignOn: String? = null,
+  /** The language they chose; `null`: their browser's. */
+  val language: Language? = null,
 )
 
 /** `PUT /api/account/name`. */
@@ -181,6 +184,10 @@ data class NameRequest(val name: String)
 /** `PUT /api/account/password`: the current password, and the new one. The other logins end. */
 @Serializable
 data class PasswordChangeRequest(val current: String, val password: String)
+
+/** `PUT /api/account/language`: `null` follows the browser. */
+@Serializable
+data class LanguageRequest(val language: Language? = null)
 
 /** `PUT /api/account/auto-delete`. */
 @Serializable
