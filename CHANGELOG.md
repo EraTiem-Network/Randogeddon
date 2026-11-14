@@ -7,6 +7,17 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 9: Multi-Language
 
+### 0.9.2: Every page in English and German
+- The dashboard (overview, players, hints, live feed, the finish banner), *Your connection*, the person and slot
+  overviews, the share link's page, the spoiler log, and the whole panel: the game server, its log and console, the
+  session's state and actions, its people and watchers, cheats and support, past sessions, the new-session form with
+  every ⓘ, the APWorlds, the users and the settings.
+- The live feed's lines are templates (`{sender} sent {item} to {receiver}`), so German words them in its own order
+  with the names in their styles; a test checks that every language has the same marks in each.
+- Each area's texts sit in one file with both languages (`shared/…/i18n/*Texts.kt`).
+- Still in English: the server's own messages (refusals, errors) and the mails, which follow in 0.9.3; names from
+  Archipelago and its option values (`auto`, `enabled`, …) stay as they are.
+
 ### 0.9.1: The language setting
 - Randogeddon speaks English and German (with "du"). Every text comes from one place per language
   (`shared/…/i18n`: `Texts`, `English`, `German`), typed Kotlin: a text missing in a language, or one that drops a
