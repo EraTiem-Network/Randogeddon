@@ -51,6 +51,10 @@ actual object Platform {
 
   actual fun systemDarkMode(): Boolean = jsDarkMode()
 
+  actual fun onSystemDarkModeChange(onChange: (Boolean) -> Unit) = jsOnDarkModeChange(onChange)
+
+  actual fun setPageTheme(json: String) = jsSetPageTheme(json)
+
   actual fun touchScreen(): Boolean = jsTouchScreen()
 
   actual fun pageUrl(): String = jsPageUrl()
@@ -148,6 +152,12 @@ private fun jsOpenEvents(
 private fun jsCloseStream(source: JsAny): Unit = js("source.close()")
 
 private fun jsDarkMode(): Boolean = js("window.matchMedia('(prefers-color-scheme: dark)').matches")
+
+private fun jsOnDarkModeChange(onChange: (Boolean) -> Unit): Unit =
+  js("window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => onChange(e.matches))")
+
+// index.html applies it to its login form and keeps it (window.randogeddonTheme)
+private fun jsSetPageTheme(json: String): Unit = js("window.randogeddonTheme(json)")
 
 private fun jsTouchScreen(): Boolean = js("window.matchMedia('(pointer: coarse)').matches")
 

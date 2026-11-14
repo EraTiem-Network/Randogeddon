@@ -67,6 +67,15 @@ expect object Platform {
 
   fun systemDarkMode(): Boolean
 
+  /** Calls [onChange] whenever the device switches between light and dark. */
+  fun onSystemDarkModeChange(onChange: (Boolean) -> Unit)
+
+  /**
+   * Gives the page around the app the theme's colours: [json] has the mode and the light and dark colours of
+   * index.html's login form; it keeps them for the next visit (before the app has loaded).
+   */
+  fun setPageTheme(json: String)
+
   /** The main pointer is a finger (a phone or tablet), not a mouse. */
   fun touchScreen(): Boolean
 

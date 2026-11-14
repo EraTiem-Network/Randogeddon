@@ -2,13 +2,20 @@ package net.eratiem.randogeddon.webapp
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import net.eratiem.randogeddon.shared.ItemKind
+import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeColors
+import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.itemKind
+import net.eratiem.randogeddon.shared.palettes
 
-/** The dashboard's colours: calm surfaces, vivid accents (coral → violet brand gradient). */
+/** The page's colours: one palette of a theme (`:shared`'s [ThemeColors], as Compose colours). */
 data class Palette(
   val dark: Boolean,
   val background: Color,
@@ -19,6 +26,8 @@ data class Palette(
   val muted: Color,
   val brandStart: Color,
   val brandEnd: Color,
+  /** Text and icons on the brand gradient and the accent. */
+  val onBrand: Color,
   val progression: Color,
   val useful: Color,
   val trap: Color,
@@ -28,6 +37,9 @@ data class Palette(
   val locked: Color,
   val barBackground: Color,
   val shadow: Color,
+  /** The top card's state: connected, or not. */
+  val liveDot: Color,
+  val offlineDot: Color,
   /** Avatar and game chip colours; picked by a stable hash of the name. */
   val hues: List<Color>,
 ) {
@@ -45,38 +57,78 @@ data class Palette(
   fun hue(name: String): Color = hues[(name.fold(7) { h, c -> h * 31 + c.code } and Int.MAX_VALUE) % hues.size]
 }
 
-val LightPalette = Palette(
-  dark = false,
-  background = Color(0xFFF5F4FA), panel = Color(0xFFFFFFFF), panelAlt = Color(0xFFF7F6FC), border = Color(0xFFE7E4F0),
-  text = Color(0xFF1B1A2B), muted = Color(0xFF6C6A80),
-  brandStart = Color(0xFFFF7A45), brandEnd = Color(0xFF7C5CFF),
-  progression = Color(0xFF7C5CFF), useful = Color(0xFF2E90FA), trap = Color(0xFFF04438),
-  ok = Color(0xFF12B76A), warn = Color(0xFFF79009), key = Color(0xFFDC9A06), locked = Color(0xFF8A8AA3),
-  barBackground = Color(0xFFECE9F5), shadow = Color(0x1A2B2260),
-  hues = listOf(
-    Color(0xFFFF7A45), Color(0xFF7C5CFF), Color(0xFF12B76A), Color(0xFF2E90FA),
-    Color(0xFFE0409A), Color(0xFF0BA5EC), Color(0xFFF79009), Color(0xFF6172F3),
-  ),
+private fun c(argb: Long) = Color(argb.toInt())
+
+fun ThemeColors.palette() = Palette(
+  dark = dark, background = c(background), panel = c(panel), panelAlt = c(panelAlt), border = c(border),
+  text = c(text), muted = c(muted), brandStart = c(brandStart), brandEnd = c(brandEnd), onBrand = c(onBrand),
+  progression = c(progression), useful = c(useful), trap = c(trap), ok = c(ok), warn = c(warn), key = c(key),
+  locked = c(locked), barBackground = c(barBackground), shadow = c(shadow), liveDot = c(liveDot),
+  offlineDot = c(offlineDot), hues = hues.map(::c),
 )
 
-/** Near-black surfaces; the accents stay vivid. */
-val DarkPalette = Palette(
-  dark = true,
-  background = Color(0xFF07070C), panel = Color(0xFF101118), panelAlt = Color(0xFF171821), border = Color(0xFF22232F),
-  text = Color(0xFFE9E8F2), muted = Color(0xFF8D8BA3),
-  brandStart = Color(0xFFFF7A4D), brandEnd = Color(0xFF8E72FF),
-  progression = Color(0xFFA48FFF), useful = Color(0xFF53B1FD), trap = Color(0xFFF97066),
-  ok = Color(0xFF32D583), warn = Color(0xFFFDB022), key = Color(0xFFFAC515), locked = Color(0xFF8E8CA8),
-  barBackground = Color(0xFF22232F), shadow = Color(0x66000000),
-  hues = listOf(
-    Color(0xFFFF8A5C), Color(0xFF9B83FF), Color(0xFF32D583), Color(0xFF53B1FD),
-    Color(0xFFF670C7), Color(0xFF36BFFA), Color(0xFFFDB022), Color(0xFF8098F9),
-  ),
-)
+val LocalPalette = staticCompositionLocalOf { palettes(Theme.DEFAULT).first.palette() }
 
-val LocalPalette = staticCompositionLocalOf { LightPalette }
+private const val THEME_KEY = "ap-theme"
+
+/**
+ * Which theme and mode the app is in: the account's once someone is logged in ([apply]), else the one last used in
+ * this browser (`ap-theme`, `<theme>:<mode>`; the old `light` or `dark` is the default theme in it), else the
+ * default theme, automatic. Automatic follows the device's light/dark setting and switches with it. Whatever applies
+ * is remembered in the browser, and index.html's login page takes its colours (`ap-theme-css`).
+ */
+object Themes {
+  var theme: Theme by mutableStateOf(Theme.DEFAULT)
+    private set
+  var mode: ThemeMode by mutableStateOf(ThemeMode.DEFAULT)
+    private set
+  private var systemDark by mutableStateOf(Platform.systemDarkMode())
+
+  init {
+    val stored = Platform.loadSetting(THEME_KEY)
+    when (stored) {
+      "light" -> mode = ThemeMode.LIGHT
+      "dark" -> mode = ThemeMode.DARK
+      else -> stored?.split(':')?.let { parts ->
+        theme = Theme.of(parts.getOrNull(0)) ?: Theme.DEFAULT
+        mode = ThemeMode.of(parts.getOrNull(1)) ?: ThemeMode.DEFAULT
+      }
+    }
+    Platform.onSystemDarkModeChange { systemDark = it; tellPage() }
+  }
+
+  /** The palette that shows now. */
+  val palette: Palette
+    get() {
+      val (light, dark) = palettes(theme)
+      val isDark = when (mode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.AUTO -> systemDark
+      }
+      return (if (isDark) dark else light).palette()
+    }
+
+  /** Applies [theme] and [mode] (`null`: the default theme, automatic). */
+  fun apply(theme: Theme?, mode: ThemeMode?) {
+    this.theme = theme ?: Theme.DEFAULT
+    this.mode = mode ?: ThemeMode.DEFAULT
+    Platform.saveSetting(THEME_KEY, "${this.theme.code}:${this.mode.code}")
+    tellPage()
+  }
+
+  /** The page around the app (index.html's login form, the browser's bar colour) in the theme's colours. */
+  fun tellPage() {
+    val (light, dark) = palettes(theme)
+    fun css(p: ThemeColors) = listOf(
+      "bg" to p.background, "panel" to p.panel, "border" to p.border, "text" to p.text, "muted" to p.muted,
+      "accent" to p.brandEnd, "brand" to p.brandStart, "error" to p.trap, "on-brand" to p.onBrand,
+    ).joinToString(",") { (name, v) -> "\"$name\":\"#${(v and 0xFFFFFF).toString(16).padStart(6, '0')}\"" }
+    Platform.setPageTheme("{\"mode\":\"${mode.code}\",\"light\":{${css(light)}},\"dark\":{${css(dark)}}}")
+  }
+}
 
 @Composable
-fun RandogeddonTheme(dark: Boolean, content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalPalette provides if (dark) DarkPalette else LightPalette, content = content)
+fun RandogeddonTheme(palette: Palette, content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalPalette provides palette, content = content)
 }

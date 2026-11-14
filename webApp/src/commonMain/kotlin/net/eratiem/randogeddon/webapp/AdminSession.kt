@@ -460,7 +460,7 @@ private fun PageButton(text: String, active: Boolean, onClick: () -> Unit) {
   val p = LocalPalette.current
   Txt(
     text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (active) Color.White else p.accent,
+    color = if (active) p.onBrand else p.accent,
     modifier = Modifier.heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp))
       .background(if (active) p.accent else p.accent.copy(alpha = 0.1f))
       .hand().clickable(onClick = onClick)
@@ -1095,9 +1095,9 @@ private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (Lock
           contentAlignment = Alignment.Center,
         ) {
           when (choice) {
-            LockChoice.OPEN -> DrawnIcon(Icon.CHECK, Color.White, 12.dp)
-            LockChoice.RANDOM -> Txt("?", size = 12.sp, color = Color.White, weight = FontWeight.Bold, maxLines = 1)
-            LockChoice.LOCKED -> DrawnIcon(Icon.LOCK, Color.White, 12.dp)
+            LockChoice.OPEN -> DrawnIcon(Icon.CHECK, p.onBrand, 12.dp)
+            LockChoice.RANDOM -> Txt("?", size = 12.sp, color = p.onBrand, weight = FontWeight.Bold, maxLines = 1)
+            LockChoice.LOCKED -> DrawnIcon(Icon.LOCK, p.onBrand, 12.dp)
           }
         }
       }
@@ -1122,7 +1122,7 @@ private fun Check(label: String, checked: Boolean, tip: String? = null, enabled:
           .border(1.5.dp, if (checked) p.accent else p.muted, RoundedCornerShape(4.dp)),
         contentAlignment = Alignment.Center,
       ) {
-        if (checked) DrawnIcon(Icon.CHECK, Color.White, 12.dp)
+        if (checked) DrawnIcon(Icon.CHECK, p.onBrand, 12.dp)
       }
       Txt(label, size = 12.5.sp, maxLines = 1)
     }
@@ -1172,7 +1172,7 @@ internal fun Button(text: String, enabled: Boolean = true, danger: Boolean = fal
   val color = if (danger) p.trap else p.accent
   Txt(
     text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (enabled) Color.White else p.muted,
+    color = if (enabled) p.onBrand else p.muted,
     modifier = Modifier.clip(RoundedCornerShape(10.dp))
       .background(if (enabled) color else p.panelAlt)
       .then(if (enabled) Modifier.hand().clickable(onClick = onClick) else Modifier)

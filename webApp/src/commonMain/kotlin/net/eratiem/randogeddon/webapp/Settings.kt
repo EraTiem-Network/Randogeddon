@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.ThemeRequest
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.i18n.text
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -155,6 +158,27 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
           Modifier.width(260.dp), minHeight = FIELD_HEIGHT,
         )
         languageState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      }
+    }
+
+    // The appearance: theme and mode, applied at once
+    var appearanceState by remember { mutableStateOf<String?>(null) }
+    Section(acc.appearanceTitle, subtitle = acc.appearanceSubtitle) {
+      Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        fun save(theme: Theme, mode: ThemeMode) {
+          Themes.apply(theme, mode)
+          scope.launch {
+            appearanceState = when (val r = call("PUT", "api/account/theme", body(ThemeRequest(theme, mode))) { }) {
+              is Answer.Ok -> { load(); null }
+              is Answer.Failed -> r.message
+            }
+          }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Select(Theme.entries.map { it to acc.theme(it) }, Themes.theme, { save(it, Themes.mode) }, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
+          Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+        }
+        appearanceState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }
     }
 

@@ -238,7 +238,7 @@ fun Avatar(name: String, size: Dp = 40.dp) {
       .background(Brush.linearGradient(listOf(hue, hue.copy(alpha = 0.7f)))),
     contentAlignment = Alignment.Center,
   ) {
-    Txt(name.take(1).uppercase(), size = (size.value * 0.42f).sp, color = Color.White, weight = FontWeight.Bold)
+    Txt(name.take(1).uppercase(), size = (size.value * 0.42f).sp, color = LocalPalette.current.onBrand, weight = FontWeight.Bold)
   }
 }
 
@@ -755,13 +755,13 @@ fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: M
       for (i in 0..steps) {
         Box(
           Modifier.offset(x = KNOB / 2 - 2.dp + travel * (i.toFloat() / steps)).size(4.dp).clip(CircleShape)
-            .background(if (i.toFloat() / steps <= fraction) Color.White.copy(alpha = 0.8f) else p.muted.copy(alpha = 0.6f))
+            .background(if (i.toFloat() / steps <= fraction) p.onBrand.copy(alpha = 0.8f) else p.muted.copy(alpha = 0.6f))
         )
       }
     }
     Box(
       Modifier.offset(x = travel * fraction).size(KNOB).shadow(2.dp, CircleShape).clip(CircleShape)
-        .background(Color.White).border(2.dp, p.accent, CircleShape)
+        .background(p.onBrand).border(2.dp, p.accent, CircleShape)
     )
   }
 }
