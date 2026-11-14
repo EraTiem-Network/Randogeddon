@@ -66,7 +66,8 @@ docker compose build     # takes a few minutes (every game's requirements, the n
 ```
 
 Building the tracker and gateway images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
-packages; on Arch: `pacman -S docker-buildx`) and your Gradle init script with the Nexus credentials. Compose passes
+packages; on Arch: `pacman -S docker-buildx`) and your Gradle init script with the token for `pkg.example.org`
+(an entry `example`: any user name, an Artifact Keeper API token as password, e.g. `<service-account>`'s). Compose passes
 the init script into the build as a secret (default `~/.gradle/init.gradle.kts`, change with `GRADLE_INIT_SCRIPT` in
 `.env`); it never ends up in an image. Compose asks once to let the build read that file outside the build context
 (`additional privileges requested`); answer yes, or set `BUILDX_BAKE_ENTITLEMENTS_FS=0` as the scripts do. The native
@@ -154,6 +155,18 @@ docker compose exec tracker randogeddon admins --create <person>   # prints the 
 docker compose exec tracker randogeddon admins --grant <person>    # an existing login; --revoke takes it back
 ```
 
+**Administrators through Authentik** (single sign-on, `OIDC_*` in `.env`): with `OIDC_ISSUER` set, the login form
+has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
+`randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
+first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
+app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
+`randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
+(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
+application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+Their accounts here don't delete themselves after a while: they go when Authentik deletes the person, whose webhook
+calls `POST /api/login/oidc/deleted` with `OIDC_DELETION_TOKEN` (the same token in Authentik; `setup.py` makes the
+rule and prints it). More on the machines around it: `.docs/INFRA.md`.
+
 **Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
 (`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
 certificate is checked against `MAIL_HOST`; if the server's public address leads back to this host (a VM behind the
@@ -172,6 +185,50 @@ create sessions).
 
 **Updating to the patch file downloads of Phase 7:** nothing to set, no migration; the downloads work for the
 sessions that exist already, finished ones too.
+
+## The live server
+
+The live Randogeddon runs on the live VM (`<internal-ip>`, behind the Proxmox host example.org and its Traefik). It holds
+only what runs; the images are built on a PC (WSL) and come from the registry `pkg.example.org` (Artifact Keeper, VM
+1020):
+
+| What | Where |
+|---|---|
+| `.env`, `docker-compose.yml`, `docker-compose.proxy.yml` | `/srv/randogeddon/` (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml`) |
+| `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
+| the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
+| dumps (each update's, a daily one kept 14 days) | `/srv/backups/` |
+| the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
+
+Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
+`TRACKER_IMAGE=pkg.example.org/eratiem-network/randogeddon/tracker` and `GATEWAY_IMAGE=…/gateway`, `IMAGE_TAG` and
+`GATEWAY_TAG` (the running version, e.g. `0.8.3`; for a commit that isn't a release the commit, the gateway's with the
+Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
+`PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,
+but the compose file names the build's secret).
+
+**Updating** (in WSL, from a committed state; for a release, after its tag `v<version>`, see *Versions*):
+
+```sh
+./scripts/deploy.sh             # build, push as <version> (or <commit>), dump, switch, check (healthz, schema)
+./scripts/deploy.sh --rollback  # back to the previous tag (code only; a migration that ran needs its dump)
+```
+
+Old images are removed as it goes: the server keeps the running and the previous ones, WSL only what was just
+pushed. The dumps (each update's and the daily ones) are kept 14 days.
+
+It needs once: `docker login pkg.example.org` with the `<service-account>` token as password (`AK_TOKEN_DEPLOY` in
+`<registry-dir>/.secrets` on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see
+the script's head). The server itself is logged in to the registry with the read-only `<service-account>` token.
+
+**Restoring a dump** (the stack's database replaced by the dump; the tracker and gateway stopped meanwhile):
+
+```sh
+cd /srv/randogeddon && docker compose stop tracker gateway
+docker compose exec -T postgres psql -U randogeddon -d postgres -c 'DROP DATABASE randogeddon' -c 'CREATE DATABASE randogeddon OWNER randogeddon'
+gunzip -c /srv/backups/<dump>.sql.gz | docker compose exec -T postgres psql -U randogeddon -d randogeddon
+docker compose up -d
+```
 
 ## Session day
 
@@ -317,8 +374,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
-  works once). **Administrators need it**: an Administrator without it sets it up right after the password (QR code or the key, then
-  a first code); everyone else can turn it on in *Your account*. The secrets are stored encrypted with `TOTP_KEY`
+  works once). **Administrators need it** unless they log in through Authentik (above): an Administrator without it
+  sets it up right after the password (QR code or the key, then a first code); everyone else can turn it on in
+  *Your account*. The secrets are stored encrypted with `TOTP_KEY`
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
   device and the recovery codes (an Administrator sets it up again at the next login).
@@ -418,7 +476,9 @@ Known limitations:
 API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
-`POST /api/logout`, `GET /api/invitations/<token>`, `POST /api/signup` (the sign-up page) and `POST /api/email/confirm`
+`POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
+`.../callback`, and `POST /api/login/link` (a CLI login link); `GET /api/invitations/<token>`, `POST /api/signup` (the
+sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
@@ -494,8 +554,9 @@ For a test seed that needs no ROM or installed game, use a few YAMLs like
 
 ## Developing the tracker and the gateway
 
-Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from the Nexus via your init script, like in
-CoreSync. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
+Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from `https://pkg.example.org/maven/public/`
+(Artifact Keeper's mirror of Maven Central, the plugin portal, Google and the others) with the token from your init
+script. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
 
 ```sh
 ./gradlew :server:test :gateway:test :database:test  # unit tests (also run in the Docker build)
@@ -515,6 +576,16 @@ on port 8000.
 The schema is in `database/src/main/resources/db/migration`; a new migration must also be listed in `index.txt` there
 (a native image can't scan the classpath; a test checks the list).
 
+### Versions
+
+While Randogeddon is in development, its version (root `build.gradle.kts`) is `0.<phase>.<step>`: the phase (as in
+`.docs/TODO.md`) and its PR. A PR's branch builds `0.<phase>.<step>-SNAPSHOT`; its last commit before the merge drops
+the suffix (the release `0.<phase>.<step>`), its merge commit is tagged `v0.<phase>.<step>` (`scripts/deploy.sh` pushes
+that commit's images under the version and `latest`: `…/tracker:0.<phase>.<step>`, `…/gateway:0.<phase>.<step>`; any
+other commit's under the commit and `edge`), and the next PR starts
+with the next step's `-SNAPSHOT`. A follow-up to a step that was merged already gets a fourth number (`0.8.2.1`),
+which the next step drops again. `CHANGELOG.md` lists every version by phase.
+
 ### Native build
 
 The images contain native executables (GraalVM CE 25), built in `kotlin.Dockerfile` with the setup in the root
@@ -528,7 +599,7 @@ The images contain native executables (GraalVM CE 25), built in `kotlin.Dockerfi
   runtime image (Debian 12, glibc 2.36); glibc is backwards compatible.
 
 Native images can't be cross-compiled, so the build runs on Linux: in the Docker build, or directly in WSL Debian with
-GraalVM 25 (`sdk install java 25-graal`) and the Nexus init script in `~/.gradle/init.gradle.kts`:
+GraalVM 25 (`sdk install java 25-graal`) and the init script (with `example`) in `~/.gradle/init.gradle.kts`:
 `./gradlew :server:nativeCompile :gateway:nativeCompile`. Docker on Windows may run only Windows containers; then use
 the Docker of WSL (also for `:database:integrationTest`).
 

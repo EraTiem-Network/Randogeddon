@@ -14,13 +14,14 @@ plugins {
 }
 
 group = "net.eratiem.randogeddon"
-version = "0.1.0-SNAPSHOT"
+// 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its last commit before the merge the release (see README, versions)
+version = "0.8.4"
 
 allprojects {
   repositories {
     maven {
-      name = "empirerp-public"
-      url = uri("https://nexus.empirerp.de/repository/public/")
+      name = "example"
+      url = uri("https://pkg.example.org/maven/public/")
     }
   }
 }

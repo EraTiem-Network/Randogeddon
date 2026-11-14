@@ -12,6 +12,10 @@ x-build: &build
   context: .
   dockerfile: kotlin.Dockerfile
   secrets: [gradle_init]
+  # One plain linux/amd64 image: without these, BuildKit adds attestations and the image becomes an index (a registry
+  # shows it as multi-arch, with an `unknown/unknown` entry)
+  provenance: false
+  sbom: false
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
     AP_VERSION: ${AP_VERSION:-0.6.8}
@@ -41,7 +45,8 @@ services:
       retries: 10
 
   gateway:
-    image: randogeddon-gateway:${AP_VERSION:-0.6.8}
+    # Locally as built; on the server from the registry (GATEWAY_IMAGE, GATEWAY_TAG set by scripts/deploy.sh)
+    image: ${GATEWAY_IMAGE:-randogeddon-gateway}:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
     build:
       <<: *build
       target: gateway
@@ -65,7 +70,7 @@ services:
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   tracker:
-    image: randogeddon-tracker:latest
+    image: ${TRACKER_IMAGE:-randogeddon-tracker}:${IMAGE_TAG:-latest}
     build:
       <<: *build
       target: tracker
@@ -102,6 +107,14 @@ services:
       MAIL_FROM: ${MAIL_FROM:-randogeddon@example.net}
       # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
       TOTP_KEY: ${TOTP_KEY:-}
+      # Administrators log in through this OpenID Connect provider (Authentik); without OIDC_ISSUER with their password
+      # and two-factor login
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-randogeddon-administrators}
+      OIDC_DELETION_TOKEN: ${OIDC_DELETION_TOKEN:-}
+      OIDC_NAME: ${OIDC_NAME:-Authentik}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
       - tracker-state:/state         # each session's event history and archive survive restarts
@@ -111,6 +124,6 @@ volumes:
   postgres-data:
 
 secrets:
-  # Gradle init script with the Nexus credentials; only needed when the images are built
+  # Gradle init script with the token for pkg.example.org (entry `example`); only needed when the images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}

@@ -35,6 +35,8 @@ data class TrackerConfig(
   val mail: MailConfig = MailConfig(),
   /** Encrypts the TOTP secrets: base64 of 32 bytes; empty: a key file in [stateDir], made once. */
   val totpKey: String = "",
+  /** Administrators log in through this provider; `null`: with their password and two-factor login. */
+  val oidc: OidcConfig? = null,
 ) {
   /** Where the players of session [id] connect. */
   fun addressOf(id: String): String = publicAddress.replace("{id}", id)
@@ -66,6 +68,14 @@ data class TrackerConfig(
           password = value("mail.password"),
           from = value("mail.from"),
         ),
+        oidc = OidcConfig(
+          issuer = value("oidc.issuer").trim(),
+          clientId = value("oidc.clientId").trim(),
+          clientSecret = value("oidc.clientSecret"),
+          adminGroup = value("oidc.adminGroup").trim(),
+          name = value("oidc.name").trim(),
+          deletionToken = value("oidc.deletionToken").trim(),
+        ).takeIf { it.issuer.isNotEmpty() && it.clientId.isNotEmpty() },
       )
     }
   }
@@ -97,4 +107,20 @@ data class MailConfig(
   val user: String = "",
   val password: String = "",
   val from: String = "randogeddon@example.net",
+)
+
+/**
+ * The OpenID Connect provider (Authentik) Administrators log in through: [issuer] (its discovery document is at
+ * `<issuer>.well-known/openid-configuration`), this app's client, and the group whose members are Administrators.
+ * [deletionToken]: what the provider's webhook sends when it deletes a person (their account here goes too); empty: no
+ * webhook.
+ */
+data class OidcConfig(
+  val issuer: String,
+  val clientId: String,
+  val clientSecret: String,
+  val adminGroup: String = "randogeddon-administrators",
+  /** For the login button. */
+  val name: String = "Authentik",
+  val deletionToken: String = "",
 )

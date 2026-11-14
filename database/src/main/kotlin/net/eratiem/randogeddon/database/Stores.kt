@@ -32,6 +32,8 @@ data class User(
   val autoDelete: String = "never",
   /** Logs in with a code from an authenticator after the password. */
   val twoFactor: Boolean = false,
+  /** How the current login was made (`password`, `oidc`, `link`); `null` outside a login. */
+  val loginMethod: String? = null,
 )
 
 /** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
@@ -79,6 +81,19 @@ class UserStore(private val db: RandogeddonDatabase) {
 
   suspend fun findActive(id: Uuid): User? = db.query {
     UsersTable.selectAll().where { (UsersTable.id eq id) and signedUp() }.singleOrNull()?.let(::user)
+  }
+
+  /** The account linked to the Authentik user [subject] (the ID token's `sub`). */
+  suspend fun findBySubject(subject: String): User? = db.query {
+    UsersTable.selectAll().where { (UsersTable.oidcSubject eq subject) and signedUp() }.singleOrNull()?.let(::user)
+  }
+
+  /** Links [id] to the Authentik user [subject]; `false` if another account has it, or [id] is linked to another. */
+  suspend fun linkSubject(id: Uuid, subject: String): Boolean = db.query {
+    val taken = UsersTable.selectAll().where { (UsersTable.oidcSubject eq subject) and (UsersTable.id neq id) }.any()
+    !taken && UsersTable.update({ (UsersTable.id eq id) and (UsersTable.oidcSubject.isNull() or (UsersTable.oidcSubject eq subject)) }) {
+      it[oidcSubject] = subject
+    } == 1
   }
 
   /** A signed-up user right away (the host's commands, tests); the others are [invite]d. */
@@ -176,8 +191,8 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   /**
-   * Deletes the account: its password, e-mail address and settings go, its logins, invitations and pending addresses
-   * too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
+   * Deletes the account: its password, e-mail address, settings and link to Authentik go, its logins, invitations and
+   * pending addresses too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
    * is free again.
    */
   suspend fun delete(id: Uuid, now: Instant = Instant.now()) = db.query {
@@ -190,6 +205,7 @@ class UserStore(private val db: RandogeddonDatabase) {
       it[totpSecret] = null
       it[totpEnabledAt] = null
       it[totpLastStep] = null
+      it[oidcSubject] = null
       it[deletedAt] = now
     }
     LoginSessionsTable.deleteWhere { userId eq id }
@@ -409,21 +425,27 @@ class EmailChangeStore(private val db: RandogeddonDatabase) {
 
 /** Logged-in browsers, by the SHA-256 of their cookie token. */
 class LoginSessionStore(private val db: RandogeddonDatabase) {
-  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now()) = db.query {
-    LoginSessionsTable.insert {
-      it[LoginSessionsTable.tokenHash] = tokenHash
-      it[LoginSessionsTable.userId] = userId
-      it[createdAt] = now
-      it[LoginSessionsTable.expiresAt] = expiresAt
+  /** [method]: how the login was made (`password`, `oidc`, `link`). */
+  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now(), method: String = "password") =
+    db.query {
+      LoginSessionsTable.insert {
+        it[LoginSessionsTable.tokenHash] = tokenHash
+        it[LoginSessionsTable.userId] = userId
+        it[createdAt] = now
+        it[LoginSessionsTable.expiresAt] = expiresAt
+        it[LoginSessionsTable.method] = method
+      }
+      Unit
     }
-    Unit
-  }
 
   /** The user of a session that hasn't expired yet. */
-  suspend fun userOf(tokenHash: String, now: Instant = Instant.now()): Uuid? = db.query {
+  suspend fun userOf(tokenHash: String, now: Instant = Instant.now()): Uuid? = loginOf(tokenHash, now)?.first
+
+  /** The user of a session that hasn't expired yet, and how it was made. */
+  suspend fun loginOf(tokenHash: String, now: Instant = Instant.now()): Pair<Uuid, String>? = db.query {
     LoginSessionsTable.selectAll()
       .where { (LoginSessionsTable.tokenHash eq tokenHash) and (LoginSessionsTable.expiresAt greater now) }
-      .singleOrNull()?.get(LoginSessionsTable.userId)
+      .singleOrNull()?.let { it[LoginSessionsTable.userId] to it[LoginSessionsTable.method] }
   }
 
   suspend fun delete(tokenHash: String) = db.query {
@@ -433,6 +455,30 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
 
   suspend fun deleteExpired(now: Instant = Instant.now()): Int = db.query {
     LoginSessionsTable.deleteWhere { expiresAt less now }
+  }
+}
+
+/** One-time login links (`randogeddon admins --login`), by the SHA-256 of their token. */
+class LoginLinkStore(private val db: RandogeddonDatabase) {
+  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now()) = db.query {
+    LoginLinksTable.insert {
+      it[LoginLinksTable.tokenHash] = tokenHash
+      it[LoginLinksTable.userId] = userId
+      it[createdAt] = now
+      it[LoginLinksTable.expiresAt] = expiresAt
+    }
+    Unit
+  }
+
+  /** Uses the link: its user if it exists, hasn't expired and wasn't used; it works only once. */
+  suspend fun use(tokenHash: String, now: Instant = Instant.now()): Uuid? = db.query {
+    val row = LoginLinksTable.selectAll()
+      .where { (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() and (LoginLinksTable.expiresAt greater now) }
+      .singleOrNull() ?: return@query null
+    val used = LoginLinksTable.update({ (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() }) {
+      it[usedAt] = now
+    }
+    row[LoginLinksTable.userId].takeIf { used == 1 }
   }
 }
 

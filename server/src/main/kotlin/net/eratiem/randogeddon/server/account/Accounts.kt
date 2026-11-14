@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
@@ -42,15 +43,49 @@ interface LoginCheck {
 
   /** The user's part in session [id] (`null`: none). */
   fun roleIn(user: User, id: String): SessionRole?
+
+  /**
+   * Why [user]'s login can't act as an Administrator; `null`: it can. Without single sign-on: an Administrator with
+   * two-factor login.
+   */
+  fun administratorProblem(user: User): String? = when {
+    !user.administrator -> ONLY_ADMINISTRATORS
+    !user.twoFactor -> NEEDS_TWO_FACTOR
+    else -> null
+  }
 }
 
-/** Logging in and out, and which sessions the logged-in users are part of. */
+const val ONLY_ADMINISTRATORS = "Only Administrators can do this"
+
+/** With single sign-on through [provider]: only a login through it (or a CLI link) acts as an Administrator. */
+internal fun ssoAdministratorProblem(user: User, provider: String): String? = when {
+  !user.administrator -> ONLY_ADMINISTRATORS
+  user.loginMethod == LoginMethods.OIDC || user.loginMethod == LoginMethods.LINK -> null
+  else -> "Administrators log in with $provider: log out and use its button"
+}
+const val NEEDS_TWO_FACTOR = "Administrators need two-factor login: set it up under Your account first"
+
+/**
+ * Logging in and out, and which sessions the logged-in users are part of. With single sign-on configured
+ * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider (or a CLI link), and
+ * not with their password.
+ */
 @Single
 class LoginService(
   private val users: UserStore,
   private val logins: LoginSessionStore,
   private val sessions: SessionList,
+  private val config: TrackerConfig,
 ) : LoginCheck {
+  override fun administratorProblem(user: User): String? {
+    val oidc = config.oidc ?: return super.administratorProblem(user)
+    return ssoAdministratorProblem(user, oidc.name)
+  }
+
+  /** Why [user] can't log in with their password; `null`: they can. With single sign-on, Administrators can't. */
+  fun passwordLoginProblem(user: User): String? =
+    config.oidc?.takeIf { user.administrator }?.let { "Administrators log in with ${it.name}" }
+
   /**
    * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited
    * users who haven't signed up have no password and can't log in.
@@ -67,15 +102,16 @@ class LoginService(
 
   suspend fun user(id: Uuid): User? = users.findActive(id)
 
-  /** A new login of [user] (after the password, or right after signing up); its token for the cookie. */
-  suspend fun start(user: User): String {
-    logger.info("{} logged in", user.name)
+  /** A new login of [user] (after the password, or right after signing up; [method]: how); its token for the cookie. */
+  suspend fun start(user: User, method: String = LoginMethods.PASSWORD): String {
+    logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
-    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()))
+    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()), method = method)
     return token
   }
 
-  override suspend fun userOf(token: String): User? = logins.userOf(tokenHash(token))?.let { users.findActive(it) }
+  override suspend fun userOf(token: String): User? =
+    logins.loginOf(tokenHash(token))?.let { (id, method) -> users.findActive(id)?.copy(loginMethod = method) }
 
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 

@@ -11,6 +11,7 @@ import io.ktor.server.routing.routing
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.PendingLogins
+import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.Cheats
@@ -45,6 +46,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val accounts by inject<AccountService>()
   val twoFactor by inject<TwoFactor>()
   val pending by inject<PendingLogins>()
+  val sso by inject<SingleSignOn>()
   val people by inject<SessionPeopleService>()
   val settings by inject<AppSettingsStore>()
   val support by inject<Support>()
@@ -52,7 +54,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val downloads by inject<SlotDownloads>()
 
   routing {
-    loginRoutes(logins, twoFactor, pending, trackerConfig.cookieSecure)
+    loginRoutes(logins, twoFactor, pending, sso, trackerConfig.publicUrl, trackerConfig.cookieSecure)
     signupRoutes(accounts, trackerConfig.cookieSecure)
     // A session by its share link, without a login
     publicWatchRoutes(shareLinks, archives)
@@ -75,8 +77,8 @@ fun Application.routings(trackerConfig: TrackerConfig) {
         }
         manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list)
       }
-      adminRoutes(gameServer, sessionAdmin, settings)
-      adminUserRoutes(accounts)
+      adminRoutes(gameServer, sessionAdmin, settings, logins)
+      adminUserRoutes(accounts, logins)
     }
 
     // Nothing about the session: open for the container's healthcheck

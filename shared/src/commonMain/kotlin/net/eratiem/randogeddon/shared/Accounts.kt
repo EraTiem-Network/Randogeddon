@@ -163,10 +163,15 @@ data class AccountView(
   /** When the account will be deleted by itself, as of now; `null`: not planned (never, or a session runs). */
   val deletesAt: Long? = null,
   val administrator: Boolean = false,
-  /** Logs in with a code from an authenticator after the password (Administrators always). */
+  /** Logs in with a code from an authenticator after the password (Administrators always, without single sign-on). */
   val twoFactor: Boolean = false,
   /** How many recovery codes are left. */
   val recoveryCodesLeft: Int = 0,
+  /**
+   * For Administrators with single sign-on: the provider they log in with (its own two-factor check replaces this
+   * app's, and their account here goes when it deletes them, not by itself); `null` otherwise.
+   */
+  val singleSignOn: String? = null,
 )
 
 /** `PUT /api/account/name`. */
@@ -200,6 +205,17 @@ data class LoginStep(val next: LoginNext, val pending: String)
 /** `POST /api/login/code` (with [pending]), or a code that confirms or changes the user's own two-factor login. */
 @Serializable
 data class CodeRequest(val code: String, val pending: String? = null)
+
+/**
+ * `GET /api/login/options`, before the login: [singleSignOn] names the provider Administrators log in through (the
+ * login form's button, to `GET /api/login/oidc`); `null`: none.
+ */
+@Serializable
+data class LoginOptions(val singleSignOn: String? = null)
+
+/** `POST /api/login/link`: a one-time login link of the host's CLI (`randogeddon admins --login`). */
+@Serializable
+data class LinkLoginRequest(val token: String)
 
 /** `POST /api/login/setup`: the pending login of an admin who sets up two-factor login now. */
 @Serializable

@@ -89,7 +89,7 @@ class RequireLoginTest {
             }
           }
           route("/admin") {
-            install(RequireAdministrator)
+            install(RequireAdministrator) { logins = check }
             get("/sessions") {
               handled = true
               call.respondText("all sessions")

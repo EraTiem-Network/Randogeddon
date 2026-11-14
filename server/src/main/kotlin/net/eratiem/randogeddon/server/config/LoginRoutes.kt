@@ -1,27 +1,40 @@
 package net.eratiem.randogeddon.server.config
 
 import io.ktor.http.Cookie
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.encodeURLPathPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.server.account.LoginCheck
+import net.eratiem.randogeddon.server.account.LoginMethods
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.PendingLogins
+import net.eratiem.randogeddon.server.account.SingleSignOn
+import net.eratiem.randogeddon.server.account.SsoRefused
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.CodeRequest
+import net.eratiem.randogeddon.shared.LinkLoginRequest
+import net.eratiem.randogeddon.shared.LoginOptions
 import net.eratiem.randogeddon.shared.LoginNext
 import net.eratiem.randogeddon.shared.LoginStep
 import net.eratiem.randogeddon.shared.PendingRequest
@@ -36,6 +49,15 @@ import kotlin.time.Duration.Companion.seconds
  * can be switched off for a local demo ([TrackerConfig.cookieSecure]).
  */
 const val SESSION_COOKIE = "randogeddon_session"
+
+/** The `state` of a login through the provider, for its callback (only on those two paths, 10 minutes). */
+private const val OIDC_COOKIE = "randogeddon_oidc"
+
+private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
+  OIDC_COOKIE, value, maxAge = maxAge, path = "/api/login/oidc", secure = secure, httpOnly = true,
+  // Lax: the provider's redirect back is a top-level navigation from another site
+  extensions = mapOf("SameSite" to "Lax"),
+)
 
 /** The logged-in user of a call that passed [RequireLogin]. */
 data class LoggedIn(val user: User)
@@ -78,20 +100,16 @@ val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::Req
 }
 
 /**
- * Lets a call through only for Administrators with two-factor login (403 otherwise); goes inside [RequireLogin], which
- * provides [loggedIn]. Checked on every call, so hiding the panel in the web app is not what protects it.
+ * Lets a call through only for Administrators whose login may act as one ([LoginCheck.administratorProblem]: with
+ * two-factor login, or through single sign-on), 403 otherwise; goes inside [RequireLogin], which provides [loggedIn].
+ * Checked on every call, so hiding the panel in the web app is not what protects it.
  */
-val RequireAdministrator = createRouteScopedPlugin("RequireAdministrator") {
+val RequireAdministrator = createRouteScopedPlugin("RequireAdministrator", ::RequireLoginConfig) {
+  val logins = pluginConfig.logins
   onCall { call ->
-    val user = call.loggedIn.user
-    when {
-      !user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError("Only Administrators can do this"))
-      !user.twoFactor -> call.respond(HttpStatusCode.Forbidden, ApiError(NEEDS_TWO_FACTOR))
-    }
+    logins.administratorProblem(call.loggedIn.user)?.let { call.respond(HttpStatusCode.Forbidden, ApiError(it)) }
   }
 }
-
-private const val NEEDS_TWO_FACTOR = "Administrators need two-factor login: set it up under Your account first"
 
 class RequireSessionRoleConfig {
   lateinit var logins: LoginCheck
@@ -100,7 +118,7 @@ class RequireSessionRoleConfig {
 
 /**
  * A session's routes (`.../{id}/...`) only for those with one of [RequireSessionRoleConfig.roles] in it, and for
- * Administrators (with two-factor login): 403 otherwise. Goes inside [RequireLogin].
+ * Administrators whose login may act as one: 403 otherwise. Goes inside [RequireLogin].
  */
 val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::RequireSessionRoleConfig) {
   val logins = pluginConfig.logins
@@ -108,9 +126,10 @@ val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::Require
   onCall { call ->
     val user = call.loggedIn.user
     if (logins.roleIn(user, call.parameters["id"].orEmpty()) in roles) return@onCall
+    val problem = logins.administratorProblem(user)
     when {
-      user.administrator && user.twoFactor -> Unit
-      user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError(NEEDS_TWO_FACTOR))
+      problem == null -> Unit
+      user.administrator -> call.respond(HttpStatusCode.Forbidden, ApiError(problem))
       else -> call.respond(HttpStatusCode.Forbidden, ApiError("Only the session's ${roles.joinToString(" or ") { it.label }} can do this"))
     }
   }
@@ -127,12 +146,81 @@ val SessionRole.label: String
 
 /**
  * `POST /api/login`, then for users with two-factor login `POST /api/login/code`, for an admin without it
- * `POST /api/login/setup` and `.../setup/confirm`; `POST /api/logout`. `GET /api/me` ([meRoute]) is in the protected
- * routes.
+ * `POST /api/login/setup` and `.../setup/confirm`; `POST /api/logout`. With single sign-on: `GET /api/login/options`
+ * (whether the login form shows its button), `GET /api/login/oidc` (to the provider) and `.../callback` (back from it),
+ * `POST /api/login/oidc/deleted` (its webhook: a person was deleted there) and `POST /api/login/link` (a CLI login
+ * link). `GET /api/me` ([meRoute]) is in the protected routes.
  */
-fun Route.loginRoutes(logins: LoginService, twoFactor: TwoFactor, pending: PendingLogins, secure: Boolean = true) {
-  suspend fun RoutingContext.loggedIn(user: User) {
-    call.response.cookies.append(sessionCookie(logins.start(user), LOGIN_DURATION.inWholeSeconds, secure))
+fun Route.loginRoutes(
+  logins: LoginService,
+  twoFactor: TwoFactor,
+  pending: PendingLogins,
+  sso: SingleSignOn,
+  publicUrl: String,
+  secure: Boolean = true,
+) {
+  suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD) {
+    call.response.cookies.append(sessionCookie(logins.start(user, method), LOGIN_DURATION.inWholeSeconds, secure))
+  }
+  // A rate limit of their own; outside it (or the login's) they would be under /api's login check
+  rateLimit(SSO_RATE_LIMIT) {
+    get("/api/login/options") { call.respond(LoginOptions(singleSignOn = sso.name.takeIf { sso.enabled })) }
+    get("/api/login/oidc") {
+      if (!sso.enabled) return@get call.respond(HttpStatusCode.NotFound, ApiError("No single sign-on here"))
+      val (state, url) = try {
+        sso.start()
+      } catch (e: Exception) {
+        return@get call.respondRedirect("$publicUrl/#/login-problem/${"${sso.name} can't be reached".encodeURLPathPart()}")
+      }
+      call.response.cookies.append(oidcCookie(state, 600, secure))
+      call.respondRedirect(url)
+    }
+    get("/api/login/oidc/callback") {
+      val state = call.request.queryParameters["state"].orEmpty()
+      val code = call.request.queryParameters["code"]
+      val cookie = call.request.cookies[OIDC_COOKIE]
+      call.response.cookies.append(oidcCookie("", 0, secure))
+      // The state must be this browser's (no logins slipped in from elsewhere)
+      val problem = when {
+        code == null -> call.request.queryParameters["error_description"] ?: "The login was cancelled"
+        cookie == null || cookie != state -> "The login didn't start here: start it again"
+        else -> try {
+          loggedIn(sso.finish(state, code), LoginMethods.OIDC)
+          null
+        } catch (e: SsoRefused) {
+          e.message
+        } catch (e: kotlinx.coroutines.CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          "The login didn't work: ${sso.name} can't be reached"
+        }
+      }
+      // Back to the app; a problem shows on its login form
+      call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
+    }
+    // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
+    post("/api/login/oidc/deleted") {
+      if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
+        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong token"))
+      }
+      val subject = runCatching {
+        Json.parseToJsonElement(call.receiveText()).jsonObject["subject"]?.jsonPrimitive?.contentOrNull
+      }.getOrNull()?.takeIf { it.isNotBlank() }
+        ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("No subject"))
+      sso.deleted(subject)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  rateLimit(LOGIN_RATE_LIMIT) {
+    post("/api/login/link") {
+      val user = sso.useLink(call.receive<LinkLoginRequest>().token)
+      if (user == null) {
+        delay(1.seconds)
+        return@post call.respond(HttpStatusCode.Unauthorized, ApiError("This link doesn't work (any more): ask for a new one"))
+      }
+      loggedIn(user, LoginMethods.LINK)
+      call.respond(HttpStatusCode.NoContent)
+    }
   }
   /** The pending login's user, or an answer that it's gone. */
   suspend fun RoutingContext.pendingUser(token: String): User? {
@@ -149,6 +237,7 @@ fun Route.loginRoutes(logins: LoginService, twoFactor: TwoFactor, pending: Pendi
         delay(1.seconds)
         return@post call.respond(HttpStatusCode.Unauthorized, ApiError("Wrong name or password"))
       }
+      logins.passwordLoginProblem(user)?.let { return@post call.respond(HttpStatusCode.Forbidden, ApiError(it)) }
       when {
         user.twoFactor -> call.respond(LoginStep(LoginNext.CODE, pending.create(user.id)))
         // Admins can cheat and delete sessions: they set up two-factor login before anything else

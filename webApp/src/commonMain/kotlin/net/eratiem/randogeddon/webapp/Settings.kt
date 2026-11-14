@@ -133,8 +133,14 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
 
     // When the account deletes itself
     var deletionState by remember { mutableStateOf<String?>(null) }
-    Section("Deleting your account", subtitle = "by itself, after your last session; your sessions keep your name") {
+    val sso = a.singleSignOn
+    val deletionSubtitle = if (sso != null) "with your $sso account; your sessions keep your name" else "by itself, after your last session; your sessions keep your name"
+    Section("Deleting your account", subtitle = deletionSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (sso != null) {
+          Txt("Your account here is deleted when $sso deletes yours there, not by itself.", size = 13.sp)
+          return@Column
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Txt("Delete it", size = 13.sp)
           Select(
@@ -188,7 +194,9 @@ private inline fun <reified T> body(value: T): String = ApiJson.encodeToString(v
 
 /**
  * Two-factor login: off, set it up (a QR code and the key, confirmed with a first code); on, new recovery codes or turn
- * it off, each with a code. Admins can't turn it off. The recovery codes are shown once, right after.
+ * it off, each with a code. Admins can't turn it off, unless they log in through single sign-on: then the provider
+ * checks their second factor, and the section only says so (or lets them turn an old one off). The recovery codes are
+ * shown once, right after.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -214,10 +222,19 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
       is Answer.Failed -> state = answer.message
     }
   }
-  val subtitle = if (a.administrator) "Administrators always log in with it" else "a code from an authenticator app after your password"
+  val sso = a.singleSignOn
+  val subtitle = when {
+    sso != null -> "your logins go through $sso, which checks it"
+    a.administrator -> "Administrators always log in with it"
+    else -> "a code from an authenticator app after your password"
+  }
   Section("Two-factor login", subtitle = subtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (a.administrator && !a.twoFactor) {
+      if (sso != null && !a.twoFactor && codes == null) {
+        Txt("Not needed here: $sso asks for your second factor.", size = 13.sp)
+        return@Column
+      }
+      if (a.administrator && sso == null && !a.twoFactor) {
         Txt("What only Administrators do opens once two-factor login is on.", size = 12.5.sp, color = p.trap)
       }
       codes?.let { list ->
@@ -261,7 +278,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           Txt("On · ${a.recoveryCodesLeft} recovery codes left", size = 13.sp, weight = FontWeight.SemiBold)
           Txt("A code from your authenticator (or a recovery code) for:", size = 12.5.sp, color = p.muted)
           CodeRow(code, { code = it; state = null }, "New recovery codes") { request("api/account/2fa/codes", onCodes = true) }
-          if (!a.administrator) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
+          if (!a.administrator || sso != null) Row { SmallButton("Turn it off", { request("api/account/2fa/disable", onCodes = false) }) }
         }
       }
       state?.let { Txt(it, size = 12.5.sp, color = p.muted) }

@@ -20,7 +20,10 @@ object SessionIds {
   private val ID = Regex("[a-z][a-z0-9-]{1,${MAX_LENGTH - 2}}[a-z0-9]")
 
   /** Words the API and the dashboard's links use themselves. */
-  private val RESERVED = setOf("admin", "api", "email", "inspect", "invite", "manage", "new", "sessions", "settings", "watch", "www")
+  private val RESERVED = setOf(
+    "admin", "api", "email", "inspect", "invite", "login", "login-problem", "manage", "new", "sessions", "settings",
+    "watch", "www",
+  )
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
