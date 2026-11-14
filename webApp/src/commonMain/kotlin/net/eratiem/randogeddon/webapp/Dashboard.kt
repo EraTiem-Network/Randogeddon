@@ -458,6 +458,8 @@ private fun Hero(
 ) {
   val p = LocalPalette.current
   val t = LocalTexts.current
+  // Light: on the full gradient; dark: on a dark card with the gradient's glow
+  val onHero = if (p.dark) p.text else p.onBrand
   val live = streamOpen && summary?.connected == true
   // Light: the full gradient. Dark: a dark card with a gradient glow, so the page stays dark
   val heroBackground = if (p.dark) {
@@ -478,10 +480,10 @@ private fun Hero(
             listOf(Triple<String?, String, String>(null, t.frame.allSessions, "")) +
               sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(t, it)) },
             shown, { id -> if (id == null) onAllSessions() else onSession(id) },
-            chip = false, heading = 24.sp, headingColor = p.onBrand, placeholder = t.frame.pickASession,
+            chip = false, heading = 24.sp, headingColor = onHero, placeholder = t.frame.pickASession,
           )
         } else {
-          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = p.onBrand)
+          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = onHero)
         }
         val meta = listOfNotNull(
           summary?.seedName?.let { t.frame.seed(it) },
@@ -490,14 +492,14 @@ private fun Hero(
         ).ifEmpty { listOf(if (shown == null) t.frame.pickOneOfYourSessions else t.frame.connecting) }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
-          Txt(it, size = 12.5.sp, color = p.onBrand.copy(alpha = 0.85f))
+          Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
         }
       }
     }
     val controls: @Composable () -> Unit = {
       // As tall as the buttons next to it
       Row(
-        Modifier.height(34.dp).clip(CircleShape).background(p.onBrand.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+        Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
@@ -508,20 +510,20 @@ private fun Hero(
             summary?.finishedAt != null -> t.frame.finished
             summary?.connected == true -> t.frame.live
             else -> t.frame.serverOffline
-          }, size = 12.5.sp, color = p.onBrand, weight = FontWeight.SemiBold, maxLines = 1
+          }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
         )
       }
       // Shows / hides the live feed; brighter while it is shown
-      IconButton(onToggleFeed, Icon.FEED, tint = p.onBrand,
-        background = p.onBrand.copy(alpha = if (feedVisible) 0.32f else 0.12f))
-      IconButton(onToggleTheme, Icon.THEME, tint = p.onBrand, background = p.onBrand.copy(alpha = 0.2f))
+      IconButton(onToggleFeed, Icon.FEED, tint = onHero,
+        background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
+      IconButton(onToggleTheme, Icon.THEME, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
-      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = p.onBrand,
-        background = p.onBrand.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
+        background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
       // The user's account; brighter while it is open
-      IconButton(onSettings, Icon.USER, tint = p.onBrand,
-        background = p.onBrand.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
-      IconButton(onLogout, Icon.LOGOUT, tint = p.onBrand, background = p.onBrand.copy(alpha = 0.2f))
+      IconButton(onSettings, Icon.USER, tint = onHero,
+        background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
+      IconButton(onLogout, Icon.LOGOUT, tint = onHero, background = onHero.copy(alpha = 0.2f))
     }
     if (stacked) {
       heading(Modifier)
@@ -537,17 +539,17 @@ private fun Hero(
       val totals = summary.totals
       Spacer(Modifier.height(16.dp))
       Row(verticalAlignment = Alignment.Bottom) {
-        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = p.onBrand)
+        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
         Txt(
-          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = p.onBrand.copy(alpha = 0.85f),
+          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
           modifier = Modifier.padding(bottom = 7.dp),
         )
       }
-      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(p.onBrand.copy(alpha = 0.25f))) {
+      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(onHero.copy(alpha = 0.25f))) {
         if (totals.percent > 0) {
           Box(
             Modifier.fillMaxWidth((totals.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
-              .background(if (p.dark) p.brand else SolidColor(p.onBrand))
+              .background(if (p.dark) p.brand else SolidColor(onHero))
           )
         }
       }
