@@ -6,6 +6,14 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 it the release, and the merge is tagged `v<version>`.
 
 ## Phase 9: Multi-Language
+Randogeddon speaks English and German: every page, the server's messages and the mails. Each user picks the language
+under *Your account* (stored with the account; *Automatic* follows the browser), and dates and numbers follow it.
+Updating: nothing to set (migration V12).
+
+### 0.9.4: Phase 9 done
+- README: the language (*Language*), how to add a text and a language (*Texts and languages*).
+- To-do list: Phase 9 done; Phase 11 (Randogeddon Bridge: a local app that takes games without TLS to their session
+  securely; the optional plain port is dropped) and Phase 12 (polishing: everything tested by hand, and a security scan with Fable 5.2) planned.
 
 ### 0.9.3: The server's words
 - Every refusal of the server is a code (`Problem`, in `:shared`) with its values: `ApiError` carries `code`, `args`

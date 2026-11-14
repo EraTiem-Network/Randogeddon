@@ -506,6 +506,14 @@ The dashboard is a web app (PWA), so no app store or Apple account is needed:
 It needs a browser with WebAssembly GC: iOS/Safari 18.2+, Chrome/Edge 119+, Firefox 120+. Older browsers get a
 message asking for an update. The first load is about 4 MB (gzip); after that the browser has it cached.
 
+### Language
+
+Randogeddon speaks English and German. Each user picks theirs under *Your account* (*Automatic* follows the
+browser); it is stored with the account, so it follows them to every device, and their mails go out in it too.
+Before the login the page takes the language last used in this browser, else the browser's; the login form has an
+English · Deutsch switch. Dates, times and numbers are written as the language writes them. Names from Archipelago
+(games, items, locations, slots) and its option values stay as they are.
+
 ## Demo
 
 ```sh
@@ -585,6 +593,22 @@ that commit's images under the version and `latest`: `…/tracker:0.<phase>.<ste
 other commit's under the commit and `edge`), and the next PR starts
 with the next step's `-SNAPSHOT`. A follow-up to a step that was merged already gets a fourth number (`0.8.2.1`),
 which the next step drops again. `CHANGELOG.md` lists every version by phase.
+
+### Texts and languages
+
+Every text lives in `shared/src/commonMain/kotlin/net/eratiem/randogeddon/shared/i18n/`, as typed Kotlin: an
+interface per area (`DashboardTexts`, `PanelTexts`, …, listed in `Texts`) and its English and German objects in the
+same file. A text with values is a function (`fun slots(n: Int)`), so plurals and word order are plain Kotlin; feed
+lines with styled names are templates with marks (`{sender} sent {item} to {receiver}`). The web app reads them
+through `LocalTexts.current`; the server's refusals are `Problem` codes worded in `ProblemTexts` (the server in the
+request's language, the web app in the viewer's); the mails come from `MailTexts`. `index.html`'s forms have a small
+table of their own in its script.
+
+- **A new text:** a member in its area's interface, then its words in `English…` and `German…` (it doesn't compile
+  before). `TextsTest` checks that German borrows nothing from English, that no text drops a value, and that every
+  template and every problem has the same marks and values in each language.
+- **A new language:** an entry in `Language` (code, tag for dates, whether its dates are numeric, its own name), an
+  object per area like `German…`, and `texts()` returning them; plus its column in `index.html`'s table.
 
 ### Native build
 
