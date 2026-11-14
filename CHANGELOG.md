@@ -1,8 +1,18 @@
 # Changelog
 
-Versions follow [Semantic Versioning](https://semver.org/).
+Versions follow [Semantic Versioning](https://semver.org/). While in development: `0.<phase>.<step>`, the step being
+the phase's PR; its branch builds `-SNAPSHOT`, the merge is the release.
 
 ## Unreleased
+
+### 0.8.3: Administrators' accounts follow Authentik (Phase 8, part 3)
+- With single sign-on, Administrators need no two-factor login of Randogeddon's own (Authentik checks theirs): the
+  account page says so instead of asking them to set it up, and an old one can be turned off.
+- Their accounts don't delete themselves after inactivity any more: they go when Authentik deletes the person. A
+  notification rule in Authentik (`infra/auth/setup.py`) calls `POST /api/login/oidc/deleted` with the person's
+  subject and the bearer token `OIDC_DELETION_TOKEN`; the linked account is deleted. A deleted account's link to
+  Authentik is freed.
+- The project's version is `0.8.3-SNAPSHOT` (was `0.1.0-SNAPSHOT`).
 
 ### Administrators through Authentik (Phase 8, part 2)
 - With `OIDC_ISSUER` (and the client) set, the login form has *Administrators: log in with Authentik* (OpenID Connect,
