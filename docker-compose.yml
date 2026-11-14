@@ -41,8 +41,8 @@ services:
       retries: 10
 
   gateway:
-    # Locally as built; on the server from the registry (IMAGE_REGISTRY, GATEWAY_TAG set by scripts/deploy.sh)
-    image: ${IMAGE_REGISTRY:-}randogeddon-gateway:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
+    # Locally as built; on the server from the registry (GATEWAY_IMAGE, GATEWAY_TAG set by scripts/deploy.sh)
+    image: ${GATEWAY_IMAGE:-randogeddon-gateway}:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
     build:
       <<: *build
       target: gateway
@@ -66,7 +66,7 @@ services:
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   tracker:
-    image: ${IMAGE_REGISTRY:-}randogeddon-tracker:${IMAGE_TAG:-latest}
+    image: ${TRACKER_IMAGE:-randogeddon-tracker}:${IMAGE_TAG:-latest}
     build:
       <<: *build
       target: tracker
@@ -119,6 +119,6 @@ volumes:
   postgres-data:
 
 secrets:
-  # Gradle init script with the Nexus credentials; only needed when the images are built
+  # Gradle init script with the token for pkg.example.org (entry `example`); only needed when the images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}

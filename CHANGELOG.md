@@ -16,12 +16,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
   session IDs.
 
 ### The live server (Phase 8, part 1)
-- The build infrastructure of example.org, its compose files in `infra/`: Zot at `img.example.org` (the registry VM) for
-  the images, Authentik at `auth.example.org` (the auth VM) with Zot's login through it (`infra/auth/setup.py` makes its
-  groups and applications).
+- The build infrastructure of example.org, its compose files in `infra/`: Artifact Keeper at `pkg.example.org`
+  (the registry VM) for the images and the Maven repositories (the Nexus's proxies, `public` mirroring them all, hosted ones;
+  `infra/registry/provision.py`), Authentik at `auth.example.org` (the auth VM) with Artifact Keeper's login through it
+  (`infra/auth/setup.py` makes its groups and applications). Zot and Reposilite, tried first, are gone again.
 - `scripts/deploy.sh`: builds, pushes the images tagged with the commit, dumps the database, switches the server to
-  the new tag and checks it; `--rollback` goes back to the tag before. The compose file takes the images from
-  `IMAGE_REGISTRY` with `IMAGE_TAG` and `GATEWAY_TAG` (locally unchanged).
+  the new tag and checks it; `--rollback` goes back to the tag before. The images are
+  `pkg.example.org/eratiem-network/randogeddon/{tracker,gateway}`; the compose file takes them from `TRACKER_IMAGE`
+  and `GATEWAY_IMAGE` with `IMAGE_TAG` and `GATEWAY_TAG` (locally unchanged).
 - A daily database dump on the server (`scripts/backup.sh`, `randogeddon-backup.timer`), kept 14 days, and how to
   restore one (README, "The live server"). The server holds only what runs.
 

@@ -6,7 +6,7 @@
 #                                   README, restoring)
 #
 # The server holds only what runs (README, "The live server"); this script copies its compose files and the backup
-# script there. Needs: `docker login img.example.org` (the deploy account), the Gradle init script for the build, and
+# script there. Needs: `docker login pkg.example.org` (the deploy token), the Gradle init script for the build, and
 # an SSH alias DEPLOY_SSH (default randogeddon-live) for the server, e.g. in ~/.ssh/config:
 #   Host randogeddon-live
 #     HostName <internal-ip>
@@ -15,7 +15,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REGISTRY="${IMAGE_REGISTRY:-img.example.org/}"
+# The project's images in the registry: <IMAGES>/tracker, <IMAGES>/gateway
+IMAGES="${IMAGES:-pkg.example.org/eratiem-network/randogeddon}"
 DEPLOY_SSH="${DEPLOY_SSH:-randogeddon-live}"
 DIR=/srv/randogeddon
 AP_VERSION="$(sed -n 's/.*AP_VERSION:-\([0-9.]*\)}.*/\1/p' docker-compose.yml | head -1)"
@@ -45,7 +46,9 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx postgres
   docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump"
   echo "Database dumped to $dump"
 fi
-set_setting IMAGE_REGISTRY "$REGISTRY"
+sed -i '/^IMAGE_REGISTRY=/d' .env
+set_setting TRACKER_IMAGE "$IMAGES/tracker"
+set_setting GATEWAY_IMAGE "$IMAGES/gateway"
 set_setting IMAGE_TAG "$tag"
 set_setting GATEWAY_TAG "$gateway_tag"
 if [[ -n "$current" && "$current" != "$tag" ]]; then
@@ -63,7 +66,7 @@ echo "Running: tracker $tag, gateway $gateway_tag; schema version $(docker compo
 SH
 
 if [[ "${1:-}" == "--rollback" ]]; then
-  remote "sudo REGISTRY='$REGISTRY' bash -s -- '' ''" <<<"$SWITCH"
+  remote "sudo IMAGES='$IMAGES' bash -s -- '' ''" <<<"$SWITCH"
   exit
 fi
 
@@ -74,10 +77,10 @@ gateway_tag="$AP_VERSION-$tag"
 echo "== Building $tag"
 export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker gateway
-docker tag randogeddon-tracker:latest "${REGISTRY}randogeddon-tracker:$tag"
-docker tag "randogeddon-gateway:$AP_VERSION" "${REGISTRY}randogeddon-gateway:$gateway_tag"
-docker push -q "${REGISTRY}randogeddon-tracker:$tag"
-docker push -q "${REGISTRY}randogeddon-gateway:$gateway_tag"
+docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
+docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
+docker push -q "$IMAGES/tracker:$tag"
+docker push -q "$IMAGES/gateway:$gateway_tag"
 
 echo "== The server's files"
 remote "mkdir -p /tmp/randogeddon-deploy"
@@ -95,4 +98,4 @@ rm -rf /tmp/randogeddon-deploy
 SH
 
 echo "== Switching to $tag"
-remote "sudo REGISTRY='$REGISTRY' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"
+remote "sudo IMAGES='$IMAGES' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"

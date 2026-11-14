@@ -66,7 +66,8 @@ docker compose build     # takes a few minutes (every game's requirements, the n
 ```
 
 Building the tracker and gateway images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
-packages; on Arch: `pacman -S docker-buildx`) and your Gradle init script with the Nexus credentials. Compose passes
+packages; on Arch: `pacman -S docker-buildx`) and your Gradle init script with the token for `pkg.example.org`
+(an entry `example`: any user name, an Artifact Keeper API token as password, e.g. `<service-account>`'s). Compose passes
 the init script into the build as a secret (default `~/.gradle/init.gradle.kts`, change with `GRADLE_INIT_SCRIPT` in
 `.env`); it never ends up in an image. Compose asks once to let the build read that file outside the build context
 (`additional privileges requested`); answer yes, or set `BUILDX_BAKE_ENTITLEMENTS_FS=0` as the scripts do. The native
@@ -185,7 +186,8 @@ sessions that exist already, finished ones too.
 ## The live server
 
 The live Randogeddon runs on the live VM (`<internal-ip>`, behind the Proxmox host example.org and its Traefik). It holds
-only what runs; the images are built on a PC (WSL) and come from the registry `img.example.org` (Zot, the registry VM):
+only what runs; the images are built on a PC (WSL) and come from the registry `pkg.example.org` (Artifact Keeper, VM
+1020):
 
 | What | Where |
 |---|---|
@@ -196,7 +198,8 @@ only what runs; the images are built on a PC (WSL) and come from the registry `i
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
-`IMAGE_REGISTRY=img.example.org/`, `IMAGE_TAG` and `GATEWAY_TAG` (the running commit), `PREVIOUS_IMAGE_TAG` and
+`TRACKER_IMAGE=pkg.example.org/eratiem-network/randogeddon/tracker` and `GATEWAY_IMAGE=…/gateway`, `IMAGE_TAG` and
+`GATEWAY_TAG` (the running commit; the gateway's with the Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
 `PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,
 but the compose file names the build's secret).
 
@@ -207,9 +210,9 @@ but the compose file names the build's secret).
 ./scripts/deploy.sh --rollback  # back to the previous tag (code only; a migration that ran needs its dump)
 ```
 
-It needs once: `docker login img.example.org` with the `deploy` account (its password is in `<registry-dir>/.secrets`
-on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see the script's head). The
-server itself is logged in to the registry with the read-only `randogeddon-live` account.
+It needs once: `docker login pkg.example.org` with the `<service-account>` token as password (`AK_TOKEN_DEPLOY` in
+`<registry-dir>/.secrets` on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see
+the script's head). The server itself is logged in to the registry with the read-only `<service-account>` token.
 
 **Restoring a dump** (the stack's database replaced by the dump; the tracker and gateway stopped meanwhile):
 
@@ -544,8 +547,9 @@ For a test seed that needs no ROM or installed game, use a few YAMLs like
 
 ## Developing the tracker and the gateway
 
-Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from the Nexus via your init script, like in
-CoreSync. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
+Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from `https://pkg.example.org/maven/public/`
+(Artifact Keeper's mirror of Maven Central, the plugin portal, Google and the others) with the token from your init
+script. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
 
 ```sh
 ./gradlew :server:test :gateway:test :database:test  # unit tests (also run in the Docker build)
@@ -578,7 +582,7 @@ The images contain native executables (GraalVM CE 25), built in `kotlin.Dockerfi
   runtime image (Debian 12, glibc 2.36); glibc is backwards compatible.
 
 Native images can't be cross-compiled, so the build runs on Linux: in the Docker build, or directly in WSL Debian with
-GraalVM 25 (`sdk install java 25-graal`) and the Nexus init script in `~/.gradle/init.gradle.kts`:
+GraalVM 25 (`sdk install java 25-graal`) and the init script (with `example`) in `~/.gradle/init.gradle.kts`:
 `./gradlew :server:nativeCompile :gateway:nativeCompile`. Docker on Windows may run only Windows containers; then use
 the Docker of WSL (also for `:database:integrationTest`).
 

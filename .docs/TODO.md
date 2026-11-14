@@ -250,23 +250,25 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [ ] Two new VMs for the build infrastructure (the host's services), Docker Compose with pinned
       tags (every stack updates the same way: bump the tag, pull, `up -d`), behind the host's Traefik
-    - **1020 `registry`** (`<internal-ip>`): **Zot** (OCI registry) at `img.example.org` for the tracker and gateway
-      images, and **Reposilite** (Maven repository) at `mvn.example.org` for the Gradle dependencies, in place of the
-      Nexus; its data on its own disk.
-    - **1010 `auth`** (`<internal-ip>`): **Authentik** at `auth.example.org`, apart from the registries.
+    - **1020 `registry`** (`<internal-ip>`): **Artifact Keeper** at `pkg.example.org`: the tracker and gateway images
+      (Docker/OCI) and the Maven repositories for the Gradle dependencies, in place of the Nexus; its data on its own
+      disk. (Zot and Reposilite were tried first: no real single sign-on for Reposilite, so one registry for both.)
+    - **1010 `auth`** (`<internal-ip>`): **Authentik** at `auth.example.org`, apart from the registry.
     - Their compose files in the repo (`infra/`), secrets only in their `.env`.
-- [ ] Reposilite: the Nexus's proxies (Maven Central, Gradle plugins, Google, JitPack, PaperMC, Sonatype, …), one
-      `public` repository mirroring them all, and hosted repositories of our own; reading needs a token too
+- [ ] Maven in Artifact Keeper: the Nexus's proxies (Maven Central, Gradle plugins, Google, JitPack, PaperMC,
+      Sonatype, …), one virtual `public` mirroring them all, and hosted repositories of our own; reading needs a token
+      too (`infra/registry/provision.py`)
 - [ ] Authentik: one login for the infrastructure instead of one per service
-    - Zot by OIDC, Reposilite's dashboard through Traefik forward auth; machines keep their own tokens (Gradle for
-      Reposilite, the live VM and WSL for Zot).
+    - Artifact Keeper by OIDC (the group `infrastructure` are its admins); machines use service accounts' tokens
+      (`<service-account>` reads Maven, `<service-account>` pushes, `<service-account>` on the live VM pulls).
 - [ ] Randogeddon's Administrators log in through Authentik
     - An Authentik group (`randogeddon-administrators`) decides who is one; the account is linked by its verified
       e-mail address on the first login. Authentik's MFA replaces the app's two-factor login for them.
     - No password login for Administrators; if Authentik is away, `randogeddon admins --login` prints a one-time
       link. Players keep the normal login.
-- [ ] Images through the registry: built locally (WSL) as now, pushed to Zot with the commit as tag besides `latest`;
-      the live VM pulls them (a read-only token) instead of tarballs
+- [ ] Images through the registry: built locally (WSL) as now, pushed to Artifact Keeper with the commit as tag
+      (`pkg.example.org/eratiem-network/randogeddon/{tracker,gateway}`); the live VM pulls them (a read-only token)
+      instead of tarballs
 - [ ] The live server holds only what runs
     - `/srv/randogeddon`: `docker-compose.yml`, `docker-compose.proxy.yml`, `.env`, `data/`, `custom_worlds/`; the
       volumes `postgres-data` and `tracker-state`; no source code.
