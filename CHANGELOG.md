@@ -6,6 +6,13 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 it the release, and the merge is tagged `v<version>`.
 
 ## Phase 11: The Administrators' Account Page
+Administrators who log in through Authentik manage their account there: *Your account* links to it, and their name
+and address here follow it. Updating: run `infra/auth/setup.py` again in Authentik (the rule for changed people);
+`OIDC_ACCOUNT_URL` is optional.
+
+### 0.11.2: Phase 11 done
+- README: Authentik holds the Administrators' account, the webhooks; `.env.example`: `OIDC_ACCOUNT_URL`, the token for
+  both webhooks; TODO: Phase 11 done.
 
 ### 0.11.1: Authentik holds their account
 - With single sign-on, an Administrator's *Your account* starts with *Your Authentik account*: a link to Authentik's

@@ -163,9 +163,15 @@ app's two-factor login for them. They can't log in with a password any more; if 
 `randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
 (confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
 application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
-Their accounts here don't delete themselves after a while: they go when Authentik deletes the person, whose webhook
-calls `POST /api/login/oidc/deleted` with `OIDC_DELETION_TOKEN` (the same token in Authentik; `setup.py` makes the
-rule and prints it). More on the machines around it: `.docs/INFRA.md`.
+Authentik holds their account: *Your account* starts with *Your Authentik account*, a link to Authentik's user
+settings (`<issuer's host>/if/user/`, or `OIDC_ACCOUNT_URL`), where they change their name, password, e-mail address
+and second factor; the panels for those and for the deletion aren't there for them, and the server refuses those
+changes (language and appearance stay). Their name and address follow Authentik's at every login, and at once
+through its webhook `POST /api/login/oidc/updated` (when Authentik changes the person); a two-factor login from before
+goes at their next login through it. Their accounts here don't delete themselves after a while: they go when
+Authentik deletes the person, whose webhook calls `POST /api/login/oidc/deleted`. Both webhooks carry
+`OIDC_DELETION_TOKEN` (the same token in Authentik; `setup.py` makes the rules and prints it). More on the machines
+around it: `.docs/INFRA.md`.
 
 **Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
 (`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
@@ -477,7 +483,8 @@ API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
 `POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
-`.../callback`, and `POST /api/login/link` (a CLI login link); `GET /api/invitations/<token>`, `POST /api/signup` (the
+`.../callback`, `POST /api/login/link` (a CLI login link), and Authentik's webhooks `POST /api/login/oidc/deleted` and
+`.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
 sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
