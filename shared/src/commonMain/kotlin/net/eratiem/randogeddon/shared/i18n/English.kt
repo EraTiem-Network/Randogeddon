@@ -6,6 +6,20 @@ import net.eratiem.randogeddon.shared.SessionStatus
 /** British English: the default, and the fallback. */
 object English : Texts {
   override val language = Language.EN
+  override val dashboard: DashboardTexts = EnglishDashboard
+  override val feed: FeedTexts = EnglishFeed
+  override val finish: FinishTexts = EnglishFinish
+  override val dialogs: DialogTexts = EnglishDialogs
+  override val connection: ConnectionTexts = EnglishConnection
+  override val people: PeopleTexts = EnglishPeople
+  override val watch: WatchTexts = EnglishWatch
+  override val spoiler: SpoilerTexts = EnglishSpoiler
+  override val panel: PanelTexts = EnglishPanel
+  override val cheats: CheatTexts = EnglishCheats
+  override val apworlds: ApworldTexts = EnglishApworlds
+  override val users: UserAdminTexts = EnglishUserAdmin
+  override val sessionAdmin: SessionAdminTexts = EnglishSessionAdmin
+  override val tips: SessionTips = EnglishSessionTips
 
   override val format = object : FormatTexts {
     override val decimalSeparator = '.'

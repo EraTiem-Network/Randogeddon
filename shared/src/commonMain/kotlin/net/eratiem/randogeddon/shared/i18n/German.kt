@@ -9,6 +9,20 @@ import net.eratiem.randogeddon.shared.SessionStatus
  */
 object German : Texts {
   override val language = Language.DE
+  override val dashboard: DashboardTexts = GermanDashboard
+  override val feed: FeedTexts = GermanFeed
+  override val finish: FinishTexts = GermanFinish
+  override val dialogs: DialogTexts = GermanDialogs
+  override val connection: ConnectionTexts = GermanConnection
+  override val people: PeopleTexts = GermanPeople
+  override val watch: WatchTexts = GermanWatch
+  override val spoiler: SpoilerTexts = GermanSpoiler
+  override val panel: PanelTexts = GermanPanel
+  override val cheats: CheatTexts = GermanCheats
+  override val apworlds: ApworldTexts = GermanApworlds
+  override val users: UserAdminTexts = GermanUserAdmin
+  override val sessionAdmin: SessionAdminTexts = GermanSessionAdmin
+  override val tips: SessionTips = GermanSessionTips
 
   override val format = object : FormatTexts {
     override val decimalSeparator = ','
