@@ -29,6 +29,9 @@ object UsersTable : Table("users") {
   val oidcSubject = varchar("oidc_subject", 255).nullable()
   /** The language's code (`en`, `de`; V12); `null`: their browser's. */
   val language = varchar("language", 8).nullable()
+  /** The theme's code and the mode (`light`, `dark`, `auto`; V13); `null`: the default theme, automatic. */
+  val theme = varchar("theme", 16).nullable()
+  val themeMode = varchar("theme_mode", 8).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
