@@ -37,6 +37,8 @@ data class TrackerConfig(
   val totpKey: String = "",
   /** Administrators log in through this provider; `null`: with their password and two-factor login. */
   val oidc: OidcConfig? = null,
+  /** Randogeddon Bridge's builds (`randogeddon-bridge-<os>-<arch>[.exe]` and `VERSION`), offered for download. */
+  val bridgeDir: Path = Path.of("bridge/build/dist"),
 ) {
   /** Where the players of session [id] connect. */
   fun addressOf(id: String): String = publicAddress.replace("{id}", id)
@@ -58,6 +60,7 @@ data class TrackerConfig(
         sessionRetentionDays = value("tracker.sessionRetentionDays").toInt().coerceAtLeast(0),
         cookieSecure = flag(value("tracker.cookieSecure")),
         publicUrl = value("tracker.publicUrl").trimEnd('/'),
+        bridgeDir = Path.of(value("tracker.bridgeDir")),
         totpKey = value("tracker.totpKey"),
         mail = MailConfig(
           host = value("mail.host").trim(),

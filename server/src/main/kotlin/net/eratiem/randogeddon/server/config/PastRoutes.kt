@@ -59,13 +59,7 @@ fun Route.sessionRoutes(
     install(RequireSessionMember) { this.logins = logins }
     get("/state") { session(sessions) { call.respondText(it.json(), ContentType.Application.Json) } }
     get("/player/{slot}") { session(sessions) { playerDetail(it, archives) } }
-    // Where the person's game clients connect, with their slots' passwords
-    get("/connection") {
-      session(sessions) { live ->
-        val person = live.personOf(call.loggedIn.user)
-        call.respond(Connection(config.addressOf(live.id), person?.let { slotPasswords.of(live, it) }.orEmpty()))
-      }
-    }
+    connectionRoute(config, sessions, slotPasswords)
     // A finished session as it was when it finished, with every slot's details
     get("/archive") {
       session(sessions) { live ->
@@ -112,6 +106,16 @@ fun Route.sessionRoutes(
 }
 
 /** The details of the path's `{slot}` of [live]; a finished session's from its archive. */
+/** `GET …/connection`: where the person's game clients connect, with their slots' passwords (the bridge's too). */
+internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions, slotPasswords: SlotPasswords) {
+  get("/connection") {
+    session(sessions) { live ->
+      val person = live.personOf(call.loggedIn.user)
+      call.respond(Connection(config.addressOf(live.id), person?.let { slotPasswords.of(live, it) }.orEmpty()))
+    }
+  }
+}
+
 internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives) {
   val slot = call.parameters["slot"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest)
   val archived = if (live.finished) archives.read(live.id) else null

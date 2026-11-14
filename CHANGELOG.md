@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`.
 
+## Phase 12: Randogeddon Bridge
+
+### 0.12.1: Bridge keys
+- A key for Randogeddon Bridge, made under *Your connection* (*Make a key*, shown once): a login of its own kind
+  (`bridge`, 30 days), sent by the app as a bearer token. It reaches only `/bridge/…`: `info` (the bridge offered, the
+  user's colours, mode and language), `me`, `sessions` and a session's `connection`, and `DELETE /bridge/key` (the
+  app's logout); never `/api`, not even as the cookie. A new password ends the keys with every other login.
+- *Your account* lists the keys (made, last used, until when) with *End*, once there are any.
+- `GET /downloads/bridge` and `.../<file>`: the bridge's builds in `BRIDGE_DIR` (none yet: they come with 0.12.2).
+- Migration V14: `login_sessions.last_used_at`, and `bridge` as a login method.
+
 ## Phase 11: The Administrators' Account Page
 Administrators who log in through Authentik manage their account there: *Your account* links to it, and their name
 and address here follow it. Updating: run `infra/auth/setup.py` again in Authentik (the rule for changed people);
