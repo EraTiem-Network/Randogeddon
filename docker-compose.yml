@@ -12,6 +12,10 @@ x-build: &build
   context: .
   dockerfile: kotlin.Dockerfile
   secrets: [gradle_init]
+  # One plain linux/amd64 image: without these, BuildKit adds attestations and the image becomes an index (a registry
+  # shows it as multi-arch, with an `unknown/unknown` entry)
+  provenance: false
+  sbom: false
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
     AP_VERSION: ${AP_VERSION:-0.6.8}
