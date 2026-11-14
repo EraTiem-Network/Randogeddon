@@ -326,24 +326,24 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Before login: the theme last used in this browser (the login page takes its colours), else the default theme in
       automatic mode.
 
-## Phase 11: The Administrators' Account Page
+## Phase 11: The Administrators' Account Page (done)
 
 *Administrators who log in through Authentik manage their account there, not in Randogeddon.*
 
-- [ ] With single sign-on, *Your account* for an Administrator has no panels for the name, the password, the e-mail
+- [x] With single sign-on, *Your account* for an Administrator has no panels for the name, the password, the e-mail
       address, two-factor login and the account's deletion: Authentik holds those
     - The server refuses those changes for them too (not only hidden in the web app): the account routes and the
       two-factor routes (set up, turn on and off, new recovery codes).
     - A two-factor login an Administrator set up before (0.8.3 let them turn it off) is removed when they log in
       through Authentik; it isn't asked anyway.
     - Without single sign-on (no `OIDC_ISSUER`) nothing changes: Administrators keep those panels.
-- [ ] Instead, the first panel: *Your Authentik account*, a link to Authentik's user settings
+- [x] Instead, the first panel: *Your Authentik account*, a link to Authentik's user settings
       (`auth.example.org/if/user/`), where they change their name, password, e-mail address and two-factor login
     - The name and e-mail address follow right away: Authentik's `model_updated` event for the user, sent by a
       notification rule like the deletion's (`infra/auth/setup.py`, the same webhook token), names the subject and
       the new values. The next login through Authentik catches up on anything missed, the Administrator status
       included.
-- [ ] The other settings stay: language and appearance
+- [x] The other settings stay: language and appearance
 
 ## Phase 12: Randogeddon Bridge
 
