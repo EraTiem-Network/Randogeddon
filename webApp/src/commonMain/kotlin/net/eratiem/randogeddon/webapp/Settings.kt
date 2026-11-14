@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -177,6 +178,12 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Select(Theme.entries.map { it to acc.theme(it) }, Themes.theme, { save(it, Themes.mode) }, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
           Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+        }
+        // The theme's colours, as they show now: the brand, the items, the states
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          listOf(p.brandStart, p.brandEnd, p.progression, p.useful, p.trap, p.ok, p.warn, p.key).forEach { colour ->
+            Box(Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).background(colour))
+          }
         }
         appearanceState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }

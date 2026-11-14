@@ -50,6 +50,8 @@ class ThemesTest {
         assertTrue(contrast(p.muted, surface) >= 4.5, "$name: muted on $what ${contrast(p.muted, surface)}")
       }
       assertTrue(contrast(p.onBrand, p.brandEnd) >= 3.0, "$name: on the accent ${contrast(p.onBrand, p.brandEnd)}")
+      // The top card's text spans the whole gradient (the default's coral start: 2.6)
+      assertTrue(contrast(p.onBrand, p.brandStart) >= 2.5, "$name: on the gradient's start ${contrast(p.onBrand, p.brandStart)}")
     }
   }
 
