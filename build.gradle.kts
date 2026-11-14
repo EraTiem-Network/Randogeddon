@@ -15,7 +15,7 @@ plugins {
 
 group = "net.eratiem.randogeddon"
 // 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its last commit before the merge the release (see README, versions)
-version = "0.9.4"
+version = "0.10.1-SNAPSHOT"
 
 allprojects {
   repositories {
