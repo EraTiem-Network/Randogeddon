@@ -569,6 +569,12 @@ on port 8000.
 The schema is in `database/src/main/resources/db/migration`; a new migration must also be listed in `index.txt` there
 (a native image can't scan the classpath; a test checks the list).
 
+### Versions
+
+While Randogeddon is in development, its version (root `build.gradle.kts`) is `0.<phase>.<step>`: the phase (as in
+`.docs/TODO.md`) and its PR. A PR's branch builds `0.<phase>.<step>-SNAPSHOT`; when it is merged, that is the release
+`0.<phase>.<step>`, and the next PR starts with the next step's `-SNAPSHOT`.
+
 ### Native build
 
 The images contain native executables (GraalVM CE 25), built in `kotlin.Dockerfile` with the setup in the root

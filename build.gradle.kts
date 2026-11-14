@@ -14,7 +14,8 @@ plugins {
 }
 
 group = "net.eratiem.randogeddon"
-version = "0.1.0-SNAPSHOT"
+// 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its merge the release without the suffix (see README, versions)
+version = "0.8.3-SNAPSHOT"
 
 allprojects {
   repositories {
