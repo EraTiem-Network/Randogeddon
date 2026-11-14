@@ -15,11 +15,35 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Randogeddon">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>
+    // The user's theme for this page (the web app keeps its colours here, ap-theme-css), before the first paint; without
+    // one, the CSS below follows the device's light or dark setting
+    window.randogeddonTheme = (function () {
+      var theme = null;
+      var media = window.matchMedia("(prefers-color-scheme: dark)");
+      function paint() {
+        if (!theme) return;
+        var colours = theme[theme.mode === "light" || (theme.mode !== "dark" && !media.matches) ? "light" : "dark"];
+        Object.keys(colours).forEach(function (name) {
+          document.documentElement.style.setProperty("--" + name, colours[name]);
+        });
+        document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.content = colours.bg; });
+      }
+      media.addEventListener("change", paint);
+      try { theme = JSON.parse(localStorage.getItem("ap-theme-css")); } catch (e) {}
+      paint();
+      return function (json) {
+        try { localStorage.setItem("ap-theme-css", json); } catch (e) {}
+        theme = JSON.parse(json);
+        paint();
+      };
+    })();
+  </script>
   <style>
     :root { --bg: #f5f4fa; --panel: #ffffff; --border: #e7e4f0; --text: #1b1a2b; --muted: #6c6a80; --accent: #7c5cff;
-      --error: #d92d20; }
+      --brand: #ff7a45; --on-brand: #ffffff; --error: #d92d20; }
     @media (prefers-color-scheme: dark) { :root { --bg: #07070c; --panel: #101118; --border: #22232f; --text: #e9e8f2;
-      --muted: #8d8ba3; --accent: #8e72ff; --error: #f97066; } }
+      --muted: #8d8ba3; --accent: #8e72ff; --brand: #ff7a4d; --error: #f97066; } }
     html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
     #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 14px; color: var(--muted); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 16px; }
@@ -48,8 +72,8 @@
     #login code { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
     #login .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin: 0; padding: 12px;
       border-radius: 10px; background: var(--bg); border: 1px solid var(--border); list-style: none; }
-    #login button { font: inherit; font-weight: 600; color: #fff; border: 0; border-radius: 10px; padding: 10px;
-      background: linear-gradient(90deg, #ff7a45, var(--accent)); cursor: pointer; }
+    #login button { font: inherit; font-weight: 600; color: var(--on-brand); border: 0; border-radius: 10px; padding: 10px;
+      background: linear-gradient(90deg, var(--brand), var(--accent)); cursor: pointer; }
     #login button:disabled { opacity: 0.6; cursor: default; }
     /* Single sign-on for Administrators: a link to the provider, styled like a secondary button */
     #login a.sso { font-weight: 600; text-align: center; text-decoration: none; color: var(--text); background: var(--bg);

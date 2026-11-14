@@ -10,7 +10,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - TLS only: current clients connect over `wss://` (Launcher-based clients retry with it, and
       Archipelago.MultiClient.Net, used by many modded games, tries it first since April 2023). Older or unmaintained
       mods may only speak `ws://`, so every game of a session is tested with its real client before session day; for
-      those, the Randogeddon Bridge (Phase 11) gives them a `ws://localhost` address.
+      those, the Randogeddon Bridge (Phase 12) gives them a `ws://localhost` address.
 - **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
@@ -321,7 +321,26 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
       used in this browser.
 
-## Phase 11: Randogeddon Bridge
+## Phase 11: The Administrators' Account Page
+
+*Administrators who log in through Authentik manage their account there, not in Randogeddon.*
+
+- [ ] With single sign-on, *Your account* for an Administrator has no panels for the name, the password, the e-mail
+      address, two-factor login and the account's deletion: Authentik holds those
+    - The server refuses those changes for them too (not only hidden in the web app): the account routes and the
+      two-factor routes (set up, turn on and off, new recovery codes).
+    - A two-factor login an Administrator set up before (0.8.3 let them turn it off) is removed when they log in
+      through Authentik; it isn't asked anyway.
+    - Without single sign-on (no `OIDC_ISSUER`) nothing changes: Administrators keep those panels.
+- [ ] Instead, the first panel: *Your Authentik account*, a link to Authentik's user settings
+      (`auth.example.org/if/user/`), where they change their name, password, e-mail address and two-factor login
+    - The name and e-mail address follow right away: Authentik's `model_updated` event for the user, sent by a
+      notification rule like the deletion's (`infra/auth/setup.py`, the same webhook token), names the subject and
+      the new values. The next login through Authentik catches up on anything missed, the Administrator status
+      included.
+- [ ] The other settings stay: language and appearance
+
+## Phase 12: Randogeddon Bridge
 
 *Games that can't do TLS connect to `localhost`; the bridge takes them to their session securely.*
 
@@ -345,7 +364,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       Gatekeeper)
 - [ ] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
-## Phase 12: Polishing
+## Phase 13: Polishing
 
 *Everything tested by hand, and what comes up fixed.*
 

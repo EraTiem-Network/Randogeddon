@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.server.config.refuse
@@ -100,6 +101,13 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: 
     put("/language") {
       accountCall {
         accounts.setLanguage(call.loggedIn.user, call.receive<LanguageRequest>().language)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/theme") {
+      accountCall {
+        val request = call.receive<ThemeRequest>()
+        accounts.setTheme(call.loggedIn.user, request.theme, request.mode)
         call.respond(HttpStatusCode.NoContent)
       }
     }

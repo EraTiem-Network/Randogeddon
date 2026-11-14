@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.server.config.refuse
@@ -285,7 +287,10 @@ fun Route.meRoute(list: SessionList) {
   get("/me") {
     val user = call.loggedIn.user
     call.respond(
-      Me(name = user.name, administrator = user.administrator, manages = list.managedBy(user), language = Language.of(user.language))
+      Me(
+        name = user.name, administrator = user.administrator, manages = list.managedBy(user),
+        language = Language.of(user.language), theme = Theme.of(user.theme), themeMode = ThemeMode.of(user.themeMode),
+      )
     )
   }
 }
