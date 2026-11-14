@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.server.config.english
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.server.session.PlayerYamls
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.Suspect
@@ -62,15 +64,19 @@ class SessionAdminTest {
 
   @Test
   fun `a failure names the suspects before the log`() {
-    val message = failure(
+    val refusal = failure(
       GenerateResult(
         log = listOf("KeyError: 'Dash'"),
         suspects = listOf(Suspect("Celeste", "named in the error", "celeste.apworld", "0.6.7")),
       )
     )
-    assertTrue(message.startsWith("Generation failed, possibly because of:\n• Celeste (APWorld celeste.apworld, from Archipelago 0.6.7): named in the error"), message)
+    assertEquals(Problem.GENERATION_SUSPECTS, refusal.problem)
+    assertEquals("• Celeste (celeste.apworld, Archipelago 0.6.7): named in the error", refusal.args["suspects"])
+    assertEquals("KeyError: 'Dash'", refusal.detail)
+    val message = refusal.english()
+    assertTrue(message.startsWith("Generation failed, possibly because of:\n• Celeste"), message)
     assertTrue(message.endsWith("Generate.py said:\nKeyError: 'Dash'"), message)
-    assertTrue(failure(GenerateResult(log = listOf("boom"))).contains("isn't supported by this Archipelago release"))
+    assertEquals(Problem.GENERATION_FAILED, failure(GenerateResult(log = listOf("boom"))).problem)
   }
 
   @Test

@@ -7,11 +7,20 @@ data class HttpResult(val status: Int, val body: String)
 expect object Platform {
   fun now(): Long
 
-  /** Wall-clock time of [epochMillis] as `HH:mm` in the viewer's time zone. */
-  fun clock(epochMillis: Long): String
+  /** Wall-clock time of [epochMillis] as `HH:mm` in the viewer's time zone, for the language [tag]. */
+  fun clock(epochMillis: Long, tag: String): String
 
-  /** Date and time of [epochMillis] in the viewer's locale and time zone, e.g. `13 Nov 2026, 20:15`. */
-  fun date(epochMillis: Long): String
+  /**
+   * Date and time of [epochMillis] in the viewer's time zone, for the language [tag]: `13 Nov 2026, 20:15`, or with
+   * [numeric] the month in digits (`13.11.2026, 20:15`).
+   */
+  fun date(epochMillis: Long, tag: String, numeric: Boolean): String
+
+  /** The browser's first language (e.g. `de-DE`); `null` if it names none. */
+  fun browserLanguage(): String?
+
+  /** Tells the page (index.html's forms, `<html lang>`) the language the app is in now: its code. */
+  fun setPageLanguage(code: String)
 
   /** [method] [path] relative to the page, with a JSON [body]; `null` if the server can't be reached. */
   suspend fun request(method: String, path: String, body: String? = null): HttpResult?

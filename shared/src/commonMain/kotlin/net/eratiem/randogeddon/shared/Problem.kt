@@ -1,0 +1,51 @@
+package net.eratiem.randogeddon.shared
+
+import kotlinx.serialization.Serializable
+
+/**
+ * Why the server refused something, as a code: the web app words it in the viewer's language
+ * (`Texts.problems`), the server in the request's for [ApiError.message]. Its values (a name, an address, a number)
+ * travel in [ApiError.args] by the names the texts use.
+ */
+@Serializable
+enum class Problem {
+  // In general
+  NOT_POSSIBLE, NOT_LOGGED_IN, NOT_PART, ONLY_ADMINISTRATORS, ONLY_ROLES, NEEDS_TWO_FACTOR, ADMINISTRATOR_USE_SSO,
+  ADMINISTRATOR_PASSWORD, GATEWAY_ANSWERED, GATEWAY_REFUSED, GATEWAY_UNREACHABLE, OUTPUT,
+
+  // Logging in
+  WRONG_LOGIN, WRONG_CODE, CODE_MISMATCH, LOGIN_EXPIRED, LINK_GONE, TWO_FACTOR_ON, SET_UP_FIRST, ADMINISTRATORS_NEED_TWO_FACTOR,
+  NO_SSO, WRONG_TOKEN, NO_SUBJECT, SSO_EXPIRED, SSO_FAILED, SSO_LINKED_ELSEWHERE, SSO_NOT_ADMINISTRATOR, SSO_CANCELLED,
+  SSO_NOT_HERE, SSO_UNREACHABLE,
+
+  // Accounts
+  ADDRESS_INVITED, ADDRESS_OF, ADDRESS_HAS_ACCOUNT, NO_ADDRESS, ADDRESS_OTHER_ACCOUNT, ADDRESS_OTHER_ACCOUNT_NOW,
+  INVITATION_UNKNOWN, INVITATION_USED, INVITATION_EXPIRED, SIGNED_UP_ALREADY, LINK_DOESNT_WORK, NAME_TAKEN, ACCOUNT_GONE,
+  WRONG_PASSWORD, SAME_ADDRESS, MAIL_FAILED, INVITATION_FAILED, CONFIRMATION_GONE, DELETED_WITH_SSO, NO_ACCOUNT,
+  SIGNED_UP, NOT_AN_ADDRESS, NAME_TOO_SHORT, NAME_TOO_LONG, NAME_SPACES, NAME_AT, NAME_CONTROL, PASSWORD_TOO_SHORT,
+  PASSWORD_TOO_LONG,
+
+  // Sessions
+  ID_TOO_SHORT, ID_TOO_LONG, ID_LETTER_FIRST, ID_CHARACTERS, ID_TRAILING_DASH, ID_DOUBLE_DASH, ID_RESERVED, ID_TAKEN,
+  NO_SESSION, ONLY_ADMINISTRATORS_CREATE, SESSION_LIMIT, SERVERS_IN_USE, NO_SLOTS, NOT_IN_YAMLS, NO_SUCH_USERS, NO_RELEASE,
+  RELEASE_UNSUPPORTED, ONE_OPEN, RANDOM_TWO_SLOTS, RANDOM_MAX_OPEN, MIXED_RANGE, GENERATION_FAILED, GENERATION_SUSPECTS,
+  SESSION_FINISHED, NO_CHEAT_HINTS, NO_SLOT, SLOT_ALL_CHECKED, NOT_AN_ITEM, NOT_A_LOCATION, SERVER_NOT_RUNNING,
+  ALREADY_FINISHED, NOT_FINISHED, COMPLETED_NO_REOPEN, TOO_OLD_TO_REOPEN, PLAYERS_WITH_SLOTS, ADMINISTRATOR_EVERYWHERE,
+  WHOM, HAS_PART, NO_PART, KEEP_MANAGER, NOT_WATCHING, NOT_A_WATCHER, NO_FILE, SUPPORT_CANT, SESSIONS_PER_USER,
+  APWORLD_TOO_LARGE, REOPEN_TO_START, EMPTY_COMMAND, SPOILER_LATER, NO_SPOILER, SHARE_LINK_GONE,
+
+  // A new session's YAMLs
+  YAML_FILE, YAML_EMPTY, YAML_NOT_PLAYER, YAML_NO_NAME, YAML_NO_GAME, YAML_WORLD_LOCKS, YAML_DUPLICATE, NO_APWORLD,
+}
+
+/**
+ * A refusal: its [problem] with the values its words need ([args]), and [detail]: what another program said (the
+ * gateway, Generate.py), shown as it is under the words.
+ */
+data class Refusal(val problem: Problem, val args: Map<String, String> = emptyMap(), val detail: String? = null) {
+  companion object {
+    /** [problem] with its values by name, e.g. `Refusal.of(Problem.NAME_TAKEN, "name" to name)`. */
+    fun of(problem: Problem, vararg args: Pair<String, Any?>, detail: String? = null) =
+      Refusal(problem, args.associate { (k, v) -> k to v.toString() }, detail)
+  }
+}

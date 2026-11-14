@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -98,7 +100,7 @@ class SessionLifecycle(
   /** Finishes session [id] now ([admin] did). */
   suspend fun finishNow(id: String, admin: String) = mutex.withLock {
     val session = session(id)
-    if (finishes.of(session.seedName)?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, "$id is finished already")
+    if (finishes.of(session.seedName)?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_FINISHED, "id" to id)
     finish(session, admin, Instant.now())
     sessions.refresh()
   }
@@ -115,11 +117,11 @@ class SessionLifecycle(
   /** Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. */
   suspend fun reopen(id: String, admin: String) = mutex.withLock {
     val session = session(id)
-    val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, "$id isn't finished")
+    val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_FINISHED, "id" to id)
     val until = reopenUntil(finishedAt, completed(archives.read(id)?.summary?.totals?.percent))
-      ?: throw SessionProblem(HttpStatusCode.Conflict, "$id was completed (100 %); a completed session can't be reopened")
+      ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.COMPLETED_NO_REOPEN, "id" to id)
     if (Instant.now().isAfter(until)) {
-      throw SessionProblem(HttpStatusCode.Conflict, "$id finished more than ${REOPEN_WINDOW.inWholeDays} days ago")
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.TOO_OLD_TO_REOPEN, "id" to id, "days" to REOPEN_WINDOW.inWholeDays)
     }
     finishes.reopen(session.seedName)
     try {
@@ -137,7 +139,7 @@ class SessionLifecycle(
   }
 
   private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 
   /** Freezes the dashboard's view of [session] into its archive, then stops its tracker and game server for good. */
   private suspend fun finish(session: LiveSession, by: String?, now: Instant) {

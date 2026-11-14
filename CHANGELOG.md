@@ -5,6 +5,54 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`.
 
+## Phase 9: Multi-Language
+Randogeddon speaks English and German: every page, the server's messages and the mails. Each user picks the language
+under *Your account* (stored with the account; *Automatic* follows the browser), and dates and numbers follow it.
+Updating: nothing to set (migration V12).
+
+### 0.9.4: Phase 9 done
+- README: the language (*Language*), how to add a text and a language (*Texts and languages*).
+- To-do list: Phase 9 done; Phase 11 (Randogeddon Bridge: a local app that takes games without TLS to their session
+  securely; the optional plain port is dropped) and Phase 12 (polishing: everything tested by hand, and a security scan with Fable 5.2) planned.
+
+### 0.9.3: The server's words
+- Every refusal of the server is a code (`Problem`, in `:shared`) with its values: `ApiError` carries `code`, `args`
+  and, for what another program said (Generate.py, the gateway), `detail`. Its `message` is worded in the request's
+  language: the `ap-language` cookie (the app and the login page keep it), else `Accept-Language`, else English.
+  The web app words the code itself, so a change of the language applies at once. A test checks that every problem
+  has its words in every language, with the same values.
+- The name, password and session-ID rules (`UserNames`, `PasswordRules`, `SessionIds`) answer with a code too, and
+  so do a new session's YAML checks and a failed generation (its output stays as Generate.py wrote it).
+- The live feed's cheats come in their parts (`cheatAction`, `cheatBy`, `cheatRole`, `cheatSlot`, `cheatValue`) and
+  are worded by the web app; events from before keep their English sentence. A key's hint (`hintLocation`,
+  `hintSlot`) and the tracker's connection error (`errorRefused`) likewise.
+- The mails go out in the recipient's language: an invitation in the inviting person's, the address confirmation in
+  the requester's, the deletion warning in the account's (English without a choice; its date as the language writes
+  it).
+
+### 0.9.2: Every page in English and German
+- The dashboard (overview, players, hints, live feed, the finish banner), *Your connection*, the person and slot
+  overviews, the share link's page, the spoiler log, and the whole panel: the game server, its log and console, the
+  session's state and actions, its people and watchers, cheats and support, past sessions, the new-session form with
+  every ⓘ, the APWorlds, the users and the settings.
+- The live feed's lines are templates (`{sender} sent {item} to {receiver}`), so German words them in its own order
+  with the names in their styles; a test checks that every language has the same marks in each.
+- Each area's texts sit in one file with both languages (`shared/…/i18n/*Texts.kt`).
+- Still in English: the server's own messages (refusals, errors) and the mails, which follow in 0.9.3; names from
+  Archipelago and its option values (`auto`, `enabled`, …) stay as they are.
+
+### 0.9.1: The language setting
+- Randogeddon speaks English and German (with "du"). Every text comes from one place per language
+  (`shared/…/i18n`: `Texts`, `English`, `German`), typed Kotlin: a text missing in a language, or one that drops a
+  value, doesn't compile or fails a test.
+- The language: chosen under *Your account* (*Automatic* follows the browser), stored with the account (migration
+  V12, `PUT /api/account/language`, `language` in `/api/me`). Before the login: the one last used in this browser,
+  else the browser's; the login page has an English · Deutsch switch.
+- Dates, times and numbers are written as the language writes them: `14 Nov 2026, 08:17` and `12,345.6` in English,
+  `14.11.2026, 08:17` and `12.345,6` in German; "5m ago" and "4h 12m" in the language.
+- In both languages so far: the top card, the list of sessions, *Your account*, and the login, sign-up and password
+  forms. The other pages follow in 0.9.2, the server's messages and the mails in 0.9.3.
+
 ## Phase 8: The Live Server
 The live server is updated with one command from images in our own registry and holds only what runs; the build
 infrastructure (Artifact Keeper at `pkg.example.org`, Authentik at `auth.example.org`) runs in VMs of its own, and

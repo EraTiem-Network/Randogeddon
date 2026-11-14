@@ -31,24 +31,6 @@ import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.GameServerState
 
-private val CHEAT_LABELS = mapOf(
-  CheatAction.ITEM to "Give an item",
-  CheatAction.LOCATION to "Check a location",
-  CheatAction.RELEASE to "Release",
-  CheatAction.COLLECT to "Collect",
-  CheatAction.HINT to "Hint an item",
-  CheatAction.HINT_LOCATION to "Hint a location",
-)
-
-private val CHEAT_TIPS = mapOf(
-  CheatAction.ITEM to "The slot gets the item from the server, as if it was found.",
-  CheatAction.LOCATION to "The location of the slot counts as checked: its item goes to whoever it belongs to.",
-  CheatAction.RELEASE to "The slot's remaining items are sent to their owners, as if it released.",
-  CheatAction.COLLECT to "The slot gets its items that are still in other slots.",
-  CheatAction.HINT to "A free hint: where the slot's item is.",
-  CheatAction.HINT_LOCATION to "A free hint: what is at the slot's location.",
-)
-
 /** The pickers are as tall as the button next to them. */
 private val CONTROL_HEIGHT = 34.dp
 
@@ -76,6 +58,7 @@ fun CheatSection(
 ) {
   val path = if (support) "api/sessions/$id/support" else "api/sessions/$id/manage/cheat"
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   // The last one loaded at once, loaded again behind
   val view = cache.cheats[id]
@@ -118,25 +101,21 @@ fun CheatSection(
 
   val current = view
   Section(
-    if (support) "Support" else "Cheats",
-    subtitle = (if (support) "you help as support: " else "") + "logged with your name and shown in the live feed",
+    if (support) t.cheats.support else t.cheats.cheats,
+    subtitle = t.cheats.subtitle(support),
     actions = {
-      InfoTip(
-        if (support) "When a player is stuck: give an item, check a location or a free hint. Everyone sees in the live " +
-          "feed who helped how." else "For when something went wrong: a game bug, a missed item, someone has to drop out. Everyone sees in the " +
-          "live feed who cheated what. Hints are only possible if the session was created with cheat hints."
-      )
-      onSpoiler?.let { SmallButton("Spoiler log", it) }
+      InfoTip(if (support) t.cheats.supportTip else t.cheats.cheatsTip)
+      onSpoiler?.let { SmallButton(t.finish.spoilerLog, it) }
     },
   ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       when {
         current == null -> Txt("…", color = p.muted)
         // Once every check is done there is nothing to cheat either
-        current.done -> Txt("Every check is done: nothing is left to cheat.", size = 13.sp, color = p.muted)
-        current.slots.isEmpty() -> Txt("No session with slots yet.", size = 13.sp, color = p.muted)
+        current.done -> Txt(t.cheats.everyCheckDone, size = 13.sp, color = p.muted)
+        current.slots.isEmpty() -> Txt(t.cheats.noSlots, size = 13.sp, color = p.muted)
         else -> {
-          if (!current.available) Txt("Only while the game server runs a session that isn't finished.", size = 12.5.sp, color = p.muted)
+          if (!current.available) Txt(t.cheats.onlyWhileRunning, size = 12.5.sp, color = p.muted)
           val actions = CheatAction.entries.filter { (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) }
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
@@ -146,9 +125,9 @@ fun CheatSection(
             else -> null
           }
           val what: @Composable (Modifier) -> Unit = { modifier ->
-            Tip(CHEAT_TIPS.getValue(action)) {
+            Tip(t.cheats.tip(action)) {
               SearchableSelect(
-                actions.map { Triple(it, CHEAT_LABELS.getValue(it), "") }, action, { action = it; value = null },
+                actions.map { Triple(it, t.cheats.action(it), "") }, action, { action = it; value = null },
                 modifier, chip = false, minHeight = CONTROL_HEIGHT,
               )
             }
@@ -156,7 +135,7 @@ fun CheatSection(
           val forSlot: @Composable (Modifier) -> Unit = { modifier ->
             SearchableSelect(
               current.slots.map { Triple<String?, String, String>(it, it, "") }, slot, { slot = it },
-              modifier, chip = false, placeholder = "Slot…", minHeight = CONTROL_HEIGHT,
+              modifier, chip = false, placeholder = t.cheats.slot, minHeight = CONTROL_HEIGHT,
             )
           }
           val needsValue = action in WITH_ITEM || action in WITH_LOCATION
@@ -165,22 +144,22 @@ fun CheatSection(
               choices.orEmpty().map { Triple<String?, String, String>(it, it, "") }, value, { value = it },
               modifier, chip = false, minHeight = CONTROL_HEIGHT,
               placeholder = when {
-                slot == null -> "Pick a slot first"
+                slot == null -> t.cheats.pickSlotFirst
                 choices == null -> "…"
-                choices.isEmpty() -> if (action in WITH_ITEM) "No items" else "No open locations"
-                action in WITH_ITEM -> "Item…"
-                else -> "Location…"
+                choices.isEmpty() -> if (action in WITH_ITEM) t.cheats.noItems else t.cheats.noLocations
+                action in WITH_ITEM -> t.cheats.item
+                else -> t.cheats.location
               },
             )
           }
           val send: @Composable () -> Unit = {
-            Button(if (busy) "Sending…" else if (support) "Send" else "Cheat", enabled = ready, danger = !support) {
+            Button(if (busy) t.cheats.sending else if (support) t.cheats.send else t.cheats.cheat, enabled = ready, danger = !support) {
               busy = true
               outcome = null
               scope.launch {
                 val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value))
                 outcome = when (val answer = call("POST", path, body) { }) {
-                  is Answer.Ok -> true to "Done: ${CHEAT_LABELS.getValue(action).lowercase()} for $slot" + (value?.let { ": $it" } ?: "")
+                  is Answer.Ok -> true to t.cheats.done(action, slot.orEmpty(), value)
                   is Answer.Failed -> false to answer.message
                 }
                 busy = false
@@ -210,11 +189,10 @@ fun CheatSection(
           outcome?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
           if (current.log.isNotEmpty()) {
             Divider()
-            Txt(if (support) "Help and cheats of this session" else "Cheats of this session", size = 12.5.sp, weight = FontWeight.SemiBold)
+            Txt(t.cheats.logTitle(support), size = 12.5.sp, weight = FontWeight.SemiBold)
             current.log.take(15).forEach { entry ->
               Txt(
-                "${Platform.clock(entry.ts)} · ${entry.admin}: ${CHEAT_LABELS.getValue(entry.action).lowercase()} for ${entry.slot}" +
-                  (entry.value?.let { " · $it" } ?: ""),
+                t.cheats.logLine(t.clock(entry.ts), entry.admin, entry.action, entry.slot, entry.value),
                 size = 12.sp, color = p.muted, maxLines = 2,
               )
             }

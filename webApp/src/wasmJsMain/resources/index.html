@@ -56,99 +56,194 @@
       border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
     #login a.sso[hidden] { display: none; }
     #login .message { margin: 0; color: var(--error); min-height: 1.4em; }
+    #login .languages { margin: 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+    #login .languages a { color: var(--muted); text-decoration: none; }
+    #login .languages a[aria-current] { color: var(--text); font-weight: 600; }
   </style>
 </head>
 <body>
   <div id="splash">
     <div class="ring"></div>
-    <div><b>Randogeddon</b><br>loading…</div>
-    <noscript>This page needs JavaScript.</noscript>
+    <div><b>Randogeddon</b><br><span data-t="loading">loading…</span></div>
+    <noscript>This page needs JavaScript. Diese Seite braucht JavaScript.</noscript>
   </div>
   <div id="app"></div>
   <div id="login" hidden>
     <form id="login-form">
       <h1>Randogeddon</h1>
-      <label>Name or e-mail<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <label><span data-t="nameOrEmail">Name or e-mail</span><input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
       <p class="message" role="alert"></p>
-      <button type="submit">Log in</button>
+      <button type="submit" data-t="logIn">Log in</button>
       <!-- Shown when the server names a provider (GET api/login/options): how Administrators log in -->
       <a class="sso" href="api/login/oidc" hidden></a>
+      <!-- Before the login the browser's language applies, or the one last used here; this changes it -->
+      <p class="languages"><a href="#" data-language="en">English</a> · <a href="#" data-language="de">Deutsch</a></p>
     </form>
     <!-- After the password, with two-factor login: the authenticator's code (or a recovery code) -->
     <form id="code-form" hidden>
-      <h1>Your code</h1>
-      <p class="hint">The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.</p>
-      <label>Code<input name="code" autocomplete="one-time-code" inputmode="text" autocapitalize="off" spellcheck="false"
+      <h1 data-t="yourCode">Your code</h1>
+      <p class="hint" data-t="codeHint">The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.</p>
+      <label><span data-t="code">Code</span><input name="code" autocomplete="one-time-code" inputmode="text" autocapitalize="off" spellcheck="false"
         required></label>
       <p class="message" role="alert"></p>
-      <button type="submit">Log in</button>
+      <button type="submit" data-t="logIn">Log in</button>
     </form>
     <!-- An admin without two-factor login sets it up before anything else -->
     <form id="setup-form" hidden>
-      <h1>Two-factor login</h1>
-      <p class="hint">Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type the
-        key in, then enter the code it shows.</p>
+      <h1 data-t="twoFactor">Two-factor login</h1>
+      <p class="hint" data-t="setupHint">Admins log in with a second factor. Scan this with an authenticator app (any TOTP
+        app), or type the key in, then enter the code it shows.</p>
       <div class="qr"></div>
       <code class="secret"></code>
-      <label>Code<input name="code" autocomplete="one-time-code" inputmode="numeric" required></label>
+      <label><span data-t="code">Code</span><input name="code" autocomplete="one-time-code" inputmode="numeric" required></label>
       <p class="message" role="alert"></p>
-      <button type="submit">Turn it on</button>
+      <button type="submit" data-t="turnItOn">Turn it on</button>
     </form>
     <!-- Its recovery codes, shown once -->
     <form id="codes-form" hidden>
-      <h1>Recovery codes</h1>
-      <p class="hint">Each works once, in place of a code, if you lose your authenticator. Keep them somewhere safe:
-        they are shown only now.</p>
+      <h1 data-t="recoveryCodes">Recovery codes</h1>
+      <p class="hint" data-t="recoveryHint">Each works once, in place of a code, if you lose your authenticator. Keep them
+        somewhere safe: they are shown only now.</p>
       <ul class="codes"></ul>
       <p class="message" role="alert"></p>
-      <button type="button" class="secondary copy">Copy</button>
-      <button type="submit">I have saved them</button>
+      <button type="button" class="secondary copy" data-t="copy">Copy</button>
+      <button type="submit" data-t="savedThem">I have saved them</button>
     </form>
     <!-- The invitation's link (#/invite/<token>): the new user chooses their name, password and deletion period -->
     <form id="signup-form" hidden>
-      <h1>Welcome to Randogeddon</h1>
+      <h1 data-t="welcome">Welcome to Randogeddon</h1>
       <p class="hint"></p>
       <!-- For the password manager: the account's address, entered by the admin -->
       <input name="email" type="email" autocomplete="email" hidden>
-      <label>Name<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required
-        minlength="3" maxlength="32"></label>
-      <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
-      <label>Password again<input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
-      <label>Delete my account by itself
+      <label><span data-t="name">Name</span><input name="username" autocomplete="username" autocapitalize="off"
+        spellcheck="false" required minlength="3" maxlength="32"></label>
+      <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label><span data-t="passwordAgain">Password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label><span data-t="deleteByItself">Delete my account by itself</span>
         <select name="autoDelete">
-          <option value="2w">2 weeks after my last session</option>
-          <option value="4w">4 weeks after my last session</option>
-          <option value="3m">3 months after my last session</option>
-          <option value="6m">6 months after my last session</option>
-          <option value="1y">1 year after my last session</option>
-          <option value="never" selected>Never</option>
+          <option value="2w" data-t="weeks2">2 weeks after my last session</option>
+          <option value="4w" data-t="weeks4">4 weeks after my last session</option>
+          <option value="3m" data-t="months3">3 months after my last session</option>
+          <option value="6m" data-t="months6">6 months after my last session</option>
+          <option value="1y" data-t="year1">1 year after my last session</option>
+          <option value="never" selected data-t="never">Never</option>
         </select>
       </label>
       <p class="message" role="alert"></p>
-      <button type="submit">Sign up</button>
+      <button type="submit" data-t="signUp">Sign up</button>
     </form>
     <!-- From the settings: a new password (the password manager saves it) -->
     <form id="password-form" hidden>
-      <h1>New password</h1>
+      <h1 data-t="newPassword">New password</h1>
       <input name="username" autocomplete="username" hidden>
-      <label>Current password<input name="current" type="password" autocomplete="current-password" required></label>
-      <label>New password<input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
-      <label>New password again<input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
-      <p class="hint">Your other logins end; this one stays.</p>
+      <label><span data-t="currentPassword">Current password</span><input name="current" type="password" autocomplete="current-password" required></label>
+      <label><span data-t="newPassword">New password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label><span data-t="newPasswordAgain">New password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
+      <p class="hint" data-t="otherLoginsEnd">Your other logins end; this one stays.</p>
       <p class="message" role="alert"></p>
-      <button type="submit">Change password</button>
-      <button type="button" class="secondary">Cancel</button>
+      <button type="submit" data-t="changePassword">Change password</button>
+      <button type="button" class="secondary" data-t="cancel">Cancel</button>
     </form>
   </div>
   <script>
+    // The texts of this page in English and German (the web app has its own, in :shared); `data-t` names an element's
+    window.randogeddonTexts = (function () {
+      var TEXTS = {
+        en: {
+          loading: "loading…", nameOrEmail: "Name or e-mail", password: "Password", logIn: "Log in",
+          yourCode: "Your code", code: "Code",
+          codeHint: "The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.",
+          twoFactor: "Two-factor login", turnItOn: "Turn it on",
+          setupHint: "Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type " +
+            "the key in, then enter the code it shows.",
+          recoveryCodes: "Recovery codes", copy: "Copy", savedThem: "I have saved them",
+          recoveryHint: "Each works once, in place of a code, if you lose your authenticator. Keep them somewhere " +
+            "safe: they are shown only now.",
+          welcome: "Welcome to Randogeddon", name: "Name", passwordAgain: "Password again",
+          deleteByItself: "Delete my account by itself", weeks2: "2 weeks after my last session",
+          weeks4: "4 weeks after my last session", months3: "3 months after my last session",
+          months6: "6 months after my last session", year1: "1 year after my last session", never: "Never",
+          signUp: "Sign up", newPassword: "New password", currentPassword: "Current password",
+          newPasswordAgain: "New password again", otherLoginsEnd: "Your other logins end; this one stays.",
+          changePassword: "Change password", cancel: "Cancel",
+          tooMany: "Too many attempts. Please wait a minute.", failed: "That didn't work ({0}).",
+          didntWork: "That didn't work.", unreachable: "The server can't be reached.",
+          differ: "The two passwords differ.", copied: "Copied.",
+          invited: "You're invited as {0}. Choose the name the others see, and your password.",
+          sso: "Administrators: log in with {0}",
+          tooOld: "<b>Your browser is too old for this page.</b><br>Please update it (iOS 18.2+, Chrome 119+, Firefox 120+)."
+        },
+        de: {
+          loading: "lädt…", nameOrEmail: "Name oder E-Mail", password: "Passwort", logIn: "Anmelden",
+          yourCode: "Dein Code", code: "Code",
+          codeHint: "Die 6 Ziffern, die deine Authenticator-App für Randogeddon zeigt, oder einer deiner " +
+            "Wiederherstellungscodes.",
+          twoFactor: "Zwei-Faktor-Anmeldung", turnItOn: "Einschalten",
+          setupHint: "Admins melden sich mit einem zweiten Faktor an. Scanne das mit einer Authenticator-App (jede " +
+            "TOTP-App) oder tippe den Schlüssel ab, und gib dann den angezeigten Code ein.",
+          recoveryCodes: "Wiederherstellungscodes", copy: "Kopieren", savedThem: "Ich habe sie gespeichert",
+          recoveryHint: "Jeder funktioniert einmal anstelle eines Codes, falls du deinen Authenticator verlierst. " +
+            "Bewahre sie sicher auf: Sie werden nur jetzt angezeigt.",
+          welcome: "Willkommen bei Randogeddon", name: "Name", passwordAgain: "Passwort wiederholen",
+          deleteByItself: "Mein Konto von selbst löschen", weeks2: "2 Wochen nach meiner letzten Session",
+          weeks4: "4 Wochen nach meiner letzten Session", months3: "3 Monate nach meiner letzten Session",
+          months6: "6 Monate nach meiner letzten Session", year1: "1 Jahr nach meiner letzten Session", never: "Nie",
+          signUp: "Registrieren", newPassword: "Neues Passwort", currentPassword: "Aktuelles Passwort",
+          newPasswordAgain: "Neues Passwort wiederholen",
+          otherLoginsEnd: "Deine anderen Anmeldungen enden; diese bleibt.",
+          changePassword: "Passwort ändern", cancel: "Abbrechen",
+          tooMany: "Zu viele Versuche. Bitte warte eine Minute.", failed: "Das hat nicht geklappt ({0}).",
+          didntWork: "Das hat nicht geklappt.", unreachable: "Der Server ist nicht erreichbar.",
+          differ: "Die beiden Passwörter sind verschieden.", copied: "Kopiert.",
+          invited: "Du bist als {0} eingeladen. Wähle den Namen, den die anderen sehen, und dein Passwort.",
+          sso: "Administratoren: mit {0} anmelden",
+          tooOld: "<b>Dein Browser ist zu alt für diese Seite.</b><br>Bitte aktualisiere ihn (iOS 18.2+, Chrome 119+, " +
+            "Firefox 120+)."
+        }
+      };
+      var KEY = "ap-language";
+      function supported(code) {
+        var main = (code || "").toLowerCase().split(/[-_]/)[0];
+        return TEXTS[main] ? main : null;
+      }
+      function stored() { try { return supported(localStorage.getItem(KEY)); } catch (e) { return null; } }
+      var browser = supported((navigator.languages && navigator.languages[0]) || navigator.language);
+      // The one last used here, else the browser's, else English (as the web app picks it before a login)
+      var current = stored() || browser || "en";
+      // The texts with {0} filled in
+      function t(key, value) { return (TEXTS[current][key] || TEXTS.en[key]).replace("{0}", value); }
+      var listeners = [];
+      function apply(code) {
+        current = supported(code) || current;
+        document.documentElement.lang = current;
+        // The server words its answers in it too (the forms' messages, the login's way back from Authentik)
+        document.cookie = "ap-language=" + current + "; path=/; max-age=31536000; SameSite=Lax";
+        document.querySelectorAll("[data-t]").forEach(function (element) { element.textContent = t(element.dataset.t); });
+        document.querySelectorAll("#login .languages a").forEach(function (link) {
+          if (link.dataset.language === current) link.setAttribute("aria-current", "true");
+          else link.removeAttribute("aria-current");
+        });
+        listeners.forEach(function (listener) { listener(); });
+      }
+      return {
+        t: t,
+        apply: apply,
+        // Chosen on the login page: remembered for the next visit
+        choose: function (code) {
+          try { localStorage.setItem(KEY, code); } catch (e) {}
+          apply(code);
+        },
+        onChange: function (listener) { listeners.push(listener); }
+      };
+    })();
+    randogeddonTexts.apply();
     // Kotlin/Wasm needs WasmGC: Chrome/Edge 119+, Firefox 120+, Safari 18.2+ (iOS 18.2+)
     (function () {
       var ok = typeof WebAssembly === "object" && WebAssembly.validate(new Uint8Array([
         0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]));
       if (!ok) {
-        document.querySelector("#splash div:last-of-type").innerHTML =
-          "<b>Your browser is too old for this page.</b><br>Please update it (iOS 18.2+, Chrome 119+, Firefox 120+).";
+        document.querySelector("#splash div:last-of-type").innerHTML = randogeddonTexts.t("tooOld");
         document.querySelector("#splash .ring").remove();
         return;
       }
@@ -159,6 +254,7 @@
     // Shown by the web app (Platform.showLogin) when the server answers 401: the login, or with an invitation's link
     // (#/invite/<token>) the sign-up. Platform.showPasswordChange opens the password form from the settings.
     window.randogeddonLogin = (function () {
+      var t = randogeddonTexts.t;
       var root = document.getElementById("login");
       var forms = {
         login: document.getElementById("login-form"),
@@ -210,15 +306,15 @@
         fetch(path, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
           .then(function (r) {
             if (r.ok) { return (r.status === 204 ? Promise.resolve(null) : r.json()).then(onOk); }
-            if (r.status === 429) { message.textContent = "Too many attempts. Please wait a minute."; return; }
+            if (r.status === 429) { message.textContent = t("tooMany"); return; }
             return r.json().then(function (e) { message.textContent = e.message; },
-              function () { message.textContent = "That didn't work (" + r.status + ")."; });
-          }, function () { message.textContent = "The server can't be reached."; })
+              function () { message.textContent = t("failed", r.status); });
+          }, function () { message.textContent = t("unreachable"); })
           .finally(function () { button.disabled = false; });
       }
       function sameTwice(form) {
         if (form.password.value === form.repeat.value) return true;
-        form.querySelector(".message").textContent = "The two passwords differ.";
+        form.querySelector(".message").textContent = t("differ");
         form.repeat.focus();
         return false;
       }
@@ -265,7 +361,7 @@
             open("setup");
             form.code.focus();
           });
-        }, function () { open("login", "The server can't be reached."); });
+        }, function () { open("login", t("unreachable")); });
       }
       forms.setup.addEventListener("submit", function (event) {
         event.preventDefault();
@@ -285,7 +381,7 @@
       });
       forms.codes.querySelector("button.copy").addEventListener("click", function () {
         navigator.clipboard.writeText(forms.codes.dataset.codes).then(function () {
-          forms.codes.querySelector(".message").textContent = "Copied.";
+          forms.codes.querySelector(".message").textContent = t("copied");
         }, function () {});
       });
       forms.codes.addEventListener("submit", function (event) {
@@ -318,6 +414,11 @@
       });
       forms.password.querySelector("button.secondary").addEventListener("click", function () { close(false); });
 
+      // The sign-up's hint names the invited address; it is worded again when the language changes
+      var invitedAs = null;
+      function signupHint() {
+        if (invitedAs !== null) forms.signup.querySelector(".hint").textContent = t("invited", invitedAs);
+      }
       function showSignup(invitation) {
         var form = forms.signup;
         token = invitation;
@@ -330,30 +431,43 @@
             return;
           }
           form.email.value = info.email || "";
-          form.querySelector(".hint").textContent = "You're invited as " + info.email +
-            ". Choose the name the others see, and your password.";
+          invitedAs = info.email;
+          signupHint();
           if (!form.username.value) form.username.value = info.suggestedName || "";
           open("signup");
           (form.username.value ? form.password : form.username).focus();
         }, function () {
-          open("login", "The server can't be reached.");
+          open("login", t("unreachable"));
         });
       }
       // Administrators log in through the provider, if the server names one
+      var provider = null;
+      function ssoLink() {
+        if (provider === null) return;
+        var link = forms.login.querySelector("a.sso");
+        link.textContent = t("sso", provider);
+        link.hidden = false;
+      }
       fetch("api/login/options").then(function (r) { return r.ok ? r.json() : {}; }).then(function (options) {
         if (!options.singleSignOn) return;
-        var link = forms.login.querySelector("a.sso");
-        link.textContent = "Administrators: log in with " + options.singleSignOn;
-        link.hidden = false;
+        provider = options.singleSignOn;
+        ssoLink();
       }, function () {});
+      randogeddonTexts.onChange(function () { ssoLink(); signupHint(); });
+      forms.login.querySelectorAll(".languages a").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          event.preventDefault();
+          randogeddonTexts.choose(link.dataset.language);
+        });
+      });
       // A one-time login link of the host's CLI (#/login/<token>)
       function useLink(linkToken) {
         leaveInvitation();
         fetch("api/login/link", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: linkToken }) }).then(function (r) {
           if (r.ok) { close(true); return; }
-          return r.json().then(function (e) { open("login", e.message); }, function () { open("login", "That didn't work."); });
-        }, function () { open("login", "The server can't be reached."); });
+          return r.json().then(function (e) { open("login", e.message); }, function () { open("login", t("didntWork")); });
+        }, function () { open("login", t("unreachable")); });
       }
       return {
         show: function (text, onLoggedIn) {
@@ -373,6 +487,8 @@
           (form.username.value ? form.password : form.username).focus();
         },
         hide: function () { root.hidden = true; },
+        // The web app's language (Platform.setPageLanguage)
+        language: function (code) { randogeddonTexts.apply(code); },
         password: function (name, onDone) {
           done = onDone;
           forms.password.username.value = name || "";

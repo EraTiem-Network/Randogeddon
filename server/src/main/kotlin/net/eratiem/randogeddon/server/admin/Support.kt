@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatNames
@@ -24,7 +26,7 @@ class Support(private val cheats: Cheats) {
 
   suspend fun run(id: String, request: CheatRequest, name: String) {
     if (request.action !in SUPPORT_ACTIONS) {
-      throw SessionProblem(HttpStatusCode.Forbidden, "Support gives items, checks locations and hints; no ${request.action.name.lowercase()}")
+      throw SessionProblem(HttpStatusCode.Forbidden, Problem.SUPPORT_CANT, "action" to request.action.name)
     }
     cheats.run(id, request, name, byRole = "support", freeHints = true)
   }

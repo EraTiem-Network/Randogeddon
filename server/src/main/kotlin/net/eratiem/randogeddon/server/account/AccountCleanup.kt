@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.server.account
 
+import java.util.Locale
+import net.eratiem.randogeddon.shared.i18n.Language
+import net.eratiem.randogeddon.shared.i18n.texts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,7 +89,9 @@ class AccountCleanup(
         CleanupStep.UNWARN -> users.markWarned(user.id, null)
         CleanupStep.WARN -> {
           val due = deletesAt(activity.copy(warnedAt = now), now) ?: continue
-          val mail = Mails.deletionWarning(user.email ?: continue, user.name ?: "", DATE.format(due), "${config.publicUrl}/#/settings")
+          val language = Language.of(user.language) ?: Language.DEFAULT
+          val date = (if (language.numericDates) NUMERIC_DATE else DATE).format(due)
+          val mail = Mails.deletionWarning(user.email ?: continue, user.name ?: "", date, "${config.publicUrl}/#/settings", texts(language).mails)
           try {
             mailer.send(mail)
             users.markWarned(user.id, now)
@@ -103,6 +108,8 @@ class AccountCleanup(
   }
 
   private companion object {
-    val DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy").withZone(ZoneOffset.UTC)
+    val DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH).withZone(ZoneOffset.UTC)
+    // Digits only: the native image has no German month names
+    val NUMERIC_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy").withZone(ZoneOffset.UTC)
   }
 }

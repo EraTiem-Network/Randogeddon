@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,7 @@ fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: (
 @Composable
 fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   var detail by remember(slot) { mutableStateOf<PlayerDetail?>(null) }
   var query by remember(slot) { mutableStateOf("") }
   LaunchedEffect(slot, version) {
@@ -72,13 +75,13 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
           if (d != null) GameChip(d.game, size = 40.dp)
           Column(Modifier.weight(1f)) {
             Txt(d?.name ?: "…", size = 17.sp, weight = FontWeight.SemiBold)
-            if (d != null) Txt("${d.game} · ${d.checked} / ${d.total} checks (${oneDecimal(percent)}%)", size = 12.5.sp, color = p.muted)
+            if (d != null) Txt(t.dialogs.slotHeading(d.game, d.checked, d.total, t.decimal(percent)), size = 12.5.sp, color = p.muted)
           }
           IconButton(onClose, if (back) Icon.BACK else Icon.CLOSE)
         }
         Divider()
         if (d == null) {
-          Txt("Loading…", color = p.muted, modifier = Modifier.padding(16.dp))
+          Txt(t.dialogs.loading, color = p.muted, modifier = Modifier.padding(16.dp))
           return@Column
         }
         val now = Platform.now()
@@ -88,52 +91,47 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
           ProgressBar((percent / 100).toFloat())
           // Time facts of this world
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Fact("Played", duration(played))
-            Fact("Sessions", "${d.sessions.size}")
-            Fact("Status", if (open != null) "online" else "offline", if (open != null) p.ok else p.muted)
-            if (repository.pointHints) d.hintPoints?.let { Fact("Hint points", "$it") }
+            Fact(t.dialogs.played, t.duration(played))
+            Fact(t.dialogs.sessions, "${d.sessions.size}")
+            Fact(t.dialogs.status, if (open != null) t.dialogs.online else t.dialogs.offline, if (open != null) p.ok else p.muted)
+            if (repository.pointHints) d.hintPoints?.let { Fact(t.dialogs.hintPoints, "$it") }
           }
           val items: @Composable ColumnScope.() -> Unit = {
-            Section("Received items (${d.items.size})")
-            FilterField(query, { query = it }, "Filter…", Modifier.fillMaxWidth().padding(bottom = 8.dp))
+            Section(t.dialogs.receivedItems(d.items.size))
+            FilterField(query, { query = it }, t.dialogs.filter, Modifier.fillMaxWidth().padding(bottom = 8.dp))
             val shown = d.items.asReversed().filter {
               query.isBlank() || "${it.item} ${it.from} ${it.location}".contains(query, ignoreCase = true)
             }
-            if (shown.isEmpty()) Txt("Nothing yet.", size = 13.sp, color = p.muted)
+            if (shown.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
             shown.forEach { i ->
               ListRow {
                 Txt(buildAnnotatedString {
                   withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = p.item(i.flags))) { append(i.item) }
                   withStyle(SpanStyle(color = p.muted)) {
-                    append("  from ${i.from}")
-                    if (i.location.isNotEmpty()) append(" · ${i.location}")
+                    append(t.dialogs.from(i.from, i.location.takeIf { it.isNotEmpty() }))
                   }
                 }, size = 13.sp)
               }
             }
           }
           val missing: @Composable ColumnScope.() -> Unit = {
-            Section("Connections (${d.sessions.size})")
-            if (d.sessions.isEmpty()) Txt("No game client seen yet.", size = 13.sp, color = p.muted)
+            Section(t.dialogs.connections(d.sessions.size))
+            if (d.sessions.isEmpty()) Txt(t.dialogs.noClientYet, size = 13.sp, color = p.muted)
             d.sessions.asReversed().take(30).forEach { c ->
               ListRow {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                   Dot(if (c.end == null) p.ok else p.muted, 7.dp)
                   Txt(
-                    buildString {
-                      append(if (c.implicit) "seen playing " else "")
-                      append(Platform.clock(c.start))
-                      append(c.end?.let { " – ${Platform.clock(it)}" } ?: " – now")
-                    },
+                    t.dialogs.connection(c.implicit, t.clock(c.start), c.end?.let { t.clock(it) }),
                     size = 13.sp, modifier = Modifier.weight(1f),
                   )
-                  Txt(duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+                  Txt(t.duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
                 }
               }
             }
             Spacer(Modifier.height(14.dp))
-            Section("Remaining checks (${d.missing.size})")
-            if (d.missing.isEmpty()) Txt("All done!", size = 13.sp, color = p.ok)
+            Section(t.dialogs.remainingChecks(d.missing.size))
+            if (d.missing.isEmpty()) Txt(t.dialogs.allDone, size = 13.sp, color = p.ok)
             d.missing.forEach { ListRow { Txt(it, size = 13.sp) } }
           }
           if (twoColumns) {

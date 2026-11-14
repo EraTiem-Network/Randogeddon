@@ -22,5 +22,9 @@ kotlin {
     commonMain.dependencies {
       api(libs.kotlinx.serialization.json)
     }
+    // The texts' checks (every language complete, no value dropped) use the JVM's reflection
+    jvmTest.dependencies {
+      implementation(kotlin("test"))
+    }
   }
 }

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.texts
+import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -92,11 +94,13 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
     Platform.request("POST", "api/sessions/$id/manage/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
   )
 
-  private fun answer(result: HttpResult?): String? = when {
-    result == null -> "The server can't be reached"
-    result.status in 200..299 -> null
-    else -> runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }
-      .getOrDefault("Failed (${result.status})")
+  private fun answer(result: HttpResult?): String? {
+    val common = texts(Languages.current).common
+    return when {
+      result == null -> common.serverUnreachable
+      result.status in 200..299 -> null
+      else -> texts(Languages.current).wordError(result.body) ?: common.failed(result.status)
+    }
   }
 
   private fun onEvent(type: String, data: String) {
@@ -197,7 +201,7 @@ fun AdminView(
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       IconButton(onBack, Icon.BACK)
-      Txt(if (administrator) "Manage · Administrator" else "Manage your sessions", size = 20.sp, weight = FontWeight.Bold)
+      Txt(if (administrator) LocalTexts.current.panel.titleAdministrator else LocalTexts.current.panel.title, size = 20.sp, weight = FontWeight.Bold)
     }
     loadProblem?.let { Txt(it, size = 12.5.sp, color = LocalPalette.current.trap) }
     // The session's space: framed and tinted, apart from what concerns every session below it
@@ -218,7 +222,7 @@ fun AdminView(
       }
     }
     // What concerns every session: Administrators'
-    if (administrator) Txt("General", size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+    if (administrator) Txt(LocalTexts.current.panel.general, size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
     if (administrator) {
       UsersAdmin(onChanged = { load() })
@@ -277,6 +281,7 @@ private fun ServerControls(
   onAction: (String) -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   // Stop and restart end every running game: they ask once more
   var confirm by remember { mutableStateOf<String?>(null) }
   val status = state?.status
@@ -287,13 +292,13 @@ private fun ServerControls(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-      Txt("Game server", size = 14.sp, weight = FontWeight.SemiBold)
+      Txt(t.panel.gameServer, size = 14.sp, weight = FontWeight.SemiBold)
       // Its state and uptime next to it
       Pill(
         when {
-          problem != null -> "gateway unreachable"
+          problem != null -> t.panel.gatewayUnreachable
           status == null -> "…"
-          else -> status.name.lowercase().replace('_', ' ')
+          else -> t.panel.status(status)
         },
         when (status) {
           GameServerStatus.RUNNING -> p.ok
@@ -302,13 +307,13 @@ private fun ServerControls(
           GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
         },
       )
-      state?.since?.let { Pill("up ${duration(now - it)}", p.muted) }
+      state?.since?.let { Pill(t.panel.up(t.duration(now - it)), p.muted) }
     }
     run {
       val details = listOfNotNull(
-        state?.seed?.let { "seed file $it" } ?: "MultiServer, run by the gateway",
-        state?.lastExitCode?.let { "last exit code $it" },
-        state?.restarts?.takeIf { it > 0 }?.let { "$it ${if (it == 1) "restart" else "restarts"} after crashes" },
+        state?.seed?.let { t.panel.seedFile(it) } ?: t.panel.runByGateway,
+        state?.lastExitCode?.let { t.panel.lastExitCode(it) },
+        state?.restarts?.takeIf { it > 0 }?.let { t.panel.restarts(it) },
       )
       Txt(details.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)
       if (problem != null) Txt(problem, size = 12.5.sp, color = p.trap)
@@ -316,24 +321,21 @@ private fun ServerControls(
       if (pending == null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           val running = state?.status == GameServerStatus.RUNNING || state?.status == GameServerStatus.STARTING
-          Tip("It serves the session's seed (not a paused or ended one: reopen that first). A crashed one is started again by the gateway by itself.") {
-            ActionButton("Start", enabled = !running) { onAction("start") }
+          Tip(t.panel.startTip) {
+            ActionButton(t.panel.start, enabled = !running) { onAction("start") }
           }
-          Tip("It saves and ends; every player is disconnected. It stays stopped, and the session time doesn't count, until started again.") {
-            ActionButton("Stop", enabled = running) { confirm = "stop" }
+          Tip(t.panel.stopTip) {
+            ActionButton(t.panel.stop, enabled = running) { confirm = "stop" }
           }
-          Tip("Stop and start, e.g. after changing something by hand.") {
-            ActionButton("Restart", enabled = running) { confirm = "restart" }
+          Tip(t.panel.restartTip) {
+            ActionButton(t.panel.restart, enabled = running) { confirm = "restart" }
           }
         }
       } else {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Txt(
-            "${pending.replaceFirstChar { it.uppercase() }} the game server? Every player is disconnected.",
-            size = 13.sp, modifier = Modifier.weight(1f),
-          )
-          ActionButton("Yes, ${pending}", danger = true) { onAction(pending); confirm = null }
-          ActionButton("Cancel") { confirm = null }
+          Txt(t.panel.confirm(restart = pending == "restart"), size = 13.sp, modifier = Modifier.weight(1f))
+          ActionButton(t.panel.yes(restart = pending == "restart"), danger = true) { onAction(pending); confirm = null }
+          ActionButton(t.common.cancel) { confirm = null }
         }
       }
       if (message != null) Txt(message, size = 12.5.sp, color = p.trap)
@@ -354,11 +356,11 @@ private fun LogSection(log: List<LogLine>) {
     lastMax = scroll.maxValue
     if (!follow && grown > 0) scroll.scrollBy(grown.toFloat())
   }
-  Section("Log", subtitle = "the game server's output, newest on top") {
+  Section(LocalTexts.current.panel.log, subtitle = LocalTexts.current.panel.logSubtitle) {
     Box(Modifier.fillMaxWidth().card(p).height(420.dp)) {
       SelectionContainer {
         Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
-          if (log.isEmpty()) Txt("Nothing yet.", size = 13.sp, color = p.muted)
+          if (log.isEmpty()) Txt(LocalTexts.current.panel.nothingYet, size = 13.sp, color = p.muted)
           log.asReversed().forEach { line ->
             BasicText(
               line.text,
@@ -390,12 +392,9 @@ private fun ConsoleSection(onSend: (String) -> Unit) {
     back = 0
   }
   Section(
-    "Console", subtitle = "server commands, e.g. /players, /send <slot> <item>, /hint <slot> <item>",
+    LocalTexts.current.panel.console, subtitle = LocalTexts.current.panel.consoleSubtitle,
     actions = {
-      InfoTip(
-        "Archipelago's server console. Its commands say \"player\" for a slot: /send Alice-HK Mantis Claw gives the " +
-          "slot Alice-HK that item. Names with spaces in quotes (/release and /collect take the rest of the line). /help lists every command; the answers show in the log."
-      )
+      InfoTip(LocalTexts.current.panel.consoleTip)
     },
   ) {
     Row(
@@ -422,7 +421,7 @@ private fun ConsoleSection(onSend: (String) -> Unit) {
           }
         },
       )
-      ActionButton("Send") { send() }
+      ActionButton(LocalTexts.current.panel.send) { send() }
     }
   }
 }

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.ShareLinkStore
 import net.eratiem.randogeddon.server.account.AccountProblem
@@ -31,7 +33,7 @@ class ShareLinks(private val store: ShareLinkStore, private val sessions: LiveSe
   suspend fun create(id: String, by: String): ShareLinkView {
     val live = session(id)
     val token = newToken()
-    if (!store.replace(live.id, tokenHash(token), by)) throw AccountProblem(HttpStatusCode.NotFound, "No session $id")
+    if (!store.replace(live.id, tokenHash(token), by)) throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     logger.info("{} made a new share link for {}", by, live.id)
     return view(live.id).copy(token = token)
   }
@@ -44,5 +46,5 @@ class ShareLinks(private val store: ShareLinkStore, private val sessions: LiveSe
   /** The session whose link [token] is; `null`: no such link (any more). */
   suspend fun sessionOf(token: String): LiveSession? = store.sessionWith(tokenHash(token))?.let { sessions.get(it) }
 
-  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, "No session $id")
+  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -35,7 +37,7 @@ fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
     post("/invite") {
       accountCall {
         val request = call.receive<InviteRequest>()
-        call.respond(people.inviteNew(request.email, request.suggestedName, call.loggedIn.user))
+        call.respond(people.inviteNew(request.email, request.suggestedName, call.loggedIn.user, call.language()))
       }
     }
   }
@@ -58,12 +60,12 @@ fun Route.peopleRoutes(people: SessionPeopleService, logins: LoginCheck) {
     get { call.respond(people.list(id())) }
     get("/choices") { call.respond(people.choices(id())) }
     post {
-      accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.loggedIn.user)) }
+      accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.loggedIn.user, call.language())) }
     }
     delete("/{user}") {
       accountCall {
         val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-          ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
+          ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
         people.remove(id(), user, call.loggedIn.user)
         call.respond(HttpStatusCode.NoContent)
       }

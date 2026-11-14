@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.User
@@ -27,7 +29,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** A new secret for [user]; it counts once [enable] confirms it. Refused while two-factor login is on. */
   suspend fun setUp(user: User): TotpSetup {
-    if (user.twoFactor) throw AccountProblem(HttpStatusCode.Conflict, "Two-factor login is on already")
+    if (user.twoFactor) throw AccountProblem(HttpStatusCode.Conflict, Problem.TWO_FACTOR_ON)
     val secret = Totp.newSecret()
     store.setUp(user.id, box.seal(secret))
     val uri = Totp.uri(secret, user.name)
@@ -39,10 +41,10 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
   suspend fun enable(user: User, code: String, now: Instant = Instant.now()): List<String> {
     val state = store.of(user.id)
     if (state == null || state.enabledAt != null) {
-      throw AccountProblem(HttpStatusCode.Conflict, if (state == null) "Set it up first" else "Two-factor login is on already")
+      throw AccountProblem(HttpStatusCode.Conflict, if (state == null) Problem.SET_UP_FIRST else Problem.TWO_FACTOR_ON)
     }
     val step = Totp.match(box.open(state.secret), code, now.toEpochMilli())
-      ?: throw AccountProblem(HttpStatusCode.BadRequest, "That code doesn't fit: check the authenticator's clock, or scan again")
+      ?: throw AccountProblem(HttpStatusCode.BadRequest, Problem.CODE_MISMATCH)
     val codes = RecoveryCodes.generate()
     store.enable(user.id, codes.map(RecoveryCodes::hash), now)
     store.useStep(user.id, step)
@@ -67,15 +69,15 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** Off, after a code (not for admins without single sign-on: they need it). */
   suspend fun disable(user: User, code: String) {
-    if (user.administrator && !singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, "Admins need two-factor login")
-    if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, "That code doesn't fit")
+    if (user.administrator && !singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, Problem.ADMINISTRATORS_NEED_TWO_FACTOR)
+    if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     store.disable(user.id)
     logger.info("{} turned two-factor login off", user.name)
   }
 
   /** New recovery codes after a code; the old ones stop working. */
   suspend fun newCodes(user: User, code: String): List<String> {
-    if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, "That code doesn't fit")
+    if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     val codes = RecoveryCodes.generate()
     store.replaceCodes(user.id, codes.map(RecoveryCodes::hash))
     return codes

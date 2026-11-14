@@ -9,8 +9,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
   `<session-id>.randogeddon.eratiem.net:443` (TLS, `wss://`).
     - TLS only: current clients connect over `wss://` (Launcher-based clients retry with it, and
       Archipelago.MultiClient.Net, used by many modded games, tries it first since April 2023). Older or unmaintained
-      mods may only speak `ws://`, so every game of a session is tested with its real client before session day; a
-      plain fallback is optional (see the end).
+      mods may only speak `ws://`, so every game of a session is tested with its real client before session day; for
+      those, the Randogeddon Bridge (Phase 11) gives them a `ws://localhost` address.
 - **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
@@ -291,21 +291,22 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       Authentik deletes the person (its webhook)
 - [x] `.docs/INFRA.md`: the machines, what they keep, updating each stack, the tokens and where they live
 
-## Phase 9: Multi-Language
+## Phase 9: Multi-Language (done)
 
 *Everyone reads the app in their language.*
 
-- [ ] Every text of the web app comes from one place per language instead of the code
-    - English stays the default and the fallback for a text a language doesn't have yet.
-    - The first other language: German. Open: which ones follow.
-- [ ] A language applies to every page: dashboard, person and world views, the panel, settings, login
-    - Dates, times and numbers are formatted for the language (e.g. `12.11.2026`, `1.234`).
-    - Names from Archipelago (games, items, locations, slots) stay as they are; they come from the games.
-    - Messages from the server (errors, refusals, feed lines it builds) are translated too, so the server sends what
-      happened and the web app words it.
-- [ ] The language is a user setting, stored with the account (settings page from Phase 5)
-    - Before login the user isn't known: the login page follows the browser's language, or the language last used in
-      this browser.
+- [x] Every text of the web app comes from one place per language instead of the code
+    - Typed Kotlin in `:shared` (`i18n/*Texts.kt`, both languages side by side): a missing text doesn't compile, a
+      test finds a dropped value or a language that borrows another's words.
+    - English stays the default; the first other language is German ("du"). Open: which ones follow.
+- [x] A language applies to every page: dashboard, person and world views, the panel, settings, login
+    - Dates, times and numbers are formatted for the language (`14.11.2026, 08:17`, `1.234,5`).
+    - Names from Archipelago (games, items, locations, slots) and its option values stay as they are.
+    - Messages from the server are codes with their values (`Problem`): the web app words them, and the server words
+      them in the request's language too (the `ap-language` cookie, else `Accept-Language`) for the login page.
+      Feed lines it builds come in their parts. The mails go out in the recipient's language.
+- [x] The language is a user setting, stored with the account (*Your account*; automatic follows the browser)
+    - Before login: the language last used in this browser, else the browser's; the login page has a switch.
 
 ## Phase 10: More Themes
 
@@ -320,11 +321,39 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
       used in this browser.
 
-## Optional
+## Phase 11: Randogeddon Bridge
 
-*Only if a game needs it.*
+*Games that can't do TLS connect to `localhost`; the bridge takes them to their session securely.*
 
-- [ ] Plain `ws://<session-id>.randogeddon.eratiem.net:2401` as the fallback for game clients that can't do TLS
-    - One port for all sessions, routed by host name like 443: a Traefik entrypoint on 2401, the port open in the
-      host's firewall, and a second wildcard router on it without TLS.
-    - Unencrypted, slot passwords included: `wss://` stays the way in, this only for a game whose client can't do it.
+- [ ] A small app on the player's PC (Go, one binary per OS: Windows, Linux, macOS Intel and ARM; no CGO, all built
+      in the Docker build), its GUI a page in the default browser served by the app on localhost, styled like
+      Randogeddon; English and German
+    - Top left "Randogeddon" with a link out to the website; top right the user (icon, name) and logout.
+    - A table: a heading row, then one row per open connection: session, slot, address (`localhost:<port>`, copy),
+      state, close; below them session and slot as dropdowns and *Open*.
+    - Several connections at once, each on a random free local port (`127.0.0.1` only).
+- [ ] Login with a long key from the dashboard (*Your connection*: *Make a key*, shown once to copy), so Authentik
+      Administrators can use it too and the app never sees a password; kept in the user's config directory until
+      logout
+    - A key is a login of its own kind (`bridge`, 30 days) that reaches only what the app needs (who, the sessions,
+      a session's connection); no settings, no panel.
+- [ ] The relay works on the WebSocket level: the game connects to `ws://localhost:<port>`, the bridge to
+      `wss://<id>.randogeddon.eratiem.net` (Traefik and the gateway route by host name), every message both ways
+    - It fills the chosen slot's name and password into the game's `Connect`: nothing to type in the game.
+    - States: waiting for the game, connected, error (the server's words); a new game connection tries again.
+- [ ] Download from the dashboard (*Your connection*, per OS), with how to start an unsigned app (SmartScreen,
+      Gatekeeper)
+- [ ] No plain, unencrypted port for game clients: `wss://` stays the only way in
+
+## Phase 12: Polishing
+
+*Everything tested by hand, and what comes up fixed.*
+
+- [ ] Every page, role and flow tested in a browser (and on a phone), in English and German: logins (password,
+      two-factor, Authentik, CLI link), invitations and sign-up, sessions from creation to deletion, cheats and
+      support, watchers and share links, downloads, the mails, the bridge
+- [ ] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
+      gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
+      or noted with why not
+- [ ] What comes up is collected here and fixed, phase by phase as needed
+- [ ] Open points from earlier phases looked at again (e.g. which languages follow)

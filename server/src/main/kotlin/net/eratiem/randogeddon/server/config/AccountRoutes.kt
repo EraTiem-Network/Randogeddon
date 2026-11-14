@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.server.config.refuse
+import net.eratiem.randogeddon.shared.i18n.Language
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
@@ -17,6 +21,7 @@ import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.AutoDeleteRequest
+import net.eratiem.randogeddon.shared.LanguageRequest
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
@@ -34,7 +39,7 @@ import kotlin.uuid.Uuid
 fun Route.signupRoutes(accounts: AccountService, secure: Boolean = true) {
   rateLimit(LOGIN_RATE_LIMIT) {
     get("/api/invitations/{token}") {
-      call.respond(accounts.invitation(call.parameters["token"].orEmpty()))
+      call.respond(accounts.invitation(call.parameters["token"].orEmpty(), call.language()))
     }
     post("/api/signup") {
       accountCall {
@@ -88,7 +93,13 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: 
     }
     post("/email") {
       accountCall {
-        accounts.requestEmail(call.loggedIn.user, call.receive<EmailRequest>().email)
+        accounts.requestEmail(call.loggedIn.user, call.receive<EmailRequest>().email, call.language())
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/language") {
+      accountCall {
+        accounts.setLanguage(call.loggedIn.user, call.receive<LanguageRequest>().language)
         call.respond(HttpStatusCode.NoContent)
       }
     }
@@ -109,19 +120,19 @@ fun Route.adminUserRoutes(accounts: AccountService, logins: LoginCheck) {
     post {
       accountCall {
         val request = call.receive<InviteRequest>()
-        val account = accounts.invite(request.email, request.suggestedName, call.loggedIn.user.name)
+        val account = accounts.invite(request.email, request.suggestedName, call.loggedIn.user.name, call.language())
         call.respond(HttpStatusCode.Created, accounts.list().first { it.id == account.id.toString() })
       }
     }
     put("/{user}/email") {
       accountCall {
-        accounts.changeEmail(userId(), call.receive<EmailRequest>().email)
+        accounts.changeEmail(userId(), call.receive<EmailRequest>().email, call.language())
         call.respond(HttpStatusCode.NoContent)
       }
     }
     post("/{user}/invite") {
       accountCall {
-        accounts.resend(userId())
+        accounts.resend(userId(), call.language())
         call.respond(HttpStatusCode.NoContent)
       }
     }
@@ -130,13 +141,13 @@ fun Route.adminUserRoutes(accounts: AccountService, logins: LoginCheck) {
 
 private fun RoutingContext.userId(): Uuid =
   call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-    ?: throw AccountProblem(HttpStatusCode.NotFound, "No such account")
+    ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
 
 /** Answers what's wrong with an account request (400, 403, 404, 409, 410, 502) instead of failing it. */
 internal suspend fun RoutingContext.accountCall(block: suspend () -> Unit) {
   try {
     block()
   } catch (e: AccountProblem) {
-    call.respond(e.status, ApiError(e.message ?: "Not possible"))
+    call.refuse(e.status, e.refusal)
   }
 }

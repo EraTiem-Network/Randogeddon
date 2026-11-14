@@ -546,7 +546,7 @@ private const val SEARCH_FROM = 10
 @Composable
 private fun DropdownSearch(query: String, onChange: (String) -> Unit) {
   val focus = remember { FocusRequester() }
-  FilterField(query, onChange, "Search…", Modifier.fillMaxWidth().focusRequester(focus))
+  FilterField(query, onChange, LocalTexts.current.common.search, Modifier.fillMaxWidth().focusRequester(focus))
   LaunchedEffect(Unit) { if (!Platform.touchScreen()) focus.requestFocus() }
 }
 
@@ -595,7 +595,7 @@ fun <T> Select(
         ) {
           if (searchable) DropdownSearch(query) { query = it }
           Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-            if (shown.isEmpty()) Txt("Nothing found", size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
+            if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label) ->
               val active = value == selected
               Txt(
@@ -688,7 +688,7 @@ fun <T> SearchableSelect(
         ) {
           if (searchable) DropdownSearch(query) { query = it }
           Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
-            if (shown.isEmpty()) Txt("Nothing found", size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
+            if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label, detail) ->
               val active = value == selected
               Row(

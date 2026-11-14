@@ -6,7 +6,7 @@ import kotlin.coroutines.resume
 actual object Platform {
   actual fun now(): Long = jsNow().toLong()
 
-  actual fun clock(epochMillis: Long): String = jsClock(epochMillis.toDouble())
+  actual fun clock(epochMillis: Long, tag: String): String = jsClock(epochMillis.toDouble(), tag)
 
   actual suspend fun request(method: String, path: String, body: String?): HttpResult? = suspendCancellableCoroutine { cont ->
     jsFetch(
@@ -37,7 +37,11 @@ actual object Platform {
 
   actual fun showPasswordChange(name: String, onDone: (Boolean) -> Unit) = jsShowPasswordChange(name, onDone)
 
-  actual fun date(epochMillis: Long): String = jsDate(epochMillis.toDouble())
+  actual fun date(epochMillis: Long, tag: String, numeric: Boolean): String = jsDate(epochMillis.toDouble(), tag, numeric)
+
+  actual fun browserLanguage(): String? = jsBrowserLanguage()
+
+  actual fun setPageLanguage(code: String) = jsSetPageLanguage(code)
 
   actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
 
@@ -67,11 +71,19 @@ actual object Platform {
 
 private fun jsNow(): Double = js("Date.now()")
 
-private fun jsDate(ms: Double): String =
-  js("new Date(ms).toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")
+private fun jsDate(ms: Double, tag: String, numeric: Boolean): String = js(
+  """new Date(ms).toLocaleString(tag, { day: numeric ? '2-digit' : 'numeric', month: numeric ? '2-digit' : 'short',
+       year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })"""
+)
 
-private fun jsClock(ms: Double): String =
-  js("new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")
+private fun jsClock(ms: Double, tag: String): String =
+  js("new Date(ms).toLocaleTimeString(tag, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })")
+
+private fun jsBrowserLanguage(): String? =
+  js("(navigator.languages && navigator.languages.length ? navigator.languages[0] : navigator.language) || null")
+
+// index.html's forms say the same (window.randogeddonLogin.language), and <html lang> follows
+private fun jsSetPageLanguage(code: String): Unit = js("window.randogeddonLogin.language(code)")
 
 // Same-origin requests carry the session cookie by default
 private fun jsFetch(method: String, url: String, body: String?, ok: (Int, String) -> Unit, fail: () -> Unit): Unit = js(

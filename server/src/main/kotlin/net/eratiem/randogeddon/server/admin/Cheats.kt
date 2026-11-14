@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.database.CheatEntry
 import net.eratiem.randogeddon.database.CheatLogStore
@@ -78,7 +80,7 @@ class Cheats(
   }
 
   suspend fun names(id: String, slot: String): CheatNames =
-    session(id).tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, "No slot $slot")
+    session(id).tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
 
   /**
    * [byRole]: `administrator`, `manager` or `support`; the log and the feed say so. [freeHints]: hints without the
@@ -88,32 +90,34 @@ class Cheats(
     val session = session(id)
     val tracker = session.tracker
     val seed = session.seedName
-    if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, "The session is finished")
+    if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, Problem.SESSION_FINISHED)
     if (request.action in HINTS && !freeHints && session.options?.cheatHints != true) {
-      throw SessionProblem(HttpStatusCode.Forbidden, "This session doesn't allow cheat hints")
+      throw SessionProblem(HttpStatusCode.Forbidden, Problem.NO_CHEAT_HINTS)
     }
-    val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, "No slot ${request.slot}")
+    val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOT, "slot" to request.slot)
     if (request.slot !in tracker.read { cheatSlots() }) {
-      throw SessionProblem(HttpStatusCode.Conflict, "${request.slot} has checked every location already")
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.SLOT_ALL_CHECKED, "slot" to request.slot)
     }
     val value = request.value?.trim()?.takeIf { it.isNotEmpty() }
     if (request.action in NEEDS_VALUE) {
       val known = if (request.action == CheatAction.ITEM || request.action == CheatAction.HINT) names.items else names.locations
       if (value == null || value !in known) {
-        throw SessionProblem(HttpStatusCode.BadRequest, "${value ?: "Nothing"} isn't one of ${request.slot}'s ${
-          if (known === names.items) "items" else "open locations"}")
+        throw SessionProblem(
+          HttpStatusCode.BadRequest, if (known === names.items) Problem.NOT_AN_ITEM else Problem.NOT_A_LOCATION,
+          "value" to (value ?: "–"), "slot" to request.slot,
+        )
       }
     }
     val command = cheatCommand(request.action, request.slot, value)
-    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, "The game server isn't running")
+    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
     logger.info("{} cheated in {}: {}", admin, id, command)
     val shown = value.takeIf { request.action in NEEDS_VALUE }
     log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown, byRole))
-    tracker.cheat(cheatText(admin, request.action, request.slot, shown, byRole))
+    tracker.cheat(cheatText(admin, request.action, request.slot, shown, byRole), request.action, admin, byRole, request.slot, shown)
   }
 
   private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, "No session $id")
+    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }
 
 /** Who ran a cheat as the log and the feed show it: an Administrator by name, the others with their role. */

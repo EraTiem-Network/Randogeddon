@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.i18n.MailTexts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.server.config.MailConfig
@@ -173,50 +174,14 @@ internal class SmtpClient(private val config: MailConfig, private val timeoutMs:
   }
 }
 
-/** The mails Randogeddon sends; plain text. */
+/** The mails Randogeddon sends, plain text, in the recipient's language ([MailTexts]). */
 object Mails {
-  fun invitation(to: String, link: String, validDays: Int) = Mail(
-    to, "Your invitation to Randogeddon",
-    """
-    |Hi,
-    |
-    |you've been invited to Randogeddon, where your group's Archipelago sessions are tracked. Choose your name and
-    |password here:
-    |
-    |$link
-    |
-    |The link works once, for $validDays days. If you didn't expect this mail, you can ignore it.
-    |""".trimMargin(),
-  )
+  fun invitation(to: String, link: String, validDays: Int, texts: MailTexts) =
+    Mail(to, texts.invitationSubject, texts.invitation(link, validDays))
 
-  fun emailConfirmation(to: String, name: String, link: String, validDays: Int) = Mail(
-    to, "Confirm your new address for Randogeddon",
-    """
-    |Hi $name,
-    |
-    |to use this address for your Randogeddon account, open this link:
-    |
-    |$link
-    |
-    |The link works once, for $validDays days. Until then your old address stays. If you didn't ask for this, you can
-    |ignore this mail.
-    |""".trimMargin(),
-  )
+  fun emailConfirmation(to: String, name: String, link: String, validDays: Int, texts: MailTexts) =
+    Mail(to, texts.confirmationSubject, texts.confirmation(name, link, validDays))
 
-  fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String) = Mail(
-    to, "Your Randogeddon account will be deleted on $deletesOn",
-    """
-    |Hi $name,
-    |
-    |as you chose when you signed up, your Randogeddon account will be deleted on $deletesOn, since your last session
-    |ended a while ago. Your sessions stay, with your name in them; only the account goes (login, e-mail address,
-    |settings).
-    |
-    |To keep it, choose a longer period or "never" in your settings:
-    |
-    |$settingsLink
-    |
-    |A new session you play in postpones the deletion too.
-    |""".trimMargin(),
-  )
+  fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String, texts: MailTexts) =
+    Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink))
 }
