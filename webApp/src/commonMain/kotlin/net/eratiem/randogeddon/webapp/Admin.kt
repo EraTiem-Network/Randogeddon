@@ -432,7 +432,7 @@ private fun ActionButton(text: String, enabled: Boolean = true, danger: Boolean 
   val color = if (danger) p.trap else p.accent
   Txt(
     text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (enabled) Color.White else p.muted,
+    color = if (enabled) LocalPalette.current.onBrand else p.muted,
     modifier = Modifier.clip(RoundedCornerShape(10.dp))
       .background(if (enabled) color else p.panelAlt)
       .then(if (enabled) Modifier.hand().clickable(onClick = onClick) else Modifier)

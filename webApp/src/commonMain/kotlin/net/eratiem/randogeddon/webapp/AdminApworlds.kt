@@ -228,7 +228,7 @@ private fun ReleaseBlock(
 private fun SourceFilter(text: String, color: Color, selected: Boolean, onClick: () -> Unit) {
   Txt(
     text, size = 11.5.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (selected) Color.White else color,
+    color = if (selected) LocalPalette.current.onBrand else color,
     modifier = Modifier.clip(CircleShape).background(if (selected) color else color.copy(alpha = 0.15f))
       .hand().clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 3.dp),
   )

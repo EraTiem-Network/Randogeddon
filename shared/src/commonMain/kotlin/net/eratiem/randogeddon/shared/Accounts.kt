@@ -176,6 +176,9 @@ data class AccountView(
   val singleSignOn: String? = null,
   /** The language they chose; `null`: their browser's. */
   val language: Language? = null,
+  /** The theme and mode they chose; `null`: the default theme, automatic. */
+  val theme: Theme? = null,
+  val themeMode: ThemeMode? = null,
 )
 
 /** `PUT /api/account/name`. */
@@ -189,6 +192,10 @@ data class PasswordChangeRequest(val current: String, val password: String)
 /** `PUT /api/account/language`: `null` follows the browser. */
 @Serializable
 data class LanguageRequest(val language: Language? = null)
+
+/** `PUT /api/account/theme`: `null` for the default theme, automatic. */
+@Serializable
+data class ThemeRequest(val theme: Theme? = null, val mode: ThemeMode? = null)
 
 /** `PUT /api/account/auto-delete`. */
 @Serializable

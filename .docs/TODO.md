@@ -10,7 +10,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - TLS only: current clients connect over `wss://` (Launcher-based clients retry with it, and
       Archipelago.MultiClient.Net, used by many modded games, tries it first since April 2023). Older or unmaintained
       mods may only speak `ws://`, so every game of a session is tested with its real client before session day; for
-      those, the Randogeddon Bridge (Phase 11) gives them a `ws://localhost` address.
+      those, the Randogeddon Bridge (Phase 12) gives them a `ws://localhost` address.
 - **Backups:** of the whole VM/container through Proxmox Backup Server (database, saves, seeds, state).
 - **Generated passwords** (logins, room and slot passwords, ...): at least 32 characters, with lower- and upper-case
   letters, digits and symbols, from a cryptographically secure random source.
@@ -308,20 +308,44 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] The language is a user setting, stored with the account (*Your account*; automatic follows the browser)
     - Before login: the language last used in this browser, else the browser's; the login page has a switch.
 
-## Phase 10: More Themes
+## Phase 10: More Themes (done)
 
 *Everyone picks how the dashboard looks for them.*
 
-- [ ] Several themes, each with a light and a dark variant
-    - The current colours (`webApp/…/Theme.kt`) become the default theme; a theme is a pair of palettes.
-- [ ] A theme applies to every page: dashboard, person and world views, the panel, settings, login
-- [ ] Theme and mode are a user setting, stored with the account (settings page from Phase 5)
-    - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it).
+- [x] Several themes, each with a light and a dark variant
+    - The colours of before are the default theme (Randogeddon); a theme is a pair of palettes (`:shared`'s
+      `Themes.kt`), each with its own item and status colours.
+    - Ocean, Forest, Ember, High contrast, and inspired by Nintendo's consoles (colours only): N64, GameCube, Wii,
+      Wii U, Switch, Switch 2.
+    - `ThemesTest`: every palette at least as readable as the default, its item and status colours apart.
+- [x] A theme applies to every page: dashboard, person and world views, the panel, settings, login, the share link
+- [x] Theme and mode are a user setting, stored with the account (*Your account*, *Appearance*)
+    - Mode: light, dark, or automatic (follows the device's light/dark setting and switches with it); the top card's
+      button cycles it.
     - Active for that user on every device they log in with; other users are not affected.
-    - Before login the user isn't known: the login page uses the default theme in automatic mode, or the theme last
-      used in this browser.
+    - Before login: the theme last used in this browser (the login page takes its colours), else the default theme in
+      automatic mode.
 
-## Phase 11: Randogeddon Bridge
+## Phase 11: The Administrators' Account Page
+
+*Administrators who log in through Authentik manage their account there, not in Randogeddon.*
+
+- [ ] With single sign-on, *Your account* for an Administrator has no panels for the name, the password, the e-mail
+      address, two-factor login and the account's deletion: Authentik holds those
+    - The server refuses those changes for them too (not only hidden in the web app): the account routes and the
+      two-factor routes (set up, turn on and off, new recovery codes).
+    - A two-factor login an Administrator set up before (0.8.3 let them turn it off) is removed when they log in
+      through Authentik; it isn't asked anyway.
+    - Without single sign-on (no `OIDC_ISSUER`) nothing changes: Administrators keep those panels.
+- [ ] Instead, the first panel: *Your Authentik account*, a link to Authentik's user settings
+      (`auth.example.org/if/user/`), where they change their name, password, e-mail address and two-factor login
+    - The name and e-mail address follow right away: Authentik's `model_updated` event for the user, sent by a
+      notification rule like the deletion's (`infra/auth/setup.py`, the same webhook token), names the subject and
+      the new values. The next login through Authentik catches up on anything missed, the Administrator status
+      included.
+- [ ] The other settings stay: language and appearance
+
+## Phase 12: Randogeddon Bridge
 
 *Games that can't do TLS connect to `localhost`; the bridge takes them to their session securely.*
 
@@ -345,7 +369,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       Gatekeeper)
 - [ ] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
-## Phase 12: Polishing
+## Phase 13: Polishing
 
 *Everything tested by hand, and what comes up fixed.*
 

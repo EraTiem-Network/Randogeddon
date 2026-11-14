@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.i18n.texts
@@ -156,6 +158,8 @@ class AccountService(
       recoveryCodesLeft = twoFactor.codesLeft(user),
       singleSignOn = config.oidc?.takeIf { user.administrator }?.name,
       language = Language.of(user.language),
+      theme = Theme.of(user.theme),
+      themeMode = ThemeMode.of(user.themeMode),
     )
   }
 
@@ -216,6 +220,9 @@ class AccountService(
 
   /** The language [user] reads the app in (and gets their mails in); `null`: their browser's. */
   suspend fun setLanguage(user: User, language: Language?) = users.setLanguage(user.id, language?.code)
+
+  /** The theme and mode [user] sees the app in; `null`: the default theme, automatic. */
+  suspend fun setTheme(user: User, theme: Theme?, mode: ThemeMode?) = users.setTheme(user.id, theme?.code, mode?.code)
 
   suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) {
     config.oidc?.takeIf { user.administrator }?.let {

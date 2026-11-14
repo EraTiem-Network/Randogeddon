@@ -506,6 +506,18 @@ The dashboard is a web app (PWA), so no app store or Apple account is needed:
 It needs a browser with WebAssembly GC: iOS/Safari 18.2+, Chrome/Edge 119+, Firefox 120+. Older browsers get a
 message asking for an update. The first load is about 4 MB (gzip); after that the browser has it cached.
 
+### Appearance
+
+Each user picks a theme and a mode under *Your account*, *Appearance*: Randogeddon (the default), Ocean, Forest,
+Ember, High contrast, or one inspired by Nintendo's consoles (N64, GameCube, Wii, Wii U, Switch, Switch 2), each light
+or dark; *Automatic* follows the device and switches with it. The button on the top card cycles light, dark and
+automatic. It is stored with the account, so it follows them to every device; before the login, and on a share
+link's page, the browser's last choice applies (the login page takes its colours too).
+
+A new theme: an entry in `Theme` and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
+(*Texts and languages*). `ThemesTest` checks that it is at least as readable as the default (text, muted text and the
+text on the brand, the item and status colours on the panel) and that its item and status colours stay apart.
+
 ### Language
 
 Randogeddon speaks English and German. Each user picks theirs under *Your account* (*Automatic* follows the
@@ -646,3 +658,9 @@ To update: set `AP_VERSION` to the new release tag, `docker compose build`, and 
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
 other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.
+
+## License
+
+Randogeddon is released under the [EraTiem-Network Non-Commercial License 1.0](LICENSE): free to use and to pass on
+unchanged for non-commercial purposes; no modified copies, no paid use without a separate license
+(info@eratiem.net). Archipelago and the libraries Randogeddon uses keep their own licenses.

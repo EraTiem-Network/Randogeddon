@@ -36,6 +36,9 @@ data class User(
   val loginMethod: String? = null,
   /** The language's code they chose (`en`, `de`); `null`: their browser's. */
   val language: String? = null,
+  /** The theme's code and the mode they chose; `null`: the default theme, automatic. */
+  val theme: String? = null,
+  val themeMode: String? = null,
 )
 
 /** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
@@ -187,6 +190,15 @@ class UserStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
+  /** The theme and mode [id] sees the app in (codes); `null`: the default theme, automatic. */
+  suspend fun setTheme(id: Uuid, theme: String?, mode: String?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[UsersTable.theme] = theme
+      it[themeMode] = mode
+    }
+    Unit
+  }
+
   suspend fun setAutoDelete(id: Uuid, autoDelete: String) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
       it[UsersTable.autoDelete] = autoDelete
@@ -262,6 +274,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     return User(
       row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete],
       twoFactor = row[UsersTable.totpEnabledAt] != null, language = row[UsersTable.language],
+      theme = row[UsersTable.theme], themeMode = row[UsersTable.themeMode],
     )
   }
 

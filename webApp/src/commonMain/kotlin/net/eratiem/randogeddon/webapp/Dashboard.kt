@@ -1,5 +1,9 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ThemeRequest
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -87,7 +91,6 @@ import net.eratiem.randogeddon.shared.i18n.ago
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.texts
 
-private const val THEME_KEY = "ap-theme"
 private const val FEED_VISIBLE_KEY = "ap-feed-visible"
 private const val FEED_POSITION_KEY = "ap-feed-position"
 private val FEED_WIDTH = 440.dp
@@ -141,7 +144,10 @@ fun App() {
     val stop = Platform.onHashChange { watching = (Route.parse(it) as? Route.Watch)?.token }
     onDispose { stop() }
   }
-  LaunchedEffect(Unit) { Platform.setPageLanguage(Languages.current.code) }
+  LaunchedEffect(Unit) {
+    Platform.setPageLanguage(Languages.current.code)
+    Themes.tellPage()
+  }
   val token = watching
   CompositionLocalProvider(LocalTexts provides texts(Languages.current)) {
     if (token != null) WatchApp(token) else TrackerApp()
@@ -167,8 +173,6 @@ private fun TrackerApp() {
   val connection by repository.connection.collectAsState()
   val files by repository.files.collectAsState()
 
-  var themeSetting by remember { mutableStateOf(Platform.loadSetting(THEME_KEY)) }
-  val dark = themeSetting?.let { it == "dark" } ?: Platform.systemDarkMode()
 
   // Relative times ("5m ago") and the session duration move on without new data
   var now by remember { mutableLongStateOf(Platform.now()) }
@@ -200,6 +204,12 @@ private fun TrackerApp() {
   }
   // Logged in: the account's language (or, without a choice, the browser's)
   LaunchedEffect(me?.name, me?.language) { me?.let { Languages.apply(it.language) } }
+  // Logged in: the account's theme; an account without one yet takes what this browser had (the old light/dark too)
+  LaunchedEffect(me?.name, me?.theme, me?.themeMode) {
+    val user = me ?: return@LaunchedEffect
+    if (user.theme == null && user.themeMode == null) saveTheme(Themes.theme, Themes.mode)
+    else Themes.apply(user.theme, user.themeMode)
+  }
   // Another session: its own slots and people
   LaunchedEffect(selected) {
     detailSlot = null
@@ -237,7 +247,7 @@ private fun TrackerApp() {
     Platform.saveSetting(FEED_POSITION_KEY, position.name)
   }
 
-  RandogeddonTheme(dark) {
+  RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
     val t = LocalTexts.current
     BoxWithConstraints(
@@ -277,9 +287,11 @@ private fun TrackerApp() {
               sessions = switchable, shown = shown,
               onSession = { go(Route.Dashboard(it)) },
               onAllSessions = { go(Route.Home) },
+              // Light, dark, automatic: for the account (and this browser)
               onToggleTheme = {
-                themeSetting = if (dark) "light" else "dark"
-                Platform.saveSetting(THEME_KEY, themeSetting)
+                val next = Themes.mode.next
+                Themes.apply(Themes.theme, next)
+                scope.launch { saveTheme(Themes.theme, next) }
               },
               feedVisible = feedVisible,
               onToggleFeed = { setFeedVisible(!feedVisible) },
@@ -446,6 +458,8 @@ private fun Hero(
 ) {
   val p = LocalPalette.current
   val t = LocalTexts.current
+  // Light: on the full gradient; dark: on a dark card with the gradient's glow
+  val onHero = if (p.dark) p.text else p.onBrand
   val live = streamOpen && summary?.connected == true
   // Light: the full gradient. Dark: a dark card with a gradient glow, so the page stays dark
   val heroBackground = if (p.dark) {
@@ -466,10 +480,10 @@ private fun Hero(
             listOf(Triple<String?, String, String>(null, t.frame.allSessions, "")) +
               sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(t, it)) },
             shown, { id -> if (id == null) onAllSessions() else onSession(id) },
-            chip = false, heading = 24.sp, headingColor = Color.White, placeholder = t.frame.pickASession,
+            chip = false, heading = 24.sp, headingColor = onHero, placeholder = t.frame.pickASession,
           )
         } else {
-          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = Color.White)
+          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = onHero)
         }
         val meta = listOfNotNull(
           summary?.seedName?.let { t.frame.seed(it) },
@@ -478,38 +492,38 @@ private fun Hero(
         ).ifEmpty { listOf(if (shown == null) t.frame.pickOneOfYourSessions else t.frame.connecting) }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
-          Txt(it, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
+          Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
         }
       }
     }
     val controls: @Composable () -> Unit = {
       // As tall as the buttons next to it
       Row(
-        Modifier.height(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+        Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        Dot(if (live) Color(0xFF6CF0A9) else Color(0xFFFFB4A8))
+        Dot(if (live) p.liveDot else p.offlineDot)
         Txt(
           when {
             !streamOpen -> t.frame.reconnecting
             summary?.finishedAt != null -> t.frame.finished
             summary?.connected == true -> t.frame.live
             else -> t.frame.serverOffline
-          }, size = 12.5.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 1
+          }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
         )
       }
       // Shows / hides the live feed; brighter while it is shown
-      IconButton(onToggleFeed, Icon.FEED, tint = Color.White,
-        background = Color.White.copy(alpha = if (feedVisible) 0.32f else 0.12f))
-      IconButton(onToggleTheme, Icon.THEME, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+      IconButton(onToggleFeed, Icon.FEED, tint = onHero,
+        background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
+      IconButton(onToggleTheme, Icon.THEME, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
-      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = Color.White,
-        background = Color.White.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
+        background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
       // The user's account; brighter while it is open
-      IconButton(onSettings, Icon.USER, tint = Color.White,
-        background = Color.White.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
-      IconButton(onLogout, Icon.LOGOUT, tint = Color.White, background = Color.White.copy(alpha = 0.2f))
+      IconButton(onSettings, Icon.USER, tint = onHero,
+        background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
+      IconButton(onLogout, Icon.LOGOUT, tint = onHero, background = onHero.copy(alpha = 0.2f))
     }
     if (stacked) {
       heading(Modifier)
@@ -525,22 +539,27 @@ private fun Hero(
       val totals = summary.totals
       Spacer(Modifier.height(16.dp))
       Row(verticalAlignment = Alignment.Bottom) {
-        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = Color.White)
+        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
         Txt(
-          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = Color.White.copy(alpha = 0.85f),
+          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
           modifier = Modifier.padding(bottom = 7.dp),
         )
       }
-      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))) {
+      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(onHero.copy(alpha = 0.25f))) {
         if (totals.percent > 0) {
           Box(
             Modifier.fillMaxWidth((totals.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
-              .background(if (p.dark) p.brand else SolidColor(Color.White))
+              .background(if (p.dark) p.brand else SolidColor(onHero))
           )
         }
       }
     }
   }
+}
+
+/** The account's theme and mode (the app shows them already); a refusal leaves them for this browser only. */
+internal suspend fun saveTheme(theme: Theme, mode: ThemeMode) {
+  call("PUT", "api/account/theme", ApiJson.encodeToString(ThemeRequest.serializer(), ThemeRequest(theme, mode))) { }
 }
 
 /** Where back from the admin panel goes: the dashboard's session, or the sessions' page without one. */

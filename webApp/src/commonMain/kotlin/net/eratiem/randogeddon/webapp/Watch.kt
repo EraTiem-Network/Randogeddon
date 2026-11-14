@@ -119,7 +119,6 @@ fun WatchApp(token: String) {
   val summary by repository.summary.collectAsState()
   val streamOpen by repository.streamOpen.collectAsState()
   val gone by repository.gone.collectAsState()
-  val dark = Platform.loadSetting("ap-theme")?.let { it == "dark" } ?: Platform.systemDarkMode()
   var now by remember { mutableLongStateOf(Platform.now()) }
   LaunchedEffect(Unit) {
     while (true) {
@@ -130,7 +129,8 @@ fun WatchApp(token: String) {
   LaunchedEffect(summary?.version) { now = Platform.now() }
   var detailSlot by remember { mutableStateOf<Int?>(null) }
 
-  RandogeddonTheme(dark) {
+  // No account here: the theme last used in this browser
+  RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
   val t = LocalTexts.current
     BoxWithConstraints(

@@ -5,6 +5,40 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`.
 
+## Phase 10: More Themes
+Everyone picks how Randogeddon looks for them: eleven themes, each light and dark, and the mode (light, dark,
+automatic), stored with the account. Updating: nothing to set (migration V13); everyone starts with the default theme,
+in the mode their browser had.
+
+### 0.10.3: Phase 10 done
+- README: *Appearance* (the themes, the mode, a new theme); TODO: Phase 10 done.
+
+### 0.10.2: The themes
+- Ten new themes, each light and dark, with their own item and status colours: Ocean (teal → blue), Forest
+  (lime → green), Ember (red → amber), High contrast (black and white), and inspired by Nintendo's consoles (their
+  colours only): N64, GameCube, Wii, Wii U, Switch, Switch 2. Their names in English and German.
+- *Appearance* shows the chosen theme's colours (brand, items, states).
+- In dark mode the top card's text takes the theme's text colour (the card is dark there, with the gradient's glow);
+  `onBrand` is for the full gradient and the buttons.
+- `ThemesTest` also checks the text on the gradient's start (at least 2.5:1, the default's coral has 2.6).
+
+### 0.10.1.1: The license
+- Randogeddon is under the EraTiem-Network Non-Commercial License 1.0 (`LICENSE`, as CoreSync); Archipelago and the
+  libraries keep their own licenses. The README says so at its end.
+
+### 0.10.1: Themes as a setting
+- *Your account* has *Appearance*: the theme and the mode (light, dark, automatic: the device's, following it when it
+  switches). Stored with the account (migration V13, `PUT /api/account/theme`, `theme` and `themeMode` in `/api/me`);
+  before the login, and on a share link's page, the one last used in this browser. An account without a choice yet
+  takes what its browser had, so the old light/dark button's choice stays.
+- The top card's button cycles the mode: light, dark, automatic.
+- The palettes are `:shared`'s (`Themes.kt`: `Theme`, `ThemeMode`, `ThemeColors`), with new colours for the text on
+  the brand (`onBrand`) and the top card's dots; every colour of the web app comes from the theme (the QR code stays
+  black on white). The login page takes the user's theme colours too (`ap-theme-css`), and the browser's bar colour.
+- `ThemesTest`: every palette at least as readable as the default (text 7:1, muted 4.5:1, the text on the accent
+  3:1, the item colours 3:1 and the status colours 2.2:1 on the panel) and its item and status colours apart.
+- The new themes follow in 0.10.2.
+
 ## Phase 9: Multi-Language
 Randogeddon speaks English and German: every page, the server's messages and the mails. Each user picks the language
 under *Your account* (stored with the account; *Automatic* follows the browser), and dates and numbers follow it.

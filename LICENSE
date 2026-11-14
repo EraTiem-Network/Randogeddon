@@ -1,0 +1,62 @@
+EraTiem-Network Non-Commercial License 1.0
+
+Copyright (c) 2026 EraTiem-Network. All rights not expressly granted below are reserved.
+
+1. Definitions
+
+   "Software" means the software this license accompanies (here: Randogeddon) as released by EraTiem-Network: its
+   server, gateway, web app, APWorlds, scripts, libraries and APIs, in source and compiled form, including
+   documentation and all associated files. Parts that come from others (Archipelago, which the gateway's image
+   fetches when it is built, and the libraries the Software uses) are not covered by this license; they keep
+   their own.
+
+   "Non-commercial purpose" means any purpose that is not directed toward commercial advantage or monetary
+   compensation, such as personal, hobby, educational, research or charitable use. Using the Software to sell
+   products or services, or to operate a service that is paid for or financed by payments of its users, is a
+   commercial purpose.
+
+2. Permissions
+
+   Provided you comply with all conditions of this license, EraTiem-Network grants you a free, worldwide,
+   non-exclusive, non-transferable license, for non-commercial purposes only, to:
+
+   a) Use: install and run unmodified releases of the Software, including its plugins and applications.
+
+   b) Develop with it: use the published APIs and libraries of the Software to develop your own software (for
+      example plugins) that works with the Software, and distribute your own software under terms of your choice.
+      This license continues to apply to any part of the Software that your software contains or requires.
+
+   c) Redistribute: pass on complete, unmodified copies of the Software to others, free of charge, provided that each
+      copy includes this license and all copyright notices, and that you name EraTiem-Network as the author of the
+      Software.
+
+3. Conditions and restrictions
+
+   a) You may not modify the Software, or distribute modified copies or works derived from it. Configuration files
+      intended to be edited by users may be changed for your own use.
+
+   b) You may not sell the Software, charge for it, or offer it as part of a paid product or service.
+
+   c) You may not rebrand the Software, remove or alter its names, copyright notices or license, or present it as
+      your own work or as made by anyone other than EraTiem-Network.
+
+   d) Any use for a commercial purpose requires a separate written license from EraTiem-Network.
+
+   e) Recipients of copies you redistribute receive their license directly from EraTiem-Network under these terms;
+      you may not grant them other or additional rights.
+
+4. Termination
+
+   If you violate any condition of this license, your rights under it end automatically. EraTiem-Network may
+   reinstate them in writing.
+
+5. No warranty, no liability
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+   ERATIEM-NETWORK BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Contact
+
+   For commercial licenses, other permissions or questions: info@eratiem.net
