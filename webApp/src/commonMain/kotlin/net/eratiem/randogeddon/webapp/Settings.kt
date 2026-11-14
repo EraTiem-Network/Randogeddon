@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.text
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -79,7 +80,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     var nameState by remember { mutableStateOf<String?>(null) }
     Section(acc.name, subtitle = acc.nameSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val nameProblem = UserNames.problem(name.trim()).takeIf { name != a.name }
+        val nameProblem = UserNames.problem(name.trim())?.let { t.problems.text(it) }.takeIf { name != a.name }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           FilterField(name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
           Button(t.common.save, enabled = name.trim() != a.name && nameProblem == null) {

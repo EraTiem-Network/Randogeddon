@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.texts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -200,8 +201,7 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     _streamOpen.value = false
   }
 
-  private fun error(body: String): String? =
-    runCatching { ApiJson.decodeFromString(ApiError.serializer(), body).message }.getOrNull()
+  private fun error(body: String): String? = texts(Languages.current).wordError(body)
 
   private fun accept(id: String, json: String) {
     if (_selected.value != id) return

@@ -67,8 +67,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
     when {
       result == null -> problem = t.common.serverUnreachable
       result.status == 200 -> spoiler = runCatching { ApiJson.decodeFromString(Spoiler.serializer(), result.body) }.getOrNull()
-      else -> problem = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }
-        .getOrDefault(t.common.failed(result.status))
+      else -> problem = t.wordError(result.body) ?: t.common.failed(result.status)
     }
   }
 

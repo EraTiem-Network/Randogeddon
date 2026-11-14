@@ -339,7 +339,7 @@ private fun TrackerApp() {
             val mine = entry?.mySlots?.isNotEmpty() == true
             val role = entry?.myRole
             val error = s.error
-            if (!s.connected && error != null && s.finishedAt == null) Banner(error)
+            if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
             FinishBanner(
               s, user.administrator || role == SessionRole.MANAGER,
               onFinishNow = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish") } },
@@ -787,7 +787,9 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
         Txt(
           when {
             lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "")
-            lock.hintedAt != null -> t.dashboard.keyHinted(lock.hintedAt.orEmpty())
+            lock.hintedAt != null -> t.dashboard.keyHinted(
+              lock.hintLocation?.let { t.dashboard.hintPlace(it, lock.hintSlot.orEmpty()) } ?: lock.hintedAt.orEmpty()
+            )
             else -> t.dashboard.waitingForKey(lock.key)
           },
           size = 12.sp, maxLines = 3,
@@ -1116,7 +1118,12 @@ private fun FeedLine(e: FeedEvent) {
 
       EventType.CHEAT -> {
         withStyle(SpanStyle(color = p.trap, fontWeight = FontWeight.SemiBold)) { append(f.cheat) }
-        append(e.message ?: "")
+        val action = e.cheatAction
+        // Events from before 0.9.3 have only the English sentence
+        append(
+          if (action == null) e.message.orEmpty()
+          else LocalTexts.current.cheats.feedLine(e.cheatBy.orEmpty(), e.cheatRole, action, e.cheatSlot.orEmpty(), e.cheatValue)
+        )
       }
 
       EventType.UNLOCK -> appendTemplate(

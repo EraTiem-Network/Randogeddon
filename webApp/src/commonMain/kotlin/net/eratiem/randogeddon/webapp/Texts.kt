@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApiError
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -41,6 +43,13 @@ object Languages {
 
 /** Date and time of [epochMillis] as this language writes them: `14 Nov 2026, 08:17`, `14.11.2026, 08:17`. */
 fun Texts.date(epochMillis: Long): String = Platform.date(epochMillis, language.tag, language.numericDates)
+
+/** A refusal of the server as this language words it (by its code), else as the server worded it. */
+fun Texts.word(error: ApiError): String = error.code?.let { problems.text(it, error.args) } ?: error.message
+
+/** The refusal in an answer's [body], worded; `null` if it isn't one. */
+fun Texts.wordError(body: String): String? =
+  runCatching { ApiJson.decodeFromString(ApiError.serializer(), body) }.getOrNull()?.let { word(it) }
 
 /** `08:17`. */
 fun Texts.clock(epochMillis: Long): String = Platform.clock(epochMillis, language.tag)

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.text
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.fileSize
@@ -107,15 +109,16 @@ private suspend fun post(path: String, body: String? = null): String? =
 /** An answer of the admin API: the decoded body, or the error message. */
 internal sealed interface Answer<out T> {
   data class Ok<T>(val value: T) : Answer<T>
-  data class Failed(val message: String) : Answer<Nothing>
+  /** [detail]: what another program said (Generate.py), shown as it is under [message]. */
+  data class Failed(val message: String, val detail: String? = null) : Answer<Nothing>
 }
 
 internal suspend fun <T> call(method: String, path: String, body: String?, decode: (String) -> T): Answer<T> {
-  val common = texts(Languages.current).common
-  val result = Platform.request(method, path, body) ?: return Answer.Failed(common.serverUnreachable)
-  if (result.status in 200..299) return runCatching { Answer.Ok(decode(result.body)) }.getOrElse { Answer.Failed(common.unexpectedAnswer) }
-  val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body).message }.getOrNull()
-  return Answer.Failed(message ?: common.failed(result.status))
+  val t = texts(Languages.current)
+  val result = Platform.request(method, path, body) ?: return Answer.Failed(t.common.serverUnreachable)
+  if (result.status in 200..299) return runCatching { Answer.Ok(decode(result.body)) }.getOrElse { Answer.Failed(t.common.unexpectedAnswer) }
+  val error = runCatching { ApiJson.decodeFromString(ApiError.serializer(), result.body) }.getOrNull()
+  return Answer.Failed(error?.let { t.word(it) } ?: t.common.failed(result.status), error?.detail)
 }
 
 /**
@@ -483,7 +486,7 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
   val suggested = overview?.suggestedId.orEmpty()
   val chosen = id ?: suggested
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
-  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen) ?: if (taken) t.sessionAdmin.taken else null
+  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen)?.let { t.problems.text(it) } ?: if (taken) t.sessionAdmin.taken else null
   val full = overview != null && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
@@ -639,7 +642,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   val scope = rememberCoroutineScope()
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
   var worlds by remember { mutableStateOf<List<YamlWorld>>(emptyList()) }
-  var problems by remember { mutableStateOf<List<String>>(emptyList()) }
+  var problems by remember { mutableStateOf<List<ApiError>>(emptyList()) }
   // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
   val users = remember { mutableStateMapOf<String, List<String>>() }
   val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
@@ -653,7 +656,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var options by remember { mutableStateOf(SessionOptions(pointHints = false, autoHints = false)) }
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
   var busy by remember { mutableStateOf(false) }
-  var error by remember { mutableStateOf<String?>(null) }
+  var error by remember { mutableStateOf<Answer.Failed?>(null) }
   // The YAML to remove, asked once more; "": all of them
   var removing by remember { mutableStateOf<String?>(null) }
   // Why the files just picked that aren't player YAMLs weren't taken
@@ -666,7 +669,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
           // Not taken at all; the others are checked again without them
-          refused = refused + answer.value.problems.filter { problem -> invalid.any { problem.startsWith("$it: ") } }
+          refused = refused + answer.value.problems.filter { it.args["file"] in invalid }.map { t.word(it) }
           yamls.removeAll { it.fileName in invalid }
           if (yamls.isEmpty()) {
             worlds = emptyList(); problems = emptyList()
@@ -680,7 +683,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         // A guess to start from: "Alice-HK" belongs to Alice, if she has a login or no one else is meant
         worlds.forEach { w -> if (w.name !in users) users[w.name] = listOf(w.name.substringBefore('-').trim()).filter { it.isNotEmpty() } }
       }
-      is Answer.Failed -> problems = listOf(answer.message)
+      is Answer.Failed -> problems = listOf(ApiError(answer.message))
     }
   }
   // Another release may have other games
@@ -725,8 +728,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   }
   removing?.takeIf { it.isNotEmpty() }?.let { ConfirmRemoval(it) }
   refused.forEach { Txt(t.sessionAdmin.notAdded(it), size = 12.5.sp, color = p.trap) }
-  problems.forEach { Txt(it, size = 12.5.sp, color = p.trap) }
-  if (problems.any { it.startsWith("No APWorld for") }) {
+  problems.forEach { Txt(t.word(it), size = 12.5.sp, color = p.trap) }
+  if (problems.any { it.code == Problem.NO_APWORLD }) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Txt(t.sessionAdmin.uploadMissing, size = 12.5.sp, color = p.muted)
       SmallButton(t.sessionAdmin.checkAgain, { inspect() })
@@ -818,7 +821,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         onInvite = { email ->
           when (val r = inviteForSession(email)) {
             is Answer.Ok -> r.value.also { people += it }
-            is Answer.Failed -> { error = r.message; null }
+            is Answer.Failed -> { error = r; null }
           }
         },
         lock = {
@@ -888,28 +891,26 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
           when (val answer = call("POST", "api/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
             is Answer.Ok -> onCreated(answer.value)
-            is Answer.Failed -> error = answer.message
+            is Answer.Failed -> error = answer
           }
           busy = false
         }
       }
       if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
     }
-    error?.let { GenerationError(it) }
+    error?.let { GenerationError(it.message, it.detail) }
   }
 }
 
-/** A failed generation: the suspected games as text, Generate.py's output below in monospace. */
+/** A failed generation: why (the suspected games), Generate.py's output ([detail]) below in monospace. */
 @Composable
-private fun GenerationError(message: String) {
+private fun GenerationError(message: String, detail: String?) {
   val p = LocalPalette.current
-  val marker = "Generate.py said:"
-  val split = message.indexOf(marker)
-  if (split < 0) {
+  if (detail == null) {
     Mono(message, p.trap)
   } else {
-    Txt(message.substring(0, split + marker.length).trim(), size = 12.5.sp, color = p.trap)
-    Mono(message.substring(split + marker.length).trim(), p.text)
+    Txt(message, size = 12.5.sp, color = p.trap)
+    Mono(detail, p.text)
   }
 }
 
