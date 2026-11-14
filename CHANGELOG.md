@@ -7,6 +7,10 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 10: More Themes
 
+### 0.10.1.1: The license
+- Randogeddon is under the EraTiem-Network Non-Commercial License 1.0 (`LICENSE`, as CoreSync); Archipelago and the
+  libraries keep their own licenses. The README says so at its end.
+
 ### 0.10.1: Themes as a setting
 - *Your account* has *Appearance*: the theme and the mode (light, dark, automatic: the device's, following it when it
   switches). Stored with the account (migration V13, `PUT /api/account/theme`, `theme` and `themeMode` in `/api/me`);
