@@ -47,6 +47,8 @@ actual object Platform {
 
   actual fun copy(text: String) = jsCopy(text)
 
+  actual fun openLink(url: String) = jsOpenLink(url)
+
   actual fun download(path: String) = jsDownload(path)
 
   actual fun systemDarkMode(): Boolean = jsDarkMode()
@@ -122,6 +124,8 @@ private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> U
 )
 
 private fun jsCopy(text: String): Unit = js("{ try { navigator.clipboard.writeText(text); } catch (e) {} }")
+
+private fun jsOpenLink(url: String): Unit = js("{ window.open(url, '_blank', 'noopener'); }")
 
 // A link with `download`: the browser saves the answer (its Content-Disposition names the file) instead of opening it
 private fun jsDownload(path: String): Unit =

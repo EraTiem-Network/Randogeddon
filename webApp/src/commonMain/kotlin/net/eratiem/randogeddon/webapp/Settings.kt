@@ -53,7 +53,9 @@ import net.eratiem.randogeddon.shared.i18n.Language
 /**
  * The user's own account: their name (unique; a rename shows in the running sessions), their password (the form of
  * index.html, for the password manager), their e-mail address (a new one is confirmed by a link mailed to it), their
- * language and when the account deletes itself. [onRenamed]: the new name is everywhere else too.
+ * language, appearance and when the account deletes itself. [onRenamed]: the new name is everywhere else too.
+ * Administrators with single sign-on change their name, password, address and second factor at the provider (its page
+ * is the first panel), and their account goes with theirs there: those panels aren't shown to them.
  */
 @Composable
 fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
@@ -78,67 +80,19 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     }
     problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
     val a = account ?: return@Column
+    val sso = a.singleSignOn
 
-    // The name
-    var name by remember(a.name) { mutableStateOf(a.name) }
-    var nameState by remember { mutableStateOf<String?>(null) }
-    Section(acc.name, subtitle = acc.nameSubtitle) {
-      Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val nameProblem = UserNames.problem(name.trim())?.let { t.problems.text(it) }.takeIf { name != a.name }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterField(name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-          Button(t.common.save, enabled = name.trim() != a.name && nameProblem == null) {
-            scope.launch {
-              nameState = when (val r = call("PUT", "api/account/name", body(NameRequest(name.trim()))) { }) {
-                is Answer.Ok -> { load(); onRenamed(); acc.nameSaved }
-                is Answer.Failed -> r.message
-              }
-            }
-          }
-        }
-        (nameProblem ?: nameState)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
-        Tip(acc.idTip) {
-          Txt(acc.id(a.id), size = 11.5.sp, color = p.muted)
+    // The provider's account: where an Administrator with single sign-on changes the rest
+    if (sso != null) {
+      Section(acc.providerAccount(sso), subtitle = acc.providerAccountSubtitle) {
+        Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Txt(acc.providerAccountHint(sso), size = 13.sp)
+          a.singleSignOnAccount?.let { url -> Row { Button(acc.openProvider(sso)) { Platform.openLink(url) } } }
         }
       }
     }
 
-    // The password: index.html's form, so the password manager saves the new one
-    var passwordState by remember { mutableStateOf<String?>(null) }
-    Section(acc.password) {
-      Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Button(acc.changePassword) {
-            Platform.showPasswordChange(a.name) { changed -> if (changed) passwordState = acc.passwordChanged }
-          }
-        }
-        passwordState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
-      }
-    }
-
-    TwoFactorSection(a, onChanged = { scope.launch { load() } })
-
-    // The e-mail address
-    var email by remember { mutableStateOf("") }
-    var emailState by remember { mutableStateOf<String?>(null) }
-    Section(acc.email, subtitle = acc.emailSubtitle) {
-      Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Txt(a.email ?: acc.noAddress, size = 13.5.sp, weight = FontWeight.SemiBold, color = if (a.email == null) p.muted else p.text)
-        a.pendingEmail?.let { Txt(acc.waitingForConfirmation(it), size = 12.5.sp, color = p.muted) }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterField(email, { email = it; emailState = null }, acc.newAddress, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-          Button(acc.sendConfirmation, enabled = EmailAddresses.valid(EmailAddresses.normalize(email))) {
-            scope.launch {
-              emailState = when (val r = call("POST", "api/account/email", body(EmailRequest(email.trim()))) { }) {
-                is Answer.Ok -> { load(); email = ""; acc.confirmationSent }
-                is Answer.Failed -> r.message
-              }
-            }
-          }
-        }
-        emailState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
-      }
-    }
+    if (sso == null) OwnAccount(a, { load() }, onRenamed)
 
     // The language: of the app, and of the mails; none chosen follows the browser
     var languageState by remember { mutableStateOf<String?>(null) }
@@ -189,16 +143,11 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
       }
     }
 
-    // When the account deletes itself
+    // When the account deletes itself (with single sign-on: with theirs at the provider)
+    if (sso != null) return@Column
     var deletionState by remember { mutableStateOf<String?>(null) }
-    val sso = a.singleSignOn
-    val deletionSubtitle = if (sso != null) acc.deletionSubtitleSso(sso) else acc.deletionSubtitle
-    Section(acc.deletion, subtitle = deletionSubtitle) {
+    Section(acc.deletion, subtitle = acc.deletionSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (sso != null) {
-          Txt(acc.deletedWithSso(sso), size = 13.sp)
-          return@Column
-        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Txt(acc.deleteIt, size = 13.sp)
           Select(
@@ -230,6 +179,76 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
   }
 }
 
+/** Name, password, two-factor login and address: the account's own (not the provider's). */
+@Composable
+private fun OwnAccount(a: AccountView, load: suspend () -> Unit, onRenamed: () -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val acc = t.account
+  val scope = rememberCoroutineScope()
+
+  // The name
+  var name by remember(a.name) { mutableStateOf(a.name) }
+  var nameState by remember { mutableStateOf<String?>(null) }
+  Section(acc.name, subtitle = acc.nameSubtitle) {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      val nameProblem = UserNames.problem(name.trim())?.let { t.problems.text(it) }.takeIf { name != a.name }
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterField(name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+        Button(t.common.save, enabled = name.trim() != a.name && nameProblem == null) {
+          scope.launch {
+            nameState = when (val r = call("PUT", "api/account/name", body(NameRequest(name.trim()))) { }) {
+              is Answer.Ok -> { load(); onRenamed(); acc.nameSaved }
+              is Answer.Failed -> r.message
+            }
+          }
+        }
+      }
+      (nameProblem ?: nameState)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
+      Tip(acc.idTip) {
+        Txt(acc.id(a.id), size = 11.5.sp, color = p.muted)
+      }
+    }
+  }
+
+  // The password: index.html's form, so the password manager saves the new one
+  var passwordState by remember { mutableStateOf<String?>(null) }
+  Section(acc.password) {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(acc.changePassword) {
+          Platform.showPasswordChange(a.name) { changed -> if (changed) passwordState = acc.passwordChanged }
+        }
+      }
+      passwordState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
+    }
+  }
+
+  TwoFactorSection(a, onChanged = { scope.launch { load() } })
+
+  // The e-mail address
+  var email by remember { mutableStateOf("") }
+  var emailState by remember { mutableStateOf<String?>(null) }
+  Section(acc.email, subtitle = acc.emailSubtitle) {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Txt(a.email ?: acc.noAddress, size = 13.5.sp, weight = FontWeight.SemiBold, color = if (a.email == null) p.muted else p.text)
+      a.pendingEmail?.let { Txt(acc.waitingForConfirmation(it), size = 12.5.sp, color = p.muted) }
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterField(email, { email = it; emailState = null }, acc.newAddress, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+        Button(acc.sendConfirmation, enabled = EmailAddresses.valid(EmailAddresses.normalize(email))) {
+          scope.launch {
+            emailState = when (val r = call("POST", "api/account/email", body(EmailRequest(email.trim()))) { }) {
+              is Answer.Ok -> { load(); email = ""; acc.confirmationSent }
+              is Answer.Failed -> r.message
+            }
+          }
+        }
+      }
+      emailState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
+    }
+  }
+}
+
 /** The link of the mail confirming a new address: confirms it once the user is logged in, says how it went. */
 @Composable
 fun ConfirmEmailView(token: String, onSettings: () -> Unit) {
@@ -253,9 +272,8 @@ private inline fun <reified T> body(value: T): String = ApiJson.encodeToString(v
 
 /**
  * Two-factor login: off, set it up (a QR code and the key, confirmed with a first code); on, new recovery codes or turn
- * it off, each with a code. Admins can't turn it off, unless they log in through single sign-on: then the provider
- * checks their second factor, and the section only says so (or lets them turn an old one off). The recovery codes are
- * shown once, right after.
+ * it off, each with a code. Administrators can't turn it off (with single sign-on the provider has their second
+ * factor, and the section isn't shown). The recovery codes are shown once, right after.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -283,19 +301,10 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
       is Answer.Failed -> state = answer.message
     }
   }
-  val sso = a.singleSignOn
-  val subtitle = when {
-    sso != null -> acc.twoFactorSubtitleSso(sso)
-    a.administrator -> acc.twoFactorSubtitleAdministrator
-    else -> acc.twoFactorSubtitle
-  }
+  val subtitle = if (a.administrator) acc.twoFactorSubtitleAdministrator else acc.twoFactorSubtitle
   Section(acc.twoFactor, subtitle = subtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (sso != null && !a.twoFactor && codes == null) {
-        Txt(acc.twoFactorNotNeeded(sso), size = 13.sp)
-        return@Column
-      }
-      if (a.administrator && sso == null && !a.twoFactor) {
+      if (a.administrator && !a.twoFactor) {
         Txt(acc.twoFactorAdministratorsNeedIt, size = 12.5.sp, color = p.trap)
       }
       codes?.let { list ->
@@ -336,7 +345,7 @@ private fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           Txt(acc.on(a.recoveryCodesLeft), size = 13.sp, weight = FontWeight.SemiBold)
           Txt(acc.codeFor, size = 12.5.sp, color = p.muted)
           CodeRow(code, { code = it; state = null }, acc.newRecoveryCodes) { request("api/account/2fa/codes", onCodes = true) }
-          if (!a.administrator || sso != null) Row { SmallButton(acc.turnItOff, { request("api/account/2fa/disable", onCodes = false) }) }
+          if (!a.administrator) Row { SmallButton(acc.turnItOff, { request("api/account/2fa/disable", onCodes = false) }) }
         }
       }
       state?.let { Txt(it, size = 12.5.sp, color = p.muted) }

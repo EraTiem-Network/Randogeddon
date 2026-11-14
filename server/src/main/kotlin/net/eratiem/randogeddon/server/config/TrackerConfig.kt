@@ -75,6 +75,7 @@ data class TrackerConfig(
           adminGroup = value("oidc.adminGroup").trim(),
           name = value("oidc.name").trim(),
           deletionToken = value("oidc.deletionToken").trim(),
+          accountUrl = value("oidc.accountUrl").trim(),
         ).takeIf { it.issuer.isNotEmpty() && it.clientId.isNotEmpty() },
       )
     }
@@ -123,4 +124,10 @@ data class OidcConfig(
   /** For the login button. */
   val name: String = "Authentik",
   val deletionToken: String = "",
-)
+  /** The provider's page where people change their account; empty: Authentik's user settings beside [issuer]. */
+  private val accountUrl: String = "",
+) {
+  /** `https://auth.example.org/if/user/` for the issuer `https://auth.example.org/application/o/randogeddon/`. */
+  val account: String
+    get() = accountUrl.ifEmpty { issuer.substringBefore("/application/").trimEnd('/') + "/if/user/" }
+}
