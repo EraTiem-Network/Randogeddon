@@ -168,6 +168,12 @@ interface AccountTexts {
   val appearanceSubtitle: String
   fun theme(theme: Theme): String
   fun mode(mode: ThemeMode): String
+  // Randogeddon Bridge's keys
+  val bridgeKeys: String
+  val bridgeKeysSubtitle: String
+  /** One key: when it was made, last used (`null`: not yet) and until when it works. */
+  fun bridgeKey(made: String, used: String?, until: String): String
+  val endKey: String
   // Deleting the account
   val deletion: String
   val deletionSubtitle: String

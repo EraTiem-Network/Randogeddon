@@ -178,6 +178,11 @@ object German : Texts {
       ThemeMode.DARK -> "Dunkel"
       ThemeMode.AUTO -> "Automatisch (wie das Gerät)"
     }
+    override val bridgeKeys = "Bridge-Schlüssel"
+    override val bridgeKeysSubtitle = "die Anmeldungen der Randogeddon Bridge; ein neues Passwort beendet sie auch"
+    override fun bridgeKey(made: String, used: String?, until: String) =
+      "Gemacht am $made · ${used?.let { "zuletzt genutzt am $it" } ?: "noch nicht genutzt"} · bis $until"
+    override val endKey = "Beenden"
     override val deletion = "Dein Konto löschen"
     override val deletionSubtitle = "von selbst, nach deiner letzten Session; deine Sessions behalten deinen Namen"
     override val deleteIt = "Löschen"

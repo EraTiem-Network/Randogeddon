@@ -55,6 +55,16 @@ interface ConnectionTexts {
   val download: String
   /** How to use a slot's file (the ⓘ next to it). */
   val patchHowTo: String
+  // Randogeddon Bridge
+  val bridge: String
+  val bridgeLine: String
+  /** What the bridge is and how it is set up (its ⓘ). */
+  val bridgeHowTo: String
+  val makeKey: String
+  /** Under a new key: shown once, works until [until]. */
+  fun keyMade(until: String): String
+  /** How to start the unsigned bridge (the downloads' ⓘ). */
+  val bridgeUnsigned: String
 }
 
 internal object EnglishDialogs : DialogTexts {
@@ -141,6 +151,16 @@ internal object EnglishConnection : ConnectionTexts {
   override val patchHowTo = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
     "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
     "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
+  override val bridge = "Bridge"
+  override val bridgeLine = "for games that can't connect securely"
+  override val bridgeHowTo = "Randogeddon Bridge runs on your PC: the game connects to localhost, and the bridge takes " +
+    "it to the session securely, with your slot's name and password filled in. Download it, make a key here and paste " +
+    "it into the bridge's page."
+  override val makeKey = "Make a key"
+  override fun keyMade(until: String) =
+    "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
+  override val bridgeUnsigned = "The bridge isn't signed, so the system asks first. Windows: More info, then Run " +
+    "anyway. macOS: right-click it, Open (or xattr -d com.apple.quarantine <file>). Linux: chmod +x <file>."
 }
 
 internal object GermanConnection : ConnectionTexts {
@@ -164,4 +184,15 @@ internal object GermanConnection : ConnectionTexts {
     "Patch öffnest du mit dem Archipelago Launcher (Open Patch) zusammen mit deiner eigenen Kopie des Spiels (dem ROM); " +
     "der Launcher legt das gepatchte Spiel daneben und kann es mit seinem Client starten. Mods kommen dorthin, wo es " +
     "die Archipelago-Anleitung des Spiels sagt."
+  override val bridge = "Bridge"
+  override val bridgeLine = "für Spiele, die sich nicht sicher verbinden können"
+  override val bridgeHowTo = "Randogeddon Bridge läuft auf deinem PC: Das Spiel verbindet sich mit localhost, und die " +
+    "Bridge bringt es sicher zur Session, mit Name und Passwort deines Slots schon eingetragen. Lade sie herunter, mach " +
+    "hier einen Schlüssel und füge ihn auf der Seite der Bridge ein."
+  override val makeKey = "Schlüssel machen"
+  override fun keyMade(until: String) =
+    "Füge ihn in die Bridge ein. Er wird nur jetzt gezeigt und gilt bis $until; beenden kannst du ihn unter Dein Konto."
+  override val bridgeUnsigned = "Die Bridge ist nicht signiert, deshalb fragt das System erst. Windows: Weitere " +
+    "Informationen, dann Trotzdem ausführen. macOS: Rechtsklick, Öffnen (oder xattr -d com.apple.quarantine <Datei>). " +
+    "Linux: chmod +x <Datei>."
 }
