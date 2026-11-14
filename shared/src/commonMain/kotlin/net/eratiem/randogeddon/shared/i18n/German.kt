@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.SessionStatus
 
@@ -152,6 +154,16 @@ object German : Texts {
     override val languageTitle = "Sprache"
     override val languageSubtitle = "dieser App und der Mails an dich"
     override fun automatic(current: Language) = "Automatisch (die des Browsers: ${current.label})"
+    override val appearanceTitle = "Aussehen"
+    override val appearanceSubtitle = "das Design, hell oder dunkel; der Knopf auf der oberen Karte wechselt den Modus auch"
+    override fun theme(theme: Theme) = when (theme) {
+      Theme.RANDOGEDDON -> "Randogeddon"
+    }
+    override fun mode(mode: ThemeMode) = when (mode) {
+      ThemeMode.LIGHT -> "Hell"
+      ThemeMode.DARK -> "Dunkel"
+      ThemeMode.AUTO -> "Automatisch (wie das Gerät)"
+    }
     override val deletion = "Dein Konto löschen"
     override fun deletionSubtitleSso(provider: String) = "mit deinem $provider-Konto; deine Sessions behalten deinen Namen"
     override val deletionSubtitle = "von selbst, nach deiner letzten Session; deine Sessions behalten deinen Namen"

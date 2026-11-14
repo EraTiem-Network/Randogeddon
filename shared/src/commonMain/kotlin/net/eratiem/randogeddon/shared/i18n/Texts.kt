@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.SessionStatus
 
@@ -155,6 +157,11 @@ interface AccountTexts {
   val languageSubtitle: String
   /** The choice that follows the browser, which speaks [current] now. */
   fun automatic(current: Language): String
+  // The appearance
+  val appearanceTitle: String
+  val appearanceSubtitle: String
+  fun theme(theme: Theme): String
+  fun mode(mode: ThemeMode): String
   // Deleting the account
   val deletion: String
   fun deletionSubtitleSso(provider: String): String

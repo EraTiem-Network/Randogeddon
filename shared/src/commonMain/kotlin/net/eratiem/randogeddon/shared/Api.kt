@@ -338,6 +338,9 @@ data class Me(
   val manages: List<String> = emptyList(),
   /** The language they chose; `null`: their browser's. */
   val language: Language? = null,
+  /** The theme and mode they chose; `null`: the default theme, automatic. */
+  val theme: Theme? = null,
+  val themeMode: ThemeMode? = null,
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
