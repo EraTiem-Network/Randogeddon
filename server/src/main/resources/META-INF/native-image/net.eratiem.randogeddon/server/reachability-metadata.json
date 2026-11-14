@@ -2214,6 +2214,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.LanguageRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.LanguageRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.LoginStep",
       "fields": [
         {

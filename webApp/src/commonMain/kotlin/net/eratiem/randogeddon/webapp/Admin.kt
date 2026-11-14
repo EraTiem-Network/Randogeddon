@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -277,6 +278,7 @@ private fun ServerControls(
   onAction: (String) -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   // Stop and restart end every running game: they ask once more
   var confirm by remember { mutableStateOf<String?>(null) }
   val status = state?.status
@@ -302,7 +304,7 @@ private fun ServerControls(
           GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
         },
       )
-      state?.since?.let { Pill("up ${duration(now - it)}", p.muted) }
+      state?.since?.let { Pill("up ${t.duration(now - it)}", p.muted) }
     }
     run {
       val details = listOfNotNull(

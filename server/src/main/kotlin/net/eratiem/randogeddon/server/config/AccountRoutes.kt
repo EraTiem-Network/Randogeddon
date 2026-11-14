@@ -17,6 +17,7 @@ import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.AutoDeleteRequest
+import net.eratiem.randogeddon.shared.LanguageRequest
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
@@ -89,6 +90,12 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: 
     post("/email") {
       accountCall {
         accounts.requestEmail(call.loggedIn.user, call.receive<EmailRequest>().email)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/language") {
+      accountCall {
+        accounts.setLanguage(call.loggedIn.user, call.receive<LanguageRequest>().language)
         call.respond(HttpStatusCode.NoContent)
       }
     }

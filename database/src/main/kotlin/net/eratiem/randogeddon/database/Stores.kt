@@ -34,6 +34,8 @@ data class User(
   val twoFactor: Boolean = false,
   /** How the current login was made (`password`, `oidc`, `link`); `null` outside a login. */
   val loginMethod: String? = null,
+  /** The language's code they chose (`en`, `de`); `null`: their browser's. */
+  val language: String? = null,
 )
 
 /** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
@@ -177,6 +179,12 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   /** A new deletion period; a warning sent for the old one doesn't count any more. */
+  /** The language's code [id] reads the app in; `null`: their browser's. */
+  suspend fun setLanguage(id: Uuid, language: String?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[UsersTable.language] = language }
+    Unit
+  }
+
   suspend fun setAutoDelete(id: Uuid, autoDelete: String) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
       it[UsersTable.autoDelete] = autoDelete
@@ -251,7 +259,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     val hash = row[UsersTable.passwordHash] ?: return null
     return User(
       row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete],
-      twoFactor = row[UsersTable.totpEnabledAt] != null,
+      twoFactor = row[UsersTable.totpEnabledAt] != null, language = row[UsersTable.language],
     )
   }
 

@@ -76,6 +76,7 @@ fun CheatSection(
 ) {
   val path = if (support) "api/sessions/$id/support" else "api/sessions/$id/manage/cheat"
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   // The last one loaded at once, loaded again behind
   val view = cache.cheats[id]
@@ -213,7 +214,7 @@ fun CheatSection(
             Txt(if (support) "Help and cheats of this session" else "Cheats of this session", size = 12.5.sp, weight = FontWeight.SemiBold)
             current.log.take(15).forEach { entry ->
               Txt(
-                "${Platform.clock(entry.ts)} · ${entry.admin}: ${CHEAT_LABELS.getValue(entry.action).lowercase()} for ${entry.slot}" +
+                "${t.clock(entry.ts)} · ${entry.admin}: ${CHEAT_LABELS.getValue(entry.action).lowercase()} for ${entry.slot}" +
                   (entry.value?.let { " · $it" } ?: ""),
                 size = 12.sp, color = p.muted, maxLines = 2,
               )

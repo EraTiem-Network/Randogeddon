@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -77,6 +78,12 @@ import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.shared.i18n.Texts
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.number
+import net.eratiem.randogeddon.shared.i18n.ago
+import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.i18n.texts
 
 private const val THEME_KEY = "ap-theme"
 private const val FEED_VISIBLE_KEY = "ap-feed-visible"
@@ -115,7 +122,10 @@ private fun SideBySide(sideFirst: Boolean, sideWidth: Dp, main: @Composable () -
   }
 }
 
-/** The page: a share link's dashboard without a login ([WatchApp]), or the tracker for the logged-in user. */
+/**
+ * The page: a share link's dashboard without a login ([WatchApp]), or the tracker for the logged-in user; in the
+ * language that applies ([Languages]).
+ */
 @Composable
 fun App() {
   var watching by remember { mutableStateOf((Route.parse(Platform.hash()) as? Route.Watch)?.token) }
@@ -123,8 +133,11 @@ fun App() {
     val stop = Platform.onHashChange { watching = (Route.parse(it) as? Route.Watch)?.token }
     onDispose { stop() }
   }
+  LaunchedEffect(Unit) { Platform.setPageLanguage(Languages.current.code) }
   val token = watching
-  if (token != null) WatchApp(token) else TrackerApp()
+  CompositionLocalProvider(LocalTexts provides texts(Languages.current)) {
+    if (token != null) WatchApp(token) else TrackerApp()
+  }
 }
 
 @Composable
@@ -177,6 +190,8 @@ private fun TrackerApp() {
       detailPerson = null
     }
   }
+  // Logged in: the account's language (or, without a choice, the browser's)
+  LaunchedEffect(me?.name, me?.language) { me?.let { Languages.apply(it.language) } }
   // Another session: its own slots and people
   LaunchedEffect(selected) {
     detailSlot = null
@@ -216,6 +231,7 @@ private fun TrackerApp() {
 
   RandogeddonTheme(dark) {
     val p = LocalPalette.current
+    val t = LocalTexts.current
     BoxWithConstraints(
       // The page colour first: the tint on top of it is translucent
       Modifier.fillMaxSize().background(p.background).background(
@@ -236,7 +252,7 @@ private fun TrackerApp() {
             val user = me ?: run {
               // Before the login is known: either the login form of index.html covers the page, or the server is away
               if (unreachable) Txt(
-                "Can't reach the server – trying again…", color = LocalPalette.current.muted,
+                t.frame.cantReachServer, color = LocalPalette.current.muted,
                 modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
               )
               return@Column
@@ -291,13 +307,10 @@ private fun TrackerApp() {
               is Route.Watch -> return@Column
               is Route.Invite -> {
                 // Signing up happens logged out (index.html's form); this browser is someone's already
-                Txt(
-                  "You're logged in as ${user.name}. To sign up with this invitation, log out and open its link again.",
-                  color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
-                )
+                Txt(t.frame.loggedInAs(user.name), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  SmallButton("Log out", { scope.launch { repository.logout() } })
-                  SmallButton("All your sessions", { go(Route.Home) })
+                  SmallButton(t.common.logOut, { scope.launch { repository.logout() } })
+                  SmallButton(t.common.allYourSessions, { go(Route.Home) })
                 }
                 return@Column
               }
@@ -308,8 +321,8 @@ private fun TrackerApp() {
                 return@Column
               }
               is Route.Dashboard -> if (loadedSessions != null && sessions.none { it.id == r.id }) {
-                Txt("There is no session ${r.id}, or you aren't part of it.", color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
-                SmallButton("All your sessions", { go(Route.Home) })
+                Txt(t.frame.noSuchSession(r.id), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
+                SmallButton(t.common.allYourSessions, { go(Route.Home) })
                 return@Column
               }
             }
@@ -424,6 +437,7 @@ private fun Hero(
   stacked: Boolean,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val live = streamOpen && summary?.connected == true
   // Light: the full gradient. Dark: a dark card with a gradient glow, so the page stays dark
   val heroBackground = if (p.dark) {
@@ -441,19 +455,19 @@ private fun Hero(
         if (sessions.isNotEmpty()) {
           // The session's ID is the heading and its switch; "All sessions" goes to the sessions' page
           SearchableSelect(
-            listOf(Triple<String?, String, String>(null, "All sessions", "")) +
-              sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(it)) },
+            listOf(Triple<String?, String, String>(null, t.frame.allSessions, "")) +
+              sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(t, it)) },
             shown, { id -> if (id == null) onAllSessions() else onSession(id) },
-            chip = false, heading = 24.sp, headingColor = Color.White, placeholder = "Pick a session",
+            chip = false, heading = 24.sp, headingColor = Color.White, placeholder = t.frame.pickASession,
           )
         } else {
-          Txt(shown ?: "No session", size = 24.sp, weight = FontWeight.Bold, color = Color.White)
+          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = Color.White)
         }
         val meta = listOfNotNull(
-          summary?.seedName?.let { "Seed $it" },
-          summary?.serverVersion?.let { "AP $it" },
-          summary?.let { hintModeLabel(it) },
-        ).ifEmpty { listOf(if (shown == null) "Pick one of your sessions" else "Connecting to the tracker…") }
+          summary?.seedName?.let { t.frame.seed(it) },
+          summary?.serverVersion?.let { t.frame.archipelago(it) },
+          summary?.let { t.frame.hintMode(it.hintSettings.pointHints, it.hintSettings.costPercent, it.hintSettings.autoHints) },
+        ).ifEmpty { listOf(if (shown == null) t.frame.pickOneOfYourSessions else t.frame.connecting) }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
           Txt(it, size = 12.5.sp, color = Color.White.copy(alpha = 0.85f))
@@ -470,10 +484,10 @@ private fun Hero(
         Dot(if (live) Color(0xFF6CF0A9) else Color(0xFFFFB4A8))
         Txt(
           when {
-            !streamOpen -> "reconnecting…"
-            summary?.finishedAt != null -> "finished"
-            summary?.connected == true -> "live"
-            else -> "server offline"
+            !streamOpen -> t.frame.reconnecting
+            summary?.finishedAt != null -> t.frame.finished
+            summary?.connected == true -> t.frame.live
+            else -> t.frame.serverOffline
           }, size = 12.5.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 1
         )
       }
@@ -500,19 +514,19 @@ private fun Hero(
       }
     }
     if (summary != null) {
-      val t = summary.totals
+      val totals = summary.totals
       Spacer(Modifier.height(16.dp))
       Row(verticalAlignment = Alignment.Bottom) {
-        Txt("${oneDecimal(t.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = Color.White)
+        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = Color.White)
         Txt(
-          "  of ${grouped(t.total)} checks done", size = 13.sp, color = Color.White.copy(alpha = 0.85f),
+          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = Color.White.copy(alpha = 0.85f),
           modifier = Modifier.padding(bottom = 7.dp),
         )
       }
       Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))) {
-        if (t.percent > 0) {
+        if (totals.percent > 0) {
           Box(
-            Modifier.fillMaxWidth((t.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
+            Modifier.fillMaxWidth((totals.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
               .background(if (p.dark) p.brand else SolidColor(Color.White))
           )
         }
@@ -525,14 +539,9 @@ private fun Hero(
 private fun back(selected: String?): Route = selected?.let { Route.Dashboard(it) } ?: Route.Home
 
 /** A session in the hero's switch: how it stands, how far it got, the user's slots. */
-private fun sessionLine(session: SessionEntry): String = listOfNotNull(
-  when (session.status) {
-    SessionStatus.LIVE -> "live"
-    SessionStatus.FINISHING -> "ending"
-    SessionStatus.PAUSED -> "paused"
-    SessionStatus.ENDED -> "ended"
-  },
-  "${oneDecimal(session.percent)}%",
+private fun sessionLine(t: Texts, session: SessionEntry): String = listOfNotNull(
+  t.sessions.status(session.status),
+  "${t.decimal(session.percent)}%",
   session.mySlots.takeIf { it.isNotEmpty() }?.joinToString(", "),
 ).joinToString(" · ")
 
@@ -583,24 +592,25 @@ private data class Tile(val label: String, val value: String, val sub: String, v
 @Composable
 internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
   val p = LocalPalette.current
-  val t = s.totals
+  val t = LocalTexts.current
+  val totals = s.totals
   val open = s.hints.count { !it.found }
   val tiles = buildList {
-    add(Tile("Goals", "${t.goals} / ${t.players}", "slots finished", p.ok, Icon.FLAG))
-    add(Tile("Online", "${t.online}", "clients connected", p.useful, null))
-    if (t.lockable > 0) {
-      add(Tile("Unlocked", "${t.lockable - t.locked} / ${t.lockable}", "slots opened", p.key, Icon.KEY))
+    add(Tile("Goals", "${totals.goals} / ${totals.players}", "slots finished", p.ok, Icon.FLAG))
+    add(Tile("Online", "${totals.online}", "clients connected", p.useful, null))
+    if (totals.lockable > 0) {
+      add(Tile("Unlocked", "${totals.lockable - totals.locked} / ${totals.lockable}", "slots opened", p.key, Icon.KEY))
     }
     if (showHints(s)) add(Tile("Hints", "${s.hints.size}", "$open not found yet", p.progression, null))
-    add(Tile("Play time", duration(s.players.sumOf { playTime(it, now) }), "all slots together", p.useful, null))
+    add(Tile("Play time", t.duration(s.players.sumOf { playTime(it, now) }), "all slots together", p.useful, null))
     // The game server's running time for this seed, without the times it was stopped
     val since = s.sessionRunningSince
     val session = s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0
-    add(Tile("Session", duration(session), if (since != null) "game server running" else "game server stopped", p.brandStart, null))
+    add(Tile("Session", t.duration(session), if (since != null) "game server running" else "game server stopped", p.brandStart, null))
   }
   Section(
     "Overview", modifier,
-    subtitle = "${t.players} slots · ${grouped(t.checked)} of ${grouped(t.total)} checks",
+    subtitle = "${totals.players} slots · ${t.number(totals.checked)} of ${t.number(totals.total)} checks",
   ) {
     Grid(
       tiles.size, width, 160.dp, if (fillHeight) Modifier.weight(1f) else Modifier,
@@ -683,6 +693,7 @@ private fun PersonCard(
   onOpenPerson: (String) -> Unit,
 ) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val locked = worlds.count { it.status == PlayerStatus.LOCKED }
   Column(modifier.card(p).padding(8.dp)) {
     // The header opens the person's overview; each world row opens that world
@@ -703,11 +714,11 @@ private fun PersonCard(
           "${worlds.size} ${if (worlds.size == 1) "slot" else "slots"}",
           locked.takeIf { it > 0 }?.let { "$it locked" },
           if (person.goals > 0) "${person.goals} done" else null,
-          if (played > 0) "${duration(played)} played" else null,
+          if (played > 0) "${t.duration(played)} played" else null,
         )
         Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 1)
       }
-      Txt("${oneDecimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
+      Txt("${t.decimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
      }
     }
     ProgressBar((person.percent / 100).toFloat(), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
@@ -738,6 +749,7 @@ internal fun statusLabel(world: PlayerSummary): String = when (world.status) {
  */
 @Composable
 private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) {
+  val t = LocalTexts.current
   val p = LocalPalette.current
   val color = if (lock.unlocked) p.key else p.locked
   val interaction = remember { MutableInteractionSource() }
@@ -755,7 +767,7 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
       AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
         Txt(
           when {
-            lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${ago(it, now)}" } ?: "")
+            lock.unlocked -> "Unlocked by ${lock.foundBy}" + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "")
             lock.hintedAt != null -> "Locked · key hinted: ${lock.hintedAt}"
             else -> "Locked · waiting for ${lock.key}"
           },
@@ -783,6 +795,7 @@ private fun hintBubble(world: PlayerSummary, hintsByPoints: Boolean): String? {
 @Composable
 private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, onOpen: (Int) -> Unit) {
   val p = LocalPalette.current
+  val t = LocalTexts.current
   val locked = world.status == PlayerStatus.LOCKED
   HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
     // As tall as the texts, so the lock badge under the game icon ends with them
@@ -807,7 +820,7 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
         }
         Row(Modifier.fillMaxWidth()) {
           Txt("Slot: ${shortSlotName(world.name, world.person)}", size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          if (!locked && !world.online) Txt(ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
+          if (!locked && !world.online) Txt(t.ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
         }
         Spacer(Modifier.height(6.dp))
         ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
@@ -818,8 +831,8 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
           if (played > 0 || world.goalAt != null) {
             Txt(
               listOfNotNull(
-                "${duration(played)} played".takeIf { played > 0 },
-                world.goalAt?.let { "done ${Platform.clock(it)}" },
+                "${t.duration(played)} played".takeIf { played > 0 },
+                world.goalAt?.let { "done ${t.clock(it)}" },
               ).joinToString(" · "),
               size = 11.5.sp, color = p.muted, maxLines = 1,
             )
@@ -1032,7 +1045,7 @@ internal fun FeedRow(e: FeedEvent) {
       if (icon != null) DrawnIcon(icon, color, 14.dp) else Dot(color, 8.dp)
     }
     Column(Modifier.weight(1f)) { FeedLine(e) }
-    Txt(Platform.clock(e.ts), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+    Txt(LocalTexts.current.clock(e.ts), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
   }
 }
 
@@ -1105,18 +1118,3 @@ fun playTime(world: PlayerSummary, now: Long): Long =
 
 /** Hints are shown when a hint system is in play, or when the host handed some out anyway (/hint). */
 internal fun showHints(s: Summary): Boolean = s.hintSettings.enabled || s.hints.isNotEmpty()
-
-private fun hintModeLabel(s: Summary): String {
-  val h = s.hintSettings
-  val points = when {
-    !h.pointHints -> null
-    h.costPercent == 0 -> "free hints"
-    else -> "hints ${h.costPercent}%"
-  }
-  return when {
-    points != null && h.autoHints -> "$points + auto hints"
-    points != null -> points
-    h.autoHints -> "auto hints only"
-    else -> "no hints"
-  }
-}

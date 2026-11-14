@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`.
 
+## Phase 9: Multi-Language
+
+### 0.9.1: The language setting
+- Randogeddon speaks English and German (with "du"). Every text comes from one place per language
+  (`shared/…/i18n`: `Texts`, `English`, `German`), typed Kotlin: a text missing in a language, or one that drops a
+  value, doesn't compile or fails a test.
+- The language: chosen under *Your account* (*Automatic* follows the browser), stored with the account (migration
+  V12, `PUT /api/account/language`, `language` in `/api/me`). Before the login: the one last used in this browser,
+  else the browser's; the login page has an English · Deutsch switch.
+- Dates, times and numbers are written as the language writes them: `14 Nov 2026, 08:17` and `12,345.6` in English,
+  `14.11.2026, 08:17` and `12.345,6` in German; "5m ago" and "4h 12m" in the language.
+- In both languages so far: the top card, the list of sessions, *Your account*, and the login, sign-up and password
+  forms. The other pages follow in 0.9.2, the server's messages and the mails in 0.9.3.
+
 ## Phase 8: The Live Server
 The live server is updated with one command from images in our own registry and holds only what runs; the build
 infrastructure (Artifact Keeper at `pkg.example.org`, Authentik at `auth.example.org`) runs in VMs of its own, and

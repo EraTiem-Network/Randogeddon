@@ -42,6 +42,7 @@ import net.eratiem.randogeddon.shared.RecoveryCodeList
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.LoginRequest
 import net.eratiem.randogeddon.shared.Me
+import net.eratiem.randogeddon.shared.i18n.Language
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -288,7 +289,9 @@ fun Route.loginRoutes(
 fun Route.meRoute(list: SessionList) {
   get("/me") {
     val user = call.loggedIn.user
-    call.respond(Me(name = user.name, administrator = user.administrator, manages = list.managedBy(user)))
+    call.respond(
+      Me(name = user.name, administrator = user.administrator, manages = list.managedBy(user), language = Language.of(user.language))
+    )
   }
 }
 
