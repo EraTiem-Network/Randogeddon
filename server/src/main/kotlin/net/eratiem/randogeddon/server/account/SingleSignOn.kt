@@ -28,6 +28,8 @@ object LoginMethods {
   const val PASSWORD = "password"
   const val OIDC = "oidc"
   const val LINK = "link"
+  /** A key of Randogeddon Bridge ([BridgeKeys]): only on `/bridge/…`, never as the cookie. */
+  const val BRIDGE = "bridge"
 }
 
 /** A login through the provider that isn't for this app: why, as the person reads it. */

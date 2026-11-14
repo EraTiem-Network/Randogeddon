@@ -84,9 +84,35 @@ class RequireLoginConfig {
 val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
-    val user = call.request.cookies[SESSION_COOKIE]?.let { logins.userOf(it) }
+    // A bridge key reaches only the bridge's routes ([RequireBridgeKey]), even if someone sets it as the cookie
+    val user = call.request.cookies[SESSION_COOKIE]?.let { logins.userOf(it) }?.takeIf { it.loginMethod != LoginMethods.BRIDGE }
     if (user == null) {
       call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.NOT_LOGGED_IN))
+      return@onCall
+    }
+    call.attributes.put(LOGGED_IN, LoggedIn(user))
+  }
+}
+
+class RequireBridgeKeyConfig {
+  /** The user of a bridge key ([net.eratiem.randogeddon.server.account.BridgeKeys.userOf]); `null`: none. */
+  lateinit var userOf: suspend (String) -> User?
+}
+
+/** The bridge key a call carries (`Authorization: Bearer <key>`). */
+val ApplicationCall.bridgeKey: String?
+  get() = request.headers[HttpHeaders.Authorization]?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")?.trim()
+
+/**
+ * Randogeddon Bridge's routes (`/bridge/…`): a call needs a bridge key that hasn't ended or expired (401 otherwise),
+ * and nothing else takes one, so a key reaches only who the user is, their sessions and a session's connection.
+ */
+val RequireBridgeKey = createRouteScopedPlugin("RequireBridgeKey", ::RequireBridgeKeyConfig) {
+  val userOf = pluginConfig.userOf
+  onCall { call ->
+    val user = call.bridgeKey?.let { userOf(it) }
+    if (user == null) {
+      call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.BRIDGE_KEY_GONE))
       return@onCall
     }
     call.attributes.put(LOGGED_IN, LoggedIn(user))

@@ -11,6 +11,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
@@ -18,6 +19,7 @@ import io.ktor.server.routing.route
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
+import net.eratiem.randogeddon.server.account.BridgeKeys
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.shared.ApiError
@@ -57,8 +59,17 @@ fun Route.signupRoutes(accounts: AccountService, secure: Boolean = true) {
 }
 
 /** Under the protected `/api` branch: the logged-in user's own account (the settings page). */
-fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, secure: Boolean = true) {
+fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, bridgeKeys: BridgeKeys, secure: Boolean = true) {
   route("/account") {
+    // Randogeddon Bridge's keys: made here (with the cookie login), listed and ended
+    route("/bridge-keys") {
+      get { call.respond(bridgeKeys.list(call.loggedIn.user)) }
+      post { call.respond(bridgeKeys.make(call.loggedIn.user)) }
+      delete("/{key}") {
+        if (bridgeKeys.end(call.loggedIn.user, call.parameters["key"].orEmpty())) call.respond(HttpStatusCode.NoContent)
+        else call.refuse(HttpStatusCode.NotFound, Refusal(Problem.BRIDGE_KEY_GONE))
+      }
+    }
     // Two-factor login; rate-limited, since each takes a code
     rateLimit(LOGIN_RATE_LIMIT) {
       route("/2fa") {
