@@ -7,6 +7,15 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 10: More Themes
 
+### 0.10.2: The themes
+- Ten new themes, each light and dark, with their own item and status colours: Ocean (teal → blue), Forest
+  (lime → green), Ember (red → amber), High contrast (black and white), and inspired by Nintendo's consoles (their
+  colours only): N64, GameCube, Wii, Wii U, Switch, Switch 2. Their names in English and German.
+- *Appearance* shows the chosen theme's colours (brand, items, states).
+- In dark mode the top card's text takes the theme's text colour (the card is dark there, with the gradient's glow);
+  `onBrand` is for the full gradient and the buttons.
+- `ThemesTest` also checks the text on the gradient's start (at least 2.5:1, the default's coral has 2.6).
+
 ### 0.10.1.1: The license
 - Randogeddon is under the EraTiem-Network Non-Commercial License 1.0 (`LICENSE`, as CoreSync); Archipelago and the
   libraries keep their own licenses. The README says so at its end.
