@@ -163,7 +163,7 @@ class SessionAdmin(
       worlds = live.people().flatMap { (person, slots) -> slots.map { it to person } }
         .groupBy({ it.first }, { it.second }).map { (slot, names) ->
           val ids = setup?.members?.entries?.associate { (id, name) -> name to id.toString() }.orEmpty()
-          WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] })
+          WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] }, hosted = slot in setup?.hosted.orEmpty())
         },
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finishedAt?.toEpochMilli(),
@@ -225,6 +225,8 @@ class SessionAdmin(
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_IN_YAMLS, "names" to it.joinToString())
     }
     val plans = inspected.worlds.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
+      // A hosted slot has no players: its game's own server is joined, not Archipelago
+      .mapValues { (_, plan) -> if (plan.hosted) plan.copy(userIds = emptyList()) else plan }
     // Who plays: accounts by ID, invited ones too (they sign up later; the session shows them meanwhile)
     val accounts = users.accounts().associateBy { it.id.toString() }
     val people = plans.values.flatMap { it.userIds }.distinct()
@@ -252,6 +254,7 @@ class SessionAdmin(
     setups.create(
       id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
       plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
+      hosted = plans.filterValues { it.hosted }.keys,
     )
     slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
     gameServer.control(id, "start")

@@ -54,8 +54,12 @@ class SlotDownloads(
     return file to bytes
   }
 
-  private fun mayHave(live: LiveSession, user: User, file: SlotFile): Boolean =
-    mayDownload(user.administrator, live.roleOf(user), live.personOf(user)?.let { live.people()[it] }.orEmpty(), file)
+  /** Their own slots' files, and a player's the session's hosted slots' too (to patch the game whose server they join). */
+  private fun mayHave(live: LiveSession, user: User, file: SlotFile): Boolean {
+    val person = live.personOf(user)
+    val hosted = if (person != null) live.setup?.hosted.orEmpty() else emptySet()
+    return mayDownload(user.administrator, live.roleOf(user), person?.let { live.people()[it] }.orEmpty() + hosted, file)
+  }
 
   /** The seed's slots by number: from the spoiler log, or else as the tracker knows them (its summary). */
   private suspend fun slots(live: LiveSession): Map<Int, SeedSlot> {

@@ -21,6 +21,10 @@ class AccountRulesTest {
     assertFalse(UserNames.valid("x".repeat(33)))
     assertFalse(UserNames.valid("alice@example.org"))
     assertFalse(UserNames.valid(" Alice"))
+    // Reserved for hosted slots, in any case
+    assertFalse(UserNames.valid("Hosted"))
+    assertFalse(UserNames.valid("hosted"))
+    assertTrue(UserNames.valid("Hostess"))
     assertFalse(UserNames.valid("Al\nice"))
   }
 

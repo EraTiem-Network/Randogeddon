@@ -110,8 +110,9 @@ fun Route.sessionRoutes(
 internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions, slotPasswords: SlotPasswords) {
   get("/connection") {
     session(sessions) { live ->
-      val person = live.personOf(call.loggedIn.user)
-      call.respond(Connection(config.addressOf(live.id), person?.let { slotPasswords.of(live, it) }.orEmpty()))
+      val user = call.loggedIn.user
+      val manages = user.administrator || live.roleOf(user) == SessionRole.MANAGER
+      call.respond(Connection(config.addressOf(live.id), slotPasswords.of(live, live.personOf(user), manages)))
     }
   }
 }
