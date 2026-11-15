@@ -46,11 +46,13 @@ fun PeopleSection(id: String) {
   val texts = LocalTexts.current.people
   val scope = rememberCoroutineScope()
   var people by remember { mutableStateOf<List<SessionPerson>?>(null) }
+  // Who looks (their own Session-Manager part isn't theirs to take, unless an Administrator)
+  var you by remember { mutableStateOf<SessionPeople?>(null) }
   var choices by remember { mutableStateOf<List<UserRef>>(emptyList()) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
     when (val r = call("GET", "api/sessions/$id/people", null) { ApiJson.decodeFromString(SessionPeople.serializer(), it) }) {
-      is Answer.Ok -> { people = r.value.people; problem = null }
+      is Answer.Ok -> { people = r.value.people; you = r.value; problem = null }
       is Answer.Failed -> problem = r.message
     }
     (call("GET", "api/sessions/$id/people/choices", null) { ApiJson.decodeFromString(ListSerializer(UserRef.serializer()), it) } as? Answer.Ok)
@@ -71,7 +73,8 @@ fun PeopleSection(id: String) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       list.forEach { person ->
         Divider()
-        PersonRow(person, removable = person.role != SessionRole.PLAYER) {
+        val own = person.id == you?.you && person.role == SessionRole.MANAGER && you?.mayLeave != true
+        PersonRow(person, removable = person.role != SessionRole.PLAYER && !own) {
           scope.launch {
             problem = (call("DELETE", "api/sessions/$id/people/${person.id}", null) { } as? Answer.Failed)?.message
             load()

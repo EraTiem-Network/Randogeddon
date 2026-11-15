@@ -57,7 +57,10 @@ fun Route.peopleRoutes(people: SessionPeopleService, logins: LoginCheck) {
       this.logins = logins
       roles = setOf(SessionRole.MANAGER)
     }
-    get { call.respond(people.list(id())) }
+    get {
+      val user = call.loggedIn.user
+      call.respond(people.list(id()).copy(you = user.id.toString(), mayLeave = user.administrator))
+    }
     get("/choices") { call.respond(people.choices(id())) }
     post {
       accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.loggedIn.user, call.language())) }
