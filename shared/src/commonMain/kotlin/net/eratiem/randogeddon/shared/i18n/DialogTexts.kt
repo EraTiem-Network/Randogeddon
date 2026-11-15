@@ -61,14 +61,22 @@ interface ConnectionTexts {
   val bridge: String
   /** The heading of the bridge's downloads, of [version]. */
   fun downloads(version: String): String
-  val bridgeLine: String
-  /** What the bridge is and how it is set up (its ⓘ). */
-  val bridgeHowTo: String
+  /** The bridge's ⓘ, in parts: what it is, what it does, how to use it, then starting it on each system. */
+  val bridgeWhatTitle: String
+  val bridgeWhat: String
+  val bridgeDoesTitle: String
+  val bridgeDoes: String
+  val bridgeHowTitle: String
+  val bridgeHow: String
+  val bridgeWindows: String
+  val bridgeMacos: String
+  val bridgeLinux: String
   val makeKey: String
   /** Under a new key: shown once, works until [until]. */
   fun keyMade(until: String): String
-  /** How to start the unsigned bridge (the downloads' ⓘ). */
-  val bridgeUnsigned: String
+  /** Folds the bridge away, or opens it again. */
+  val foldBridge: String
+  val openBridge: String
 }
 
 internal object EnglishDialogs : DialogTexts {
@@ -156,17 +164,27 @@ internal object EnglishConnection : ConnectionTexts {
   override val patchHowTo = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
     "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
     "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
-  override val bridge = "Bridge"
+  override val bridge = "Randogeddon Bridge"
   override fun downloads(version: String) = "Downloads · $version"
-  override val bridgeLine = "for games that can't connect securely"
-  override val bridgeHowTo = "Randogeddon Bridge runs on your PC: the game connects to localhost, and the bridge takes " +
-    "it to the session securely, with your slot's name and password filled in. Download it, make a key here and paste " +
-    "it into the bridge's page."
+  override val bridgeWhatTitle = "What it is"
+  override val bridgeWhat = "A small app for your PC, for games whose client can't connect securely (TLS). Randogeddon " +
+    "only lets secure connections in."
+  override val bridgeDoesTitle = "What it does"
+  override val bridgeDoes = "The game connects to localhost on your PC; the bridge takes it to the session securely and " +
+    "fills in your slot's name and password, so nothing has to be typed in the game."
+  override val bridgeHowTitle = "How to use it"
+  override val bridgeHow = "Download it for your system and start it: its page opens in your browser. Create a key " +
+    "here and paste it there. Pick the session and the slot, Open, and enter the address it shows (localhost:<port>) " +
+    "in the game."
+  override val bridgeWindows = "It isn't signed, so Windows asks first: More info, then Run anyway."
+  override val bridgeMacos = "It isn't signed: right-click it, Open, then Open again. Or in the Terminal: " +
+    "xattr -d com.apple.quarantine <file>"
+  override val bridgeLinux = "Make it executable first: chmod +x <file>"
   override val makeKey = "Create key"
   override fun keyMade(until: String) =
     "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
-  override val bridgeUnsigned = "The bridge isn't signed, so the system asks first. Windows: More info, then Run " +
-    "anyway. macOS: right-click it, Open (or xattr -d com.apple.quarantine <file>). Linux: chmod +x <file>."
+  override val foldBridge = "Fold away"
+  override val openBridge = "Open"
 }
 
 internal object GermanConnection : ConnectionTexts {
@@ -191,16 +209,26 @@ internal object GermanConnection : ConnectionTexts {
     "Patch öffnest du mit dem Archipelago Launcher (Open Patch) zusammen mit deiner eigenen Kopie des Spiels (dem ROM); " +
     "der Launcher legt das gepatchte Spiel daneben und kann es mit seinem Client starten. Mods kommen dorthin, wo es " +
     "die Archipelago-Anleitung des Spiels sagt."
-  override val bridge = "Bridge"
+  override val bridge = "Randogeddon Bridge"
   override fun downloads(version: String) = "Downloads · $version"
-  override val bridgeLine = "für Spiele, die sich nicht sicher verbinden können"
-  override val bridgeHowTo = "Randogeddon Bridge läuft auf deinem PC: Das Spiel verbindet sich mit localhost, und die " +
-    "Bridge bringt es sicher zur Session, mit Name und Passwort deines Slots schon eingetragen. Lade sie herunter, mach " +
-    "hier einen Schlüssel und füge ihn auf der Seite der Bridge ein."
+  override val bridgeWhatTitle = "Was sie ist"
+  override val bridgeWhat = "Eine kleine App für deinen PC, für Spiele, deren Client sich nicht sicher (TLS) verbinden " +
+    "kann. Randogeddon lässt nur sichere Verbindungen herein."
+  override val bridgeDoesTitle = "Was sie tut"
+  override val bridgeDoes = "Das Spiel verbindet sich mit localhost auf deinem PC; die Bridge bringt es sicher zur Session " +
+    "und trägt Name und Passwort deines Slots ein, im Spiel ist nichts einzugeben."
+  override val bridgeHowTitle = "So nutzt du sie"
+  override val bridgeHow = "Lade sie für dein System herunter und starte sie: Ihre Seite öffnet sich im Browser. Erstelle " +
+    "hier einen Schlüssel und füge ihn dort ein. Wähle Session und Slot, Öffnen, und gib die gezeigte Adresse " +
+    "(localhost:<Port>) im Spiel ein."
+  override val bridgeWindows = "Sie ist nicht signiert, deshalb fragt Windows erst: Weitere Informationen, dann Trotzdem " +
+    "ausführen."
+  override val bridgeMacos = "Sie ist nicht signiert: Rechtsklick, Öffnen, dann noch einmal Öffnen. Oder im Terminal: " +
+    "xattr -d com.apple.quarantine <Datei>"
+  override val bridgeLinux = "Erst ausführbar machen: chmod +x <Datei>"
   override val makeKey = "Schlüssel erstellen"
   override fun keyMade(until: String) =
     "Füge ihn in die Bridge ein. Er wird nur jetzt gezeigt und gilt bis $until; beenden kannst du ihn unter Dein Konto."
-  override val bridgeUnsigned = "Die Bridge ist nicht signiert, deshalb fragt das System erst. Windows: Weitere " +
-    "Informationen, dann Trotzdem ausführen. macOS: Rechtsklick, Öffnen (oder xattr -d com.apple.quarantine <Datei>). " +
-    "Linux: chmod +x <Datei>."
+  override val foldBridge = "Einklappen"
+  override val openBridge = "Aufklappen"
 }

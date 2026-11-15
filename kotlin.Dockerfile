@@ -81,9 +81,11 @@ FROM python:3.12-slim-bookworm AS archipelago
 ARG AP_VERSION=0.6.8
 ENV PYTHONUNBUFFERED=1 \
     AP_HOME=/opt/archipelago/${AP_VERSION}
+# libtk8.6: Python's tkinter needs it, and APWorlds import it for their client windows (only importing it, which needs
+# no screen, while the worlds load)
 # hadolint ignore=DL3008
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git gcc g++ libc6-dev \
+ && apt-get install -y --no-install-recommends git gcc g++ libc6-dev libtk8.6 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR ${AP_HOME}
 RUN git clone --depth 1 --branch "${AP_VERSION}" https://github.com/ArchipelagoMW/Archipelago.git . \

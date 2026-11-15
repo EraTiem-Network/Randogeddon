@@ -86,10 +86,16 @@ class SessionPeopleService(
     return SessionPerson(userId.toString(), name, request.role)
   }
 
-  /** Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator. */
+  /**
+   * Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator.
+   * A Session-Manager doesn't take their own part (another one or an Administrator does).
+   */
   suspend fun remove(id: String, userId: Uuid, by: User) {
     val live = session(id)
     val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
+    if (entry.role == SessionRole.MANAGER.code && userId == by.id && !by.administrator) {
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.OWN_MANAGER)
+    }
     if (entry.role == SessionRole.MANAGER.code && live.managers().size <= 1 && !by.administrator) {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
     }

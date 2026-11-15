@@ -287,9 +287,12 @@ data class SessionPerson(
   val deleted: Boolean = false,
 )
 
-/** `GET /api/sessions/{id}/people`: everyone with a part in the session. */
+/**
+ * `GET /api/sessions/{id}/people`: everyone with a part in the session. [you]: the asking user's ID, and whether they
+ * may take their own part as Session-Manager ([mayLeave]: only an Administrator; another one or an Administrator can).
+ */
 @Serializable
-data class SessionPeople(val people: List<SessionPerson> = emptyList())
+data class SessionPeople(val people: List<SessionPerson> = emptyList(), val you: String? = null, val mayLeave: Boolean = false)
 
 /**
  * `POST /api/sessions/{id}/people` (Session-Managers): gives someone [role] (not [SessionRole.PLAYER]: players come with

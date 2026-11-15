@@ -459,13 +459,41 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           form's 12.5 px fields made it zoom in by itself, and over the app's canvas a pinch can't zoom back out:
           16 px now. On a computer, the page noticed a zoom by a media query on the exact pixel density, which can
           miss one like 1.3636…: by the window's size now
-    - [ ] Polish: *APWorlds*, *Remove…*: a *Select all* button next to *Remove (n)* / *Cancel* (all uploaded files of
+    - [x] Polish: *APWorlds*, *Remove…*: a *Select all* button next to *Remove (n)* / *Cancel* (all uploaded files of
           that release; again: none)
-    - [ ] Polish: the bridge's line in *Your connection*: `Bridge ⓘ` on the left, *Create key* on the right, without
+    - [x] Polish: the bridge's line in *Your connection*: `Bridge ⓘ` on the left, *Create key* on the right, without
           the line of text between them
         - Its ⓘ in parts, each with a small heading (the tip takes headed parts already, `InfoTip`'s `options`):
           what it is, what it does, how to use it (download, create a key, paste it, open a relay, the address into
           the game), then starting it per system: Windows, macOS, Linux, each its own part
         - A new key shows like the slot's password: hidden (dots) with *Show* / *Hide* and *Copy*, plus a button
           that closes the key's line (it is shown only this once, as now)
+        - The bridge gets a heading of its own (*Randogeddon Bridge*) and can be collapsed: it folds away to the left,
+          *Your connection* becomes one column again (as narrow as before 0.13.2), and the tiles beside it get the
+          room; a button on the heading (or on the panel's edge while folded) opens it again; remembered in the
+          browser
+    - [x] Polish: the patch files go back under the slot and its password (left column, they belong to the slot); the
+          right column is the bridge's alone
+    - [x] Bug: a Session-Manager can remove themselves as Session-Manager (*People*): refused, in the panel (no
+          *Remove* on their own entry) and by the server; another Session-Manager or an Administrator can
+    - [x] Bug: an APWorld that imports `tkinter` doesn't load (e.g. `minecraft_dig.apworld`, for its client window):
+          `ImportError: libtk8.6.so: cannot open shared object file`
+        - The image's Python (`python:3.12-slim`) has `tkinter`, but not the Tk library it needs: `libtk8.6` into the
+          archipelago stage (`kotlin.Dockerfile`). Importing it needs no screen; only opening a window would, which a
+          world doesn't do while loading.
+        - Checked what else: every bundled world of 0.6.8 loads in the image, and `kivy` (Archipelago's client
+          toolkit) imports; Tk was the only library missing. A missing one shows in the panel with Python's error.
+    - [x] Polish: the live feed's place (*Right* / *Left* / *Below*) is only offered where it can be beside the players;
+          on a narrow screen (a phone) it is always below, so the dropdown goes there (the choice stays for wider
+          screens)
+    - [ ] Feature: hosted slots, for games that run as a server of their own (the players join that server with their
+          games, not Archipelago)
+        - In the panel's slot player field, *Hosted* can be entered as the slot's player: then the slot's players are
+          removed and its field to add more goes (no one plays it from Archipelago's side)
+        - *Hosted* is reserved: no account can be named so (sign-up, renaming, invitations; `UserNames`)
+        - *Your connection*: the session's players can pick a hosted slot too, but see only its patch files (no
+          name, no password); its Session-Managers see its whole connection (server, slot, password, files), to set
+          the game's server up
+        - To be decided when it is built: how the dashboard shows a hosted slot (its own mark, no person card; who
+          its time and checks count for), and that the World Locks key and hints treat it like any other slot
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)

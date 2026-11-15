@@ -316,7 +316,8 @@ and its APWorld library:
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
   would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
   same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
-  uploaded ones), *Remove (n)*, confirm.
+  uploaded ones; *Select all*), *Remove (n)*, confirm. An APWorld may import `tkinter` (for its client window): the
+  image has the Tk library it needs.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
@@ -500,9 +501,10 @@ For every running session, the tracker connects to its room like any other Archi
 slot about its own checked locations and received items. The slot names come from `data/sessions/<id>/room.json`,
 which the gateway writes before it starts the session's game server.
 
-- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable); beside
-  them on a wide screen the slot's patch files (or that it has none) and Randogeddon Bridge (*Create key*, its
-  downloads).
+- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), the
+  slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
+  downloads). The bridge folds away (*Fold away*, remembered in the browser): then the card is one narrow column and
+  the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, progress, status

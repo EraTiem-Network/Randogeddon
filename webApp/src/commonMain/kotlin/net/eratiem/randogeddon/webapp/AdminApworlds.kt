@@ -276,8 +276,11 @@ private fun ReleaseBlock(
         }
       } else {
         Txt(texts.pickToRemove, size = 12.5.sp, color = p.muted)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Button(texts.removeCount(picked.size), danger = true, enabled = picked.isNotEmpty()) { asking = true }
+          // All of this release's uploaded files, or (when they all are) none
+          val all = own.filter { it.source == GameSource.UPLOADED }.map { it.file }.toSet()
+          Button(if (picked == all) texts.selectNone else texts.selectAll) { picked = if (picked == all) emptySet() else all }
           Button(t.common.cancel) { stopPicking() }
         }
       }
