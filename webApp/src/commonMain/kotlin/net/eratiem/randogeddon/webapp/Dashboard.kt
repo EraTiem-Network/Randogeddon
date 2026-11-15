@@ -516,7 +516,13 @@ private fun Hero(
       // Shows / hides the live feed; brighter while it is shown
       IconButton(onToggleFeed, Icon.FEED, tint = onHero,
         background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
-      IconButton(onToggleTheme, Icon.THEME, tint = onHero, background = onHero.copy(alpha = 0.2f))
+      // The mode it is in: light, dark, automatic
+      val modeIcon = when (Themes.mode) {
+        ThemeMode.LIGHT -> Icon.SUN
+        ThemeMode.DARK -> Icon.MOON
+        ThemeMode.AUTO -> Icon.THEME
+      }
+      IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
       if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
         background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
