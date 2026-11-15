@@ -25,6 +25,8 @@ interface SessionAdminTexts {
   fun slotNumber(n: Int): String
   // The switch
   val noneRunning: String
+  /** The panel without a running session, below the switch. */
+  val nothingRunning: String
   val pickOne: String
   val newSession: String
   // Past sessions
@@ -189,6 +191,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val filesTip = "Each player downloads their own under Your connection; here every slot's."
   override fun slotNumber(n: Int) = "slot $n"
   override val noneRunning = "none running"
+  override val nothingRunning = "No session is running right now. New session starts one."
   override val pickOne = "pick one…"
   override val newSession = "New session"
   override val pastSessions = "Past sessions"
@@ -316,6 +319,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val filesTip = "Jeder Spieler lädt seine eigenen unter Deine Verbindung herunter; hier die aller Slots."
   override fun slotNumber(n: Int) = "Slot $n"
   override val noneRunning = "keine läuft"
+  override val nothingRunning = "Gerade läuft keine Session. Neue Session startet eine."
   override val pickOne = "eine wählen…"
   override val newSession = "Neue Session"
   override val pastSessions = "Vergangene Sessions"

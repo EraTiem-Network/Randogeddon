@@ -190,12 +190,13 @@ fun AdminView(
     }
   }
   val all = overview?.sessions.orEmpty()
-  // A deleted (or finished) session's page goes to the newest running one (or to a new session, with none running)
+  // A deleted (or finished) session's page goes to the newest running one; with none running, to none (the new
+  // session's form only once it is asked for)
   val page = when {
     picked == NEW_PAGE -> NEW_PAGE
     picked != null && all.any { it.id == picked && it.status.running } -> picked!!
     overview == null -> null
-    else -> all.firstOrNull { it.status.running }?.id ?: NEW_PAGE
+    else -> all.firstOrNull { it.status.running }?.id
   }
 
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -214,7 +215,7 @@ fun AdminView(
     ) {
       AdminSwitch(overview, page, onPage = onPage)
       when (page) {
-        null -> {}
+        null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
         NEW_PAGE -> NewSessionSection(overview, onCreated = { onPage(it.id); load() })
         else -> key(page) {
           SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
