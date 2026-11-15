@@ -8,6 +8,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,9 +38,10 @@ import net.eratiem.randogeddon.shared.Summary
  * How the logged-in player joins the game: the server address and, for one of their worlds, the slot name and its
  * password. With several worlds, a searchable dropdown picks the world (by its short name, without the player's; the
  * full slot name is below it, to copy); it starts on the one that is online now, or
- * else the one played last. The password is hidden until shown; copying works either way. Below them the slot's files
- * from the seed ([files]: patches, mods), to download; last Randogeddon Bridge, for games without TLS (its downloads and
- * a key for it). [fillHeight]: the card fills the height the section is given (next to the overview).
+ * else the one played last. The password is hidden until shown; copying works either way. For a player then the slot's
+ * files from the seed ([files]: patches, mods), to download (or that it has none), and Randogeddon Bridge, for games
+ * without TLS (a key for it, its downloads): beside the rest once the card is wide enough, else below it.
+ * [fillHeight]: the card fills the height the section is given (next to the overview).
  */
 @Composable
 fun ConnectionSection(
@@ -81,10 +84,8 @@ fun ConnectionSection(
       }
     },
   ) {
-    Column(
-      Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    // The server and the slot; for a player also the slot's files and the bridge, beside them where there is room
+    val connect: @Composable () -> Unit = {
       Field(c.server, connection?.server ?: "…")
       when {
         !mine -> Txt(
@@ -108,16 +109,47 @@ fun ConnectionSection(
       if (slot != null) {
         Field(c.slot, slot.name)
         PasswordField(slot)
-        files.filter { it.slotName == slot.name }.forEach { file -> FileField(sessionId, file) }
       }
-      if (mine) BridgePart()
+    }
+    val extras: @Composable () -> Unit = {
+      if (slot != null) {
+        SmallHeading(c.patchFiles)
+        val own = files.filter { it.slotName == slot.name }
+        if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)
+        own.forEach { file -> FileField(sessionId, file) }
+      }
+      BridgePart()
+    }
+    BoxWithConstraints(
+      Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
+    ) {
+      if (mine && maxWidth >= TWO_COLUMNS_FROM) {
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+          Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { connect() }
+          Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { extras() }
+        }
+      } else {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          connect()
+          if (mine) extras()
+        }
+      }
     }
   }
 }
 
+/** From this width on, *Your connection* puts the slot's files and the bridge beside the server and the slot. */
+private val TWO_COLUMNS_FROM = 640.dp
+
+/** A small heading inside the card: the slot's files, the bridge's downloads. */
+@Composable
+private fun SmallHeading(text: String) {
+  Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = Modifier.padding(top = 2.dp))
+}
+
 /**
- * Randogeddon Bridge: what it is (its ⓘ), its downloads (once the dashboard offers them) and *Make a key*: the new key
- * is shown once, to copy into the bridge.
+ * Randogeddon Bridge: what it is and how to start it (its ⓘ), *Create key* (the new key is shown once, to copy into the
+ * bridge), then its downloads (once the dashboard offers them), a row per system.
  */
 @Composable
 private fun BridgePart() {
@@ -135,7 +167,7 @@ private fun BridgePart() {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(c.bridge)
     Txt(c.bridgeLine, size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
-    InfoTip(c.bridgeHowTo)
+    InfoTip("${c.bridgeHowTo} ${c.bridgeUnsigned}")
     SmallButton(c.makeKey, {
       scope.launch {
         when (val r = call("POST", "api/account/bridge-keys", null) { ApiJson.decodeFromString(BridgeKey.serializer(), it) }) {
@@ -144,13 +176,6 @@ private fun BridgePart() {
         }
       }
     })
-  }
-  offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      Label(offered?.version.orEmpty())
-      downloads.forEach { d -> SmallButton(platformName(d.os, d.arch), { Platform.download("downloads/bridge/${d.file}") }) }
-      InfoTip(c.bridgeUnsigned)
-    }
   }
   key?.let { made ->
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -161,6 +186,18 @@ private fun BridgePart() {
     Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = p.muted)
   }
   problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+  offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
+    SmallHeading(c.downloads(offered?.version.orEmpty()))
+    // Windows, macOS, Linux; each with its architectures, x86 first
+    SYSTEMS.forEach { os ->
+      val builds = downloads.filter { it.os == os }.sortedBy { it.arch != "amd64" }
+      if (builds.isEmpty()) return@forEach
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label(systemName(os))
+        builds.forEach { d -> SmallButton(archName(d.os, d.arch), { Platform.download("downloads/bridge/${d.file}") }) }
+      }
+    }
+  }
 }
 
 @Composable
@@ -180,7 +217,6 @@ private fun PasswordField(slot: MySlot) {
 private fun FileField(sessionId: String, file: SlotFile) {
   val t = LocalTexts.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Label(LocalTexts.current.connection.file)
     Mono(file.name, Modifier.weight(1f))
     Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
     InfoTip(LocalTexts.current.connection.patchHowTo)
@@ -189,10 +225,19 @@ private fun FileField(sessionId: String, file: SlotFile) {
 }
 
 /** A download's system, the same in every language: `Windows`, `macOS (Apple)`, `Linux (ARM)`, … */
-private fun platformName(os: String, arch: String) = when (os) {
+private val SYSTEMS = listOf("windows", "macos", "linux")
+
+private fun systemName(os: String) = when (os) {
   "windows" -> "Windows"
-  "macos" -> if (arch == "arm64") "macOS (Apple)" else "macOS (Intel)"
-  else -> if (arch == "arm64") "Linux (ARM)" else "Linux"
+  "macos" -> "macOS"
+  else -> "Linux"
+}
+
+/** macOS by what Apple calls its processors; the others by their architecture. */
+private fun archName(os: String, arch: String) = when {
+  os == "macos" -> if (arch == "arm64") "Apple Silicon" else "Intel"
+  arch == "arm64" -> "ARM64"
+  else -> "x86_64"
 }
 
 @Composable

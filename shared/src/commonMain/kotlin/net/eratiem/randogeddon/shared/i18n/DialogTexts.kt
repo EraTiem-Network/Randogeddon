@@ -51,12 +51,16 @@ interface ConnectionTexts {
   val password: String
   val hide: String
   val show: String
-  val file: String
+  /** The heading of the slot's files. */
+  val patchFiles: String
+  val noPatchFiles: String
   val download: String
   /** How to use a slot's file (the ⓘ next to it). */
   val patchHowTo: String
   // Randogeddon Bridge
   val bridge: String
+  /** The heading of the bridge's downloads, of [version]. */
+  fun downloads(version: String): String
   val bridgeLine: String
   /** What the bridge is and how it is set up (its ⓘ). */
   val bridgeHowTo: String
@@ -146,17 +150,19 @@ internal object EnglishConnection : ConnectionTexts {
   override val password = "Password"
   override val hide = "Hide"
   override val show = "Show"
-  override val file = "File"
+  override val patchFiles = "Patch files"
+  override val noPatchFiles = "None for this slot: its game needs no patch."
   override val download = "Download"
   override val patchHowTo = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
     "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
     "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
   override val bridge = "Bridge"
+  override fun downloads(version: String) = "Downloads · $version"
   override val bridgeLine = "for games that can't connect securely"
   override val bridgeHowTo = "Randogeddon Bridge runs on your PC: the game connects to localhost, and the bridge takes " +
     "it to the session securely, with your slot's name and password filled in. Download it, make a key here and paste " +
     "it into the bridge's page."
-  override val makeKey = "Make a key"
+  override val makeKey = "Create key"
   override fun keyMade(until: String) =
     "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
   override val bridgeUnsigned = "The bridge isn't signed, so the system asks first. Windows: More info, then Run " +
@@ -178,18 +184,20 @@ internal object GermanConnection : ConnectionTexts {
   override val password = "Passwort"
   override val hide = "Verbergen"
   override val show = "Zeigen"
-  override val file = "Datei"
+  override val patchFiles = "Patch-Dateien"
+  override val noPatchFiles = "Keine für diesen Slot: Sein Spiel braucht keinen Patch."
   override val download = "Herunterladen"
   override val patchHowTo = "Die Datei deines Slots aus dem Seed: ein Patch oder bei manchen Spielen eine Mod. Einen " +
     "Patch öffnest du mit dem Archipelago Launcher (Open Patch) zusammen mit deiner eigenen Kopie des Spiels (dem ROM); " +
     "der Launcher legt das gepatchte Spiel daneben und kann es mit seinem Client starten. Mods kommen dorthin, wo es " +
     "die Archipelago-Anleitung des Spiels sagt."
   override val bridge = "Bridge"
+  override fun downloads(version: String) = "Downloads · $version"
   override val bridgeLine = "für Spiele, die sich nicht sicher verbinden können"
   override val bridgeHowTo = "Randogeddon Bridge läuft auf deinem PC: Das Spiel verbindet sich mit localhost, und die " +
     "Bridge bringt es sicher zur Session, mit Name und Passwort deines Slots schon eingetragen. Lade sie herunter, mach " +
     "hier einen Schlüssel und füge ihn auf der Seite der Bridge ein."
-  override val makeKey = "Schlüssel machen"
+  override val makeKey = "Schlüssel erstellen"
   override fun keyMade(until: String) =
     "Füge ihn in die Bridge ein. Er wird nur jetzt gezeigt und gilt bis $until; beenden kannst du ihn unter Dein Konto."
   override val bridgeUnsigned = "Die Bridge ist nicht signiert, deshalb fragt das System erst. Windows: Weitere " +

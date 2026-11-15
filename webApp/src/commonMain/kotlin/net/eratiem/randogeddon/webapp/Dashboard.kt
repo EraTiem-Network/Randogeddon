@@ -104,7 +104,9 @@ private fun FeedPosition.label(t: Texts): String = when (this) {
 }
 private val WIDE = 1100.dp
 private val GAP = 16.dp
-private val CONNECTION_WIDTH = 420.dp
+private val CONNECTION_WIDTH = 720.dp
+/** The tiles' room beside *Your connection*: three of them (at least 160 dp each) in a row; with less, it goes above. */
+private val STATS_BESIDE = 160.dp * 3 + 12.dp * 2
 /** The side feed is never shorter than this, even next to a single small person card. */
 private val MIN_SIDE_HEIGHT = 420.dp
 
@@ -358,7 +360,7 @@ private fun TrackerApp() {
               onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
               onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
             )
-            if (wide) {
+            if (wide && contentWidth - CONNECTION_WIDTH - GAP >= STATS_BESIDE) {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
                 Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
