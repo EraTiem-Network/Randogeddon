@@ -216,7 +216,7 @@ fun AdminView(
       AdminSwitch(overview, page, onPage = onPage)
       when (page) {
         null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
-        NEW_PAGE -> NewSessionSection(overview, onCreated = { onPage(it.id); load() })
+        NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { onPage(it.id); load() })
         else -> key(page) {
           SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
         }
