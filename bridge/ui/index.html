@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Randogeddon Bridge</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a id="brand" class="brand" href="https://randogeddon.eratiem.net" target="_blank" rel="noopener noreferrer">
+    <span class="logo" aria-hidden="true"></span>Randogeddon<span class="out" aria-hidden="true">↗</span>
+  </a>
+  <span class="product" data-t="bridge"></span>
+  <span class="spacer"></span>
+  <div id="user" class="user" hidden>
+    <span id="avatar" class="avatar" aria-hidden="true"></span>
+    <span id="name" class="name"></span>
+    <button id="logout" class="quiet" data-t="logout"></button>
+  </div>
+  <button id="quit" class="quiet" data-t="quit"></button>
+</header>
+
+<main>
+  <p id="update" class="banner" hidden>
+    <span id="update-text"></span>
+    <a id="update-link" target="_blank" rel="noopener noreferrer" data-t="download"></a>
+  </p>
+
+  <section id="login" class="card" hidden>
+    <h1 data-t="loginTitle"></h1>
+    <p class="muted" data-t="loginHint"></p>
+    <form id="login-form">
+      <label for="key" data-t="key"></label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" required>
+      <details>
+        <summary data-t="dashboard"></summary>
+        <input id="server" type="url" spellcheck="false">
+      </details>
+      <button type="submit" class="primary" data-t="login"></button>
+    </form>
+  </section>
+
+  <section id="relays" class="card" hidden>
+    <table>
+      <thead>
+      <tr>
+        <th data-t="session"></th>
+        <th data-t="slot"></th>
+        <th data-t="address"></th>
+        <th data-t="state"></th>
+        <th><span class="hidden-label" data-t="close"></span></th>
+      </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <form id="open-form" class="open">
+      <select id="session" aria-label="Session" required></select>
+      <select id="slot" aria-label="Slot" required></select>
+      <button type="submit" class="primary" data-t="open"></button>
+    </form>
+    <p class="muted small" data-t="howTo"></p>
+  </section>
+
+  <section id="quitted" class="card" hidden>
+    <p data-t="quitted"></p>
+  </section>
+
+  <p id="problem" class="problem" role="alert" hidden></p>
+</main>
+
+<footer><span data-t="bridge"></span> <span id="version"></span></footer>
+</body>
+</html>
