@@ -9,6 +9,18 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.3: APWorlds faster, removed by picking
+- Uploading and removing APWorlds is faster: the picked files go in one request (several, if they are large together)
+  and the release lists its games once for all of them, not once per file (and once more if one is refused). And
+  Archipelago is compiled in the gateway image: it can't write its `__pycache__` there, so every listing compiled it
+  all again (listing: 5 s → 2 s; generating seeds and starting game servers gain the same way; the image grows by
+  about 40 MB).
+- Removing: *Remove…* next to *Upload APWorld…*; the uploaded files are picked by a click, then *Remove (n)*, asked
+  once more, and they go out together. No × on each pill any more (on a long one it was squeezed away), and the
+  question and its buttons are on their own lines (on a phone they didn't fit one).
+- The gateway's internal API: `POST /internal/apworlds` takes several files and answers one result each;
+  `POST /internal/apworlds/remove` takes several (instead of `DELETE …/<release>/<file>`). The tracker's routes alike.
+
 ### 0.13.2: From the hand test
 - *APWorlds*: an upload is named after the world folder inside it, as Archipelago imports it (`Pokemon Emerald
   (1).apworld` with `pokemon_emerald/` becomes `pokemon_emerald.apworld`; before, such a name didn't load). One that
