@@ -36,6 +36,7 @@ import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.InspectRequest
@@ -233,6 +234,10 @@ class SessionAdmin(
     people.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_USERS, "ids" to it.joinToString())
     }
+    // Every slot is played by someone, or hosted
+    plans.values.filter { !it.hosted && it.userIds.isEmpty() }.map { it.name }.takeIf { it.isNotEmpty() }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to it.joinToString())
+    }
     val versions = gameServer.versions()
     val version = request.apVersion ?: versions.firstOrNull()
       ?: throw SessionProblem(HttpStatusCode.ServiceUnavailable, Problem.NO_RELEASE)
@@ -264,6 +269,9 @@ class SessionAdmin(
     logger.info("{} created session {} (seed {}) and manages it", admin, id, seed)
     return CreateSessionResult(id, seed, locked)
   }
+
+  /** How far the generation of new session [id]'s seed is; `null`: none runs. */
+  suspend fun generationProgress(id: String): GenerationProgress? = gameServer.generationProgress(id)
 
   /** The accounts a new session can be played by, invited ones too. */
   private suspend fun people(): List<UserRef> = users.accounts()

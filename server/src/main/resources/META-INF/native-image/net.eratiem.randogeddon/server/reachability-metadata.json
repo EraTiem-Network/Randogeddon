@@ -1789,6 +1789,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.GenerationProgress",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.GenerationProgress$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ApworldUploadFile",
       "fields": [
         {

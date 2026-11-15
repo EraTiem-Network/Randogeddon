@@ -5,8 +5,8 @@
 # - Artifact Keeper: pkg.example.org, the generic repository `randogeddon-bridge`, as <version>/<file> with
 #   SHA256SUMS. The token of its account `bridge` (infra/registry/provision.py) is read from
 #   ~/.config/randogeddon/bridge-publish.token (BRIDGE_TOKEN_FILE); without it, nothing is published there.
-# - From 1.0.0 on also a GitHub release v<version> (gh, logged in) with the same files, its notes the version's
-#   section of CHANGELOG.md; left alone if it exists.
+# - A GitHub release v<version> (gh, logged in), its notes the version's section of CHANGELOG.md; left alone if it
+#   exists. From 1.0.0 on a release with the same files; before, a pre-release without files.
 # --dry-run: says what would be uploaded and created, and does neither.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -54,14 +54,21 @@ awk -v heading="### $version:" '
   found { print }
 ' CHANGELOG.md > "$out/notes"
 
-if [[ "${version%%.*}" -lt 1 ]]; then
-  echo "== No GitHub release before 1.0.0 ($version)"
-  [[ -z "$dry" ]] || echo "(it would be v$version with $(wc -l < "$out/notes") lines of notes and ${#files[@]} files)"
-elif ! command -v gh >/dev/null; then
+# Before 1.0.0 a pre-release, without the files
+pre=""
+[[ "${version%%.*}" -ge 1 ]] || pre="pre-"
+if ! command -v gh >/dev/null; then
   echo "== gh isn't installed here: no GitHub release v$version (install and log in, then run this script again)"
   [[ -n "$dry" ]] || exit 1
 elif gh release view "v$version" >/dev/null 2>&1; then
-  echo "== The GitHub release v$version is there already"
+  echo "== The GitHub ${pre}release v$version is there already"
+elif [[ -n "$pre" ]]; then
+  if [[ -n "$dry" ]]; then
+    echo "== would create the GitHub pre-release v$version: $(wc -l < "$out/notes") lines of notes, no files"
+  else
+    echo "== The GitHub pre-release v$version"
+    gh release create "v$version" --verify-tag --prerelease --title "Randogeddon $version" --notes-file "$out/notes"
+  fi
 elif [[ -n "$dry" ]]; then
   echo "== would create the GitHub release v$version: $(wc -l < "$out/notes") lines of notes, ${#files[@]} files"
 else

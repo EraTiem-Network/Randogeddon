@@ -33,6 +33,12 @@ fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
     get { gatewayCall { call.respond(admin.newSession(call.loggedIn.user)) } }
     // The slots of the uploaded YAMLs, before the players are assigned; games the release lacks are problems
     post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
+    // How far a new session's generation is, while its form waits for it (no content: none runs)
+    get("/progress/{id}") {
+      gatewayCall {
+        admin.generationProgress(call.parameters["id"].orEmpty())?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
+      }
+    }
     // Someone without an account, to play in it: an invitation (only for an address that has no account)
     post("/invite") {
       accountCall {

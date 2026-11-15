@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.GenerationStage
+
 import net.eratiem.randogeddon.shared.GameServerStatus
 
 /** A session in the panel: its state and actions, its players, the past sessions, a new session's form. */
@@ -113,6 +115,10 @@ interface SessionAdminTexts {
   val generating: String
   val generateAndStart: String
   val generatesSeed: String
+  /** What the generation does now (its stage), for the bar while it runs. */
+  fun generationStage(stage: GenerationStage): String
+  /** The slots that still need a player (or to be hosted) before generating. */
+  fun slotsWithoutPlayer(slots: String): String
   val addPlayer: String
   val addAnother: String
   val inviting: String
@@ -284,6 +290,21 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generating = "Generating…"
   override val generateAndStart = "Generate and start"
   override val generatesSeed = "Archipelago generates the seed; that can take a minute."
+  override fun generationStage(stage: GenerationStage) = when (stage) {
+    GenerationStage.STARTING -> "Starting…"
+    GenerationStage.CREATING -> "Creating the worlds…"
+    GenerationStage.ITEMS -> "Creating the items…"
+    GenerationStage.RULES -> "Working out the rules…"
+    GenerationStage.PLANDO -> "Placing the planned items…"
+    GenerationStage.PREFILL -> "Placing the worlds' own items…"
+    GenerationStage.FILLING -> "Filling the items (this takes the longest)…"
+    GenerationStage.PREOUTPUT -> "Getting ready to write…"
+    GenerationStage.OUTPUT -> "Writing the files…"
+    GenerationStage.PLAYTHROUGH -> "Working out the playthrough…"
+    GenerationStage.ARCHIVE -> "Packing the seed…"
+    GenerationStage.DONE -> "Done, starting the game server…"
+  }
+  override fun slotsWithoutPlayer(slots: String) = "Every slot needs a player or has to be hosted first: $slots"
   override val addPlayer = "Add a player…"
   override val addAnother = "Add another…"
   override val inviting = "Inviting…"
@@ -423,6 +444,21 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generating = "Wird generiert…"
   override val generateAndStart = "Generieren und starten"
   override val generatesSeed = "Archipelago generiert den Seed; das kann eine Minute dauern."
+  override fun generationStage(stage: GenerationStage) = when (stage) {
+    GenerationStage.STARTING -> "Startet…"
+    GenerationStage.CREATING -> "Erstellt die Welten…"
+    GenerationStage.ITEMS -> "Erstellt die Items…"
+    GenerationStage.RULES -> "Berechnet die Regeln…"
+    GenerationStage.PLANDO -> "Platziert die geplanten Items…"
+    GenerationStage.PREFILL -> "Platziert die eigenen Items der Welten…"
+    GenerationStage.FILLING -> "Verteilt die Items (das dauert am längsten)…"
+    GenerationStage.PREOUTPUT -> "Bereitet das Schreiben vor…"
+    GenerationStage.OUTPUT -> "Schreibt die Dateien…"
+    GenerationStage.PLAYTHROUGH -> "Berechnet den Spielverlauf…"
+    GenerationStage.ARCHIVE -> "Packt den Seed…"
+    GenerationStage.DONE -> "Fertig, startet den Game-Server…"
+  }
+  override fun slotsWithoutPlayer(slots: String) = "Jeder Slot braucht erst einen Spieler oder wird gehostet: $slots"
   override val addPlayer = "Spieler hinzufügen…"
   override val addAnother = "Weiteren hinzufügen…"
   override val inviting = "Wird eingeladen…"

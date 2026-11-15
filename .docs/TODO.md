@@ -518,6 +518,26 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - While the form is open, an APWorld uploaded meanwhile (by anyone, in another view or another browser) takes
           effect by itself: the release's games are looked at again and the waiting YAMLs become slots, without
           uploading them anew
+    - [x] Polish: *Generate and start* is only active once every slot has at least one player or is hosted; until
+          then the form names the slots still without one. The server refuses such a session too (a new problem,
+          e.g. `SLOT_WITHOUT_PLAYER`).
+    - [x] Polish: *Generate and start* shows how far the generation is, as a bar with the stage's name (e.g. *Filling
+          the items… 60 %*), instead of only a text while it runs
+        - Archipelago's `Generate.py` reports no percentage, but logs its fixed stages (creating the worlds, the
+          access rules, `generate_early` / `create_items` / `set_rules` / `generate_basic`, filling the items, the
+          spoiler, writing the output files, the zip): each gets a share of the bar
+        - The gateway keeps the latest stage per session while `Generate.py` runs and answers it on a small status
+          route; the panel asks about every second while it generates
+        - Filling the items takes most of the time and has no progress of its own: the bar waits there, the stage's
+          name says why
+    - [x] Bug: generating with a locked A Link Between Worlds slot fails ("No more spots to place 1 items"): ALBW
+          places its dungeon keys in `pre_fill`, inside its own world, with a state of its own items, and World Locks had
+          locked the world before: World Locks 1.1.0 locks the worlds in `stage_pre_fill`, after every world's
+          `pre_fill`
+    - [x] Polish: no menu of Compose's own on a right click (it had only *Copy*)
+    - [x] Polish: diagrams in the Markdown files are Mermaid (```` ```mermaid ```` blocks, which GitHub draws), not
+          drawn with box characters: the README's overview of Traefik, the gateway, the tracker and Postgres first;
+          new diagrams in `.md` files only so
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes

@@ -27,6 +27,7 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldResult
 import net.eratiem.randogeddon.shared.ApworldResults
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.ArchipelagoInfo
@@ -95,6 +96,10 @@ class GameServerClient(private val config: TrackerConfig) {
       setBody(ApiJson.encodeToString(GenerateRequest.serializer(), request))
     }
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
+
+  /** How far session [id]'s generation is; `null`: none runs. */
+  suspend fun generationProgress(id: String): GenerationProgress? = call { http.get("${session(id)}/progress") { auth() } }
+    .takeIf { it.isNotBlank() }?.let { ApiJson.decodeFromString(GenerationProgress.serializer(), it) }
 
   /** The releases with their games, and the apworld library. The first listing of a release takes seconds. */
   suspend fun archipelago(): ArchipelagoInfo = call {

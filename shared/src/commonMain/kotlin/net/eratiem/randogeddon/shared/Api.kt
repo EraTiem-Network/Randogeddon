@@ -766,6 +766,16 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 @Serializable
 data class ApworldResults(val results: List<ApworldResult>)
 
+/** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
+enum class GenerationStage { STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE }
+
+/**
+ * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all
+ * (each stage has a share; filling the items takes the longest and reports nothing on its way). No content: none runs.
+ */
+@Serializable
+data class GenerationProgress(val stage: GenerationStage, val percent: Int)
+
 /**
  * `GET /api/admin/versions` (Administrators): what runs now, to check a deploy: the tracker's version, the gateway's
  * (`null`: it can't be reached) and its Archipelago releases.

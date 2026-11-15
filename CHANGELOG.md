@@ -4,10 +4,26 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 `.docs/TODO.md` and the step its PR, in the order they were merged; a follow-up to a step gets a fourth number
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`. Each release also publishes Randogeddon Bridge's builds to
-Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`); from 1.0.0 on, each is a GitHub release too, with
-the bridge's builds and its part of this file as the notes.
+Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
+as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 13: Polish and Bug Fixes
+
+### 0.13.9: Pre-releases, locked worlds that place their own items, the generation's progress
+- Every release below 1.0.0 is a GitHub pre-release too, made by the deploy (`scripts/publish-bridge.sh`): its part of
+  this file as the notes, no files. The ones before (v0.1.1 to v0.13.8) were made by hand.
+- World Locks 1.1.0: a world that places items inside itself before the main fill (A Link Between Worlds its dungeon
+  keys, in `pre_fill`) can be locked: the locks go on after every world's `pre_fill`, not before (generating failed
+  with "No more spots to place 1 items", as nothing of the locked world was reachable without its key). Updating:
+  nothing to do, the gateway image brings it.
+- A right click no longer opens Compose's own menu (it had only *Copy*; Ctrl+C still copies a selection).
+- *Generate and start* is only active once every slot has a player or is hosted; the form names the ones still
+  without. The server refuses such a session too (`SLOT_WITHOUT_PLAYER`).
+- While it generates, a bar shows the stage and about how far it is (e.g. *Filling the items… 35 %*): the gateway
+  reads Generate.py's output as it comes (`GET /internal/sessions/<id>/progress`), the tracker passes it on
+  (`GET /api/sessions/new/progress/<id>`), the form asks every second. Filling the items takes the longest and
+  reports nothing on its way.
+- The README's overview is a Mermaid diagram (GitHub draws it), no longer drawn with box characters.
 
 ### 0.13.8: The new-session form, invitations
 - *Hosted* is a checkbox on a slot's row, next to *starts locked*, asked once more; it removes the slot's players and
