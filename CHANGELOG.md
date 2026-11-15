@@ -7,6 +7,10 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 12: Randogeddon Bridge
 
+### 0.12.2.1: Sessions by their ID in the bridge
+- The bridge names the sessions by their ID (as their game addresses do): their title is the dashboard's own unless a
+  session has one, so it didn't tell them apart.
+
 ### 0.12.2: The bridge app
 - Randogeddon Bridge (`bridge/`, Go, no CGO): one binary each for Windows, Linux (x86-64, ARM) and macOS (Intel,
   Apple), its page in the default browser on `127.0.0.1`, in English and German, in the account's theme and mode.
