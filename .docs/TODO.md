@@ -345,29 +345,31 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       included.
 - [x] The other settings stay: language and appearance
 
-## Phase 12: Randogeddon Bridge
+## Phase 12: Randogeddon Bridge (done)
 
 *Games that can't do TLS connect to `localhost`; the bridge takes them to their session securely.*
 
-- [ ] A small app on the player's PC (Go, one binary per OS: Windows, Linux, macOS Intel and ARM; no CGO, all built
+- [x] A small app on the player's PC (Go, one binary per OS: Windows, Linux, macOS Intel and ARM; no CGO, all built
       in the Docker build), its GUI a page in the default browser served by the app on localhost, styled like
       Randogeddon; English and German
     - Top left "Randogeddon" with a link out to the website; top right the user (icon, name) and logout.
     - A table: a heading row, then one row per open connection: session, slot, address (`localhost:<port>`, copy),
       state, close; below them session and slot as dropdowns and *Open*.
     - Several connections at once, each on a random free local port (`127.0.0.1` only).
-- [ ] Login with a long key from the dashboard (*Your connection*: *Make a key*, shown once to copy), so Authentik
+- [x] Login with a long key from the dashboard (*Your connection*: *Make a key*, shown once to copy), so Authentik
       Administrators can use it too and the app never sees a password; kept in the user's config directory until
       logout
     - A key is a login of its own kind (`bridge`, 30 days) that reaches only what the app needs (who, the sessions,
       a session's connection); no settings, no panel.
-- [ ] The relay works on the WebSocket level: the game connects to `ws://localhost:<port>`, the bridge to
+- [x] The relay works on the WebSocket level: the game connects to `ws://localhost:<port>`, the bridge to
       `wss://<id>.randogeddon.eratiem.net` (Traefik and the gateway route by host name), every message both ways
     - It fills the chosen slot's name and password into the game's `Connect`: nothing to type in the game.
     - States: waiting for the game, connected, error (the server's words); a new game connection tries again.
-- [ ] Download from the dashboard (*Your connection*, per OS), with how to start an unsigned app (SmartScreen,
+- [x] Download from the dashboard (*Your connection*, per OS), with how to start an unsigned app (SmartScreen,
       Gatekeeper)
-- [ ] No plain, unencrypted port for game clients: `wss://` stays the only way in
+- [x] Each tagged release publishes the bridge's builds to Artifact Keeper (`pkg.example.org`, a generic repository,
+      with their SHA-256 sums); from 1.0.0 on also as a GitHub release (with the version's changelog)
+- [x] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
 ## Phase 13: Polish and Bug Fixes
 

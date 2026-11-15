@@ -3,7 +3,53 @@
 Versions follow [Semantic Versioning](https://semver.org/). While in development: `0.<phase>.<step>`, the phase as in
 `.docs/TODO.md` and the step its PR, in the order they were merged; a follow-up to a step gets a fourth number
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
-it the release, and the merge is tagged `v<version>`.
+it the release, and the merge is tagged `v<version>`. Each release also publishes Randogeddon Bridge's builds to
+Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`); from 1.0.0 on, each is a GitHub release too, with
+the bridge's builds and its part of this file as the notes.
+
+## Phase 12: Randogeddon Bridge
+Games that can't do TLS connect to `localhost`: Randogeddon Bridge, a small app on the player's PC, takes them to
+their session over `wss://` and fills in the slot's name and password. It logs in with a key from the dashboard
+(*Your connection*) and is downloaded there. Updating: migration V14 runs by itself; for publishing the bridge, run
+`infra/registry/provision.py` on the registry VM again (the repository `randogeddon-bridge`, the account `bridge`) and put its
+token into WSL (`.docs/INFRA.md`).
+
+### 0.12.3: Phase 12 done
+- README: *Randogeddon Bridge* (what it is for, the download, the key, how it stays safe), its routes, publishing it
+  under *Versions*; the changelog's preamble: the bridge's builds in Artifact Keeper, GitHub releases from 1.0.0 on;
+  TODO: Phase 12 done.
+
+### 0.12.2.1: Sessions by their ID in the bridge
+- The bridge names the sessions by their ID (as their game addresses do): their title is the dashboard's own unless a
+  session has one, so it didn't tell them apart.
+
+### 0.12.2: The bridge app
+- Randogeddon Bridge (`bridge/`, Go, no CGO): one binary each for Windows, Linux (x86-64, ARM) and macOS (Intel,
+  Apple), its page in the default browser on `127.0.0.1`, in English and German, in the account's theme and mode.
+  Log in with a key; session and slot as dropdowns, *Open*: a relay on a free local port (`localhost:<port>`, copy).
+  Several at once, each with its state (waiting for the game, connecting, connected, error with the server's words).
+- The relay passes every message both ways over `wss://` and puts the slot's name and password into the game's
+  `Connect` (any name and no password in the game). After a refusal it fetches the password again. Connections from a
+  web page (with an `Origin`) are refused.
+- The page only answers on its own address, with the token of the link the bridge opened (a SameSite=Strict cookie),
+  and changes need its own header. The dashboard only over HTTPS (plain HTTP on this computer, for the local demo).
+- One instance: starting it again opens the running one's page. *Quit* on the page (Windows has no console window).
+  A newer bridge on the dashboard shows a notice with its download. The key is checked every minute; once ended under
+  *Your account*, the bridge logs out and closes its relays.
+- The Docker build tests and builds it (`bridge` stage); the tracker serves the builds, *Your connection* offers them
+  with how to start an unsigned app.
+- `scripts/publish-bridge.sh` (deploy.sh, for a release): the builds and `SHA256SUMS` to Artifact Keeper's generic
+  repository `randogeddon-bridge` (`provision.py`: the repository and the account `bridge`), and from 1.0.0 on a
+  GitHub release with the version's notes. `--dry-run` shows what it would do.
+
+### 0.12.1: Bridge keys
+- A key for Randogeddon Bridge, made under *Your connection* (*Make a key*, shown once): a login of its own kind
+  (`bridge`, 30 days), sent by the app as a bearer token. It reaches only `/bridge/…`: `info` (the bridge offered, the
+  user's colours, mode and language), `me`, `sessions` and a session's `connection`, and `DELETE /bridge/key` (the
+  app's logout); never `/api`, not even as the cookie. A new password ends the keys with every other login.
+- *Your account* lists the keys (made, last used, until when) with *End*, once there are any.
+- `GET /downloads/bridge` and `.../<file>`: the bridge's builds in `BRIDGE_DIR` (none yet: they come with 0.12.2).
+- Migration V14: `login_sessions.last_used_at`, and `bridge` as a login method.
 
 ## Phase 11: The Administrators' Account Page
 Administrators who log in through Authentik manage their account there: *Your account* links to it, and their name

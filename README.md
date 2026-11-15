@@ -48,6 +48,7 @@ restart or update doesn't drop the players.
 | `gateway/` | The game host: runs one MultiServer per session, relays each client connection to its session's and checks the slot password of every `Connect`; internal API for the panel |
 | `database/` | PostgreSQL schema (Flyway migrations) and Exposed tables, shared by tracker and gateway |
 | `webApp/` | The dashboard: Compose Multiplatform (Kotlin/Wasm), installable as a PWA |
+| `bridge/` | Randogeddon Bridge (Go): takes game clients that can't do TLS from `localhost` to their session, see *Randogeddon Bridge* |
 | `shared/` | The API contract (Kotlin Multiplatform data classes) used by both |
 | `apworlds/world_locks/` | Our own APWorld: slots that start locked until their key is found (part of the gateway image) |
 | `demo/` | Two example sessions (YAMLs and who plays which slot, in `a/` and `b/`), simulated players — see *Demo* below |
@@ -226,6 +227,8 @@ pushed. The dumps (each update's and the daily ones) are kept 14 days.
 It needs once: `docker login pkg.example.org` with the `<service-account>` token as password (`AK_TOKEN_DEPLOY` in
 `<registry-dir>/.secrets` on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see
 the script's head). The server itself is logged in to the registry with the read-only `<service-account>` token.
+For publishing the bridge (*Versions*): the `<service-account>` token (`AK_TOKEN_BRIDGE` in `.secrets`) in
+`~/.config/randogeddon/bridge-publish.token` (mode 0600), and for 1.0.0 on `gh` logged in.
 
 **Restoring a dump** (the stack's database replaced by the dump; the tracker and gateway stopped meanwhile):
 
@@ -266,7 +269,7 @@ docker compose up -d
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
    `#/manage/<session-id>` the panel (`#/admin` still works), `#/watch/<token>` a share link. Under *Your connection*
    they find the server
-   (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works), their
+   (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works; for a game that can't, see *Randogeddon Bridge*), their
    slot names and each slot's password, and for a ROM-based game (or one that needs a mod) the slot's file from the
    seed to download: a patch is opened with the Archipelago Launcher (*Open Patch*) and their own ROM. Session-Managers
    and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
@@ -446,6 +449,42 @@ The game clients don't know about the lock, so it's on the honour system: don't 
 dashboard says it's unlocked. Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
 Locks slot), and as "Key to Alice-Celeste" on the dashboard, which also shows who found it or where it was hinted.
 
+## Randogeddon Bridge
+
+Game clients reach their session only over TLS (`wss://<session-id>.randogeddon.eratiem.net:443`); there is no plain
+port. For a game whose client can't do TLS (older or unmaintained mods that only speak `ws://`), Randogeddon Bridge
+runs on the player's PC: the game connects to `localhost:<port>`, the bridge takes it to the session over `wss://`.
+
+- **Download:** under *Your connection*, for Windows, Linux (x86-64, ARM) and macOS (Intel, Apple); one file, nothing
+  to install. It isn't signed, so the system asks first: Windows *More info* → *Run anyway*; macOS right-click →
+  *Open* (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
+- **Login:** with a key, made under *Your connection* (*Make a key*, shown once) and pasted into the bridge's page. The
+  bridge never sees a password, so Administrators who log in through Authentik use it too. A key is a login for 30
+  days; *Your account* lists them (made, last used, until when) with *End*, and a new password ends them all.
+- **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
+  session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
+  once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
+  password don't matter: the bridge fills in the slot's. Starting it again opens the running one's page; *Quit* ends
+  it (on Windows it has no console window). A newer bridge on the dashboard shows a notice with its download.
+- **Kept:** the dashboard's address and the key in the user's config directory, `Randogeddon/bridge.json` (readable
+  only by them; removed at *Log out*), and `bridge.log` of the last run. `-server <url>` points it at another dashboard
+  (the local demo: `-server http://localhost:8000`), `-no-browser` only writes the page's link to the log.
+
+How it stays safe:
+
+- A key reaches only the bridge's routes (`/bridge/…`: who, the sessions, a session's connection, the bridge offered,
+  its own logout), sent as `Authorization: Bearer`; never `/api`, not even as the cookie. It is stored as its SHA-256
+  like every login; the bridge checks it every minute and logs out once it is ended.
+- The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
+  browser can play a slot through them.
+- The page answers only on its own address (`127.0.0.1:<port>`/`localhost:<port>`, against DNS rebinding), with the
+  token of the link the bridge opened (a SameSite=Strict cookie); changes need its own header too. The dashboard is
+  reached only over HTTPS (plain HTTP only on the same computer).
+
+The Docker build tests it and builds the five binaries (`kotlin.Dockerfile`, the `bridge` stage: plain Go, no CGO);
+the tracker serves them at `/downloads/bridge/<file>` (`BRIDGE_DIR`, `/app/bridge` in the image), with the version
+the dashboard offers. `go test -race ./...` in `bridge/` runs its tests.
+
 ## The dashboard
 
 For every running session, the tracker connects to its room like any other Archipelago tracker client (tag
@@ -453,7 +492,8 @@ For every running session, the tracker connects to its room like any other Archi
 slot about its own checked locations and received items. The slot names come from `data/sessions/<id>/room.json`,
 which the gateway writes before it starts the session's game server.
 
-- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable).
+- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), and
+  Randogeddon Bridge (its downloads, *Make a key*).
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, progress, status
@@ -497,7 +537,10 @@ Administrators). The panel's are under
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
 `.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
 the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
-Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
+Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. A login's bridge keys are under `/api/account/bridge-keys` (`GET`, `POST`, `DELETE .../<id>`);
+the bridge's own routes, with a key as `Authorization: Bearer`, are `GET /bridge/info`, `/bridge/me`,
+`/bridge/sessions`, `/bridge/sessions/<id>/connection` and `DELETE /bridge/key`, and its builds
+`GET /downloads/bridge` and `.../<file>` (open). Without a login these answer 401, for a session the user isn't part of 403. `GET /healthz` is
 open and says nothing about the sessions.
 
 The login form is a plain HTML form in `index.html` rather than part of the Compose app, so password managers can
@@ -612,6 +655,11 @@ that commit's images under the version and `latest`: `…/tracker:0.<phase>.<ste
 other commit's under the commit and `edge`), and the next PR starts
 with the next step's `-SNAPSHOT`. A follow-up to a step that was merged already gets a fourth number (`0.8.2.1`),
 which the next step drops again. `CHANGELOG.md` lists every version by phase.
+
+For a release, `scripts/deploy.sh` also publishes Randogeddon Bridge (`scripts/publish-bridge.sh`, copied out of the
+tracker image, so exactly the builds it serves): to `pkg.example.org`, the generic repository `randogeddon-bridge`,
+as `<version>/<file>` with `SHA256SUMS`. From 1.0.0 on, every release is also a GitHub release `v<version>`, with the
+bridge's builds and the version's part of `CHANGELOG.md` as its notes. `--dry-run` shows what it would do.
 
 ### Texts and languages
 

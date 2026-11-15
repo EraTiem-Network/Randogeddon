@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.server.account.BridgeKeys
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
@@ -52,18 +53,21 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val support by inject<Support>()
   val shareLinks by inject<ShareLinks>()
   val downloads by inject<SlotDownloads>()
+  val bridgeKeys by inject<BridgeKeys>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, trackerConfig.publicUrl, trackerConfig.cookieSecure)
     signupRoutes(accounts, trackerConfig.cookieSecure)
     // A session by its share link, without a login
     publicWatchRoutes(shareLinks, archives)
+    // Randogeddon Bridge: its downloads, and with a key what the app needs
+    bridgeRoutes(trackerConfig, bridgeKeys, logins, sessions, list, slotPasswords)
 
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
       install(RequireLogin) { this.logins = logins }
       meRoute(list)
-      accountRoutes(accounts, twoFactor, trackerConfig.cookieSecure)
+      accountRoutes(accounts, twoFactor, bridgeKeys, trackerConfig.cookieSecure)
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)

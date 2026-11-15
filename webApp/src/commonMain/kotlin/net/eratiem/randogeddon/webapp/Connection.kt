@@ -1,5 +1,11 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.BridgeKey
+import net.eratiem.randogeddon.shared.BridgeDownloads
+import net.eratiem.randogeddon.shared.ApiJson
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,8 +37,8 @@ import net.eratiem.randogeddon.shared.Summary
  * password. With several worlds, a searchable dropdown picks the world (by its short name, without the player's; the
  * full slot name is below it, to copy); it starts on the one that is online now, or
  * else the one played last. The password is hidden until shown; copying works either way. Below them the slot's files
- * from the seed ([files]: patches, mods), to download. [fillHeight]: the card fills the height the section is given
- * (next to the overview).
+ * from the seed ([files]: patches, mods), to download; last Randogeddon Bridge, for games without TLS (its downloads and
+ * a key for it). [fillHeight]: the card fills the height the section is given (next to the overview).
  */
 @Composable
 fun ConnectionSection(
@@ -104,8 +110,57 @@ fun ConnectionSection(
         PasswordField(slot)
         files.filter { it.slotName == slot.name }.forEach { file -> FileField(sessionId, file) }
       }
+      if (mine) BridgePart()
     }
   }
+}
+
+/**
+ * Randogeddon Bridge: what it is (its ⓘ), its downloads (once the dashboard offers them) and *Make a key*: the new key
+ * is shown once, to copy into the bridge.
+ */
+@Composable
+private fun BridgePart() {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val c = t.connection
+  val scope = rememberCoroutineScope()
+  var offered by remember { mutableStateOf<BridgeDownloads?>(null) }
+  var key by remember { mutableStateOf<BridgeKey?>(null) }
+  var problem by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(Unit) {
+    (call("GET", "downloads/bridge", null) { ApiJson.decodeFromString(BridgeDownloads.serializer(), it) } as? Answer.Ok)
+      ?.let { offered = it.value }
+  }
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Label(c.bridge)
+    Txt(c.bridgeLine, size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
+    InfoTip(c.bridgeHowTo)
+    SmallButton(c.makeKey, {
+      scope.launch {
+        when (val r = call("POST", "api/account/bridge-keys", null) { ApiJson.decodeFromString(BridgeKey.serializer(), it) }) {
+          is Answer.Ok -> { key = r.value; problem = null }
+          is Answer.Failed -> problem = r.message
+        }
+      }
+    })
+  }
+  offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      Label(offered?.version.orEmpty())
+      downloads.forEach { d -> SmallButton(platformName(d.os, d.arch), { Platform.download("downloads/bridge/${d.file}") }) }
+      InfoTip(c.bridgeUnsigned)
+    }
+  }
+  key?.let { made ->
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Label("")
+      Mono(made.key, Modifier.weight(1f))
+      SmallButton(t.common.copy, { Platform.copy(made.key) })
+    }
+    Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = p.muted)
+  }
+  problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
 }
 
 @Composable
@@ -131,6 +186,13 @@ private fun FileField(sessionId: String, file: SlotFile) {
     InfoTip(LocalTexts.current.connection.patchHowTo)
     SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
   }
+}
+
+/** A download's system, the same in every language: `Windows`, `macOS (Apple)`, `Linux (ARM)`, … */
+private fun platformName(os: String, arch: String) = when (os) {
+  "windows" -> "Windows"
+  "macos" -> if (arch == "arm64") "macOS (Apple)" else "macOS (Intel)"
+  else -> if (arch == "arm64") "Linux (ARM)" else "Linux"
 }
 
 @Composable

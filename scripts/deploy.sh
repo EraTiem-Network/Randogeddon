@@ -5,6 +5,8 @@
 #                                   database, switch the server to the new (fixed) tag, check that it runs
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
 #                                   README, restoring)
+# A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
+# GitHub release).
 #
 # The server holds only what runs (README, "The live server"); this script copies its compose files and the backup
 # script there. Needs: `docker login pkg.example.org` (the deploy token), the Gradle init script for the build, and
@@ -88,7 +90,7 @@ else
 fi
 
 echo "== Building $tag"
-export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0
+export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0 BRIDGE_VERSION="$version"
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker gateway
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
@@ -113,6 +115,9 @@ SH
 
 echo "== Switching to $tag"
 remote "sudo IMAGES='$IMAGES' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"
+
+# A release's bridge, as its image serves it
+[[ "$moving" != latest ]] || ./scripts/publish-bridge.sh "$version" "$IMAGES/tracker:$tag"
 
 # Here too only what was just pushed stays (the build's own images and its cache are kept for the next build)
 docker images --format '{{.Repository}}:{{.Tag}}' "$IMAGES/*" | while IFS= read -r image; do

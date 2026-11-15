@@ -6,6 +6,8 @@ randogeddon:
     title: "$TRACKER_TITLE:Randogeddon"
     # The built web app (webApp's wasmJs distribution)
     webDir: "$WEB_DIR:webApp/build/dist/wasmJs/productionExecutable"
+    # Randogeddon Bridge's builds, offered for download (randogeddon-bridge-<os>-<arch>[.exe] and VERSION)
+    bridgeDir: "$BRIDGE_DIR:bridge/build/dist"
     # The tracker's files: each session's event history and, once finished, its archive (sessions/<id>/)
     stateDir: "$STATE_DIR:/state"
     # The gateway's data directory, read-only: each session's room.json (sessions/<id>/room.json)

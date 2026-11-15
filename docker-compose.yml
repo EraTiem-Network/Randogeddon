@@ -19,6 +19,8 @@ x-build: &build
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
     AP_VERSION: ${AP_VERSION:-0.6.8}
+    # Randogeddon Bridge's version: the project's (deploy.sh sets it)
+    BRIDGE_VERSION: ${BRIDGE_VERSION:-dev}
 
 x-database: &database
   DB_URL: jdbc:postgresql://postgres:5432/randogeddon
