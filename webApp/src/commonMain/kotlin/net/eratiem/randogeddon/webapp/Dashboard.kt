@@ -301,12 +301,13 @@ private fun TrackerApp() {
             val r = route
             val dashboard = (r as? Route.Dashboard)?.id
             // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
-            // the admin panel keeps the dashboard's session in it, a spoiler log its own
-            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { adminOpen }
+            // the admin panel and Your account keep the dashboard's session in it, a spoiler log its own
+            val keepsSession = adminOpen || r == Route.Settings
+            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
             val switchable = sessions.filter { it.myRole != null || it.id == shown }
             Headline()
             Hero(
-              s.takeIf { dashboard != null || r is Route.Spoiler || adminOpen }, streamOpen,
+              s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
               sessions = switchable, shown = shown,
               onSession = { go(Route.Dashboard(it)) },
               onAllSessions = { go(Route.Home) },
