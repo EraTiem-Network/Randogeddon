@@ -381,7 +381,11 @@ private fun TrackerApp() {
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
-              Feed(s, modifier, feedPosition, fillHeight, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
+              // Its place is only offered where it can be beside the players
+              Feed(
+                s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
+                onHide = { setFeedVisible(false) },
+              )
             }
             val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
             if (side) {
