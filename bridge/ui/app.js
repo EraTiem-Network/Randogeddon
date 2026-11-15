@@ -234,7 +234,16 @@ $("quit").addEventListener("click", async () => {
   $("quitted").hidden = false;
 });
 
+// While this page is open the bridge runs: it quits once the page is closed (or the browser is), unless it comes back
+// within a few seconds (a reload). Dropped otherwise (the bridge restarting): tried again.
+function stayAlive() {
+  if (quitted) return;
+  const socket = new WebSocket(`ws://${location.host}/api/alive`);
+  socket.addEventListener("close", () => { if (!quitted) setTimeout(stayAlive, 2000); });
+}
+
 applyTexts();
+stayAlive();
 refresh();
 setInterval(refresh, 1500);
 // Back on this page: the account's theme, mode and language as they are now (changed on the dashboard meanwhile)

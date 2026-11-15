@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -15,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 //go:embed ui
@@ -39,10 +42,18 @@ type App struct {
 	language string // the page's Accept-Language, so the dashboard words its refusals for the user
 	relays   []*Relay
 	next     int
+
+	// The pages open now (each keeps /api/alive open); once the last is gone for [App.pageGrace], the bridge quits
+	pages     int
+	pageGrace time.Duration
+	lastPage  *time.Timer
 }
 
+// pageGrace is how long the bridge waits for a page after the last one closed (a reload comes back within it).
+const pageGrace = 10 * time.Second
+
 func newApp(dir, token string, cfg Config) *App {
-	return &App{dir: dir, token: token, cfg: cfg, quit: make(chan struct{})}
+	return &App{dir: dir, token: token, cfg: cfg, quit: make(chan struct{}), pageGrace: pageGrace}
 }
 
 // openURL is the page's link with its token; the page then keeps the token as a cookie.
@@ -149,6 +160,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/slots", a.handleSlots)
 	mux.HandleFunc("POST /api/relays", a.handleOpen)
 	mux.HandleFunc("DELETE /api/relays/{id}", a.handleClose)
+	mux.HandleFunc("GET /api/alive", a.handleAlive)
 	mux.HandleFunc("POST /api/quit", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		go a.Quit()
@@ -167,7 +179,9 @@ func (a *App) guard(next http.Handler) http.Handler {
 			return
 		}
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		// The page's own WebSocket (/api/alive) named too: older browsers don't count ws:// as 'self'
+		h.Set("Content-Security-Policy", fmt.Sprintf("default-src 'self'; connect-src 'self' ws://%s; frame-ancestors 'none'; "+
+			"base-uri 'none'; form-action 'self'", r.Host))
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-store")
@@ -202,6 +216,45 @@ func (a *App) guard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// handleAlive keeps a WebSocket open while the page is (it sends nothing). The browser closes it with the tab, and the
+// system with a killed browser: once no page is left and none comes back within [App.pageGrace], the bridge quits,
+// relays and all. Only after a page was there: started with -no-browser it runs until Quit.
+func (a *App) handleAlive(w http.ResponseWriter, r *http.Request) {
+	// Accept also refuses another site's page (its Origin isn't this host)
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	a.pages++
+	if a.lastPage != nil {
+		a.lastPage.Stop()
+		a.lastPage = nil
+	}
+	a.mu.Unlock()
+	// Reads until the page goes (it never sends anything)
+	ctx := conn.CloseRead(context.Background())
+	select {
+	case <-ctx.Done():
+	case <-a.quit:
+		_ = conn.Close(websocket.StatusGoingAway, "quit")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.pages--
+	if a.pages == 0 && a.lastPage == nil {
+		a.lastPage = time.AfterFunc(a.pageGrace, func() {
+			a.mu.Lock()
+			gone := a.pages == 0
+			a.mu.Unlock()
+			if gone {
+				log.Printf("The page was closed: quitting")
+				a.Quit()
+			}
+		})
+	}
 }
 
 func (a *App) validToken(t string) bool {
