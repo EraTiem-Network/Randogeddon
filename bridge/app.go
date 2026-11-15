@@ -301,7 +301,8 @@ func (a *App) call(w http.ResponseWriter, err error) bool {
 	return false
 }
 
-// handleSessions answers the sessions the user plays in now.
+// handleSessions answers the sessions the user plays in now, by their ID (as the game addresses name them; the title is
+// the dashboard's own unless a session has one).
 func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
 	sessions, err := a.client().Sessions()
 	if !a.call(w, err) {
@@ -314,11 +315,7 @@ func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
 	out := []entry{}
 	for _, s := range sessions {
 		if s.Running() && len(s.MySlots) > 0 {
-			title := s.Title
-			if title == "" {
-				title = s.ID
-			}
-			out = append(out, entry{s.ID, title})
+			out = append(out, entry{s.ID, s.ID})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)

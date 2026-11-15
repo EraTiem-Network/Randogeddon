@@ -27,11 +27,9 @@ type Info struct {
 // Session is one of the user's sessions (`GET /bridge/sessions`); the dashboard leaves out values that are the
 // default, so an empty Status is "live".
 type Session struct {
-	ID       string   `json:"id"`
-	Title    string   `json:"title"`
-	SeedName string   `json:"seedName"`
-	Status   string   `json:"status"`
-	MySlots  []string `json:"mySlots"`
+	ID      string   `json:"id"`
+	Status  string   `json:"status"`
+	MySlots []string `json:"mySlots"`
 }
 
 // Running is whether game clients can play the session now.
