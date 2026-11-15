@@ -9,6 +9,18 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.5: More from the hand test
+- *Your connection*: the patch files are back under the slot and its password; the right column is the bridge's. The
+  bridge has a line of its own (`Randogeddon Bridge ⓘ`, *Create key*, *Fold away*): folded, the card is one narrow
+  column again and the tiles beside it get the room (remembered in the browser). Its ⓘ is in parts: what it is, what
+  it does, how to use it, starting it on Windows, macOS and Linux. A new key shows like a password (*Show* / *Hide*,
+  *Copy*) with a × that closes it. Someone who doesn't play in the session gets the narrow card too.
+- *APWorlds*, *Remove…*: *Select all* (and *Select none*); the buttons wrap on a phone.
+- APWorlds that import `tkinter` load: the image has `libtk8.6` (e.g. `minecraft_dig.apworld`, for its client window).
+- *People*: a Session-Manager can't take their own part (`OWN_MANAGER`); another one or an Administrator can, and
+  the panel doesn't offer it.
+- The live feed's place (*Right*, *Left*, *Below*) is only offered where it can be beside the players.
+
 ### 0.13.4: The hand test's open points
 - The dashboard of a session on a wide screen (from about 1270 px) showed nothing below the top card since 0.13.2, and
   every page after it stayed empty until a reload (also after picking a finished session): the row of the tiles
