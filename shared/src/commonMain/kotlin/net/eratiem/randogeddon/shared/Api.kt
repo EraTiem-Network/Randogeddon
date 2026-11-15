@@ -767,7 +767,9 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 data class ApworldResults(val results: List<ApworldResult>)
 
 /** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
-enum class GenerationStage { STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE }
+enum class GenerationStage {
+  STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, BALANCING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE,
+}
 
 /**
  * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all
