@@ -14,6 +14,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
@@ -62,9 +63,9 @@ fun Route.internalApi(
     route("/apworlds") {
       post { library { call.respond(apworlds.upload(call.receive<ApworldUpload>())) } }
       post("/try") { library { call.respond(apworlds.tryWith(call.receive<ApworldTry>())) } }
-      delete("/{release}/{file}") {
+      post("/remove") {
         library {
-          apworlds.remove(call.parameters["release"]!!, call.parameters["file"]!!)
+          apworlds.remove(call.receive<ApworldRemoval>())
           call.respond(HttpStatusCode.NoContent)
         }
       }
