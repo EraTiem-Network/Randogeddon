@@ -93,6 +93,34 @@ import net.eratiem.randogeddon.shared.i18n.texts
 
 private const val FEED_VISIBLE_KEY = "ap-feed-visible"
 private const val FEED_POSITION_KEY = "ap-feed-position"
+
+/** Per viewer, remembered in the browser: the live feed is visible and on the right unless changed. */
+internal object FeedSettings {
+  var visible: Boolean by mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false")
+    private set
+  var position: FeedPosition by mutableStateOf(
+    FeedPosition.entries.firstOrNull { it.name == Platform.loadSetting(FEED_POSITION_KEY) } ?: FeedPosition.RIGHT,
+  )
+    private set
+
+  fun show(visible: Boolean) {
+    this.visible = visible
+    Platform.saveSetting(FEED_VISIBLE_KEY, visible.toString())
+  }
+
+  fun place(position: FeedPosition) {
+    this.position = position
+    Platform.saveSetting(FEED_POSITION_KEY, position.name)
+  }
+
+  /** Back to the defaults (without a login). */
+  fun reset() {
+    visible = true
+    position = FeedPosition.RIGHT
+    Platform.saveSetting(FEED_VISIBLE_KEY, null)
+    Platform.saveSetting(FEED_POSITION_KEY, null)
+  }
+}
 private val FEED_WIDTH = 440.dp
 
 enum class FeedPosition { RIGHT, LEFT, BELOW }
@@ -237,19 +265,10 @@ private fun TrackerApp() {
     }
   }
 
-  // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
-  var feedVisible by remember { mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false") }
-  var feedPosition by remember {
-    mutableStateOf(FeedPosition.entries.firstOrNull { it.name == Platform.loadSetting(FEED_POSITION_KEY) } ?: FeedPosition.RIGHT)
-  }
-  fun setFeedVisible(visible: Boolean) {
-    feedVisible = visible
-    Platform.saveSetting(FEED_VISIBLE_KEY, visible.toString())
-  }
-  fun setFeedPosition(position: FeedPosition) {
-    feedPosition = position
-    Platform.saveSetting(FEED_POSITION_KEY, position.name)
-  }
+  val feedVisible = FeedSettings.visible
+  val feedPosition = FeedSettings.position
+  fun setFeedVisible(visible: Boolean) = FeedSettings.show(visible)
+  fun setFeedPosition(position: FeedPosition) = FeedSettings.place(position)
 
   RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
