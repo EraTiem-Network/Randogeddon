@@ -568,6 +568,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - The last Session-Manager stays, for Administrators too: someone else becomes Session-Manager first (the
           panel says so; `KEEP_MANAGER` on the server)
         - What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*
+    - [x] Polish: Randogeddon Bridge for hosted slots: offered to the session's Session-Managers and Administrators
+          (they have the password), still not to its players, never a locked one
+    - [x] Polish: Randogeddon Bridge on the command line, for the computer a hosted game runs on: `login` (the key from
+          standard input), `slots`, `relay -session -slot [-port]`, `logout`
+    - [x] Polish: Randogeddon Bridge quits once its page or the browser is closed (unless back within 10 seconds)
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes
