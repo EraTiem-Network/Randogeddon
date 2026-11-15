@@ -437,9 +437,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           again. Measured: 5 s → 2.2 s per listing; generating and starting game servers gain the same way.
         - Several files in one request, uploads and removals alike: one listing for all of them (and once more if
           one is refused and taken out again), instead of one per file
-    - [ ] Bug: after a click inside a user's floating panel (*Users*), it can't be closed any more (neither × nor a
+    - [x] Bug: after a click inside a user's floating panel (*Users*), it can't be closed any more (neither × nor a
           click outside)
-    - [ ] Polish: the floating panel becomes a user information panel, everything about the account in one place
+    - [x] Polish: the floating panel becomes a user information panel, everything about the account in one place
         - Its fields, each with its label: name, e-mail address, ID (to copy), state (active, invited), group
           (Administrator or not), made on, the invitation (until when its link works), auto-deletion and when the
           account deletes itself; *n/a* for what an account doesn't have (an invited one's name, a deletion that
@@ -448,14 +448,24 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - Possibly more from the server (new fields of `AdminUser`): how they log in (password, Authentik), whether
           two-factor login is on, the last login. To be decided when it is fixed.
         - An invited one's *Send again* / *Other address* stay in it
-    - [ ] Bug: selecting a finished session breaks the view: the session shows no content, and after it the panel
-          and *Your account* are empty too (until a reload). To reproduce first: from where it is picked (the
-          dashboard's other sessions, the session switch on the top card, a link) and what the browser's console says
-    - [ ] Polish: the state on the top card (the game server's: connected, stopped) only for a session that isn't
+    - [x] Bug: selecting a finished session breaks the view: the session shows no content, and after it the panel
+          and *Your account* are empty too (until a reload)
+        - The cause: any session's dashboard on a wide screen crashed since 0.13.2 (the tiles' row measured *Your
+          connection*, which decided its columns by its own width), and Compose draws nothing after a crash
+    - [x] Polish: the state on the top card (the game server's: connected, stopped) only for a session that isn't
           finished; a finished one has no game server
-    - [ ] Bug: zooming is broken again: sometimes it zooms in, but it doesn't zoom out any more
-        - The page reloads once a zoom has settled (`index.html`, `watchZoom`: Compose keeps the pixel density it
-          started with); to find out first: on which device and how (Ctrl and the wheel, Ctrl +/−, pinching on a
-          phone), and whether the Compose canvas takes the events (wheel, keys, touch) before the browser's own zoom
-          gets them, or the reload mid-zoom loses the next step
+    - [x] Bug: zooming is broken again: sometimes it zooms in, but it doesn't zoom out any more
+        - The app doesn't block the browser's zoom (Ctrl and the wheel, Ctrl +/−/0 reach it). On a phone, the login
+          form's 12.5 px fields made it zoom in by itself, and over the app's canvas a pinch can't zoom back out:
+          16 px now. On a computer, the page noticed a zoom by a media query on the exact pixel density, which can
+          miss one like 1.3636…: by the window's size now
+    - [ ] Polish: *APWorlds*, *Remove…*: a *Select all* button next to *Remove (n)* / *Cancel* (all uploaded files of
+          that release; again: none)
+    - [ ] Polish: the bridge's line in *Your connection*: `Bridge ⓘ` on the left, *Create key* on the right, without
+          the line of text between them
+        - Its ⓘ in parts, each with a small heading (the tip takes headed parts already, `InfoTip`'s `options`):
+          what it is, what it does, how to use it (download, create a key, paste it, open a relay, the address into
+          the game), then starting it per system: Windows, macOS, Linux, each its own part
+        - A new key shows like the slot's password: hidden (dots) with *Show* / *Hide* and *Copy*, plus a button
+          that closes the key's line (it is shown only this once, as now)
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
