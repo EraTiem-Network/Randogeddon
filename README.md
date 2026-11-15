@@ -268,7 +268,8 @@ docker compose up -d
    Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
    dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
    see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
-   server up. No account can be named *Hosted*; Randogeddon Bridge leaves hosted slots out.
+   server up. No account can be named *Hosted*. Randogeddon Bridge offers a hosted slot to its Session-Managers and
+   Administrators (for a hosted game that can't do TLS), not to its players.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
@@ -483,8 +484,16 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
 - **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
   session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
   once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
-  password don't matter: the bridge fills in the slot's. Starting it again opens the running one's page; *Quit* ends
-  it (on Windows it has no console window). A newer bridge on the dashboard shows a notice with its download.
+  password don't matter: the bridge fills in the slot's. It offers the user's own slots, and to Session-Managers and
+  Administrators the session's hosted slots too; never a locked one. Starting it again opens the running one's page;
+  *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
+  back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
+- **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
+  `randogeddon-bridge login` reads the key from standard input (`echo <key> | randogeddon-bridge login`; never an
+  argument, which others on the computer could see), `slots` lists what it can open (session, slot, game, hosted),
+  `relay -session <id> -slot <name> [-port <port>]` runs one relay until Ctrl+C (a fixed port keeps the game's
+  setting; its state as it changes; it ends once the key is ended), `logout` ends the key. `-server <url>` goes
+  before the command; the command line logs only to the terminal.
 - **Kept:** the dashboard's address and the key in the user's config directory, `Randogeddon/bridge.json` (readable
   only by them; removed at *Log out*), and `bridge.log` of the last run. `-server <url>` points it at another dashboard
   (the local demo: `-server http://localhost:8000`), `-no-browser` only writes the page's link to the log.
