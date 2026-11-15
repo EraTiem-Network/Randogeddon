@@ -3,9 +3,21 @@
 Versions follow [Semantic Versioning](https://semver.org/). While in development: `0.<phase>.<step>`, the phase as in
 `.docs/TODO.md` and the step its PR, in the order they were merged; a follow-up to a step gets a fourth number
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
-it the release, and the merge is tagged `v<version>`.
+it the release, and the merge is tagged `v<version>`. Each release also publishes Randogeddon Bridge's builds to
+Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`); from 1.0.0 on, each is a GitHub release too, with
+the bridge's builds and its part of this file as the notes.
 
 ## Phase 12: Randogeddon Bridge
+Games that can't do TLS connect to `localhost`: Randogeddon Bridge, a small app on the player's PC, takes them to
+their session over `wss://` and fills in the slot's name and password. It logs in with a key from the dashboard
+(*Your connection*) and is downloaded there. Updating: migration V14 runs by itself; for publishing the bridge, run
+`infra/registry/provision.py` on the registry VM again (the repository `randogeddon-bridge`, the account `bridge`) and put its
+token into WSL (`.docs/INFRA.md`).
+
+### 0.12.3: Phase 12 done
+- README: *Randogeddon Bridge* (what it is for, the download, the key, how it stays safe), its routes, publishing it
+  under *Versions*; the changelog's preamble: the bridge's builds in Artifact Keeper, GitHub releases from 1.0.0 on;
+  TODO: Phase 12 done.
 
 ### 0.12.2.1: Sessions by their ID in the bridge
 - The bridge names the sessions by their ID (as their game addresses do): their title is the dashboard's own unless a
