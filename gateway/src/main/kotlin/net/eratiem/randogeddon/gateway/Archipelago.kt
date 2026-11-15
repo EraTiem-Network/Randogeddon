@@ -9,6 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.GenerationProgress
+import net.eratiem.randogeddon.shared.GenerationStage
+import java.util.concurrent.ConcurrentHashMap
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.SessionOptions
 import org.slf4j.LoggerFactory
@@ -107,6 +110,11 @@ class Launcher(
  */
 class Generator(private val archipelago: Archipelago, private val dirs: SessionDirs, private val apworlds: Apworlds) {
   private val mutex = Mutex()
+  /** How far each running generation is, by session (from Generate.py's output as it comes). */
+  private val progress = ConcurrentHashMap<String, GenerationProgress>()
+
+  /** How far session [id]'s generation is; `null`: none runs. */
+  fun progress(id: String): GenerationProgress? = progress[id]
 
   /** Throws [IllegalStateException] if session [id] has a seed already. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = mutex.withLock {
@@ -115,12 +123,17 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
     val release = apworlds.release(request.apVersion)
-    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) } }
+    progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
+    val result = try {
+      apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
+    } finally {
+      progress.remove(id)
+    }
     if (result.seedName != null) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
-  private fun run(request: GenerateRequest, home: Path, target: Path): GenerateResult {
+  private fun run(request: GenerateRequest, home: Path, target: Path, onProgress: (GenerationProgress) -> Unit): GenerateResult {
     val work = createTempDirectory("generate")
     try {
       val players = work.resolve("players").createDirectories()
@@ -137,7 +150,13 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
       Thread { if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
-      val lines = proc.inputStream.bufferedReader().readLines()
+      val lines = mutableListOf<String>()
+      proc.inputStream.bufferedReader().useLines { output ->
+        output.forEach { line ->
+          lines += line
+          generationProgress(line)?.let(onProgress)
+        }
+      }
       proc.waitFor()
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
         ?: return GenerateResult(
@@ -173,4 +192,29 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
     |  locked_worlds: [${locked.joinToString { JsonPrimitive(it).toString() }}]
     |  early_keys: $earlyKeys
     |""".trimMargin()
+}
+
+/** Generate.py's stages by what it logs at their start, with about how far along that is in all (filling takes longest). */
+private val STAGES = listOf(
+  "Creating MultiWorld." to GenerationProgress(GenerationStage.CREATING, 5),
+  "Creating Items." to GenerationProgress(GenerationStage.ITEMS, 10),
+  "Calculating Access Rules." to GenerationProgress(GenerationStage.RULES, 15),
+  "Running Item Plando." to GenerationProgress(GenerationStage.PLANDO, 25),
+  "Running Pre Main Fill." to GenerationProgress(GenerationStage.PREFILL, 30),
+  "Filling the multiworld" to GenerationProgress(GenerationStage.FILLING, 35),
+  "Running pre-output steps." to GenerationProgress(GenerationStage.PREOUTPUT, 70),
+  "Beginning output" to GenerationProgress(GenerationStage.OUTPUT, 75),
+  "Calculating playthrough." to GenerationProgress(GenerationStage.PLAYTHROUGH, 90),
+  "Creating final archive" to GenerationProgress(GenerationStage.ARCHIVE, 97),
+  "Done." to GenerationProgress(GenerationStage.DONE, 100),
+)
+
+private val OUTPUT_FILES = Regex("""Generating output files \((\d+)/(\d+)\)""")
+
+/** The stage a line of Generate.py's output starts, if it starts one (the output files count themselves up). */
+internal fun generationProgress(line: String): GenerationProgress? {
+  OUTPUT_FILES.find(line)?.destructured?.let { (done, all) ->
+    return GenerationProgress(GenerationStage.OUTPUT, 75 + 15 * done.toInt() / all.toInt().coerceAtLeast(1))
+  }
+  return STAGES.firstOrNull { (marker, _) -> marker in line }?.second
 }

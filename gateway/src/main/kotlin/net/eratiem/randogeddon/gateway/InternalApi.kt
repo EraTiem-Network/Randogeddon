@@ -88,6 +88,11 @@ fun Route.internalApi(
           if (result.seedName != null) sessions.added(id)
           call.respond(result)
         }
+        // How far its generation is, while it runs (no content: none runs)
+        get("/progress") {
+          val id = sessionId() ?: return@get
+          generator.progress(id)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
+        }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
