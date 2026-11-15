@@ -382,7 +382,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
       or noted with why not
 - [ ] What comes up is collected here and fixed, phase by phase as needed
-    - [ ] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
-    - [ ] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
+    - [x] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
+    - [x] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
           themes, but doesn't show what each looks like before it is picked
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)

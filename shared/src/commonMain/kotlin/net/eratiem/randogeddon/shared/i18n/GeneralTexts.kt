@@ -7,7 +7,8 @@ interface ApworldTexts {
   val tip: String
   fun notAdded(file: String, error: String): String
   fun brings(file: String, games: String): String
-  fun uploading(file: String): String
+  /** The [n]th of [of] picked files being uploaded. */
+  fun uploading(file: String, n: Int, of: Int): String
   fun removing(file: String): String
   fun removed(file: String, release: String): String
   fun trying(file: String, release: String): String
@@ -79,7 +80,7 @@ internal object EnglishApworlds : ApworldTexts {
     "release. An APWorld uploaded for another release can be tried with this one, it may or may not work."
   override fun notAdded(file: String, error: String) = "$file was not added, it doesn't load: $error"
   override fun brings(file: String, games: String) = "$file brings $games"
-  override fun uploading(file: String) = "Uploading $file…"
+  override fun uploading(file: String, n: Int, of: Int) = if (of == 1) "Uploading $file…" else "Uploading $file ($n of $of)…"
   override fun removing(file: String) = "Removing $file…"
   override fun removed(file: String, release: String) = "$file removed from Archipelago $release"
   override fun trying(file: String, release: String) = "Trying $file with Archipelago $release…"
@@ -122,7 +123,8 @@ internal object GermanApworlds : ApworldTexts {
     "werden; das kann klappen oder nicht."
   override fun notAdded(file: String, error: String) = "$file wurde nicht hinzugefügt, sie lädt nicht: $error"
   override fun brings(file: String, games: String) = "$file bringt $games"
-  override fun uploading(file: String) = "$file wird hochgeladen…"
+  override fun uploading(file: String, n: Int, of: Int) =
+    if (of == 1) "$file wird hochgeladen…" else "$file wird hochgeladen ($n von $of)…"
   override fun removing(file: String) = "$file wird entfernt…"
   override fun removed(file: String, release: String) = "$file aus Archipelago $release entfernt"
   override fun trying(file: String, release: String) = "$file wird mit Archipelago $release ausprobiert…"

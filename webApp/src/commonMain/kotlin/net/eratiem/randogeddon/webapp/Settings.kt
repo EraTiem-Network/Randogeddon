@@ -5,6 +5,10 @@ import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.palettes
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import net.eratiem.randogeddon.shared.i18n.text
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,6 +64,7 @@ import net.eratiem.randogeddon.shared.i18n.Language
  * Administrators with single sign-on change their name, password, address and second factor at the provider (its page
  * is the first panel), and their account goes with theirs there: those panels aren't shown to them.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
   val p = LocalPalette.current
@@ -131,14 +137,11 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
             }
           }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Select(Theme.entries.map { it to acc.theme(it) }, Themes.theme, { save(it, Themes.mode) }, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
-          Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
-        }
-        // The theme's colours, as they show now: the brand, the items, the states
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          listOf(p.brandStart, p.brandEnd, p.progression, p.useful, p.trap, p.ok, p.warn, p.key).forEach { colour ->
-            Box(Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).background(colour))
+        Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+        // Every theme as it looks in the mode that shows now (automatic: the device's), a click picks it
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Theme.entries.forEach { theme ->
+            ThemeCard(theme, acc.theme(theme), theme == Themes.theme) { save(theme, Themes.mode) }
           }
         }
         appearanceState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
@@ -415,6 +418,41 @@ private fun QrCode(rows: List<String>, modifier: Modifier) {
     rows.forEachIndexed { y, row ->
       row.forEachIndexed { x, c ->
         if (c == '1') drawRect(Color.Black, Offset((x + 4) * cell, (y + 4) * cell), Size(cell + 0.5f, cell + 0.5f))
+      }
+    }
+  }
+}
+
+/** One theme to pick: a small page in its colours (the brand, a panel with text, the item and state colours), its name. */
+@Composable
+private fun ThemeCard(theme: Theme, name: String, chosen: Boolean, onPick: () -> Unit) {
+  val p = LocalPalette.current
+  val t = palettes(theme).let { (light, dark) -> if (p.dark) dark else light }.palette()
+  val shape = RoundedCornerShape(12.dp)
+  Column(
+    Modifier.width(150.dp).clip(shape)
+      .border(if (chosen) 2.dp else 1.dp, if (chosen) p.accent else p.border, shape)
+      .hand().selectable(chosen, role = Role.RadioButton, onClick = onPick)
+      .background(t.background),
+  ) {
+    Box(Modifier.fillMaxWidth().height(6.dp).background(t.brand))
+    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(t.panel)
+          .border(1.dp, t.border, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
+      ) {
+        Txt("Aa", size = 12.sp, color = t.text, weight = FontWeight.SemiBold)
+        Box(Modifier.padding(top = 3.dp).width(64.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(t.muted))
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(t.progression, t.useful, t.trap, t.ok, t.warn, t.key).forEach { colour ->
+          Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(colour))
+        }
+      }
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Txt(name, size = 12.5.sp, color = t.text, weight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
+          maxLines = 1, modifier = Modifier.weight(1f))
+        if (chosen) DrawnIcon(Icon.CHECK, t.accent, 14.dp)
       }
     }
   }
