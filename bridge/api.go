@@ -44,6 +44,8 @@ type Slot struct {
 	Game     string `json:"game"`
 	Password string `json:"password"`
 	Hosted   bool   `json:"hosted"`
+	// Locked: its key isn't found yet, so the gateway refuses it (no password until then).
+	Locked bool `json:"locked"`
 }
 
 // Connection is where a session's game clients connect and the user's slots in it
