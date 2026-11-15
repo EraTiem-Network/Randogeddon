@@ -13,6 +13,9 @@ object UserNames {
   const val MIN_LENGTH = 3
   const val MAX_LENGTH = 32
 
+  /** A hosted slot's "player" (no account): no one may be named so, in any case. */
+  const val HOSTED = "Hosted"
+
   fun valid(name: String): Boolean = problem(name) == null
 
   /** What's wrong with [name]; `null`: nothing (except maybe being taken). */
@@ -22,6 +25,7 @@ object UserNames {
     name != name.trim() -> Problem.NAME_SPACES
     '@' in name -> Problem.NAME_AT
     name.any { it.isISOControl() } -> Problem.NAME_CONTROL
+    name.equals(HOSTED, ignoreCase = true) -> Problem.NAME_RESERVED
     else -> null
   }?.let { Refusal(it) }
 }

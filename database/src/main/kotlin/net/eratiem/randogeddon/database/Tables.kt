@@ -119,6 +119,13 @@ object SessionWorldsTable : Table("session_worlds") {
   override val primaryKey = PrimaryKey(sessionId, slotName, userId)
 }
 
+/** A session's hosted slots (V15): games that run as a server of their own; no account plays them. */
+object SessionHostedSlotsTable : Table("session_hosted_slots") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val slotName = varchar("slot_name", 64)
+  override val primaryKey = PrimaryKey(sessionId, slotName)
+}
+
 object SlotPasswordsTable : Table("slot_passwords") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)

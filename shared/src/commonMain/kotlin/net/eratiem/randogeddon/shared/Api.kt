@@ -353,7 +353,13 @@ data class Connection(
 )
 
 @Serializable
-data class MySlot(val name: String, val game: String, val password: String)
+data class MySlot(
+  val name: String,
+  val game: String,
+  val password: String,
+  /** A hosted slot of the session: its patch files for its players (no password); all of it for its Session-Managers. */
+  val hosted: Boolean = false,
+)
 
 /** The game server (MultiServer, run by the gateway) as the admin panel shows it. */
 @Serializable
@@ -465,6 +471,8 @@ data class WorldPlan(
   val userIds: List<String> = emptyList(),
   val locked: Boolean = false,
   val random: Boolean = false,
+  /** A hosted slot: the game runs as a server of its own, which its players join with their games; nobody plays it. */
+  val hosted: Boolean = false,
 )
 
 @Serializable

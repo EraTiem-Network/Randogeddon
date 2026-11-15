@@ -54,6 +54,9 @@ interface ConnectionTexts {
   /** The heading of the slot's files. */
   val patchFiles: String
   val noPatchFiles: String
+  /** A hosted slot in *Your connection*: for its players, and for its Session-Managers (who see its connection). */
+  val hostedNote: String
+  val hostedManagerNote: String
   val download: String
   /** How to use a slot's file (the ⓘ next to it). */
   val patchHowTo: String
@@ -160,6 +163,10 @@ internal object EnglishConnection : ConnectionTexts {
   override val show = "Show"
   override val patchFiles = "Patch files"
   override val noPatchFiles = "None for this slot: its game needs no patch."
+  override val hostedNote = "This slot is hosted: its game runs as a server of its own. Join that server with your " +
+    "game; its patch files are below."
+  override val hostedManagerNote = "This slot is hosted: its game runs as a server of its own, which the players join. " +
+    "Set that server up with this connection."
   override val download = "Download"
   override val patchHowTo = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
     "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
@@ -204,6 +211,10 @@ internal object GermanConnection : ConnectionTexts {
   override val show = "Zeigen"
   override val patchFiles = "Patch-Dateien"
   override val noPatchFiles = "Keine für diesen Slot: Sein Spiel braucht keinen Patch."
+  override val hostedNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server. Tritt diesem Server mit " +
+    "deinem Spiel bei; seine Patch-Dateien stehen unten."
+  override val hostedManagerNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server, dem die Spieler " +
+    "beitreten. Richte diesen Server mit dieser Verbindung ein."
   override val download = "Herunterladen"
   override val patchHowTo = "Die Datei deines Slots aus dem Seed: ein Patch oder bei manchen Spielen eine Mod. Einen " +
     "Patch öffnest du mit dem Archipelago Launcher (Open Patch) zusammen mit deiner eigenen Kopie des Spiels (dem ROM); " +

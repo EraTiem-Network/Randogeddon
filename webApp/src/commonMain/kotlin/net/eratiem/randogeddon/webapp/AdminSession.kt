@@ -89,6 +89,7 @@ import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
+import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
 
@@ -645,6 +646,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var problems by remember { mutableStateOf<List<ApiError>>(emptyList()) }
   // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
   val users = remember { mutableStateMapOf<String, List<String>>() }
+  // The hosted slots: no players, their games run as servers of their own
+  val hosted = remember { mutableStateMapOf<String, Boolean>() }
   val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
   var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
@@ -817,7 +820,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     worlds.forEach { world ->
       val isLocked = world.name in lockedNow
       WorldRow(
-        world, users[world.name].orEmpty(), people,
+        world, users[world.name].orEmpty(), people, hosted = hosted[world.name] == true,
+        onHosted = { yes -> hosted[world.name] = yes; if (yes) users[world.name] = emptyList() },
         onInvite = { email ->
           when (val r = inviteForSession(email)) {
             is Answer.Ok -> r.value.also { people += it }
@@ -881,8 +885,9 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
             yamls = yamls.toList(),
             worlds = worlds.map {
               WorldPlan(
-                it.name, userIds = users[it.name].orEmpty(), locked = it.name in lockedNow,
-                random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+                it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
+                locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+                hosted = hosted[it.name] == true,
               )
             },
             options = options.copy(openSlots = open),
@@ -924,6 +929,9 @@ private fun WorldRow(
   world: YamlWorld,
   users: List<String>,
   known: List<UserRef>,
+  /** Hosted (typed "Hosted" in its player field): no players, and no field to add them. */
+  hosted: Boolean,
+  onHosted: (Boolean) -> Unit,
   /** Invites an address from here: the new account, or `null` (the form shows why). */
   onInvite: suspend (String) -> UserRef?,
   lock: @Composable () -> Unit,
@@ -952,7 +960,11 @@ private fun WorldRow(
         }
         lock()
       }
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      if (hosted) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        UserChip(UserNames.HOSTED, invited = false, onRemove = { onHosted(false) })
+        InfoTip(t.sessionAdmin.hostedTip)
+      }
+      if (!hosted) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { id ->
           val user = known.firstOrNull { it.id == id }
           UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
@@ -967,8 +979,12 @@ private fun WorldRow(
           minHeight = FIELD_HEIGHT,
         )
       }
-      if (input.isNotBlank()) {
+      if (!hosted && input.isNotBlank()) {
         val address = EmailAddresses.normalize(input)
+        // "Hosted" (or the start of it) makes it a hosted slot
+        if (UserNames.HOSTED.startsWith(input.trim(), ignoreCase = true)) {
+          SmallButton(t.sessionAdmin.makeHosted, { input = ""; onHosted(true) })
+        }
         when {
           suggestions.isNotEmpty() ->
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { suggestions.forEach { SmallButton(it.label, { add(it) }) } }

@@ -18,6 +18,7 @@ import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
+import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
@@ -142,13 +143,20 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     return store.ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
   }
 
-  /** The slots of [person] in [session] (a slot played together is theirs too) with game and password. */
-  suspend fun of(session: LiveSession, person: String): List<MySlot> {
+  /**
+   * The slots of [person] in [session] (a slot played together is theirs too) with game and password; then its hosted
+   * slots for everyone who plays in it or manages it ([manages]: with their passwords, to set the game's server up).
+   */
+  suspend fun of(session: LiveSession, person: String?, manages: Boolean = false): List<MySlot> {
     val room = Room.read(session.roomJson) ?: return emptyList()
     val passwords = current(session)
     val games = room.players.associate { it.name to it.game }
-    return session.people()[person].orEmpty().mapNotNull { slot ->
-      passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) }
+    val hosted = session.setup?.hosted.orEmpty()
+    val own = person?.takeIf { it != UserNames.HOSTED }?.let { session.people()[it] }.orEmpty().filter { it !in hosted }
+      .mapNotNull { slot -> passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) } }
+    if (person == null && !manages) return own
+    return own + hosted.sorted().mapNotNull { slot ->
+      passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (manages) it else "", hosted = true) }
     }
   }
 
