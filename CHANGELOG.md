@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.12: The bridge for hosted slots, on the command line
+- Randogeddon Bridge offers a session's hosted slots to its Session-Managers and Administrators (who see their
+  password), for a hosted game that can't do TLS; its players still don't get them, and a locked slot never.
+- A command line for a computer without a browser: `login` (the key from standard input), `slots`, `relay -session
+  <id> -slot <name> [-port <port>]` (until Ctrl+C, on a fixed port if wanted) and `logout`.
+- The bridge quits once its page is closed, or the browser is: the page keeps a WebSocket to it (`/api/alive`), and
+  without a page for 10 seconds (a reload comes back in time) it ends with its relays. Started with `-no-browser`, it
+  runs until *Quit*.
+
 ### 0.13.11: One People
 - The panel's *Players* and *People* are one *People*: everyone of the session as a pill with their part. A click opens
   their panel: their slots (game, how far, how it stands), how far they are in the session, played and last active;
