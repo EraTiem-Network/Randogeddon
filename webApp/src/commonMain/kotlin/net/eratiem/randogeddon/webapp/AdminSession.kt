@@ -80,6 +80,8 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.GenerationStage
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
@@ -666,6 +668,17 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
   var busy by remember { mutableStateOf(false) }
   var error by remember { mutableStateOf<Answer.Failed?>(null) }
+  // How far the generation is while it runs (asked every second)
+  var progress by remember { mutableStateOf<GenerationProgress?>(null) }
+  LaunchedEffect(busy) {
+    progress = null
+    while (busy) {
+      delay(1_000)
+      (call("GET", "api/sessions/new/progress/$id", null) {
+        if (it.isBlank()) null else ApiJson.decodeFromString(GenerationProgress.serializer(), it)
+      } as? Answer.Ok)?.value?.let { progress = it }
+    }
+  }
   // The YAML to remove, asked once more; "": all of them
   var removing by remember { mutableStateOf<String?>(null) }
   // Why the files just picked that aren't player YAMLs weren't taken
@@ -891,11 +904,15 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
+    // Every slot played by someone, or hosted
+    val unplayed = usable.filter { hosted[it.name] != true && users[it.name].isNullOrEmpty() }.map { it.name }
+    if (unplayed.isNotEmpty()) Txt(t.sessionAdmin.slotsWithoutPlayer(unplayed.joinToString(", ")), size = 12.5.sp, color = p.warn)
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
         if (busy) t.sessionAdmin.generating else t.sessionAdmin.generateAndStart,
-        enabled = ready && !busy && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk,
+        enabled = ready && !busy && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
+          unplayed.isEmpty(),
       ) {
         busy = true
         error = null
@@ -922,6 +939,12 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         }
       }
       if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
+    }
+    // While it generates: the stage and about how far, as a bar
+    if (busy) Column(Modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
+      ProgressBar(now.percent / 100f)
+      Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
     }
     error?.let { GenerationError(it.message, it.detail) }
   }
