@@ -9,6 +9,15 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.6: Hosted slots
+- For games that run as a server of their own, which their players join with their games instead of Archipelago:
+  *Hosted* typed into a slot's player field makes it a hosted slot (no players, no field to add any; × makes it an
+  ordinary slot again). Migration V15: `session_hosted_slots`.
+- The dashboard and the panel show the hosted slots on a card of their own, *Hosted*. *Your connection*: the session's
+  players can pick a hosted slot and see its patch files (no name, no password); its Session-Managers see its whole
+  connection, to set the game's server up, even if they don't play. Its files are the players' to download too.
+- *Hosted* is reserved: no account can be named so (`NAME_RESERVED`). Randogeddon Bridge leaves hosted slots out.
+
 ### 0.13.5: More from the hand test
 - *Your connection*: the patch files are back under the slot and its password; the right column is the bridge's. The
   bridge has a line of its own (`Randogeddon Bridge ⓘ`, *Create key*, *Fold away*): folded, the card is one narrow
