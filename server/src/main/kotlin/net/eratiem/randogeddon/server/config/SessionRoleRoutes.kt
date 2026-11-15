@@ -1,7 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -9,7 +7,9 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.SessionAdmin
@@ -18,8 +18,10 @@ import net.eratiem.randogeddon.shared.AddPersonRequest
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InviteRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.RoleRequest
 import net.eratiem.randogeddon.shared.SessionRole
-import kotlin.uuid.Uuid
 
 /**
  * Under the protected `/api` branch, for every user: the sessions they manage (`/manage`), what a new session can use
@@ -70,6 +72,13 @@ fun Route.peopleRoutes(people: SessionPeopleService, logins: LoginCheck) {
     get("/choices") { call.respond(people.choices(id())) }
     post {
       accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.loggedIn.user, call.language())) }
+    }
+    put("/{user}") {
+      accountCall {
+        val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+          ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+        call.respond(people.change(id(), user, call.receive<RoleRequest>().role, call.loggedIn.user))
+      }
     }
     delete("/{user}") {
       accountCall {
