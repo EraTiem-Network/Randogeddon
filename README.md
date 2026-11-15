@@ -14,25 +14,21 @@ Words used here and in the dashboard: a **player** is a person (with a login); a
 the multiworld, played by one or more players (Archipelago itself says "player" for a slot, e.g. in `/send <player>`);
 the **game** is just its title, e.g. Hollow Knight.
 
-```
-              players' game clients                      browser
-                       │ wss://<session-id>.randogeddon     │ https://randogeddon
-                       │       .example.net:443             │         .example.net
-                 ┌─────▼─────────────── Traefik ────────────▼─────┐
-                 │                                                │
-        ┌────────▼──────────────────┐                 ┌───────────▼──────────┐
-        │  gateway (Ktor)           │  internal API   │  tracker (Ktor)      │
-        │  checks each Connect's    │◄────────────────┤  login, API, SSE,    │
-        │  slot password            │  :8001 (control)│  the panel,          │
-        │  ┌─────────────────────┐  │                 │  Wasm app            │
-        │  │ MultiServer per     │◄─┼─────────────────┤  Tracker-tag clients │
-        │  │ session :38300…     │  │                 │  per session         │
-        │  └─────────────────────┘  │                 └───┬──────────────────┘
-        └──────┬──────────┬─────────┘                     │
-  ./data/sessions/<id>/   │                       ┌───────▼──────────────┐
-                          └──────────────────────►│  postgres            │
-                            reads slot passwords  │  logins, slot pw     │
-                                                  └──────────────────────┘
+```mermaid
+flowchart TB
+  clients["players' game clients"] -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  browser -- "https://randogeddon.eratiem.net" --> traefik
+  traefik[Traefik] --> gateway
+  traefik --> tracker
+  subgraph gateway ["gateway (Ktor): checks each Connect's slot password"]
+    multiserver["MultiServer per session :38300…"]
+  end
+  tracker["tracker (Ktor): login, API, SSE, the panel, Wasm app"]
+  tracker -- "internal API :8001 (control)" --> gateway
+  tracker -- "Tracker-tag clients per session" --> multiserver
+  gateway --> sessions[("./data/sessions/#lt;id#gt;/")]
+  gateway -- "reads slot passwords" --> postgres[("postgres: logins, slot passwords")]
+  tracker --> postgres
 ```
 
 The gateway runs one MultiServer per running session as a child process, each on a port of `AP_PORTS` (default
@@ -255,7 +251,8 @@ docker compose up -d
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
-   *Generate and start*. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   *Generate and start* (once every slot has a player or is hosted; while it generates, a bar shows the stage and about
+   how far it is). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
    name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
@@ -680,8 +677,9 @@ which the next step drops again. `CHANGELOG.md` lists every version by phase.
 
 For a release, `scripts/deploy.sh` also publishes Randogeddon Bridge (`scripts/publish-bridge.sh`, copied out of the
 tracker image, so exactly the builds it serves): to `pkg.example.org`, the generic repository `randogeddon-bridge`,
-as `<version>/<file>` with `SHA256SUMS`. From 1.0.0 on, every release is also a GitHub release `v<version>`, with the
-bridge's builds and the version's part of `CHANGELOG.md` as its notes. `--dry-run` shows what it would do.
+as `<version>/<file>` with `SHA256SUMS`. Every release is also a GitHub release `v<version>`, the version's part of
+`CHANGELOG.md` as its notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
+`--dry-run` shows what it would do.
 
 ### Texts and languages
 
