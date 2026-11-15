@@ -8,6 +8,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
@@ -112,35 +114,49 @@ fun ConnectionSection(
       if (slot != null) {
         Field(c.slot, slot.name)
         PasswordField(slot)
+        // The slot's files belong to it
+        if (mine) {
+          SmallHeading(c.patchFiles)
+          val own = files.filter { it.slotName == slot.name }
+          if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)
+          own.forEach { file -> FileField(sessionId, file) }
+        }
       }
-    }
-    val extras: @Composable () -> Unit = {
-      if (slot != null) {
-        SmallHeading(c.patchFiles)
-        val own = files.filter { it.slotName == slot.name }
-        if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)
-        own.forEach { file -> FileField(sessionId, file) }
-      }
-      BridgePart()
     }
     Box(Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp)) {
-      if (mine && twoColumns) {
+      if (mine && twoColumns && BridgeFold.open) {
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
           Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { connect() }
-          Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { extras() }
+          Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { BridgePart() }
         }
       } else {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
           connect()
-          if (mine) extras()
+          if (mine) BridgePart()
         }
       }
     }
   }
 }
 
-/** From this width on, *Your connection* puts the slot's files and the bridge beside the server and the slot. */
+/** From this width on, *Your connection* puts the bridge beside the server and the slot. */
 internal val CONNECTION_TWO_COLUMNS = 640.dp
+
+private const val BRIDGE_KEY = "ap-bridge"
+
+/**
+ * Whether the bridge is open in *Your connection* (remembered in this browser): folded, it is just its heading, the card
+ * is one narrow column again, and the dashboard gives the tiles beside it the room.
+ */
+internal object BridgeFold {
+  var open: Boolean by mutableStateOf(Platform.loadSetting(BRIDGE_KEY) != "folded")
+    private set
+
+  fun toggle() {
+    open = !open
+    Platform.saveSetting(BRIDGE_KEY, if (open) null else "folded")
+  }
+}
 
 /** A small heading inside the card: the slot's files, the bridge's downloads. */
 @Composable
@@ -149,8 +165,9 @@ private fun SmallHeading(text: String) {
 }
 
 /**
- * Randogeddon Bridge: what it is and how to start it (its ⓘ), *Create key* (the new key is shown once, to copy into the
- * bridge), then its downloads (once the dashboard offers them), a row per system.
+ * Randogeddon Bridge: its heading with its ⓘ (what it is, what it does, how to use it, starting it on each system),
+ * *Create key* and the fold button; open, the new key (shown once, like a password, until it is closed) and the
+ * downloads (once the dashboard offers them), a row per system.
  */
 @Composable
 private fun BridgePart() {
@@ -165,11 +182,22 @@ private fun BridgePart() {
     (call("GET", "downloads/bridge", null) { ApiJson.decodeFromString(BridgeDownloads.serializer(), it) } as? Answer.Ok)
       ?.let { offered = it.value }
   }
+  val open = BridgeFold.open
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Label(c.bridge)
-    Txt(c.bridgeLine, size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
-    InfoTip("${c.bridgeHowTo} ${c.bridgeUnsigned}")
-    SmallButton(c.makeKey, {
+    Txt(c.bridge, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+    InfoTip(
+      "",
+      sections = listOf(
+        c.bridgeWhatTitle to c.bridgeWhat,
+        c.bridgeDoesTitle to c.bridgeDoes,
+        c.bridgeHowTitle to c.bridgeHow,
+        "Windows" to c.bridgeWindows,
+        "macOS" to c.bridgeMacos,
+        "Linux" to c.bridgeLinux,
+      ),
+    )
+    Spacer(Modifier.weight(1f))
+    if (open) SmallButton(c.makeKey, {
       scope.launch {
         when (val r = call("POST", "api/account/bridge-keys", null) { ApiJson.decodeFromString(BridgeKey.serializer(), it) }) {
           is Answer.Ok -> { key = r.value; problem = null }
@@ -177,15 +205,10 @@ private fun BridgePart() {
         }
       }
     })
+    SmallButton(if (open) c.foldBridge else c.openBridge, { BridgeFold.toggle() })
   }
-  key?.let { made ->
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Label("")
-      Mono(made.key, Modifier.weight(1f))
-      SmallButton(t.common.copy, { Platform.copy(made.key) })
-    }
-    Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = p.muted)
-  }
+  if (!open) return
+  key?.let { made -> KeyField(made) { key = null } }
   problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
     SmallHeading(c.downloads(offered?.version.orEmpty()))
@@ -199,6 +222,21 @@ private fun BridgePart() {
       }
     }
   }
+}
+
+/** A new bridge key, shown only this once: hidden like a password until shown, to copy; closed by its ×. */
+@Composable
+private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
+  val t = LocalTexts.current
+  val c = t.connection
+  var shown by remember(made.key) { mutableStateOf(false) }
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Mono(if (shown) made.key else "•".repeat(12), Modifier.weight(1f))
+    SmallButton(if (shown) c.hide else c.show, { shown = !shown })
+    SmallButton(t.common.copy, { Platform.copy(made.key) })
+    IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp))
+  }
+  Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = LocalPalette.current.muted)
 }
 
 @Composable

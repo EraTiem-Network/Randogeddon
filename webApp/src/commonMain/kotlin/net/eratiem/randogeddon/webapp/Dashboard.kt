@@ -104,7 +104,9 @@ private fun FeedPosition.label(t: Texts): String = when (this) {
 }
 private val WIDE = 1100.dp
 private val GAP = 16.dp
-private val CONNECTION_WIDTH = 720.dp
+/** *Your connection* beside the tiles: with the bridge open beside the rest, or one column (folded, or not playing). */
+private val CONNECTION_WIDE = 720.dp
+private val CONNECTION_NARROW = 420.dp
 /** The tiles' room beside *Your connection*: three of them (at least 160 dp each) in a row; with less, it goes above. */
 private val STATS_BESIDE = 160.dp * 3 + 12.dp * 2
 /** The side feed is never shorter than this, even next to a single small person card. */
@@ -360,14 +362,15 @@ private fun TrackerApp() {
               onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
               onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
             )
-            if (wide && contentWidth - CONNECTION_WIDTH - GAP >= STATS_BESIDE) {
+            val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
+            if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+                Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
                 ConnectionSection(
                   user.name, connection, selected.orEmpty(), files, mine, role, s,
-                  Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true,
-                  twoColumns = CONNECTION_WIDTH >= CONNECTION_TWO_COLUMNS,
+                  Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
+                  twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
                 )
               }
             } else {

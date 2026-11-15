@@ -405,7 +405,13 @@ fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
  * to close). [options]: the choices of the option (name, what it means), each below a divider.
  */
 @Composable
-fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<String, String>> = emptyList()) {
+fun InfoTip(
+  text: String,
+  modifier: Modifier = Modifier,
+  options: List<Pair<String, String>> = emptyList(),
+  /** Parts of a longer explanation: each its heading, its text below it. */
+  sections: List<Pair<String, String>> = emptyList(),
+) {
   val p = LocalPalette.current
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
@@ -425,21 +431,26 @@ fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<Stri
         offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }),
         onDismissRequest = { tapped = false; closedAt = Platform.now() },
       ) {
-        TipCard(text, options)
+        TipCard(text, options, sections)
       }
     }
   }
 }
 
-/** What a tip says: the text, then each choice (name, meaning) below a divider. */
+/** What a tip says: the text, then each choice (name, meaning) and each part (heading, text) below a divider. */
 @Composable
-private fun TipCard(text: String, options: List<Pair<String, String>>) {
+private fun TipCard(text: String, options: List<Pair<String, String>>, sections: List<Pair<String, String>> = emptyList()) {
   val p = LocalPalette.current
   Column(
     Modifier.widthIn(max = 340.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    Txt(text, size = 12.sp)
+    if (text.isNotBlank()) Txt(text, size = 12.sp)
+    sections.forEachIndexed { i, (heading, body) ->
+      if (i > 0 || text.isNotBlank()) Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))
+      Txt(heading, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent)
+      Txt(body, size = 12.sp)
+    }
     options.forEach { (name, meaning) ->
       Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
