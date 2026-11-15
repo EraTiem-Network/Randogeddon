@@ -367,10 +367,14 @@ private fun TrackerApp() {
                 ConnectionSection(
                   user.name, connection, selected.orEmpty(), files, mine, role, s,
                   Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true,
+                  twoColumns = CONNECTION_WIDTH >= CONNECTION_TWO_COLUMNS,
                 )
               }
             } else {
-              ConnectionSection(user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth())
+              ConnectionSection(
+                user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
+                twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
+              )
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
@@ -499,8 +503,8 @@ private fun Hero(
       }
     }
     val controls: @Composable () -> Unit = {
-      // As tall as the buttons next to it
-      Row(
+      // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
+      if (summary != null && summary.finishedAt == null) Row(
         Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -509,8 +513,7 @@ private fun Hero(
         Txt(
           when {
             !streamOpen -> t.frame.reconnecting
-            summary?.finishedAt != null -> t.frame.finished
-            summary?.connected == true -> t.frame.live
+            summary.connected -> t.frame.live
             else -> t.frame.serverOffline
           }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
         )

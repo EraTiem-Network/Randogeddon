@@ -8,7 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +58,9 @@ fun ConnectionSection(
   summary: Summary,
   modifier: Modifier = Modifier,
   fillHeight: Boolean = false,
+  /** The slot's files and the bridge beside the rest (the dashboard knows the width: no measuring here, as the row of
+   * the tiles measures its children's height, which a layout that depends on its width can't answer). */
+  twoColumns: Boolean = false,
 ) {
   val p = LocalPalette.current
   val c = LocalTexts.current.connection
@@ -120,10 +123,8 @@ fun ConnectionSection(
       }
       BridgePart()
     }
-    BoxWithConstraints(
-      Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp),
-    ) {
-      if (mine && maxWidth >= TWO_COLUMNS_FROM) {
+    Box(Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p).padding(16.dp)) {
+      if (mine && twoColumns) {
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
           Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { connect() }
           Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) { extras() }
@@ -139,7 +140,7 @@ fun ConnectionSection(
 }
 
 /** From this width on, *Your connection* puts the slot's files and the bridge beside the server and the slot. */
-private val TWO_COLUMNS_FROM = 640.dp
+internal val CONNECTION_TWO_COLUMNS = 640.dp
 
 /** A small heading inside the card: the slot's files, the bridge's downloads. */
 @Composable

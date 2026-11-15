@@ -53,6 +53,10 @@ data class Account(
   val autoDelete: String,
   /** The language's code they chose (`en`, `de`); `null`: their browser's. */
   val language: String? = null,
+  /** How they log in: with a password of their own, through the identity provider (linked to it), a second factor. */
+  val hasPassword: Boolean = false,
+  val linked: Boolean = false,
+  val twoFactor: Boolean = false,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -281,6 +285,8 @@ class UserStore(private val db: RandogeddonDatabase) {
   private fun account(row: ResultRow) = Account(
     row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
+    hasPassword = row[UsersTable.passwordHash] != null, linked = row[UsersTable.oidcSubject] != null,
+    twoFactor = row[UsersTable.totpEnabledAt] != null,
   )
 }
 

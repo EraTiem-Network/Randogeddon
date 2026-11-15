@@ -9,6 +9,21 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.4: The hand test's open points
+- The dashboard of a session on a wide screen (from about 1270 px) showed nothing below the top card since 0.13.2, and
+  every page after it stayed empty until a reload (also after picking a finished session): the row of the tiles
+  measured *Your connection*, which then decided its columns by its own width, and Compose can't answer that. The
+  dashboard now says whether it has room for two columns.
+- *Users*: a click on a pill opens the account's information panel: name, address, ID (to copy), state, group, how it
+  logs in (password, single sign-on), two-factor, language, when it was made, the invitation, the deletion, *n/a* for
+  what it doesn't have, its sessions as pills that open them, and an invited one's *Send again* / *Other address*. A
+  click inside it no longer leaves it impossible to close (it keeps its own text selection now).
+- The top card shows the game server's state only for a session that has one: not finished, and not on the page of
+  all sessions.
+- Zoom: the login form's fields are 16 px (a phone zoomed into the smaller ones by itself, and over the app the zoom
+  couldn't be pinched back out); the page notices a browser zoom by the window's size and its pixel density (a media
+  query on the exact density could miss one like 1.3636… with the system's display scaling).
+
 ### 0.13.3: APWorlds faster, removed by picking
 - Uploading and removing APWorlds is faster: the picked files go in one request (several, if they are large together)
   and the release lists its games once for all of them, not once per file (and once more if one is refused). And
