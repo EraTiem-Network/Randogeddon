@@ -308,10 +308,14 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
 The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
 and its APWorld library:
 
-- **Upload APWorld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
-  checks that it is an APWorld (a zip with one world folder), loads the release's worlds again and says which game it
-  brought. One that doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have
-  replaced stays, and the panel says why. *Remove* takes one out again.
+- **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
+  at once, one after the other. The gateway checks that each is an APWorld (a zip with one world folder), names it
+  after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
+  inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. One that
+  doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
+  the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
+  would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
+  same game (by its manifest, `archipelago.json`), which goes then. *Remove* takes one out again.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
@@ -349,8 +353,10 @@ gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` 
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
 
-Below the finished sessions, Administrators find *General*: *Users*, *APWorlds* and *Settings* (how many running
-sessions one user may manage at once).
+Below the finished sessions, Administrators find *General*: *Users* (every account as a pill, marked if invited or an
+Administrator; a click shows its address, sessions, invitation and deletion, and for an invited one *Send again* and
+*Other address*), *APWorlds* and *Settings* (how many running sessions one user may manage at once). With no session
+running, the panel says so; *New session* opens the form.
 
 **On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
 spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
@@ -455,10 +461,10 @@ Game clients reach their session only over TLS (`wss://<session-id>.randogeddon.
 port. For a game whose client can't do TLS (older or unmaintained mods that only speak `ws://`), Randogeddon Bridge
 runs on the player's PC: the game connects to `localhost:<port>`, the bridge takes it to the session over `wss://`.
 
-- **Download:** under *Your connection*, for Windows, Linux (x86-64, ARM) and macOS (Intel, Apple); one file, nothing
-  to install. It isn't signed, so the system asks first: Windows *More info* → *Run anyway*; macOS right-click →
-  *Open* (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
-- **Login:** with a key, made under *Your connection* (*Make a key*, shown once) and pasted into the bridge's page. The
+- **Download:** under *Your connection*, for Windows and Linux (x86_64, ARM64) and macOS (Intel, Apple Silicon); one
+  file, nothing to install. It isn't signed, so the system asks first: Windows *More info* → *Run anyway*; macOS
+  right-click → *Open* (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
+- **Login:** with a key, made under *Your connection* (*Create key*, shown once) and pasted into the bridge's page. The
   bridge never sees a password, so Administrators who log in through Authentik use it too. A key is a login for 30
   days; *Your account* lists them (made, last used, until when) with *End*, and a new password ends them all.
 - **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
@@ -481,7 +487,7 @@ How it stays safe:
   token of the link the bridge opened (a SameSite=Strict cookie); changes need its own header too. The dashboard is
   reached only over HTTPS (plain HTTP only on the same computer).
 
-The Docker build tests it and builds the five binaries (`kotlin.Dockerfile`, the `bridge` stage: plain Go, no CGO);
+The Docker build tests it and builds the six binaries (`kotlin.Dockerfile`, the `bridge` stage: plain Go, no CGO);
 the tracker serves them at `/downloads/bridge/<file>` (`BRIDGE_DIR`, `/app/bridge` in the image), with the version
 the dashboard offers. `go test -race ./...` in `bridge/` runs its tests.
 
@@ -492,8 +498,9 @@ For every running session, the tracker connects to its room like any other Archi
 slot about its own checked locations and received items. The slot names come from `data/sessions/<id>/room.json`,
 which the gateway writes before it starts the session's game server.
 
-- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), and
-  Randogeddon Bridge (its downloads, *Make a key*).
+- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable); beside
+  them on a wide screen the slot's patch files (or that it has none) and Randogeddon Bridge (*Create key*, its
+  downloads).
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, progress, status
@@ -560,8 +567,9 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 
 Each user picks a theme and a mode under *Your account*, *Appearance*: Randogeddon (the default), Ocean, Forest,
 Ember, High contrast, or one inspired by Nintendo's consoles (N64, GameCube, Wii, Wii U, Switch, Switch 2), each light
-or dark; *Automatic* follows the device and switches with it. The button on the top card cycles light, dark and
-automatic. It is stored with the account, so it follows them to every device; before the login, and on a share
+or dark; *Automatic* follows the device and switches with it. The themes are cards, each a small page in its colours
+in the mode that shows now. The button on the top card cycles light, dark and automatic, and shows the mode it is in
+(a sun, a moon, a half-filled circle). A new theme or mode fades in. It is stored with the account, so it follows them to every device; before the login, and on a share
 link's page, the browser's last choice applies (the login page takes its colours too).
 
 A new theme: an entry in `Theme` and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
