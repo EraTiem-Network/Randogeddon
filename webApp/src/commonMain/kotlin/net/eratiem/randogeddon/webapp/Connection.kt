@@ -69,7 +69,8 @@ fun ConnectionSection(
   var picked by remember { mutableStateOf<String?>(null) }
   val slots = connection?.slots.orEmpty()
   val worlds = summary.players.associateBy { it.name }
-  val lastPlayed = slots.maxByOrNull { slot ->
+  // The one played last of one's own slots (a hosted one only if there is nothing else)
+  val lastPlayed = (slots.filter { !it.hosted }.ifEmpty { slots }).maxByOrNull { slot ->
     val world = worlds[slot.name]
     when {
       world == null -> -1
@@ -93,7 +94,8 @@ fun ConnectionSection(
     val connect: @Composable () -> Unit = {
       Field(c.server, connection?.server ?: "…")
       when {
-        !mine -> Txt(
+        // Someone who doesn't play still gets the hosted slots (a Session-Manager sets their servers up)
+        !mine && slots.none { it.hosted } -> Txt(
           when (role) {
             SessionRole.WATCHER -> c.watcherNote
             SessionRole.SUPPORT -> c.supportNote
@@ -112,10 +114,14 @@ fun ConnectionSection(
         }
       }
       if (slot != null) {
-        Field(c.slot, slot.name)
-        PasswordField(slot)
+        // A hosted slot: its players see its patch files; its Session-Managers (with its password) all of it
+        if (slot.hosted) Txt(if (slot.password.isEmpty()) c.hostedNote else c.hostedManagerNote, size = 12.5.sp, color = p.muted)
+        if (!slot.hosted || slot.password.isNotEmpty()) {
+          Field(c.slot, slot.name)
+          PasswordField(slot)
+        }
         // The slot's files belong to it
-        if (mine) {
+        if (mine || slot.hosted) {
           SmallHeading(c.patchFiles)
           val own = files.filter { it.slotName == slot.name }
           if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)

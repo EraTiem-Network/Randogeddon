@@ -120,6 +120,9 @@ interface SessionAdminTexts {
   val inviting: String
   fun inviteAddress(address: String): String
   val noAccountMatches: String
+  /** A slot's player field: making it a hosted slot (typed "Hosted"), and what that means (its chip's tip). */
+  val makeHosted: String
+  val hostedTip: String
   fun invitedName(name: String): String
   val sessionCreated: String
   fun startLocked(slots: String): String
@@ -283,6 +286,9 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val inviting = "Inviting…"
   override fun inviteAddress(address: String) = "Invite $address"
   override val noAccountMatches = "No account matches; type their e-mail address to invite them"
+  override val makeHosted = "Hosted: the game runs as a server of its own"
+  override val hostedTip = "A hosted slot: its game runs as a server of its own, which the players join with their games; " +
+    "nobody plays it from here. The Session-Managers see its connection, to set the server up; the players its patch files."
   override fun invitedName(name: String) = "$name (invited)"
   override val sessionCreated = "Session created; the game server is starting."
   override fun startLocked(slots: String) = "Start locked: $slots"
@@ -414,6 +420,10 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val inviting = "Wird eingeladen…"
   override fun inviteAddress(address: String) = "$address einladen"
   override val noAccountMatches = "Kein Konto passt; gib die E-Mail-Adresse ein, um die Person einzuladen"
+  override val makeHosted = "Hosted: Das Spiel läuft als eigener Server"
+  override val hostedTip = "Ein gehosteter Slot: Sein Spiel läuft als eigener Server, dem die Spieler mit ihren Spielen " +
+    "beitreten; von hier spielt ihn niemand. Die Session-Manager sehen seine Verbindung, um den Server einzurichten; die " +
+    "Spieler seine Patch-Dateien."
   override fun invitedName(name: String) = "$name (eingeladen)"
   override val sessionCreated = "Session erstellt; der Spielserver startet."
   override fun startLocked(slots: String) = "Starten gesperrt: $slots"
