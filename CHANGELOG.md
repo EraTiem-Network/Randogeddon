@@ -7,6 +7,15 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`); from 1.0.0 on, each is a GitHub release too, with
 the bridge's builds and its part of this file as the notes.
 
+## Phase 13: Polish and Bug Fixes
+
+### 0.13.1: Every picked APWorld, themes to see
+- *APWorlds*, *Upload APWorld…*: every picked file is uploaded, one after the other (with how far it is), and each gets
+  its own line: the games it brings, or why it wasn't added. Before, only the first was.
+- *Your account*, *Appearance*: the themes are cards instead of a dropdown, each a small page in its colours (the
+  brand, a panel with text, the item and state colours), in the mode that shows now (with *Automatic*, the device's,
+  switching with it). A click picks one; the mode stays a dropdown above them.
+
 ## Phase 12: Randogeddon Bridge
 Games that can't do TLS connect to `localhost`: Randogeddon Bridge, a small app on the player's PC, takes them to
 their session over `wss://` and fills in the slot's name and password. It logs in with a key from the dashboard
