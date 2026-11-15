@@ -152,12 +152,42 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     val passwords = current(session)
     val games = room.players.associate { it.name to it.game }
     val hosted = session.setup?.hosted.orEmpty()
+    // A locked slot has no password until its key is found
+    val locked = lockedNow(session)
     val own = person?.takeIf { it != UserNames.HOSTED }?.let { session.people()[it] }.orEmpty().filter { it !in hosted }
-      .mapNotNull { slot -> passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) } }
+      .mapNotNull { slot ->
+        passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (slot in locked) "" else it, locked = slot in locked) }
+      }
     if (person == null && !manages) return own
     return own + hosted.sorted().mapNotNull { slot ->
-      passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (manages) it else "", hosted = true) }
+      passwords[slot]?.let {
+        MySlot(slot, games[slot].orEmpty(), if (manages && slot !in locked) it else "", hosted = true, locked = slot in locked)
+      }
     }
+  }
+
+  /** [session]'s slots still locked, as its summary sees them (their key not found yet). */
+  private suspend fun lockedNow(session: LiveSession): Set<String> = runCatching {
+    session.summary().players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+  }.getOrDefault(emptySet())
+
+  /** The locks as the gateway last got them, by seed: written again only when they change. */
+  private val synced = mutableMapOf<String, Set<String>>()
+
+  /**
+   * Keeps the gateway's locks in step with [session]'s summary: a slot opens once its key has turned up. Only once the
+   * summary knows the locks (the tracker has read World Locks' slot data: until then no slot has lock info, and the
+   * locks of the session's creation stay); a session without locks needs nothing, a finished one stays as it is.
+   */
+  private suspend fun syncLocks(session: LiveSession, seed: String) {
+    if (session.finished) return
+    val players = runCatching { session.summary().players }.getOrDefault(emptyList())
+    if (players.none { it.lock != null }) return
+    val locked = players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+    if (synced[seed] == locked) return
+    runCatching { store.setLocked(seed, locked) }
+      .onSuccess { synced[seed] = locked; logger.info("Locked slots of {}: {}", session.id, locked.ifEmpty { setOf("none") }.joinToString()) }
+      .onFailure { logger.warn("Could not write the locked slots of {}: {}", session.id, it.message) }
   }
 
   /** Creates the passwords as soon as a session's seed has its room.json, so the gateway knows them before a player joins. */
@@ -166,6 +196,7 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     while (true) {
       for (session in sessions.all()) {
         val seed = Room.read(session.roomJson)?.seedName ?: continue
+        syncLocks(session, seed)
         if (seed in ready) continue
         runCatching { current(session) }
           .onSuccess { ready += seed; logger.info("Slot passwords ready for {} (seed {}, {} slots)", session.id, seed, it.size) }

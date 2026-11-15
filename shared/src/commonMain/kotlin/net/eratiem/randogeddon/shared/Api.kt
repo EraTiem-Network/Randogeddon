@@ -359,6 +359,8 @@ data class MySlot(
   val password: String,
   /** A hosted slot of the session: its patch files for its players (no password); all of it for its Session-Managers. */
   val hosted: Boolean = false,
+  /** Still locked: its key isn't found yet, so no one connects it (no password until then). */
+  val locked: Boolean = false,
 )
 
 /** The game server (MultiServer, run by the gateway) as the admin panel shows it. */

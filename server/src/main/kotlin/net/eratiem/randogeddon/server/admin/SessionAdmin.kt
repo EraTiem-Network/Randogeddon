@@ -262,6 +262,8 @@ class SessionAdmin(
       hosted = plans.filterValues { it.hosted }.keys,
     )
     slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
+    // No one connects a locked slot until its key is found (the tracker opens it then)
+    slotPasswords.setLocked(seed, locked.toSet())
     gameServer.control(id, "start")
     sessions.refresh()
     roles.add(id, creator.id, SessionRole.MANAGER.code, creator.name, creator.name)
