@@ -61,8 +61,10 @@
       border-radius: 20px; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
     #login h1 { margin: 0 0 4px; font-size: 22px; }
     #login label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12.5px; }
-    #login input, #login select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
-      border-radius: 10px; padding: 9px 11px; }
+    /* 16px: a phone (iOS) zooms into a smaller field it focuses, and over the app's canvas the zoom can't be pinched
+       back out (the canvas takes the touches). Compose's own text input is 20px already. */
+    #login input, #login select { font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
     #login input:focus, #login select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
     #login form[hidden] { display: none; }
     #login .hint { margin: 0; color: var(--muted); font-size: 12.5px; }
@@ -294,20 +296,18 @@
       var token = null;
       // Compose keeps the pixel density it started with: after a browser zoom it would draw everything blurry. So the
       // page reloads once the zoom has settled (the login and the settings stay); behind the login form nothing of
-      // Compose is visible, so there it waits for the login.
+      // Compose is visible, so there it waits for the login. A zoom resizes the window: the density is compared then
+      // (a media query on the exact density can miss one like 1.3636… with the system's display scaling).
       var stale = false;
       var zoomTimer = null;
-      (function watchZoom(ratio) {
-        window.matchMedia("(resolution: " + ratio + "dppx)").addEventListener("change", function () {
-          var now = window.devicePixelRatio;
-          watchZoom(now);
-          if (now === ratio) return;
-          if (!root.hidden) { stale = true; return; }
-          // Several zoom steps in a row reload once, after the last one
-          clearTimeout(zoomTimer);
-          zoomTimer = setTimeout(function () { location.reload(); }, 400);
-        }, { once: true });
-      })(window.devicePixelRatio);
+      var startRatio = window.devicePixelRatio;
+      window.addEventListener("resize", function () {
+        if (window.devicePixelRatio === startRatio) { clearTimeout(zoomTimer); return; }
+        if (!root.hidden) { stale = true; return; }
+        // Several zoom steps in a row reload once, after the last one
+        clearTimeout(zoomTimer);
+        zoomTimer = setTimeout(function () { location.reload(); }, 400);
+      });
 
       function open(name, text) {
         Object.keys(forms).forEach(function (key) { forms[key].hidden = key !== name; });
