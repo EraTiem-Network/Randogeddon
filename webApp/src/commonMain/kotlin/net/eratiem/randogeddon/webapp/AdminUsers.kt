@@ -1,7 +1,20 @@
 package net.eratiem.randogeddon.webapp
 
 import net.eratiem.randogeddon.shared.i18n.text
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -93,11 +106,47 @@ fun UsersAdmin(onChanged: () -> Unit) {
       }
       (nameProblem ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
-      list.forEach { user ->
+      // One pill per account, in a box that scrolls once there are many; a click shows the account floating over it
+      var opened by remember { mutableStateOf<String?>(null) }
+      if (list.isNotEmpty()) {
         Divider()
-        UserRow(user, onChanged = { scope.launch { load(); onChanged() } })
+        Box(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            list.forEach { user -> UserPill(user) { opened = user.id } }
+          }
+        }
+      }
+      list.firstOrNull { it.id == opened }?.let { user ->
+        Dialog(onDismissRequest = { opened = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+          Row(
+            Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp)).padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            Box(Modifier.weight(1f)) { UserRow(user, onChanged = { scope.launch { load(); onChanged() } }) }
+            IconButton({ opened = null }, Icon.CLOSE)
+          }
+        }
       }
     }
+  }
+}
+
+/** An account as a pill: its avatar and name (the address of an invited one), marked if invited or an Administrator. */
+@Composable
+private fun UserPill(user: AdminUser, onOpen: () -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current.users
+  val name = user.name ?: user.email.orEmpty()
+  Row(
+    Modifier.clip(CircleShape).background(p.panelAlt).border(1.dp, p.border, CircleShape).hand().clickable(onClick = onOpen)
+      .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Avatar(name, 22.dp)
+    Txt(name, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, color = if (user.state == AccountState.INVITED) p.muted else p.text)
+    if (user.state == AccountState.INVITED) Pill(t.invitedPill, p.accent)
+    if (user.administrator) Pill(t.administrator, p.ok)
   }
 }
 
