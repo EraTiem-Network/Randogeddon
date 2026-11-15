@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -8,6 +10,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,20 +25,28 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.AddPersonRequest
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.EmailAddresses
+import net.eratiem.randogeddon.shared.PlayerStatus
+import net.eratiem.randogeddon.shared.RoleRequest
 import net.eratiem.randogeddon.shared.SessionPeople
 import net.eratiem.randogeddon.shared.SessionPerson
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.ShareLinkView
+import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WatcherRequest
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.duration
 
 /** The parts a Session-Manager gives (players come with the slots). */
 private val GIVEN = listOf(SessionRole.WATCHER, SessionRole.SUPPORT, SessionRole.MANAGER)
@@ -60,6 +76,25 @@ fun PeopleSection(id: String) {
   }
   LaunchedEffect(id) { load() }
   val list = people.orEmpty()
+  // The person whose panel is open
+  var open by remember(id) { mutableStateOf<String?>(null) }
+  list.firstOrNull { it.id == open }?.let { person ->
+    val managers = list.count { it.role == SessionRole.MANAGER }
+    PersonPanel(
+      id, person,
+      // Their own Session-Manager part isn't theirs to take (unless an Administrator), the last one's nobody's
+      mayLeave = person.role != SessionRole.MANAGER || (managers > 1 && (person.id != you?.you || you?.mayLeave == true)),
+      lastManager = person.role == SessionRole.MANAGER && managers <= 1,
+      onChange = { role ->
+        val body = role?.let { ApiJson.encodeToString(RoleRequest.serializer(), RoleRequest(it)) }
+        val r = if (role == null) call("DELETE", "api/sessions/$id/people/${person.id}", null) { }
+        else call("PUT", "api/sessions/$id/people/${person.id}", body) { }
+        load()
+        (r as? Answer.Failed)?.message
+      },
+      onClose = { open = null },
+    )
+  }
   Section(texts.title, subtitle = list.groupBy { it.role }.entries.sortedBy { it.key.ordinal }
     .joinToString(" · ") { (role, all) -> texts.roleCount(role, all.size) }.ifEmpty { "…" }) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -71,14 +106,10 @@ fun PeopleSection(id: String) {
         }
       }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
-      list.forEach { person ->
+      if (list.isNotEmpty()) {
         Divider()
-        val own = person.id == you?.you && person.role == SessionRole.MANAGER && you?.mayLeave != true
-        PersonRow(person, removable = person.role != SessionRole.PLAYER && !own) {
-          scope.launch {
-            problem = (call("DELETE", "api/sessions/$id/people/${person.id}", null) { } as? Answer.Failed)?.message
-            load()
-          }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          list.forEach { person -> PersonPill(person) { open = person.id } }
         }
       }
       Divider()
@@ -190,7 +221,151 @@ private fun AddPerson(
   state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
 }
 
-/** One person with a part in the session: avatar, name, role, slots; [onRemove] takes the part (not a player's). */
+/** The colour of [role]'s pill. */
+@Composable
+private fun roleColor(role: SessionRole) = LocalPalette.current.let { p ->
+  when (role) {
+    SessionRole.MANAGER -> p.accent
+    SessionRole.SUPPORT -> p.useful
+    SessionRole.WATCHER -> p.muted
+    SessionRole.PLAYER -> p.ok
+  }
+}
+
+/** One person of the session as a pill: avatar, name, their part; a click opens their panel. */
+@Composable
+private fun PersonPill(person: SessionPerson, onClick: () -> Unit) {
+  val t = LocalTexts.current
+  val color = roleColor(person.role)
+  Row(
+    Modifier.clip(CircleShape).background(color.copy(alpha = 0.14f)).hand().clickable(onClick = onClick)
+      .padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Avatar(person.name, 22.dp)
+    PersonName(person.name, person.id, deleted = person.deleted, size = 12.5.sp)
+    Txt(t.people.role(person.role), size = 11.5.sp, color = color, maxLines = 1)
+  }
+}
+
+/**
+ * One person's panel, floating over the panel: their part, their slots (each with its game, how far and how it stands)
+ * and how far they are in the session; another part for them, or taking theirs. [onChange] gives them a role (`null`:
+ * takes their part, a player only plays then) and answers the problem, or `null`.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PersonPanel(
+  id: String,
+  person: SessionPerson,
+  mayLeave: Boolean,
+  lastManager: Boolean,
+  onChange: suspend (SessionRole?) -> String?,
+  onClose: () -> Unit,
+) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val texts = t.people
+  val scope = rememberCoroutineScope()
+  var summary by remember(id) { mutableStateOf<Summary?>(null) }
+  var problem by remember(person.id) { mutableStateOf<String?>(null) }
+  var busy by remember { mutableStateOf(false) }
+  var confirm by remember(person.id) { mutableStateOf(false) }
+  LaunchedEffect(id) {
+    (call("GET", "api/sessions/$id/state", null) { ApiJson.decodeFromString(Summary.serializer(), it) } as? Answer.Ok)
+      ?.let { summary = it.value }
+  }
+  val now = Platform.now()
+  val stats = summary?.people?.firstOrNull { it.userId == person.id || (it.userId == null && it.name == person.name) }
+  val worlds = summary?.players.orEmpty().filter { it.name in person.slots }
+  fun change(role: SessionRole?) {
+    busy = true
+    scope.launch {
+      problem = onChange(role)
+      busy = false
+      confirm = false
+    }
+  }
+  Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    SelectionContainer {
+      Column(Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp))) {
+        Row(
+          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          Avatar(person.name, 40.dp)
+          Column(Modifier.weight(1f)) {
+            PersonName(person.name, person.id, deleted = person.deleted, size = 18.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Pill(texts.role(person.role), roleColor(person.role)) }
+          }
+          stats?.let { Txt("${t.decimal(it.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand) }
+          IconButton(onClose, Icon.CLOSE)
+        }
+        Divider()
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          if (stats != null) {
+            ProgressBar((stats.percent / 100).toFloat())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              Fact(texts.progressLabel, "${stats.checked} / ${stats.total}")
+              Fact(t.dialogs.goals, "${stats.goals} / ${worlds.size}", if (stats.goals > 0) p.ok else p.text)
+              Fact(texts.playedLabel, t.duration(worlds.sumOf { playTime(it, now) }))
+            }
+            Txt(
+              "${texts.lastSeenLabel}: " + when {
+                stats.online -> texts.nowOnline
+                else -> stats.lastActivity?.let { t.date(it) } ?: texts.never
+              },
+              size = 12.5.sp, color = if (stats.online) p.ok else p.muted,
+            )
+          }
+          Txt(texts.slotsLabel, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          if (person.slots.isEmpty()) Txt(texts.noSlots, size = 13.sp, color = p.muted)
+          person.slots.forEach { slot ->
+            val w = worlds.firstOrNull { it.name == slot }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+              GameChip(w?.game.orEmpty(), dimmed = w?.status == PlayerStatus.LOCKED, size = 28.dp)
+              Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                  Txt(slot, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                  w?.let { Pill(statusLabel(t, it), statusColor(it.status)) }
+                }
+                w?.let {
+                  Txt(
+                    t.dialogs.slotLine(it.checked, it.total, t.duration(playTime(it, now)), it.goalAt?.let { at -> t.clock(at) }),
+                    size = 11.5.sp, color = p.muted, maxLines = 1,
+                  )
+                  ProgressBar((it.percent / 100).toFloat(), height = 4.dp, dimmed = it.status == PlayerStatus.LOCKED)
+                }
+              }
+            }
+          }
+          Divider()
+          Txt(texts.partLabel, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
+          if (lastManager) Txt(texts.lastManager, size = 12.5.sp, color = p.warn)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // A player gets a part besides their slots; leaving Session-Manager only where allowed
+            val roles = listOf(SessionRole.MANAGER, SessionRole.SUPPORT, SessionRole.WATCHER)
+              .filter { it != person.role && (person.slots.isEmpty() || it != SessionRole.WATCHER) }
+            if (mayLeave) roles.forEach { role -> SmallButton(texts.makeRole(role), { if (!busy) change(role) }) }
+            if (person.role != SessionRole.PLAYER && mayLeave) {
+              if (confirm) {
+                Txt(texts.takeAway(person.role), size = 12.5.sp)
+                Button(texts.yes, danger = true, enabled = !busy) { change(null) }
+                Button(t.common.cancel) { confirm = false }
+              } else {
+                SmallButton(if (person.slots.isEmpty()) texts.remove else texts.onlyPlayer, { if (!busy) confirm = true })
+              }
+            }
+          }
+          problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+        }
+      }
+    }
+  }
+}
+
+/** A watcher: avatar, name, role; [onRemove] takes the part. */
 @Composable
 private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () -> Unit) {
   val p = LocalPalette.current
@@ -201,12 +376,7 @@ private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () ->
     Column(Modifier.weight(1f)) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PersonName(person.name, person.id, deleted = person.deleted, size = 13.5.sp)
-        Pill(t.people.role(person.role), when (person.role) {
-          SessionRole.MANAGER -> p.accent
-          SessionRole.SUPPORT -> p.useful
-          SessionRole.WATCHER -> p.muted
-          SessionRole.PLAYER -> p.ok
-        })
+        Pill(t.people.role(person.role), roleColor(person.role))
       }
       if (person.slots.isNotEmpty()) Txt(person.slots.joinToString(", "), size = 12.sp, color = p.muted, maxLines = 2)
     }

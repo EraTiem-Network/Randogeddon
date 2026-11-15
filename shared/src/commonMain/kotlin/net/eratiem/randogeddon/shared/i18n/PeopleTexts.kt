@@ -10,6 +10,20 @@ interface PeopleTexts {
   /** What a part in the session means (the ⓘ). */
   fun roleTip(role: SessionRole): String
   val title: String
+  /** The person panel's: another part for them, e.g. `Make Session-Manager`. */
+  fun makeRole(role: SessionRole): String
+  /** A playing Session-Manager, support or watcher: only playing again (their part taken). */
+  val onlyPlayer: String
+  val partLabel: String
+  val slotsLabel: String
+  val noSlots: String
+  val progressLabel: String
+  val playedLabel: String
+  val lastSeenLabel: String
+  val nowOnline: String
+  val never: String
+  /** The person panel's note for the last Session-Manager. */
+  val lastManager: String
   val watchers: String
   val nobodyWatches: String
   fun watching(n: Int): String
@@ -65,6 +79,17 @@ internal object EnglishPeople : PeopleTexts {
     SessionRole.WATCHER -> "Follows the session: dashboard, feed and hints; no slots, the spoiler log once it is finished."
   }
   override val title = "People"
+  override fun makeRole(role: SessionRole) = "Make ${role(role).lowercase().replace("session-manager", "Session-Manager")}"
+  override val onlyPlayer = "Only player"
+  override val partLabel = "Part"
+  override val slotsLabel = "Slots"
+  override val noSlots = "plays no slot"
+  override val progressLabel = "Progress"
+  override val playedLabel = "Played"
+  override val lastSeenLabel = "Last active"
+  override val nowOnline = "online now"
+  override val never = "not yet"
+  override val lastManager = "The session's only Session-Manager: make someone else Session-Manager before taking this part."
   override val watchers = "Watchers"
   override val nobodyWatches = "nobody watches yet"
   override fun watching(n: Int) = "$n watching"
@@ -112,6 +137,17 @@ internal object GermanPeople : PeopleTexts {
       "sie beendet ist."
   }
   override val title = "Leute"
+  override fun makeRole(role: SessionRole) = "Zum ${role(role)} machen"
+  override val onlyPlayer = "Nur Spieler"
+  override val partLabel = "Rolle"
+  override val slotsLabel = "Slots"
+  override val noSlots = "spielt keinen Slot"
+  override val progressLabel = "Fortschritt"
+  override val playedLabel = "Gespielt"
+  override val lastSeenLabel = "Zuletzt aktiv"
+  override val nowOnline = "gerade online"
+  override val never = "noch nicht"
+  override val lastManager = "Der einzige Session-Manager der Session: Mach zuerst jemand anderen zum Session-Manager, bevor diese Rolle geht."
   override val watchers = "Zuschauer"
   override val nobodyWatches = "noch schaut niemand zu"
   override fun watching(n: Int) = "$n schauen zu"
