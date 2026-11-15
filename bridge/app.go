@@ -385,7 +385,7 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = body.Session
 	}
-	relay, err := startRelay(id, body.Session, title, slot, upstream, fetch)
+	relay, err := startRelay(id, body.Session, title, slot, upstream, fetch, 0)
 	if err != nil {
 		writeProblem(w, http.StatusInternalServerError, err.Error())
 		return
