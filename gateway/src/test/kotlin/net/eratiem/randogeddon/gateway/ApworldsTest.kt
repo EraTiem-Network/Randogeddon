@@ -3,8 +3,10 @@ package net.eratiem.randogeddon.gateway
 import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.shared.ApworldConflict
 import net.eratiem.randogeddon.shared.ApworldFile
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
+import net.eratiem.randogeddon.shared.ApworldUploadFile
 import net.eratiem.randogeddon.shared.GameInfo
 import net.eratiem.randogeddon.shared.GameSource
 import net.eratiem.randogeddon.shared.ReleaseInfo
@@ -152,8 +154,15 @@ class ApworldsTest {
       }
     }
 
-    fun upload(release: String, name: String, bytes: ByteArray) =
-      runBlocking { apworlds.upload(ApworldUpload(release, name, Base64.getEncoder().encodeToString(bytes))) }
+    /** Several files in one upload: one answer each. */
+    fun uploadAll(release: String, vararg files: Pair<String, ByteArray>, replace: Boolean = false) = runBlocking {
+      apworlds.upload(ApworldUpload(release, files.map { (name, bytes) -> ApworldUploadFile(name, Base64.getEncoder().encodeToString(bytes)) }, replace))
+    }.results
+
+    fun upload(release: String, name: String, bytes: ByteArray, replace: Boolean = false) =
+      uploadAll(release, name to bytes, replace = replace).single()
+
+    fun remove(release: String, vararg files: String) = runBlocking { apworlds.remove(ApworldRemoval(release, files.toList())) }
 
     fun customWorlds(release: String) = root.resolve("$release/custom_worlds").listDirectoryEntries().map { it.name }.sorted()
   }
@@ -190,7 +199,7 @@ class ApworldsTest {
     assertTrue(!lib.data.resolve("apworlds/0.6.8/broken.apworld").exists())
     assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
     assertEquals(emptyList(), runBlocking { lib.apworlds.release("0.6.8") }.failed)
-    assertFailsWith<ApworldProblem> { runBlocking { lib.apworlds.remove("0.6.8", "broken.apworld") } }
+    assertFailsWith<ApworldProblem> { lib.remove("0.6.8", "broken.apworld") }
   }
 
   @Test
@@ -225,9 +234,7 @@ class ApworldsTest {
     val other = lib.upload("0.6.8", "celeste_new.apworld", world("celeste_new", "Celeste"))
     assertEquals(ApworldConflict(game = "Celeste", otherFile = "celeste.apworld"), other.conflict)
     assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
-    val replaced = runBlocking {
-      lib.apworlds.upload(ApworldUpload("0.6.8", "celeste_new.apworld", Base64.getEncoder().encodeToString(world("celeste_new", "Celeste")), replace = true))
-    }
+    val replaced = lib.upload("0.6.8", "celeste_new.apworld", world("celeste_new", "Celeste"), replace = true)
     assertNull(replaced.conflict)
     assertNull(replaced.error)
     assertEquals(listOf("celeste_new.apworld"), lib.customWorlds("0.6.8"))
@@ -237,14 +244,36 @@ class ApworldsTest {
   fun `a game the release brings itself is refused`() {
     val lib = Library()
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
-    assertFailsWith<ApworldProblem> { lib.upload("0.6.8", "hk.apworld", world("hk", "Hollow Knight")) }
+    assertTrue(lib.upload("0.6.8", "hk.apworld", world("hk", "Hollow Knight")).error.orEmpty().contains("brings Hollow Knight itself"))
   }
 
   @Test
   fun `only releases the gateway has, and only real apworlds`() {
     val lib = Library()
     assertFailsWith<ApworldProblem> { lib.upload("../0.6.8", "x.apworld", zip("x/__init__.py")) }
-    assertFailsWith<ApworldProblem> { lib.upload("0.6.8", "x.apworld", zip("../x/__init__.py")) }
-    assertFailsWith<ApworldProblem> { runBlocking { lib.apworlds.remove("0.6.8", "missing.apworld") } }
+    assertNotNull(lib.upload("0.6.8", "x.apworld", zip("../x/__init__.py")).error)
+    assertFailsWith<ApworldProblem> { lib.remove("0.6.8", "missing.apworld") }
+  }
+
+  @Test
+  fun `several files go in together, each with its own answer, and a refused one isn't kept`() {
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    val lib = Library()
+    val results = lib.uploadAll(
+      "0.6.8",
+      "celeste.apworld" to zip("celeste/__init__.py"),
+      "broken.apworld" to zip("broken/__init__.py"),
+      "not a zip.apworld" to "nope".toByteArray(),
+      "yacht.apworld" to zip("yacht/__init__.py"),
+    )
+    assertEquals(listOf("celeste.apworld", "broken.apworld", "not_a_zip.apworld", "yacht.apworld"), results.map { it.file })
+    assertEquals(listOf(listOf("celeste"), emptyList(), emptyList(), listOf("yacht")), results.map { it.games })
+    assertEquals("cannot import", results[1].error)
+    assertNotNull(results[2].error)
+    assertEquals(listOf("celeste.apworld", "yacht.apworld"), lib.customWorlds("0.6.8"))
+
+    // Two at once go out together too
+    lib.remove("0.6.8", "celeste.apworld", "yacht.apworld")
+    assertEquals(emptyList(), lib.customWorlds("0.6.8"))
   }
 }

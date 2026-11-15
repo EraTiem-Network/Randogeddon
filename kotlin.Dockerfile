@@ -108,6 +108,9 @@ RUN useradd --uid 1000 --create-home randogeddon \
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
+# Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server
+# start compiled all of Archipelago again (listing the games: 5 s, compiled 2 s; the image grows by about 40 MB)
+RUN python -m compileall -q -j 0 .
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
 USER randogeddon
 EXPOSE 38281

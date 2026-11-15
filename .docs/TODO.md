@@ -424,4 +424,38 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           app (now the downloads' own ⓘ, which goes)
         - Windows ARM64 is new: a sixth build (`windows/arm64`, `kotlin.Dockerfile`'s bridge stage); the downloads
           route and `publish-bridge.sh` take it as it is
+    - [x] Polish: removing APWorlds by selecting them, instead of a × on each pill (on a long pill the × was
+          squeezed away, and on a phone the question didn't fit its line)
+        - Each release's library gets a *Remove…* button next to *Upload APWorld…*: it switches the uploaded pills
+          to selectable (a click marks one; hand-placed ones can't be picked), with *Remove (n)* and *Cancel* below
+          them, on their own line
+        - *Remove (n)* asks once more, naming the files, then removes them, with a line for each, as the uploads do
+    - [x] Polish: uploading and removing APWorlds faster. Each file makes the release list its games again
+          (`list_games.py`, every world loaded: about 5 s), twice for one that is refused.
+        - Archipelago's Python files compiled in the image (`python -m compileall` in `kotlin.Dockerfile`'s
+          archipelago stage): the gateway can't write `__pycache__` there, so every listing compiled all 1,827 files
+          again. Measured: 5 s → 2.2 s per listing; generating and starting game servers gain the same way.
+        - Several files in one request, uploads and removals alike: one listing for all of them (and once more if
+          one is refused and taken out again), instead of one per file
+    - [ ] Bug: after a click inside a user's floating panel (*Users*), it can't be closed any more (neither × nor a
+          click outside)
+    - [ ] Polish: the floating panel becomes a user information panel, everything about the account in one place
+        - Its fields, each with its label: name, e-mail address, ID (to copy), state (active, invited), group
+          (Administrator or not), made on, the invitation (until when its link works), auto-deletion and when the
+          account deletes itself; *n/a* for what an account doesn't have (an invited one's name, a deletion that
+          isn't planned)
+        - The sessions it plays in as pills again, a click opens that session
+        - Possibly more from the server (new fields of `AdminUser`): how they log in (password, Authentik), whether
+          two-factor login is on, the last login. To be decided when it is fixed.
+        - An invited one's *Send again* / *Other address* stay in it
+    - [ ] Bug: selecting a finished session breaks the view: the session shows no content, and after it the panel
+          and *Your account* are empty too (until a reload). To reproduce first: from where it is picked (the
+          dashboard's other sessions, the session switch on the top card, a link) and what the browser's console says
+    - [ ] Polish: the state on the top card (the game server's: connected, stopped) only for a session that isn't
+          finished; a finished one has no game server
+    - [ ] Bug: zooming is broken again: sometimes it zooms in, but it doesn't zoom out any more
+        - The page reloads once a zoom has settled (`index.html`, `watchZoom`: Compose keeps the pixel density it
+          started with); to find out first: on which device and how (Ctrl and the wheel, Ctrl +/−, pinching on a
+          phone), and whether the Compose canvas takes the events (wheel, keys, touch) before the browser's own zoom
+          gets them, or the reload mid-zoom loses the next step
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)

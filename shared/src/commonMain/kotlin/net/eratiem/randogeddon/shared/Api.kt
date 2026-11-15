@@ -743,11 +743,24 @@ data class ReleaseInfo(
 data class ArchipelagoInfo(val releases: List<ReleaseInfo> = emptyList(), val apworlds: List<ApworldFile> = emptyList())
 
 /**
- * `POST /api/admin/apworlds`: an apworld file for a release's library, base64. [replace]: what it would replace (the
- * [ApworldConflict] of an earlier try) goes.
+ * `POST /api/admin/apworlds`: apworld files for a release's library, taken in together (the release lists its games
+ * once). [replace]: what they would replace (the [ApworldConflict]s of an earlier try) goes. Answered by
+ * [ApworldResults].
  */
 @Serializable
-data class ApworldUpload(val release: String, val fileName: String, val base64: String, val replace: Boolean = false)
+data class ApworldUpload(val release: String, val files: List<ApworldUploadFile>, val replace: Boolean = false)
+
+/** One file of an [ApworldUpload], base64. */
+@Serializable
+data class ApworldUploadFile(val fileName: String, val base64: String)
+
+/** What an [ApworldUpload] did: one result per file, in their order. */
+@Serializable
+data class ApworldResults(val results: List<ApworldResult>)
+
+/** `POST /api/admin/apworlds/remove`: uploaded files out of a release's library, together. */
+@Serializable
+data class ApworldRemoval(val release: String, val files: List<String>)
 
 /** `POST /api/admin/apworlds/try`: copies an apworld of [from]'s library to [release]'s, to try it there. */
 @Serializable

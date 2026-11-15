@@ -31,6 +31,7 @@ import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
@@ -45,7 +46,8 @@ import kotlin.time.Duration.Companion.milliseconds
 private val logger = logger(MethodHandles.lookup().lookupClass())
 private val LOG_POLL = 750.milliseconds
 
-/** The largest apworld upload, as base64 (the gateway takes 64 MB files). */
+/** The largest apworld upload, as base64, all its files together (the gateway takes 64 MB files; the panel sends larger
+ * selections in several). */
 private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /**
@@ -79,21 +81,22 @@ fun Route.adminRoutes(
       get { gatewayCall { call.respond(gameServer.archipelago()) } }
       post {
         val upload = call.receive<ApworldUpload>()
-        if (upload.base64.length > MAX_APWORLD_BASE64) return@post call.refuse(HttpStatusCode.PayloadTooLarge, Refusal(Problem.APWORLD_TOO_LARGE))
-        logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.fileName, upload.release)
-        gatewayCall { call.respond(gameServer.uploadApworld(upload)) }
+        if (upload.files.sumOf { it.base64.length.toLong() } > MAX_APWORLD_BASE64) {
+          return@post call.refuse(HttpStatusCode.PayloadTooLarge, Refusal(Problem.APWORLD_TOO_LARGE))
+        }
+        logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.files.joinToString(", ") { it.fileName }, upload.release)
+        gatewayCall { call.respond(gameServer.uploadApworlds(upload)) }
       }
       post("/try") {
         val request = call.receive<ApworldTry>()
         logger.info("{} tries {} of Archipelago {} with {}", call.loggedIn.user.name, request.file, request.from, request.release)
         gatewayCall { call.respond(gameServer.tryApworld(request)) }
       }
-      delete("/{release}/{file}") {
-        val release = call.parameters["release"]!!
-        val file = call.parameters["file"]!!
-        logger.info("{} removes {} from Archipelago {}", call.loggedIn.user.name, file, release)
+      post("/remove") {
+        val removal = call.receive<ApworldRemoval>()
+        logger.info("{} removes {} from Archipelago {}", call.loggedIn.user.name, removal.files.joinToString(", "), removal.release)
         gatewayCall {
-          gameServer.removeApworld(release, file)
+          gameServer.removeApworlds(removal)
           call.respond(HttpStatusCode.NoContent)
         }
       }
