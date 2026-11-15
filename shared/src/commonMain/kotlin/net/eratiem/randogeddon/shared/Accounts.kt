@@ -143,6 +143,12 @@ data class AdminUser(
   val autoDelete: AutoDelete = AutoDelete.NEVER,
   /** When the account will be deleted by itself, as of now; `null`: not planned. */
   val deletesAt: Long? = null,
+  /** How they log in: a password of their own, through the identity provider (single sign-on), a second factor. */
+  val password: Boolean = false,
+  val singleSignOn: Boolean = false,
+  val twoFactor: Boolean = false,
+  /** The language they chose (its code); `null`: their browser's. */
+  val language: String? = null,
 )
 
 /** `POST /api/admin/users`: invite someone; [suggestedName] is prefilled on their sign-up page. */

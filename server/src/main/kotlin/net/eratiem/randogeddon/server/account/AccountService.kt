@@ -284,6 +284,10 @@ class AccountService(
         invitationExpiresAt = if (a.signedUpAt == null) invitations.of(a.id)?.expiresAt?.toEpochMilli() else null,
         autoDelete = AutoDelete.of(a.autoDelete),
         deletesAt = due[a.id]?.toEpochMilli(),
+        password = a.hasPassword,
+        singleSignOn = a.linked,
+        twoFactor = a.twoFactor,
+        language = a.language,
       )
     }.sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
   }
