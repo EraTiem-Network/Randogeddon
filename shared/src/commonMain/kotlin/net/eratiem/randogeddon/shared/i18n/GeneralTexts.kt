@@ -101,6 +101,14 @@ interface UserAdminTexts {
   fun linkWentTo(address: String): String
   val settings: String
   val settingsSubtitle: String
+  /** What runs now (after a deploy): the tracker, the gateway, this page, the Archipelago releases. */
+  val versions: String
+  val versionsSubtitle: String
+  val trackerVersion: String
+  val gatewayVersion: String
+  val pageVersion: String
+  val releasesLabel: String
+  val notReachable: String
   val sessionsPerUser: String
   val sessionsPerUserTip: String
   val saved: String
@@ -259,6 +267,13 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun linkWentTo(address: String) = "A new link went to $address."
   override val settings = "Settings"
   override val settingsSubtitle = "for everyone"
+  override val versions = "Versions"
+  override val versionsSubtitle = "what runs now"
+  override val trackerVersion = "Tracker"
+  override val gatewayVersion = "Gateway"
+  override val pageVersion = "This page"
+  override val releasesLabel = "Archipelago"
+  override val notReachable = "not reachable"
   override val sessionsPerUser = "Sessions per user"
   override val sessionsPerUserTip =
     "How many running sessions one user may create and manage at once (0 to 20; 0: only Administrators create " +
@@ -311,6 +326,13 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun linkWentTo(address: String) = "Ein neuer Link ging an $address."
   override val settings = "Einstellungen"
   override val settingsSubtitle = "für alle"
+  override val versions = "Versionen"
+  override val versionsSubtitle = "was gerade läuft"
+  override val trackerVersion = "Tracker"
+  override val gatewayVersion = "Gateway"
+  override val pageVersion = "Diese Seite"
+  override val releasesLabel = "Archipelago"
+  override val notReachable = "nicht erreichbar"
   override val sessionsPerUser = "Sessions pro Benutzer"
   override val sessionsPerUserTip =
     "Wie viele laufende Sessions ein Benutzer gleichzeitig erstellen und verwalten darf (0 bis 20; 0: nur " +
