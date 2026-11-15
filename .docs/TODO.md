@@ -503,16 +503,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           (Authentik) don't get: they see it too, e.g. in the *Your Authentik account* panel (`Settings.kt`, `acc.id`)
     - [x] Polish: the panel's *General* (Administrators) gets a last panel after *Settings*: the running versions of
           the tracker and the gateway (and the gateway's Archipelago releases), so a deploy can be checked there
-    - [ ] Polish: *Hosted* is a checkbox on the right of a slot's row in the new-session form (next to *starts
+    - [x] Polish: *Hosted* is a checkbox on the right of a slot's row in the new-session form (next to *starts
           locked*), instead of typing *Hosted* into the player field; ticking it asks once more, then removes the
           slot's players and its player field (unticking brings the field back)
-    - [ ] Bug: loading the YAMLs prefills a slot's player; a slot starts without players, they are added by hand
-    - [ ] Bug: ending (finishing) a session cancels its invitations that aren't accepted yet (accounts invited for it
-          that haven't signed up: their links stop working and the invited accounts go, unless another session or
-          an Administrator's invitation still needs them)
-    - [ ] Polish: adding a player to a slot is a searchable dropdown (type to filter the accounts, pick one; an e-mail
+    - [x] Bug: loading the YAMLs prefills a slot's player; a slot starts without players, they are added by hand
+    - [x] Bug: ending (finishing) a session cancels its invitations that aren't accepted yet (accounts invited for it
+          that haven't signed up: their links stop working and the invited accounts go, unless another running
+          session has them; who invited them isn't recorded, so an Administrator's invitation counts the same)
+    - [x] Polish: adding a player to a slot is a searchable dropdown (type to filter the accounts, pick one; an e-mail
           address offers the invitation as before), instead of the text field with suggestion buttons below it
-    - [ ] Polish: the new-session form adds no slots for YAMLs whose game the release has no APWorld for; they are
+    - [x] Polish: the new-session form adds no slots for YAMLs whose game the release has no APWorld for; they are
           summed up in one message (the files and their games), and someone who isn't an Administrator is told to ask
           one to upload the APWorld
         - While the form is open, an APWorld uploaded meanwhile (by anyone, in another view or another browser) takes
