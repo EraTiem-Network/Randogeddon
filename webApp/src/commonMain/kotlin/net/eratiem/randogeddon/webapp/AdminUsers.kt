@@ -4,6 +4,8 @@ import net.eratiem.randogeddon.shared.i18n.text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.selection.SelectionContainer
+import net.eratiem.randogeddon.shared.i18n.Language
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
@@ -67,7 +69,7 @@ internal suspend fun inviteForSession(email: String): Answer<UserRef> = call(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UsersAdmin(onChanged: () -> Unit) {
+fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
   val p = LocalPalette.current
   val texts = LocalTexts.current.users
   val scope = rememberCoroutineScope()
@@ -117,15 +119,7 @@ fun UsersAdmin(onChanged: () -> Unit) {
         }
       }
       list.firstOrNull { it.id == opened }?.let { user ->
-        Dialog(onDismissRequest = { opened = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-          Row(
-            Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp)).padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-          ) {
-            Box(Modifier.weight(1f)) { UserRow(user, onChanged = { scope.launch { load(); onChanged() } }) }
-            IconButton({ opened = null }, Icon.CLOSE)
-          }
-        }
+        UserPanel(user, onChanged = { scope.launch { load(); onChanged() } }, onSession = onSession, onClose = { opened = null })
       }
     }
   }
@@ -150,66 +144,115 @@ private fun UserPill(user: AdminUser, onOpen: () -> Unit) {
   }
 }
 
-/** One account: name (UUID as a tip) or the invited address, its state, sessions and deletion; for an invited one its link. */
+/**
+ * An account's information panel, floating over the panel: everything about it, each with its label (*n/a* for what it
+ * doesn't have), the sessions it plays in (a click opens one), and for an invited one its link: *Send again*, *Other
+ * address*. Its own selection: one across the page and this window would make the page stop reacting.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UserRow(user: AdminUser, onChanged: () -> Unit) {
+private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String) -> Unit, onClose: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
+  val u = t.users
   val scope = rememberCoroutineScope()
   var editing by remember { mutableStateOf(false) }
   var address by remember { mutableStateOf(user.email.orEmpty()) }
   var state by remember { mutableStateOf<String?>(null) }
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Avatar(user.name ?: user.email.orEmpty(), 28.dp)
-      Column(Modifier.weight(1f)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          PersonName(user.name ?: user.email.orEmpty(), user.id, deleted = false, size = 13.5.sp)
-          if (user.state == AccountState.INVITED) Pill(t.users.invitedPill, p.accent)
-          if (user.administrator) Pill(t.users.administrator, p.ok)
-        }
-        val parts = listOfNotNull(
-          user.email.takeIf { user.name != null },
-          when (user.sessions.size) {
-            0 -> t.users.noSession
-            1 -> t.users.inSession(user.sessions.single())
-            else -> t.users.inSessions(user.sessions.size)
-          },
-          user.invitationExpiresAt?.let {
-            if (it < Platform.now()) t.users.linkExpired else t.users.linkWorksUntil(t.date(it))
-          },
-          user.deletesAt?.let { t.users.deletedOn(t.date(it)) }
-            ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && user.state == AccountState.ACTIVE }
-              ?.let { t.users.autoDeletion(t.account.autoDelete(it)) },
-        )
-        Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)
-      }
-      if (user.state == AccountState.INVITED) {
-        SmallButton(t.users.sendAgain, {
-          scope.launch {
-            state = (call("POST", "api/admin/users/${user.id}/invite", null) { } as? Answer.Failed)?.message
-              ?: t.users.newLinkWent(user.email.orEmpty())
-            onChanged()
-          }
-        })
-        SmallButton(if (editing) t.common.cancel else t.users.otherAddress, { editing = !editing; address = user.email.orEmpty() })
-      }
-    }
-    if (editing) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(address, { address = it }, t.users.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        Button(t.users.sendThere, enabled = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email) {
-          scope.launch {
-            val body = ApiJson.encodeToString(EmailRequest.serializer(), EmailRequest(address.trim()))
-            state = when (val r = call("PUT", "api/admin/users/${user.id}/email", body) { }) {
-              is Answer.Ok -> { editing = false; onChanged(); t.users.linkWentTo(address.trim()) }
-              is Answer.Failed -> r.message
+  val invited = user.state == AccountState.INVITED
+  Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    SelectionContainer {
+      Column(Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp))) {
+        Row(
+          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          Avatar(user.name ?: user.email.orEmpty(), 40.dp)
+          Column(Modifier.weight(1f)) {
+            Txt(user.name ?: user.email.orEmpty(), size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+              if (invited) Pill(u.invitedPill, p.accent)
+              if (user.administrator) Pill(u.administrator, p.ok)
             }
           }
+          IconButton(onClose, Icon.CLOSE)
+        }
+        Divider()
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          val none = u.notAvailable
+          val logins = listOfNotNull(u.passwordLogin.takeIf { user.password }, u.ssoLogin.takeIf { user.singleSignOn })
+          val deletion = user.deletesAt?.let { u.deletedOn(t.date(it)) }
+            ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && !invited }?.let { u.autoDeletion(t.account.autoDelete(it)) }
+          InfoLine(u.nameLabel, user.name ?: none)
+          InfoLine(u.emailLabel, user.email ?: none)
+          InfoLine(u.idLabel, user.id) { SmallButton(t.common.copy, { Platform.copy(user.id) }) }
+          InfoLine(u.stateLabel, if (invited) u.invitedPill else u.active)
+          InfoLine(u.groupLabel, if (user.administrator) u.administrator else u.userGroup)
+          InfoLine(u.loginLabel, logins.joinToString(" + ").ifEmpty { none })
+          InfoLine(u.twoFactorLabel, if (invited) none else if (user.twoFactor) u.on else u.off)
+          InfoLine(u.languageLabel, if (invited) none else Language.of(user.language)?.label ?: u.browserLanguage)
+          InfoLine(u.madeLabel, if (user.createdAt > 0) t.date(user.createdAt) else none)
+          InfoLine(
+            u.invitationLabel,
+            user.invitationExpiresAt?.let { if (it < Platform.now()) u.linkExpired else u.linkWorksUntil(t.date(it)) } ?: none,
+          )
+          InfoLine(u.deletionLabel, deletion ?: none)
+          Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Txt(u.sessionsLabel, size = 12.5.sp, color = p.muted, modifier = Modifier.width(FACT_LABEL))
+            if (user.sessions.isEmpty()) Txt(none, size = 13.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+              user.sessions.forEach { id ->
+                Txt(
+                  id, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1,
+                  modifier = Modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.12f)).hand()
+                    .clickable { onClose(); onSession(id) }.padding(horizontal = 10.dp, vertical = 3.dp),
+                )
+              }
+            }
+          }
+          if (invited) {
+            Divider()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              SmallButton(u.sendAgain, {
+                scope.launch {
+                  state = (call("POST", "api/admin/users/${user.id}/invite", null) { } as? Answer.Failed)?.message
+                    ?: u.newLinkWent(user.email.orEmpty())
+                  onChanged()
+                }
+              })
+              SmallButton(if (editing) t.common.cancel else u.otherAddress, { editing = !editing; address = user.email.orEmpty() })
+            }
+            if (editing) {
+              FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterField(address, { address = it }, u.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
+                Button(u.sendThere, enabled = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email) {
+                  scope.launch {
+                    val body = ApiJson.encodeToString(EmailRequest.serializer(), EmailRequest(address.trim()))
+                    state = when (val r = call("PUT", "api/admin/users/${user.id}/email", body) { }) {
+                      is Answer.Ok -> { editing = false; onChanged(); u.linkWentTo(address.trim()) }
+                      is Answer.Failed -> r.message
+                    }
+                  }
+                }
+              }
+            }
+          }
+          state?.let { Txt(it, size = 12.sp, color = p.muted) }
         }
       }
     }
-    state?.let { Txt(it, size = 12.sp, color = p.muted) }
+  }
+}
+
+private val FACT_LABEL = 96.dp
+
+/** One line of the panel: its label, its value, and maybe a button after it. */
+@Composable
+private fun InfoLine(label: String, value: String, after: @Composable () -> Unit = {}) {
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Txt(label, size = 12.5.sp, color = LocalPalette.current.muted, modifier = Modifier.width(FACT_LABEL))
+    Txt(value, size = 13.sp, modifier = Modifier.weight(1f, fill = false))
+    after()
   }
 }
 

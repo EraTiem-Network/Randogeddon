@@ -226,7 +226,7 @@ fun AdminView(
     if (administrator) Txt(LocalTexts.current.panel.general, size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
     if (administrator) {
-      UsersAdmin(onChanged = { load() })
+      UsersAdmin(onChanged = { load() }, onSession = onDashboard)
       ApworldsSection()
       AppSettingsSection()
     }

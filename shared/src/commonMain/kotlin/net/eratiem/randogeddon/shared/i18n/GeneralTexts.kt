@@ -70,6 +70,28 @@ interface UserAdminTexts {
   fun linkWorksUntil(date: String): String
   fun deletedOn(date: String): String
   fun autoDeletion(period: String): String
+  // An account's information panel: its labels, and what the values say
+  val nameLabel: String
+  val emailLabel: String
+  val idLabel: String
+  val stateLabel: String
+  val active: String
+  val groupLabel: String
+  val userGroup: String
+  val loginLabel: String
+  val passwordLogin: String
+  val ssoLogin: String
+  val twoFactorLabel: String
+  val on: String
+  val off: String
+  val languageLabel: String
+  val browserLanguage: String
+  val madeLabel: String
+  val invitationLabel: String
+  val deletionLabel: String
+  val sessionsLabel: String
+  /** What an account doesn't have (an invited one's name, a deletion that isn't planned). */
+  val notAvailable: String
   val sendAgain: String
   fun newLinkWent(address: String): String
   val otherAddress: String
@@ -204,6 +226,26 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun linkWorksUntil(date: String) = "the link works until $date"
   override fun deletedOn(date: String) = "deleted on $date"
   override fun autoDeletion(period: String) = "auto-deletion: $period"
+  override val nameLabel = "Name"
+  override val emailLabel = "E-mail"
+  override val idLabel = "ID"
+  override val stateLabel = "State"
+  override val active = "active"
+  override val groupLabel = "Group"
+  override val userGroup = "User"
+  override val loginLabel = "Login"
+  override val passwordLogin = "password"
+  override val ssoLogin = "single sign-on"
+  override val twoFactorLabel = "Two-factor"
+  override val on = "on"
+  override val off = "off"
+  override val languageLabel = "Language"
+  override val browserLanguage = "the browser's"
+  override val madeLabel = "Made"
+  override val invitationLabel = "Invitation"
+  override val deletionLabel = "Deletion"
+  override val sessionsLabel = "Sessions"
+  override val notAvailable = "n/a"
   override val sendAgain = "Send again"
   override fun newLinkWent(address: String) = "A new link went to $address; the old one stops working."
   override val otherAddress = "Other address"
@@ -236,6 +278,26 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun linkWorksUntil(date: String) = "der Link funktioniert bis $date"
   override fun deletedOn(date: String) = "wird am $date gelöscht"
   override fun autoDeletion(period: String) = "automatisch löschen: $period"
+  override val nameLabel = "Name"
+  override val emailLabel = "E-Mail"
+  override val idLabel = "ID"
+  override val stateLabel = "Status"
+  override val active = "aktiv"
+  override val groupLabel = "Gruppe"
+  override val userGroup = "Benutzer"
+  override val loginLabel = "Anmeldung"
+  override val passwordLogin = "Passwort"
+  override val ssoLogin = "Single Sign-on"
+  override val twoFactorLabel = "Zwei-Faktor"
+  override val on = "an"
+  override val off = "aus"
+  override val languageLabel = "Sprache"
+  override val browserLanguage = "die des Browsers"
+  override val madeLabel = "Angelegt"
+  override val invitationLabel = "Einladung"
+  override val deletionLabel = "Löschung"
+  override val sessionsLabel = "Sessions"
+  override val notAvailable = "k. A."
   override val sendAgain = "Erneut senden"
   override fun newLinkWent(address: String) = "Ein neuer Link ging an $address; der alte funktioniert nicht mehr."
   override val otherAddress = "Andere Adresse"
