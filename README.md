@@ -277,7 +277,7 @@ docker compose up -d
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works; for a game that can't, see *Randogeddon Bridge*), their
    slot names and each slot's password, and for a ROM-based game (or one that needs a mod) the slot's file from the
    seed to download: a patch is opened with the Archipelago Launcher (*Open Patch*) and their own ROM. Session-Managers
-   and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
+   and Administrators download every slot's files in the panel (*Patch files*). Phones can install the dashboard as an
    app (see below).
 
 Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
@@ -334,9 +334,10 @@ The gateway puts exactly these files into each release's `custom_worlds/` before
 
 Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
 (an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
-who plays which slot and its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People**
-(everyone with a part, with role and slots; add a Session-Manager, support or a watcher by name, or invite a new
-address; remove them; the share link), the cheats, its game server's state (running, starting, stopped, crashed), lets
+its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
+pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
+Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
+share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
 and has the server console:
 
@@ -408,7 +409,8 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - **Roles:** an **Administrator** (`randogeddon admins --grant`) reaches everything: every session, the APWorlds, the
   users and the settings. **Every user can create a session** and is its **Session-Manager**: they manage it (its
   state, finishing and reopening, deleting it, its game server, console and log, the cheats, its spoiler log while it
-  runs) and give its people a part: Session-Managers (co-managers), support and watchers. How many running sessions one
+  runs) and give its people a part: Session-Managers (co-managers), support and watchers; a player can get one besides
+  their slots. A session keeps its last Session-Manager, for Administrators too: someone else becomes one first. How many running sessions one
   user may manage at once is the Administrators' setting (default 1); the game servers' number still applies. Every
   cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
 - **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session

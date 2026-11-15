@@ -299,6 +299,13 @@ data class SessionPerson(
 data class SessionPeople(val people: List<SessionPerson> = emptyList(), val you: String? = null, val mayLeave: Boolean = false)
 
 /**
+ * `PUT /api/sessions/{id}/people/{user}` (Session-Managers): gives someone of the session another part: a player, or
+ * someone with a part, becomes [role] (not [SessionRole.PLAYER]: a player keeps their slots either way).
+ */
+@Serializable
+data class RoleRequest(val role: SessionRole)
+
+/**
  * `POST /api/sessions/{id}/people` (Session-Managers): gives someone [role] (not [SessionRole.PLAYER]: players come with
  * the slots), by account ([userId]), or by [email] (an invitation, only for an address without an account).
  */

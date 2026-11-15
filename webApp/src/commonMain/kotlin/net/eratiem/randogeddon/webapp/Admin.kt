@@ -267,6 +267,7 @@ private fun SelectedSession(
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
   PeopleSection(id)
+  PatchFilesSection(id)
   CheatSection(id, server, cache)
   ConsoleSection(onSend = { line -> run { repository.command(line) } })
   LogSection(repository.log)

@@ -198,69 +198,34 @@ fun SessionSection(
       if (!gone) server()
     }
   }
-  if (session != null && !gone) PlayersAdmin(id, session.worlds)
 }
 
-/**
- * Who plays in a session, each with their slots; slots nobody plays at the end. Below: every slot's files from the seed
- * (patches, mods), to download, e.g. for someone who can't log in.
- */
-@OptIn(ExperimentalLayoutApi::class)
+/** Every slot's files from the seed (patches, mods), to download, e.g. for someone who can't log in. */
 @Composable
-private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
+fun PatchFilesSection(id: String) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
-  val ids = worlds.flatMap { w -> w.users.zip(w.userIds) }.toMap()
-  val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
-  var files by remember(id) { mutableStateOf<List<SlotFile>>(emptyList()) }
+  var files by remember(id) { mutableStateOf<List<SlotFile>?>(null) }
   LaunchedEffect(id) {
     (call("GET", "api/sessions/$id/files", null) { ApiJson.decodeFromString(SlotFiles.serializer(), it) } as? Answer.Ok)
       ?.let { files = it.value.files }
   }
-  Section(t.dashboard.players, subtitle = t.sessionAdmin.playersSubtitle(players.size, worlds.size)) {
+  val list = files.orEmpty()
+  Section(
+    t.sessionAdmin.patchFiles, subtitle = if (files == null) "…" else t.sessionAdmin.patchFilesSubtitle(list.size),
+    actions = { InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}") },
+  ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (players.isEmpty() && nobody.isEmpty()) Txt(t.sessionAdmin.nobodyNamed, size = 13.sp, color = p.muted)
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots, ids[name]) }
-      }
-      if (nobody.isNotEmpty()) {
-        Txt(t.sessionAdmin.nobodyPlays, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          nobody.forEach { Pill(it, p.muted) }
-        }
-      }
-      if (files.isNotEmpty()) {
-        Divider()
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          Txt(t.sessionAdmin.filesOfSlots, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-          InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}")
-        }
-        files.forEach { file ->
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
-            Mono(file.name, p.text, Modifier.weight(1f))
-            Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
-            SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
-          }
+      if (files != null && list.isEmpty()) Txt(t.sessionAdmin.noPatchFiles, size = 13.sp, color = p.muted)
+      list.forEach { file ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
+          Mono(file.name, p.text, Modifier.weight(1f))
+          Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
+          SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
         }
       }
     }
-  }
-}
-
-/** A player as a pill in their colour: avatar, name, their slots. */
-@Composable
-private fun PlayerPill(name: String, slots: List<String>, userId: String?) {
-  val hue = LocalPalette.current.hue(name)
-  Row(
-    Modifier.clip(CircleShape).background(hue.copy(alpha = 0.15f)).padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Avatar(name, 22.dp)
-    PersonName(name, userId, deleted = false, size = 12.5.sp, color = hue)
-    Txt(slots.joinToString(", "), size = 11.5.sp, color = hue.copy(alpha = 0.8f), maxLines = 1)
   }
 }
 

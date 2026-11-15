@@ -932,6 +932,15 @@ class SessionRoleStore(private val db: RandogeddonDatabase) {
       true
     }
 
+  /** Gives [userId] [role] in place of the one they have in the session of [publicId]; `false` if they had none. */
+  suspend fun change(publicId: String, userId: Uuid, role: String): Boolean = db.query {
+    val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionRolesTable.update({ (SessionRolesTable.sessionId eq session) and (SessionRolesTable.userId eq userId) }) {
+      it[SessionRolesTable.role] = role
+    } > 0
+  }
+
   /** Takes [userId]'s role in the session of [publicId] away; `false` if they had none. */
   suspend fun remove(publicId: String, userId: Uuid): Boolean = db.query {
     val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)

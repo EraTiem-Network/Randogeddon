@@ -87,18 +87,35 @@ class SessionPeopleService(
   }
 
   /**
-   * Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator.
-   * A Session-Manager doesn't take their own part (another one or an Administrator does).
+   * Gives [userId] [role] in session [id] in place of their part: a player gets it besides their slots, someone with a
+   * part has it changed. Leaving Session-Manager follows [remove]'s rules.
+   */
+  suspend fun change(id: String, userId: Uuid, role: SessionRole, by: User): SessionPerson {
+    val live = session(id)
+    if (role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, Problem.PLAYERS_WITH_SLOTS)
+    val entry = live.setup?.roles?.get(userId)
+    val name = entry?.name ?: live.setup?.members?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
+    when {
+      entry == null -> roles.add(live.id, userId, role.code, name, by.name)
+      entry.role == role.code -> return SessionPerson(userId.toString(), name, role)
+      else -> {
+        if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
+        roles.change(live.id, userId, role.code)
+      }
+    }
+    sessions.refresh()
+    logger.info("{} made {} {} of {} (was {})", by.name, name, role.code, live.id, entry?.role ?: "player")
+    return SessionPerson(userId.toString(), name, role)
+  }
+
+  /**
+   * Takes [userId]'s part (not a player's) in session [id]. The last Session-Manager stays (for Administrators too):
+   * someone else becomes one first. A Session-Manager doesn't take their own part (another one or an Administrator does).
    */
   suspend fun remove(id: String, userId: Uuid, by: User) {
     val live = session(id)
     val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
-    if (entry.role == SessionRole.MANAGER.code && userId == by.id && !by.administrator) {
-      throw AccountProblem(HttpStatusCode.Conflict, Problem.OWN_MANAGER)
-    }
-    if (entry.role == SessionRole.MANAGER.code && live.managers().size <= 1 && !by.administrator) {
-      throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
-    }
+    if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
     roles.remove(live.id, userId)
     sessions.refresh()
     logger.info("{} took {}'s part ({}) in {}", by.name, entry.name, entry.role, live.id)
@@ -122,6 +139,12 @@ class SessionPeopleService(
   suspend fun inviteNew(email: String, suggestedName: String?, by: User, language: Language): UserRef {
     val account = accounts.invite(email, suggestedName, by.name, language, existing = Refusal(Problem.ADDRESS_HAS_ACCOUNT))
     return UserRef(account.id.toString(), account.name, account.email.takeIf { account.name == null })
+  }
+
+  /** Whether [userId] may stop being a Session-Manager of [live]: not on their own, and never the last one. */
+  private fun mayLeaveManager(live: LiveSession, userId: Uuid, by: User) {
+    if (userId == by.id && !by.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.OWN_MANAGER)
+    if (live.managers().size <= 1) throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
   }
 
   private fun taken(live: LiveSession): Set<Uuid> = live.setup?.members.orEmpty().keys + live.setup?.roles.orEmpty().keys

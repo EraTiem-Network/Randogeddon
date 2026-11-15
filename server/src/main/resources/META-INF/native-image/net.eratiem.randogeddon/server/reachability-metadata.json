@@ -2469,6 +2469,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.RoleRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.RoleRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.AddPersonRequest",
       "fields": [
         {
