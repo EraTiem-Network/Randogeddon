@@ -298,7 +298,8 @@ private fun TrackerApp() {
                 scope.launch { saveTheme(Themes.theme, next) }
               },
               feedVisible = feedVisible,
-              onToggleFeed = { setFeedVisible(!feedVisible) },
+              // Only where there is a feed: a session's dashboard, once the session is there
+              onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
@@ -459,7 +460,8 @@ private fun Hero(
   onAllSessions: () -> Unit,
   onToggleTheme: () -> Unit,
   feedVisible: Boolean,
-  onToggleFeed: () -> Unit,
+  /** `null`: no feed on this page, no button. */
+  onToggleFeed: (() -> Unit)?,
   onLogout: () -> Unit,
   /** The user's account; [settingsOpen] while it is shown. */
   onSettings: () -> Unit,
@@ -526,7 +528,7 @@ private fun Hero(
         )
       }
       // Shows / hides the live feed; brighter while it is shown
-      IconButton(onToggleFeed, Icon.FEED, tint = onHero,
+      if (onToggleFeed != null) IconButton(onToggleFeed, Icon.FEED, tint = onHero,
         background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
       // The mode it is in: light, dark, automatic
       val modeIcon = when (Themes.mode) {
