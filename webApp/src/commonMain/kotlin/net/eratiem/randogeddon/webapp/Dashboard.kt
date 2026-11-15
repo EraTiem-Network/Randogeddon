@@ -367,10 +367,14 @@ private fun TrackerApp() {
                 ConnectionSection(
                   user.name, connection, selected.orEmpty(), files, mine, role, s,
                   Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true,
+                  twoColumns = CONNECTION_WIDTH >= CONNECTION_TWO_COLUMNS,
                 )
               }
             } else {
-              ConnectionSection(user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth())
+              ConnectionSection(
+                user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
+                twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
+              )
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
