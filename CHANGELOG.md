@@ -19,7 +19,9 @@ the bridge's builds and its part of this file as the notes.
 - APWorlds that import `tkinter` load: the image has `libtk8.6` (e.g. `minecraft_dig.apworld`, for its client window).
 - *People*: a Session-Manager can't take their own part (`OWN_MANAGER`); another one or an Administrator can, and
   the panel doesn't offer it.
-- The live feed's place (*Right*, *Left*, *Below*) is only offered where it can be beside the players.
+- The live feed's place (*Right*, *Left*, *Below*) is only offered where it can be beside the players; the button that
+  shows and hides the feed only on a session's dashboard (not in the panel, *Your account*, a spoiler log, or without a
+  session).
 
 ### 0.13.4: The hand test's open points
 - The dashboard of a session on a wide screen (from about 1270 px) showed nothing below the top card since 0.13.2, and
