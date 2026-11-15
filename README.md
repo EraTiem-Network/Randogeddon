@@ -309,13 +309,14 @@ The panel's *apworlds* (Administrators) lists, for every Archipelago release of 
 and its APWorld library:
 
 - **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
-  at once, one after the other. The gateway checks that each is an APWorld (a zip with one world folder), names it
+  at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
   after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
   inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. One that
   doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
   would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
-  same game (by its manifest, `archipelago.json`), which goes then. *Remove* takes one out again.
+  same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
+  uploaded ones), *Remove (n)*, confirm.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
