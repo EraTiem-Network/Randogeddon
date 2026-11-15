@@ -496,13 +496,28 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           the game's server up
         - The dashboard and the panel show the hosted slots on a card of their own, *Hosted* (its time and checks are
           the slots' own, as for any slot); locks and hints treat it like any other slot
-    - [ ] Polish: without a login (logged out, or the login ended), the settings kept in the browser go back to the
+    - [x] Polish: without a login (logged out, or the login ended), the settings kept in the browser go back to the
           defaults (theme and mode, language, the live feed's place and visibility, the bridge folded or not); a login
           sets the account's again (theme, mode and language are stored with it; the rest starts from the default)
-    - [ ] Bug: *Your account* shows the user's ID (UUID) only in the name panel, which Administrators with single sign-on
+    - [x] Bug: *Your account* shows the user's ID (UUID) only in the name panel, which Administrators with single sign-on
           (Authentik) don't get: they see it too, e.g. in the *Your Authentik account* panel (`Settings.kt`, `acc.id`)
-    - [ ] Polish: the panel's *General* (Administrators) gets a last panel after *Settings*: the running versions of
+    - [x] Polish: the panel's *General* (Administrators) gets a last panel after *Settings*: the running versions of
           the tracker and the gateway (and the gateway's Archipelago releases), so a deploy can be checked there
+    - [ ] Polish: *Hosted* is a checkbox on the right of a slot's row in the new-session form (next to *starts
+          locked*), instead of typing *Hosted* into the player field; ticking it asks once more, then removes the
+          slot's players and its player field (unticking brings the field back)
+    - [ ] Bug: loading the YAMLs prefills a slot's player; a slot starts without players, they are added by hand
+    - [ ] Bug: ending (finishing) a session cancels its invitations that aren't accepted yet (accounts invited for it
+          that haven't signed up: their links stop working and the invited accounts go, unless another session or
+          an Administrator's invitation still needs them)
+    - [ ] Polish: adding a player to a slot is a searchable dropdown (type to filter the accounts, pick one; an e-mail
+          address offers the invitation as before), instead of the text field with suggestion buttons below it
+    - [ ] Polish: the new-session form adds no slots for YAMLs whose game the release has no APWorld for; they are
+          summed up in one message (the files and their games), and someone who isn't an Administrator is told to ask
+          one to upload the APWorld
+        - While the form is open, an APWorld uploaded meanwhile (by anyone, in another view or another browser) takes
+          effect by itself: the release's games are looked at again and the waiting YAMLs become slots, without
+          uploading them anew
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes
