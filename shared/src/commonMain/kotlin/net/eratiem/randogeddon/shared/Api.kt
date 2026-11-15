@@ -359,6 +359,8 @@ data class MySlot(
   val password: String,
   /** A hosted slot of the session: its patch files for its players (no password); all of it for its Session-Managers. */
   val hosted: Boolean = false,
+  /** Still locked: its key isn't found yet, so no one connects it (no password until then). */
+  val locked: Boolean = false,
 )
 
 /** The game server (MultiServer, run by the gateway) as the admin panel shows it. */
@@ -767,7 +769,9 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 data class ApworldResults(val results: List<ApworldResult>)
 
 /** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
-enum class GenerationStage { STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE }
+enum class GenerationStage {
+  STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, BALANCING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE,
+}
 
 /**
  * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all

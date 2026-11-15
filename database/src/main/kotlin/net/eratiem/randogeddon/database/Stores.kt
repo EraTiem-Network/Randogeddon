@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.lowerCase
 import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -755,6 +756,27 @@ class SlotPasswordStore(private val db: RandogeddonDatabase) {
       }
     }
     passwords(sessionId)
+  }
+
+  /** The slots of [seedName] that are still locked (their key isn't found yet). */
+  suspend fun locked(seedName: String): Set<String> = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query emptySet()
+    SlotPasswordsTable.selectAll()
+      .where { (SlotPasswordsTable.sessionId eq row[SessionsTable.id]) and SlotPasswordsTable.locked }
+      .map { it[SlotPasswordsTable.slotName] }.toSet()
+  }
+
+  /** Marks exactly [locked] of [seedName]'s slots as locked, the others as open. */
+  suspend fun setLocked(seedName: String, locked: Set<String>) = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query
+    val id = row[SessionsTable.id]
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName inList locked) }) {
+      it[SlotPasswordsTable.locked] = true
+    }
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName notInList locked) }) {
+      it[SlotPasswordsTable.locked] = false
+    }
+    Unit
   }
 
   /** Slot name -> password of [seedName]; empty if the seed is unknown. */

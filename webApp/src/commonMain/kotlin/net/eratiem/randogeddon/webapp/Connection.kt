@@ -115,8 +115,11 @@ fun ConnectionSection(
       }
       if (slot != null) {
         // A hosted slot: its players see its patch files; its Session-Managers (with its password) all of it
-        if (slot.hosted) Txt(if (slot.password.isEmpty()) c.hostedNote else c.hostedManagerNote, size = 12.5.sp, color = p.muted)
-        if (!slot.hosted || slot.password.isNotEmpty()) {
+        when {
+          slot.locked -> Txt(c.lockedNote, size = 12.5.sp, color = p.warn)
+          slot.hosted -> Txt(if (slot.password.isEmpty()) c.hostedNote else c.hostedManagerNote, size = 12.5.sp, color = p.muted)
+        }
+        if (!slot.locked && (!slot.hosted || slot.password.isNotEmpty())) {
           Field(c.slot, slot.name)
           PasswordField(slot)
         }

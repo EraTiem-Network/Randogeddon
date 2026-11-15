@@ -54,36 +54,43 @@ func (a *App) client() *Client {
 	return newClient(a.cfg.Server, a.cfg.Key, a.language)
 }
 
-// resume logs in with the saved key at the start, and checks every minute that the key still works: once the
+// resume logs in with the saved key at the start, and checks every 15 seconds that the key still works: once the
 // dashboard no longer takes it (ended under Your account, expired), the bridge logs out and closes its relays.
 func (a *App) resume() {
 	for {
-		a.mu.Lock()
-		key, known := a.cfg.Key, a.me != nil
-		a.mu.Unlock()
-		if key != "" {
-			c := a.client()
-			me, err := c.Me()
-			var refusal *APIError
-			switch {
-			case errors.As(err, &refusal) && refusal.KeyGone():
-				a.forget(refusal.Message)
-			case err != nil:
-				if !known {
-					a.setProblem(err.Error())
-				}
-			default:
-				info, _ := c.Info()
-				a.mu.Lock()
-				a.me, a.info, a.problem = &me, &info, ""
-				a.mu.Unlock()
-			}
-		}
+		a.check()
 		select {
 		case <-a.quit:
 			return
-		case <-time.After(time.Minute):
+		case <-time.After(15 * time.Second):
 		}
+	}
+}
+
+// check asks the dashboard who the key belongs to and how they see Randogeddon (theme, mode, language: a change there
+// shows here within moments); a key that's gone logs out.
+func (a *App) check() {
+	a.mu.Lock()
+	key, known := a.cfg.Key, a.me != nil
+	a.mu.Unlock()
+	if key == "" {
+		return
+	}
+	c := a.client()
+	me, err := c.Me()
+	var refusal *APIError
+	switch {
+	case errors.As(err, &refusal) && refusal.KeyGone():
+		a.forget(refusal.Message)
+	case err != nil:
+		if !known {
+			a.setProblem(err.Error())
+		}
+	default:
+		info, _ := c.Info()
+		a.mu.Lock()
+		a.me, a.info, a.problem = &me, &info, ""
+		a.mu.Unlock()
 	}
 }
 
@@ -131,6 +138,11 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, static, "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /api/state", a.handleState)
+	// The page got the focus back: the account's theme, mode and language now, not at the next check
+	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
+		a.check()
+		a.handleState(w, r)
+	})
 	mux.HandleFunc("POST /api/login", a.handleLogin)
 	mux.HandleFunc("POST /api/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/sessions", a.handleSessions)
@@ -333,7 +345,7 @@ func (a *App) handleSlots(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []entry{}
 	for _, s := range conn.Slots {
-		if !s.Hosted {
+		if !s.Hosted && !s.Locked {
 			out = append(out, entry{s.Name, s.Game})
 		}
 	}
@@ -365,7 +377,7 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 			return Slot{}, "", err
 		}
 		for _, s := range conn.Slots {
-			if s.Name == body.Slot && !s.Hosted {
+			if s.Name == body.Slot && !s.Hosted && !s.Locked {
 				return s, upstreamURL(conn.Server), nil
 			}
 		}

@@ -9,6 +9,20 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.10: Locked slots stay locked, more polish
+- A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
+  too. *Your connection* shows it as locked, without a password, and the bridge doesn't offer it. Migration V16:
+  `slot_passwords.locked`, set when the session is created and kept in step by the tracker (a slot opens once its key
+  has turned up; the gateway reads it with the passwords, every 10 seconds). No longer on the honour system.
+- The generation's bar: asked about three times a second, across the form's whole width; the fill moves it (Fill.py
+  counts every 1000 items placed), and balancing the progression is a stage of its own.
+- *Your account* shows the selected session on the top card (its progress and its game server's state), as the panel
+  does; without one, that none is chosen, as everywhere else.
+- Randogeddon Bridge follows a theme, mode or language changed on the dashboard: it asks every 15 seconds (it was every
+  minute), and right away when its page is back in view.
+- `publish-bridge.sh` names the GitHub repository (`GH_REPO`, `EraTiem-Network/Randogeddon`): the deploy's clone has
+  a local path as its remote, so gh couldn't tell where to make v0.13.9's pre-release (made by hand then).
+
 ### 0.13.9: Pre-releases, locked worlds that place their own items, the generation's progress
 - Every release below 1.0.0 is a GitHub pre-release too, made by the deploy (`scripts/publish-bridge.sh`): its part of
   this file as the notes, no files. The ones before (v0.1.1 to v0.13.8) were made by hand.

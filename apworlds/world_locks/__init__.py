@@ -8,8 +8,8 @@ access rule. So the fill places the key in a world that can be played before it,
 (including chains: a key in a world that is itself locked by another key).
 
 Nobody plays this slot. The keys are sent to it when found, which is how the tracker sees a world unlock; the mapping
-key -> world is in its slot data. The lock itself is on the honour system: the game client of a locked world doesn't
-know about it, players just don't start that game before the key arrives.
+key -> world is in its slot data. The game client of a locked world doesn't know about the lock itself; in Randogeddon
+the gateway refuses its connection until the key is found.
 """
 from dataclasses import dataclass
 from typing import Any, ClassVar, Mapping

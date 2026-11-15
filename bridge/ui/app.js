@@ -237,3 +237,7 @@ $("quit").addEventListener("click", async () => {
 applyTexts();
 refresh();
 setInterval(refresh, 1500);
+// Back on this page: the account's theme, mode and language as they are now (changed on the dashboard meanwhile)
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") api("POST", "/api/refresh").then(() => refresh()).catch(() => {});
+});

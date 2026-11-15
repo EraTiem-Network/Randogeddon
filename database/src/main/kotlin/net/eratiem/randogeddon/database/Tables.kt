@@ -130,6 +130,8 @@ object SlotPasswordsTable : Table("slot_passwords") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)
   val password = varchar("password", 64)
+  /** Still locked (V16): its key isn't found yet, so the gateway refuses its Connect. */
+  val locked = bool("locked").default(false)
   override val primaryKey = PrimaryKey(sessionId, slotName)
 }
 

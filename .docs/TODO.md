@@ -538,6 +538,28 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Polish: diagrams in the Markdown files are Mermaid (```` ```mermaid ```` blocks, which GitHub draws), not
           drawn with box characters: the README's overview of Traefik, the gateway, the tracker and Postgres first;
           new diagrams in `.md` files only so
+    - [x] Polish: the generation's bar asks more often (about every 300 ms instead of every second) and has more steps
+        - The fill counts itself: Fill.py logs `Current fill step (<step>) at <n>/<total> items placed.` (steps *Early
+          Items*, *Priority*, *Progression*, *Accessibility Corrections*): the bar moves within *Filling the items*
+          by that count. Only every 1000 items, though, so a session of a few hundred items still waits there.
+        - *Balancing multiworld progression for N Players.* is its own stage after the fill (or *Progression
+          balancing skipped.*)
+        - The bar spans the form's whole width, left to right (now at most 480 dp)
+    - [x] Bug: *Your account* doesn't show the selected session's state on the top card: it shows the session (its
+          progress, its game server's state) as the panel does; without one, that none is chosen, as everywhere else
+    - [x] Polish: Randogeddon Bridge follows a theme (or mode, language) changed on the dashboard by itself, without
+          logging in again: it asks for its info (`/bridge/info`) again regularly, e.g. with its key check every minute
+          or when its page gets the focus back
+    - [x] Polish: a locked slot can't be connected until its key is found
+        - *Your connection* and the bridge show it as locked (no password, no relay) until it is unlocked
+        - Hosted slots too: a locked hosted slot's game server can't connect either (its Session-Managers see its
+          connection as locked until then; its players see its patch files as before)
+        - The gateway refuses a game client's `Connect` for a locked slot (`ConnectCheck`), so the lock no longer rests
+          on the honour system alone; it needs to know when a slot is unlocked (the tracker sees the key arrive and
+          tells it, or the gateway reads it from the game server's save)
+        - Built strictly: nobody's game client connects a locked slot, Session-Managers' and support's neither (the
+          tracker's own connections go to the game server directly, not through the gateway, so the dashboard keeps
+          seeing it)
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes

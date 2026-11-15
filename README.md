@@ -461,8 +461,9 @@ In the panel, tick *starts locked* per slot, choose *Random* locks with the numb
 (at least one; the others are locked), or *Mixed*: per slot open, locked or left to chance, and how many start open in
 all. The gateway adds the World Locks slot (`Locks`, nobody plays it) to the seed.
 
-The game clients don't know about the lock, so it's on the honour system: don't start a locked game before the
-dashboard says it's unlocked. Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
+A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
+too, and *Your connection* and the bridge show it as locked, without a password. The tracker opens it once the key
+has turned up (the gateway sees that within about 10 seconds). Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
 Locks slot), and as "Key to Alice-Celeste" on the dashboard, which also shows who found it or where it was hinted.
 
 ## Randogeddon Bridge
@@ -490,7 +491,8 @@ How it stays safe:
 
 - A key reaches only the bridge's routes (`/bridge/…`: who, the sessions, a session's connection, the bridge offered,
   its own logout), sent as `Authorization: Bearer`; never `/api`, not even as the cookie. It is stored as its SHA-256
-  like every login; the bridge checks it every minute and logs out once it is ended.
+  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode and language again,
+  right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
   browser can play a slot through them.
 - The page answers only on its own address (`127.0.0.1:<port>`/`localhost:<port>`, against DNS rebinding), with the

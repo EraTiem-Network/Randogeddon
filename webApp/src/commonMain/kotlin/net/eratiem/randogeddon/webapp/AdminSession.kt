@@ -668,12 +668,12 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
   var busy by remember { mutableStateOf(false) }
   var error by remember { mutableStateOf<Answer.Failed?>(null) }
-  // How far the generation is while it runs (asked every second)
+  // How far the generation is while it runs (asked about three times a second)
   var progress by remember { mutableStateOf<GenerationProgress?>(null) }
   LaunchedEffect(busy) {
     progress = null
     while (busy) {
-      delay(1_000)
+      delay(300)
       (call("GET", "api/sessions/new/progress/$id", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(GenerationProgress.serializer(), it)
       } as? Answer.Ok)?.value?.let { progress = it }
@@ -940,8 +940,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
       }
       if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
     }
-    // While it generates: the stage and about how far, as a bar
-    if (busy) Column(Modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // While it generates: the stage and about how far, as a bar across the form
+    if (busy) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
       ProgressBar(now.percent / 100f)
       Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)

@@ -202,6 +202,8 @@ private val STAGES = listOf(
   "Running Item Plando." to GenerationProgress(GenerationStage.PLANDO, 25),
   "Running Pre Main Fill." to GenerationProgress(GenerationStage.PREFILL, 30),
   "Filling the multiworld" to GenerationProgress(GenerationStage.FILLING, 35),
+  "Balancing multiworld progression" to GenerationProgress(GenerationStage.BALANCING, 66),
+  "Progression balancing skipped." to GenerationProgress(GenerationStage.BALANCING, 68),
   "Running pre-output steps." to GenerationProgress(GenerationStage.PREOUTPUT, 70),
   "Beginning output" to GenerationProgress(GenerationStage.OUTPUT, 75),
   "Calculating playthrough." to GenerationProgress(GenerationStage.PLAYTHROUGH, 90),
@@ -210,9 +212,16 @@ private val STAGES = listOf(
 )
 
 private val OUTPUT_FILES = Regex("""Generating output files \((\d+)/(\d+)\)""")
+private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items placed""")
 
-/** The stage a line of Generate.py's output starts, if it starts one (the output files count themselves up). */
+/**
+ * The stage a line of Generate.py's output starts, if it starts one. The output files count themselves up, and so
+ * does the fill (35 to 65 %; it only logs every 1000 items, so a small multiworld waits at its start).
+ */
 internal fun generationProgress(line: String): GenerationProgress? {
+  FILL_STEP.find(line)?.destructured?.let { (placed, all) ->
+    return GenerationProgress(GenerationStage.FILLING, 35 + 30 * placed.toInt() / all.toInt().coerceAtLeast(1))
+  }
   OUTPUT_FILES.find(line)?.destructured?.let { (done, all) ->
     return GenerationProgress(GenerationStage.OUTPUT, 75 + 15 * done.toInt() / all.toInt().coerceAtLeast(1))
   }

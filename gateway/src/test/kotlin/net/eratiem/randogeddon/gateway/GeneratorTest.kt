@@ -30,6 +30,8 @@ class GeneratorTest {
   fun `Generate py's lines tell its stage and about how far it is`() {
     assertEquals(GenerationProgress(GenerationStage.CREATING, 5), generationProgress("[INFO] Creating MultiWorld."))
     assertEquals(GenerationStage.FILLING, generationProgress("Filling the multiworld with 742 items.")?.stage)
+    assertEquals(GenerationProgress(GenerationStage.FILLING, 50), generationProgress("Current fill step (Progression) at 1000/2000 items placed."))
+    assertEquals(GenerationStage.BALANCING, generationProgress("Balancing multiworld progression for 6 Players.")?.stage)
     assertEquals(GenerationProgress(GenerationStage.OUTPUT, 82), generationProgress("Generating output files (1/2)."))
     assertEquals(GenerationProgress(GenerationStage.DONE, 100), generationProgress("Done. Enjoy. Total Time: 12.3"))
     assertEquals(null, generationProgress(" Hollow Knight : v0.6.8 | Items: 300"))

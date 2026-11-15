@@ -56,6 +56,8 @@ interface ConnectionTexts {
   val noPatchFiles: String
   /** A hosted slot in *Your connection*: for its players, and for its Session-Managers (who see its connection). */
   val hostedNote: String
+  /** A slot still locked: nothing to connect until its key is found. */
+  val lockedNote: String
   val hostedManagerNote: String
   val download: String
   /** How to use a slot's file (the ⓘ next to it). */
@@ -165,6 +167,8 @@ internal object EnglishConnection : ConnectionTexts {
   override val noPatchFiles = "None for this slot: its game needs no patch."
   override val hostedNote = "This slot is hosted: its game runs as a server of its own. Join that server with your " +
     "game; its patch files are below."
+  override val lockedNote = "This slot is still locked: it can connect once its key is found (the dashboard shows " +
+    "where). Until then there is nothing to enter."
   override val hostedManagerNote = "This slot is hosted: its game runs as a server of its own, which the players join. " +
     "Set that server up with this connection."
   override val download = "Download"
@@ -213,6 +217,8 @@ internal object GermanConnection : ConnectionTexts {
   override val noPatchFiles = "Keine für diesen Slot: Sein Spiel braucht keinen Patch."
   override val hostedNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server. Tritt diesem Server mit " +
     "deinem Spiel bei; seine Patch-Dateien stehen unten."
+  override val lockedNote = "Dieser Slot ist noch gesperrt: Er kann sich verbinden, sobald sein Schlüssel gefunden ist " +
+    "(das Dashboard zeigt, wo). Bis dahin gibt es nichts einzutragen."
   override val hostedManagerNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server, dem die Spieler " +
     "beitreten. Richte diesen Server mit dieser Verbindung ein."
   override val download = "Herunterladen"
