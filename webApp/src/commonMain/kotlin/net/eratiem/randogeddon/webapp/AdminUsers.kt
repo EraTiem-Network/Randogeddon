@@ -48,6 +48,8 @@ import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
 import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.UserRef
+import net.eratiem.randogeddon.shared.Versions
+import net.eratiem.randogeddon.shared.RandogeddonVersion
 
 /** Invites [email] (with a [suggestedName] for the sign-up page); the new account, or why not. */
 internal suspend fun invite(email: String, suggestedName: String? = null): Answer<AdminUser> = call(
@@ -290,6 +292,41 @@ fun AppSettingsSection() {
       }
       if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
       state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
+    }
+  }
+}
+
+/**
+ * What runs now, for Administrators (to check a deploy): the tracker's and the gateway's versions, this page's (an old
+ * one is still cached until a reload), and the gateway's Archipelago releases.
+ */
+@Composable
+fun VersionsSection() {
+  val p = LocalPalette.current
+  val u = LocalTexts.current.users
+  var versions by remember { mutableStateOf<Versions?>(null) }
+  var problem by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(Unit) {
+    when (val r = call("GET", "api/admin/versions", null) { ApiJson.decodeFromString(Versions.serializer(), it) }) {
+      is Answer.Ok -> versions = r.value
+      is Answer.Failed -> problem = r.message
+    }
+  }
+  Section(u.versions, subtitle = u.versionsSubtitle) {
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      val v = versions
+      listOf(
+        u.trackerVersion to (v?.tracker ?: "…"),
+        u.gatewayVersion to (v?.let { it.gateway ?: u.notReachable } ?: "…"),
+        u.pageVersion to RandogeddonVersion.VERSION,
+        u.releasesLabel to (v?.releases?.joinToString(", ")?.ifEmpty { u.notReachable } ?: "…"),
+      ).forEach { (label, value) ->
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          Txt(label, size = 12.5.sp, color = p.muted, modifier = Modifier.width(96.dp))
+          Txt(value, size = 13.sp, weight = FontWeight.SemiBold)
+        }
+      }
     }
   }
 }

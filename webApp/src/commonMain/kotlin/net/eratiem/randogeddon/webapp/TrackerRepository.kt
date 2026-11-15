@@ -85,6 +85,7 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     _selected.value = null
     _connection.value = null
     _files.value = emptyList()
+    resetLocalSettings()
     Platform.showLogin(null, ::checkLogin)
   }
 
@@ -150,8 +151,9 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
             stop()
             _summary.value = null
             _me.value = null
-            // 403: logged in, but not part of any session
+            // 403: logged in, but not part of any session; 401: the login ended
             val message = if (result.status == 403) error(result.body) else null
+            if (result.status == 401) resetLocalSettings()
             Platform.showLogin(message, ::checkLogin)
             return@launch
           }
@@ -223,3 +225,14 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
 /** Not finished yet. */
 val SessionStatus.running: Boolean get() = this == SessionStatus.LIVE || this == SessionStatus.FINISHING
+
+/**
+ * Without a login (logged out, or the login ended): the settings kept in this browser go back to the defaults, so the
+ * next person on it starts fresh. A login sets the account's theme, mode and language again.
+ */
+internal fun resetLocalSettings() {
+  Themes.apply(null, null)
+  Languages.reset()
+  FeedSettings.reset()
+  BridgeFold.reset()
+}

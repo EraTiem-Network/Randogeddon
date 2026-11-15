@@ -162,6 +162,12 @@ internal object BridgeFold {
     open = !open
     Platform.saveSetting(BRIDGE_KEY, if (open) null else "folded")
   }
+
+  /** Back to the default, open (without a login). */
+  fun reset() {
+    open = true
+    Platform.saveSetting(BRIDGE_KEY, null)
+  }
 }
 
 /** A small heading inside the card: the slot's files, the bridge's downloads. */

@@ -363,8 +363,10 @@ hand stays stopped until started again.
 Below the finished sessions, Administrators find *General*: *Users* (every account as a pill, marked if invited or an
 Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
 language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
-them, and for an invited one *Send again* and *Other address*), *APWorlds* and *Settings* (how many running sessions one user may manage at once). With no session
-running, the panel says so; *New session* opens the form.
+them, and for an invited one *Send again* and *Other address*), *APWorlds*, *Settings* (how many running sessions one
+user may manage at once) and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
+gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
+form.
 
 **On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
 spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new

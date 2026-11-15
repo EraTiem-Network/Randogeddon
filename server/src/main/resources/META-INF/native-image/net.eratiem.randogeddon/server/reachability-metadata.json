@@ -2486,6 +2486,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.Versions",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.Versions$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.WatcherRequest",
       "fields": [
         {

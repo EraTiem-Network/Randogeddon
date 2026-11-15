@@ -229,6 +229,7 @@ fun AdminView(
       UsersAdmin(onChanged = { load() }, onSession = onDashboard)
       ApworldsSection()
       AppSettingsSection()
+      VersionsSection()
     }
   }
 }

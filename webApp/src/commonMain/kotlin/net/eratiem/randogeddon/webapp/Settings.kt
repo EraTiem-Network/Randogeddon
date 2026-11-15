@@ -96,6 +96,8 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
         Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           Txt(acc.providerAccountHint(sso), size = 13.sp)
           a.singleSignOnAccount?.let { url -> Row { Button(acc.openProvider(sso)) { Platform.openLink(url) } } }
+          // Their ID here, as the name's panel shows it to everyone else
+          Tip(acc.idTip) { Txt(acc.id(a.id), size = 11.5.sp, color = p.muted) }
         }
       }
     }

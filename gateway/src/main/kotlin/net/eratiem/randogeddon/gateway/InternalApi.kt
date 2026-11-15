@@ -16,6 +16,7 @@ import io.ktor.server.routing.route
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.RandogeddonVersion
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
@@ -58,6 +59,8 @@ fun Route.internalApi(
   route("/internal") {
     install(InternalAuth) { this.token = token }
     get("/versions") { call.respond(archipelago.versions()) }
+    // This gateway's own version (the panel shows it)
+    get("/version") { call.respondText(RandogeddonVersion.VERSION) }
     // Every release with its games (the first listing of a release takes seconds) and the libraries
     get("/archipelago") { call.respond(apworlds.info()) }
     route("/apworlds") {
