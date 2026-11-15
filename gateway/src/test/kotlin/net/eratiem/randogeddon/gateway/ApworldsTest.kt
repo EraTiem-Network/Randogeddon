@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.gateway
 
 import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.shared.ApworldConflict
 import net.eratiem.randogeddon.shared.ApworldFile
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
@@ -35,6 +36,25 @@ class ApworldsTest {
       entries.forEach { zip.putNextEntry(ZipEntry(it)); zip.write("x".toByteArray()); zip.closeEntry() }
     }
     return bytes.toByteArray()
+  }
+
+  /** An apworld of [world] whose manifest names [game]. */
+  private fun world(world: String, game: String): ByteArray {
+    val bytes = ByteArrayOutputStream()
+    ZipOutputStream(bytes).use { zip ->
+      zip.putNextEntry(ZipEntry("$world/__init__.py")); zip.closeEntry()
+      zip.putNextEntry(ZipEntry("$world/archipelago.json")); zip.write("""{"game": "$game", "world_version": "1.0.0"}""".toByteArray()); zip.closeEntry()
+    }
+    return bytes.toByteArray()
+  }
+
+  @Test
+  fun `an apworld's world and game come from inside it`() {
+    assertEquals("celeste", worldOf(zip("celeste/__init__.py", "celeste/Items.py")))
+    assertEquals("Celeste", manifestGame(world("celeste", "Celeste")))
+    assertNull(manifestGame(zip("celeste/__init__.py")))
+    assertNotNull(checkApworld(zip("a/__init__.py", "b/__init__.py")))
+    assertNotNull(checkApworld(zip("my-game/__init__.py")))
   }
 
   @Test
@@ -182,6 +202,42 @@ class ApworldsTest {
     assertEquals(listOf("yacht"), result.games)
     assertEquals("0.6.7", lib.apworlds.files().single { it.release == "0.6.8" }.from)
     assertFailsWith<ApworldProblem> { runBlocking { lib.apworlds.tryWith(ApworldTry("0.6.8", "0.6.7", "nope.apworld")) } }
+  }
+
+  @Test
+  fun `an upload is named after its world, whatever the file was called`() {
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    val lib = Library()
+    val result = lib.upload("0.6.8", "Celeste (1).apworld", zip("celeste/__init__.py"))
+    assertEquals("celeste.apworld", result.file)
+    assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
+  }
+
+  @Test
+  fun `an upload that would replace something asks first`() {
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    val lib = Library()
+    lib.upload("0.6.8", "celeste.apworld", world("celeste", "Celeste"))
+    // The same file again
+    val again = lib.upload("0.6.8", "celeste.apworld", world("celeste", "Celeste"))
+    assertEquals(ApworldConflict(sameFile = true), again.conflict)
+    // Another file of the same game: nothing changes until it is sent with replace
+    val other = lib.upload("0.6.8", "celeste_new.apworld", world("celeste_new", "Celeste"))
+    assertEquals(ApworldConflict(game = "Celeste", otherFile = "celeste.apworld"), other.conflict)
+    assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
+    val replaced = runBlocking {
+      lib.apworlds.upload(ApworldUpload("0.6.8", "celeste_new.apworld", Base64.getEncoder().encodeToString(world("celeste_new", "Celeste")), replace = true))
+    }
+    assertNull(replaced.conflict)
+    assertNull(replaced.error)
+    assertEquals(listOf("celeste_new.apworld"), lib.customWorlds("0.6.8"))
+  }
+
+  @Test
+  fun `a game the release brings itself is refused`() {
+    val lib = Library()
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    assertFailsWith<ApworldProblem> { lib.upload("0.6.8", "hk.apworld", world("hk", "Hollow Knight")) }
   }
 
   @Test
