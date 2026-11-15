@@ -599,6 +599,8 @@ data class SessionSetup(
   val members: Map<Uuid, String> = emptyMap(),
   val deleted: Set<Uuid> = emptySet(),
   val roles: Map<Uuid, SessionRoleEntry> = emptyMap(),
+  /** Its hosted slots: games that run as a server of their own, played by no account. */
+  val hosted: Set<String> = emptySet(),
 )
 
 /** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
@@ -606,7 +608,7 @@ data class SessionRoleEntry(val role: String, val name: String, val deleted: Boo
 
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
-  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it. */
+  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted slots. */
   suspend fun create(
     publicId: String,
     seedName: String,
@@ -614,6 +616,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     options: String,
     worlds: Map<String, List<Uuid>>,
     now: Instant = Instant.now(),
+    hosted: Set<String> = emptySet(),
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -631,6 +634,12 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
             it[userId] = user
             it[userName] = names[user]
           }
+        }
+      }
+      for (slot in hosted) {
+        SessionHostedSlotsTable.insert {
+          it[sessionId] = id
+          it[slotName] = slot
         }
       }
     }
@@ -664,9 +673,11 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
         val name = it[SessionRolesTable.userName] ?: it[UsersTable.name] ?: it[SessionRolesTable.userId].toString().take(8)
         it[SessionRolesTable.userId] to SessionRoleEntry(it[SessionRolesTable.role], name, it[UsersTable.deletedAt] != null)
       }
+    val hosted = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }
+      .map { it[SessionHostedSlotsTable.slotName] }.toSet()
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted, roles,
+      deleted, roles, hosted,
     )
   }
 
