@@ -9,6 +9,13 @@ interface ApworldTexts {
   fun brings(file: String, games: String): String
   /** The [n]th of [of] picked files being uploaded. */
   fun uploading(file: String, n: Int, of: Int): String
+  /** An upload whose file is in the library already. */
+  fun replacesFile(file: String): String
+  /** An upload whose [game] comes from [other] now. */
+  fun replacesGame(file: String, game: String, other: String): String
+  val replace: String
+  val skip: String
+  fun skipped(file: String): String
   fun removing(file: String): String
   fun removed(file: String, release: String): String
   fun trying(file: String, release: String): String
@@ -81,6 +88,12 @@ internal object EnglishApworlds : ApworldTexts {
   override fun notAdded(file: String, error: String) = "$file was not added, it doesn't load: $error"
   override fun brings(file: String, games: String) = "$file brings $games"
   override fun uploading(file: String, n: Int, of: Int) = if (of == 1) "Uploading $file…" else "Uploading $file ($n of $of)…"
+  override fun replacesFile(file: String) = "$file is in the library already. Replace it?"
+  override fun replacesGame(file: String, game: String, other: String) =
+    "$file brings $game, which comes from $other now. Replace $other with it?"
+  override val replace = "Replace"
+  override val skip = "Skip"
+  override fun skipped(file: String) = "$file was skipped, nothing changed"
   override fun removing(file: String) = "Removing $file…"
   override fun removed(file: String, release: String) = "$file removed from Archipelago $release"
   override fun trying(file: String, release: String) = "Trying $file with Archipelago $release…"
@@ -125,6 +138,12 @@ internal object GermanApworlds : ApworldTexts {
   override fun brings(file: String, games: String) = "$file bringt $games"
   override fun uploading(file: String, n: Int, of: Int) =
     if (of == 1) "$file wird hochgeladen…" else "$file wird hochgeladen ($n von $of)…"
+  override fun replacesFile(file: String) = "$file ist schon in der Bibliothek. Ersetzen?"
+  override fun replacesGame(file: String, game: String, other: String) =
+    "$file bringt $game, das jetzt aus $other kommt. $other dadurch ersetzen?"
+  override val replace = "Ersetzen"
+  override val skip = "Überspringen"
+  override fun skipped(file: String) = "$file wurde übersprungen, nichts geändert"
   override fun removing(file: String) = "$file wird entfernt…"
   override fun removed(file: String, release: String) = "$file aus Archipelago $release entfernt"
   override fun trying(file: String, release: String) = "$file wird mit Archipelago $release ausprobiert…"

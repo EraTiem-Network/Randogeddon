@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.ApiJson
@@ -54,6 +55,8 @@ fun ApworldsSection() {
   // What the last uploads, try or removal did (one line each); or that one is going on
   var busy by remember { mutableStateOf<String?>(null) }
   var outcome by remember { mutableStateOf<List<Pair<Boolean, String>>>(emptyList()) }
+  // An upload that would replace something, and the answer it waits for (true: replace)
+  var asking by remember { mutableStateOf<Pair<ApworldResult, CompletableDeferred<Boolean>>?>(null) }
 
   fun load() = scope.launch {
     when (val answer = call("GET", "api/admin/apworlds", null) { ApiJson.decodeFromString(ArchipelagoInfo.serializer(), it) }) {
@@ -64,15 +67,17 @@ fun ApworldsSection() {
   LaunchedEffect(Unit) { load() }
 
   /** An upload or a try: the release lists its games again, which takes a moment. */
-  suspend fun change(label: String, path: String, body: String): Pair<Boolean, String> {
+  suspend fun change(label: String, path: String, body: String): Answer<ApworldResult> {
     busy = label
-    return when (val answer = call("POST", path, body) { ApiJson.decodeFromString(ApworldResult.serializer(), it) }) {
-      is Answer.Ok -> answer.value.let { r ->
-        if (r.error != null) false to texts.notAdded(r.file, r.error.orEmpty())
-        else true to texts.brings(r.file, r.games.joinToString(", "))
-      }
-      is Answer.Failed -> false to answer.message
+    return call("POST", path, body) { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
+  }
+
+  fun line(answer: Answer<ApworldResult>): Pair<Boolean, String> = when (answer) {
+    is Answer.Ok -> answer.value.let { r ->
+      if (r.error != null) false to texts.notAdded(r.file, r.error.orEmpty())
+      else true to texts.brings(r.file, r.games.joinToString(", "))
     }
+    is Answer.Failed -> false to answer.message
   }
 
   fun upload(release: String) {
@@ -80,14 +85,29 @@ fun ApworldsSection() {
       val files = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
       if (files.isEmpty()) return@pickFiles
       outcome = emptyList()
-      // One after the other: each one lists the release again
+      // One after the other: each one lists the release again, and shows in the library once it is in
       scope.launch {
         files.forEachIndexed { i, file ->
-          val body = ApiJson.encodeToString(ApworldUpload.serializer(), ApworldUpload(release, file.fileName, file.content))
-          outcome = outcome + change(texts.uploading(file.fileName, i + 1, files.size), "api/admin/apworlds", body)
+          val label = texts.uploading(file.fileName, i + 1, files.size)
+          fun body(replace: Boolean) =
+            ApiJson.encodeToString(ApworldUpload.serializer(), ApworldUpload(release, file.fileName, file.content, replace))
+          var answer = change(label, "api/admin/apworlds", body(replace = false))
+          val held = (answer as? Answer.Ok)?.value?.takeIf { it.conflict != null }
+          if (held != null) {
+            val decision = CompletableDeferred<Boolean>()
+            asking = held to decision
+            val replace = decision.await()
+            asking = null
+            if (!replace) {
+              outcome = outcome + (false to texts.skipped(held.file))
+              return@forEachIndexed
+            }
+            answer = change(label, "api/admin/apworlds", body(replace = true))
+          }
+          outcome = outcome + line(answer)
+          load()
         }
         busy = null
-        load()
       }
     }
   }
@@ -96,7 +116,7 @@ fun ApworldsSection() {
     outcome = emptyList()
     scope.launch {
       val body = ApiJson.encodeToString(ApworldTry.serializer(), ApworldTry(release, file.release, file.file))
-      outcome = listOf(change(texts.trying(file.file, release), "api/admin/apworlds/try", body))
+      outcome = listOf(line(change(texts.trying(file.file, release), "api/admin/apworlds/try", body)))
       busy = null
       load()
     }
@@ -119,8 +139,22 @@ fun ApworldsSection() {
   Section(texts.title, subtitle = texts.subtitle, actions = { InfoTip(texts.tip) }) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
-      busy?.let { Txt(texts.relisting(it), size = 12.5.sp, color = p.muted) }
+      // Not while an upload waits for its answer
+      busy?.takeIf { asking == null }?.let { Txt(texts.relisting(it), size = 12.5.sp, color = p.muted) }
       outcome.forEach { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
+      asking?.let { (held, decision) ->
+        val conflict = held.conflict!!
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          if (conflict.sameFile) Txt(texts.replacesFile(held.file), size = 13.sp)
+          if (conflict.otherFile != null) {
+            Txt(texts.replacesGame(held.file, conflict.game.orEmpty(), conflict.otherFile.orEmpty()), size = 13.sp)
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(texts.replace, danger = true) { decision.complete(true) }
+            Button(texts.skip) { decision.complete(false) }
+          }
+        }
+      }
       when {
         current == null -> Txt(if (problem == null) texts.listing else "…", size = 13.sp, color = p.muted)
         current.releases.isEmpty() -> Txt(texts.noRelease, size = 13.sp, color = p.trap)

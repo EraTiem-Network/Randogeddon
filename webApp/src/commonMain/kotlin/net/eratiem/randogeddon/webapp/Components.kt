@@ -55,6 +55,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -271,7 +273,8 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER }
+/** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
+enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -283,6 +286,26 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawCircle(color, radius = w / 2 - stroke, style = Stroke(stroke))
         drawArc(color, 90f, 180f, useCenter = true, topLeft = Offset(stroke, stroke), size = Size(w - 2 * stroke, w - 2 * stroke))
       }
+
+      Icon.SUN -> {
+        drawCircle(color, radius = w * .2f)
+        for (i in 0 until 8) {
+          val a = i * PI / 4
+          val (dx, dy) = cos(a).toFloat() to sin(a).toFloat()
+          drawLine(color, Offset(w * (.5f + dx * .32f), w * (.5f + dy * .32f)), Offset(w * (.5f + dx * .45f), w * (.5f + dy * .45f)),
+            stroke, StrokeCap.Round)
+        }
+      }
+
+      // A full moon with a smaller one taken out of its upper right
+      Icon.MOON -> drawPath(
+        Path.combine(
+          PathOperation.Difference,
+          Path().apply { addOval(Rect(Offset(w * .5f, w * .5f), w * .4f)) },
+          Path().apply { addOval(Rect(Offset(w * .72f, w * .32f), w * .32f)) },
+        ),
+        color,
+      )
 
       Icon.CLOSE -> {
         drawLine(color, Offset(w * .2f, w * .2f), Offset(w * .8f, w * .8f), stroke, StrokeCap.Round)

@@ -40,7 +40,7 @@ ARG BRIDGE_VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go vet ./... && go test -count=1 ./... \
  && mkdir -p /out && echo "$BRIDGE_VERSION" > /out/VERSION \
- && for target in windows/amd64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+ && for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
       os="${target%/*}" arch="${target#*/}" flags=""; \
       name="randogeddon-bridge-$os-$arch"; \
       if [ "$os" = darwin ]; then name="randogeddon-bridge-macos-$arch"; fi; \

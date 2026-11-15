@@ -1294,6 +1294,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.ApworldConflict",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.ApworldConflict$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ApiError",
       "fields": [
         {

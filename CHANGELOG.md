@@ -9,6 +9,24 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.2: From the hand test
+- *APWorlds*: an upload is named after the world folder inside it, as Archipelago imports it (`Pokemon Emerald
+  (1).apworld` with `pokemon_emerald/` becomes `pokemon_emerald.apworld`; before, such a name didn't load). One that
+  would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
+  same game (by its manifest), which goes then. A game the release brings itself is refused with why (its own world
+  always wins). An APWorld needs one world folder, named as Python can import it. The library shows each file as soon
+  as it is in.
+- *Your account*, *Appearance*: a new theme or mode fades in. The mode button on the top card shows the mode: a sun, a
+  moon, a half-filled circle for *Automatic*.
+- *Your connection*: two columns on a wide screen (the server and the slot; the slot's files and the bridge), beside
+  the tiles from about 1300 px, else above them. The slot's files have a heading, *Patch files*, and say when there are
+  none. The bridge: *Create key* (*Schlüssel erstellen*), the key above the downloads, the downloads under their own
+  heading with the version, a row per system (Windows and Linux x86_64 and ARM64, macOS Intel and Apple Silicon), one
+  ⓘ for all of it. Windows ARM64 is a new build.
+- *Users*: every account as a pill, in a box that scrolls; a click shows it floating over the panel, with everything
+  its row had.
+- The panel opens the new-session form only after *New session*: with no session running it says so.
+
 ### 0.13.1: Every picked APWorld, themes to see
 - *APWorlds*, *Upload APWorld…*: every picked file is uploaded, one after the other (with how far it is), and each gets
   its own line: the games it brings, or why it wasn't added. Before, only the first was.

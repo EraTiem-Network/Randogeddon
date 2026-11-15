@@ -385,4 +385,43 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
     - [x] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
           themes, but doesn't show what each looks like before it is picked
+    - [x] Polish: switching the theme (or the mode) fades from the old colours to the new ones instead of jumping
+    - [x] Polish: the mode button on the top card shows the mode it is in: a sun (light), a moon (dark), and for
+          *Automatic* an icon of its own (e.g. the half-filled circle with an *A*), with the mode as its tooltip; today
+          it is the same half-filled circle in every mode (`Icon.THEME`)
+    - [x] Polish: an uploaded APWorld's file name is tidied: lower case, `-` instead of spaces, every other symbol
+          removed
+        - Archipelago imports an APWorld by its file name, which must be the world folder inside it: the file is
+          named after that folder (`pokemon_emerald/` → `pokemon_emerald.apworld`, whatever it was called), which
+          is lower case with `_` as a rule; a folder Python can't import (e.g. with a `-`) is refused
+    - [x] Bug: an upload that would replace something says so and asks first (*Replace* / *Skip*): a file of the
+          same name in the release's library, or another uploaded APWorld of the same game (by its manifest)
+        - A game the release brings itself can't be replaced (Archipelago 0.6.8 loads its own world first and skips
+          the APWorld): refused, with why
+    - [x] Bug: while files are uploading, the release's list of uploaded APWorlds doesn't change; each file should
+          show up as soon as it is added
+    - [x] Polish: *Users* (Administrators) as pills (avatar, name; *invited* and *Administrator* marked on them)
+          instead of one row each, in a box that scrolls once there are enough accounts
+        - A click on a pill opens a floating panel with everything a row shows today: the address, the sessions,
+          until when an invitation works, when the account deletes itself, and an invited one's *Send again* /
+          *Other address*
+    - [x] Polish: the panel shows the new-session form only after *New session* was clicked (or at
+          `#/manage/new`); with no session running it no longer opens by itself (`Admin.kt`, the page falls back to
+          `NEW_PAGE`), but says that none is running, next to the *New session* button
+    - [x] Polish: *Your connection* wider, in two columns, so it isn't as tall (now 420 dp next to the tiles,
+          `Dashboard.kt` `CONNECTION_WIDTH`, which get less room)
+        - Left: the server, the slot (the dropdown), its name and password. Right: the slot's files, then the bridge.
+          On a narrow screen one column, as now.
+        - The slot's files get a small heading of their own (*Patch files*), always shown for a player: the
+          picked slot's files to download, or that this slot has none (its game needs no patch).
+    - [x] Polish: the bridge under *Your connection*
+        - *Create key* instead of *Make a key* (German *Schlüssel erstellen*); the button and the key it makes come
+          above the downloads
+        - The downloads under a small heading of their own (e.g. *Downloads*, with the version), one row per system
+          in this order, the architectures as buttons:
+          `Windows  x86_64  ARM64` / `macOS  Intel  Apple Silicon` / `Linux  x86_64  ARM64`
+        - One ⓘ only, next to *Randogeddon Bridge*: what it is and how it is set up, then how to start the unsigned
+          app (now the downloads' own ⓘ, which goes)
+        - Windows ARM64 is new: a sixth build (`windows/arm64`, `kotlin.Dockerfile`'s bridge stage); the downloads
+          route and `publish-bridge.sh` take it as it is
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)

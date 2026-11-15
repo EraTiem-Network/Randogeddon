@@ -742,17 +742,32 @@ data class ReleaseInfo(
 @Serializable
 data class ArchipelagoInfo(val releases: List<ReleaseInfo> = emptyList(), val apworlds: List<ApworldFile> = emptyList())
 
-/** `POST /api/admin/apworlds`: an apworld file for a release's library, base64. */
+/**
+ * `POST /api/admin/apworlds`: an apworld file for a release's library, base64. [replace]: what it would replace (the
+ * [ApworldConflict] of an earlier try) goes.
+ */
 @Serializable
-data class ApworldUpload(val release: String, val fileName: String, val base64: String)
+data class ApworldUpload(val release: String, val fileName: String, val base64: String, val replace: Boolean = false)
 
 /** `POST /api/admin/apworlds/try`: copies an apworld of [from]'s library to [release]'s, to try it there. */
 @Serializable
 data class ApworldTry(val release: String, val from: String, val file: String)
 
-/** What an upload (or a try) brought: the games the file adds, or why it didn't load. */
+/**
+ * What an upload (or a try) brought: the games the file adds, or why it didn't load; or, with [conflict], that it
+ * would replace something and wasn't added (sent again with `replace`, it is).
+ */
 @Serializable
-data class ApworldResult(val file: String, val games: List<String> = emptyList(), val error: String? = null)
+data class ApworldResult(
+  val file: String,
+  val games: List<String> = emptyList(),
+  val error: String? = null,
+  val conflict: ApworldConflict? = null,
+)
+
+/** What an upload would replace: a file of the same name in the library, and/or the uploaded [otherFile] of its [game]. */
+@Serializable
+data class ApworldConflict(val sameFile: Boolean = false, val game: String? = null, val otherFile: String? = null)
 
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {
