@@ -42,6 +42,8 @@ interface ApworldTexts {
   val removeSome: String
   val pickToRemove: String
   fun removeCount(n: Int): String
+  val selectAll: String
+  val selectNone: String
   fun didntLoad(name: String, reason: String): String
   val fromOtherReleases: String
   fun fromRelease(file: String, release: String): String
@@ -145,6 +147,8 @@ internal object EnglishApworlds : ApworldTexts {
   override val removeSome = "Remove…"
   override val pickToRemove = "Pick the files to remove (hand-placed ones, grey, can't be)."
   override fun removeCount(n: Int) = "Remove ($n)"
+  override val selectAll = "Select all"
+  override val selectNone = "Select none"
   override fun didntLoad(name: String, reason: String) = "Didn't load: $name: $reason"
   override val fromOtherReleases = "From other releases"
   override fun fromRelease(file: String, release: String) = "$file (Archipelago $release)"
@@ -198,6 +202,8 @@ internal object GermanApworlds : ApworldTexts {
   override val removeSome = "Entfernen…"
   override val pickToRemove = "Wähle die Dateien zum Entfernen (von Hand gelegte, graue, gehen nicht)."
   override fun removeCount(n: Int) = "Entfernen ($n)"
+  override val selectAll = "Alle auswählen"
+  override val selectNone = "Keine auswählen"
   override fun didntLoad(name: String, reason: String) = "Nicht geladen: $name: $reason"
   override val fromOtherReleases = "Aus anderen Releases"
   override fun fromRelease(file: String, release: String) = "$file (Archipelago $release)"
