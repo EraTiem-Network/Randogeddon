@@ -486,7 +486,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Polish: the live feed's place (*Right* / *Left* / *Below*) is only offered where it can be beside the players;
           on a narrow screen (a phone) it is always below, so the dropdown goes there (the choice stays for wider
           screens)
-    - [ ] Feature: hosted slots, for games that run as a server of their own (the players join that server with their
+    - [x] Feature: hosted slots, for games that run as a server of their own (the players join that server with their
           games, not Archipelago)
         - In the panel's slot player field, *Hosted* can be entered as the slot's player: then the slot's players are
           removed and its field to add more goes (no one plays it from Archipelago's side)
@@ -494,6 +494,32 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - *Your connection*: the session's players can pick a hosted slot too, but see only its patch files (no
           name, no password); its Session-Managers see its whole connection (server, slot, password, files), to set
           the game's server up
-        - To be decided when it is built: how the dashboard shows a hosted slot (its own mark, no person card; who
-          its time and checks count for), and that the World Locks key and hints treat it like any other slot
+        - The dashboard and the panel show the hosted slots on a card of their own, *Hosted* (its time and checks are
+          the slots' own, as for any slot); locks and hints treat it like any other slot
+    - [ ] Polish: without a login (logged out, or the login ended), the settings kept in the browser go back to the
+          defaults (theme and mode, language, the live feed's place and visibility, the bridge folded or not); a login
+          sets the account's again (theme, mode and language are stored with it; the rest starts from the default)
+    - [ ] Bug: *Your account* shows the user's ID (UUID) only in the name panel, which Administrators with single sign-on
+          (Authentik) don't get: they see it too, e.g. in the *Your Authentik account* panel (`Settings.kt`, `acc.id`)
+    - [ ] Polish: the panel's *General* (Administrators) gets a last panel after *Settings*: the running versions of
+          the tracker and the gateway (and the gateway's Archipelago releases), so a deploy can be checked there
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
+
+## Phase 14: More Themes
+
+*More themes to pick from, grouped, and clear that the console-inspired ones are only inspired.*
+
+- [ ] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
+      Xbox Series X|S
+- [ ] More of Randogeddon's own themes (not inspired by anything)
+- [ ] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
+      cards under a small heading per group)
+- [ ] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
+      consoles' colours; the names are their owners' trademarks, and Randogeddon isn't affiliated with or endorsed by
+      Nintendo, Sony or Microsoft
+- [ ] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
+      mode: *The theme's* (the default), *Randogeddon's original*, or the font of another theme; stored with the
+      account like the theme and the mode
+    - Fonts bundled with the app (free licences only, e.g. SIL OFL), loaded only when used; every font must still
+      be readable at the dashboard's small sizes (a pixel font maybe only for headings)
+- [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
