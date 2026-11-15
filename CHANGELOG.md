@@ -7,6 +7,25 @@ it the release, and the merge is tagged `v<version>`.
 
 ## Phase 12: Randogeddon Bridge
 
+### 0.12.2: The bridge app
+- Randogeddon Bridge (`bridge/`, Go, no CGO): one binary each for Windows, Linux (x86-64, ARM) and macOS (Intel,
+  Apple), its page in the default browser on `127.0.0.1`, in English and German, in the account's theme and mode.
+  Log in with a key; session and slot as dropdowns, *Open*: a relay on a free local port (`localhost:<port>`, copy).
+  Several at once, each with its state (waiting for the game, connecting, connected, error with the server's words).
+- The relay passes every message both ways over `wss://` and puts the slot's name and password into the game's
+  `Connect` (any name and no password in the game). After a refusal it fetches the password again. Connections from a
+  web page (with an `Origin`) are refused.
+- The page only answers on its own address, with the token of the link the bridge opened (a SameSite=Strict cookie),
+  and changes need its own header. The dashboard only over HTTPS (plain HTTP on this computer, for the local demo).
+- One instance: starting it again opens the running one's page. *Quit* on the page (Windows has no console window).
+  A newer bridge on the dashboard shows a notice with its download. The key is checked every minute; once ended under
+  *Your account*, the bridge logs out and closes its relays.
+- The Docker build tests and builds it (`bridge` stage); the tracker serves the builds, *Your connection* offers them
+  with how to start an unsigned app.
+- `scripts/publish-bridge.sh` (deploy.sh, for a release): the builds and `SHA256SUMS` to Artifact Keeper's generic
+  repository `randogeddon-bridge` (`provision.py`: the repository and the account `bridge`), and from 1.0.0 on a
+  GitHub release with the version's notes. `--dry-run` shows what it would do.
+
 ### 0.12.1: Bridge keys
 - A key for Randogeddon Bridge, made under *Your connection* (*Make a key*, shown once): a login of its own kind
   (`bridge`, 30 days), sent by the app as a bearer token. It reaches only `/bridge/…`: `info` (the bridge offered, the

@@ -3,7 +3,8 @@
 #   target tracker   the dashboard server (:server) with the Compose web app (:webApp)
 #   target gateway   the game host: runs MultiServer (Archipelago, pinned release) and is the game clients' entry to it,
 #                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`)
-# The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once.
+# The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once. Randogeddon Bridge (bridge/, Go)
+# is built in its own stage for every system the dashboard offers it for; the tracker serves the builds.
 #
 # The token for pkg.example.org comes from your Gradle init script as a BuildKit secret (see docker-compose.yml); it is
 # only mounted while Gradle runs and never ends up in an image layer.
@@ -28,6 +29,26 @@ RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gr
     ./gradlew --no-daemon --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
+# Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
+# Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it).
+FROM golang:1.27.4-bookworm AS bridge
+WORKDIR /src
+COPY bridge/go.mod bridge/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY bridge/ ./
+ARG BRIDGE_VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    go vet ./... && go test -count=1 ./... \
+ && mkdir -p /out && echo "$BRIDGE_VERSION" > /out/VERSION \
+ && for target in windows/amd64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+      os="${target%/*}" arch="${target#*/}" flags=""; \
+      name="randogeddon-bridge-$os-$arch"; \
+      if [ "$os" = darwin ]; then name="randogeddon-bridge-macos-$arch"; fi; \
+      if [ "$os" = windows ]; then name="$name.exe" flags="-H windowsgui"; fi; \
+      CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+        -ldflags "-s -w $flags -X main.version=$BRIDGE_VERSION" -o "/out/$name" . || exit 1; \
+    done
+
 # The executables link only glibc (--static-nolibc). The build stage (Oracle Linux 9, glibc 2.34) is older than
 # Debian 12 (glibc 2.36), and glibc is backwards compatible.
 FROM debian:bookworm-slim AS runtime
@@ -39,9 +60,12 @@ FROM runtime AS tracker
 RUN mkdir -p /state && chown randogeddon /state
 COPY --from=build /src/server/build/native/nativeCompile/randogeddon /src/server/build/native/nativeCompile/*.so /app/
 COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /app/web
+# Randogeddon Bridge's builds, offered under Your connection (/downloads/bridge/<file>)
+COPY --from=bridge /out /app/bridge
 # `docker compose exec tracker randogeddon admins` finds the binary on the PATH
 RUN ln -s /app/randogeddon /usr/local/bin/randogeddon
 ENV WEB_DIR=/app/web \
+    BRIDGE_DIR=/app/bridge \
     STATE_DIR=/state \
     DATA_DIR=/data
 USER randogeddon
