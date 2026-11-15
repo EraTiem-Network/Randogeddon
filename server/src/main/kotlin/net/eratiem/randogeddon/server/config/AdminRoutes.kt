@@ -33,6 +33,8 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.RandogeddonVersion
+import net.eratiem.randogeddon.shared.Versions
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CommandRequest
@@ -64,6 +66,12 @@ fun Route.adminRoutes(
     install(RequireAdministrator) { this.logins = logins }
     // Every session with its game server, and what a new one needs (releases, logins, a free ID)
     get("/sessions") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
+    // What runs now: this tracker, the gateway (if it answers) and its releases
+    get("/versions") {
+      val gateway = runCatching { gameServer.gatewayVersion() }.getOrNull()
+      val releases = runCatching { gameServer.versions() }.getOrDefault(emptyList())
+      call.respond(Versions(RandogeddonVersion.VERSION, gateway, releases))
+    }
     route("/settings") {
       get { call.respond(AppSettings(sessionsPerUser(settings))) }
       put {

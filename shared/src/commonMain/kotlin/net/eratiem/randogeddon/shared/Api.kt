@@ -766,6 +766,13 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 @Serializable
 data class ApworldResults(val results: List<ApworldResult>)
 
+/**
+ * `GET /api/admin/versions` (Administrators): what runs now, to check a deploy: the tracker's version, the gateway's
+ * (`null`: it can't be reached) and its Archipelago releases.
+ */
+@Serializable
+data class Versions(val tracker: String, val gateway: String? = null, val releases: List<String> = emptyList())
+
 /** `POST /api/admin/apworlds/remove`: uploaded files out of a release's library, together. */
 @Serializable
 data class ApworldRemoval(val release: String, val files: List<String>)

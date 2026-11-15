@@ -83,6 +83,9 @@ class GameServerClient(private val config: TrackerConfig) {
   suspend fun versions(): List<String> = call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
     .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
 
+  /** The gateway's own version. */
+  suspend fun gatewayVersion(): String = call { http.get("${config.gameServerApi}/internal/version") { auth() } }.trim()
+
   /** Generates session [id]'s seed (served once its game server starts). Takes up to minutes. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
     http.post("${session(id)}/generate") {
