@@ -326,7 +326,7 @@ func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
 	}
 	out := []entry{}
 	for _, s := range sessions {
-		if s.Running() && len(s.MySlots) > 0 {
+		if s.Offered() {
 			out = append(out, entry{s.ID, s.ID})
 		}
 	}
@@ -340,13 +340,14 @@ func (a *App) handleSlots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type entry struct {
-		Name string `json:"name"`
-		Game string `json:"game"`
+		Name   string `json:"name"`
+		Game   string `json:"game"`
+		Hosted bool   `json:"hosted"`
 	}
 	out := []entry{}
 	for _, s := range conn.Slots {
-		if !s.Hosted && !s.Locked {
-			out = append(out, entry{s.Name, s.Game})
+		if s.Usable() {
+			out = append(out, entry{s.Name, s.Game, s.Hosted})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -371,18 +372,7 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.mu.Unlock()
-	fetch := func() (Slot, string, error) {
-		conn, err := a.client().Connection(body.Session)
-		if err != nil {
-			return Slot{}, "", err
-		}
-		for _, s := range conn.Slots {
-			if s.Name == body.Slot && !s.Hosted && !s.Locked {
-				return s, upstreamURL(conn.Server), nil
-			}
-		}
-		return Slot{}, "", fmt.Errorf("no slot %s in %s", body.Slot, body.Session)
-	}
+	fetch := func() (Slot, string, error) { return slotOf(a.client(), body.Session, body.Slot) }
 	slot, upstream, err := fetch()
 	if !a.call(w, err) {
 		return
