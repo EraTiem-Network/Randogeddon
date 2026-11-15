@@ -19,10 +19,9 @@ interface SessionAdminTexts {
   val autoDeletionDisabled: String
   fun deletedAutomaticallyOn(date: String): String
   // Its players
-  fun playersSubtitle(players: Int, slots: Int): String
-  val nobodyNamed: String
-  val nobodyPlays: String
-  val filesOfSlots: String
+  val patchFiles: String
+  fun patchFilesSubtitle(files: Int): String
+  val noPatchFiles: String
   val filesTip: String
   fun slotNumber(n: Int): String
   // The switch
@@ -197,11 +196,9 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   }
   override val autoDeletionDisabled = "auto-deletion disabled"
   override fun deletedAutomaticallyOn(date: String) = "deleted automatically on $date"
-  override fun playersSubtitle(players: Int, slots: Int) =
-    "$players ${if (players == 1) "player" else "players"}, $slots ${if (slots == 1) "slot" else "slots"}"
-  override val nobodyNamed = "Nobody is named for its slots."
-  override val nobodyPlays = "Nobody plays"
-  override val filesOfSlots = "Files of the slots"
+  override val patchFiles = "Patch files"
+  override fun patchFilesSubtitle(files: Int) = "$files ${if (files == 1) "file" else "files"} from the seed"
+  override val noPatchFiles = "The seed brings no files to download."
   override val filesTip = "Each player downloads their own under Your connection; here every slot's."
   override fun slotNumber(n: Int) = "slot $n"
   override val noneRunning = "none running"
@@ -350,10 +347,9 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   }
   override val autoDeletionDisabled = "automatisches Löschen aus"
   override fun deletedAutomaticallyOn(date: String) = "wird am $date automatisch gelöscht"
-  override fun playersSubtitle(players: Int, slots: Int) = "$players Spieler, $slots ${if (slots == 1) "Slot" else "Slots"}"
-  override val nobodyNamed = "Für die Slots ist niemand eingetragen."
-  override val nobodyPlays = "Niemand spielt"
-  override val filesOfSlots = "Dateien der Slots"
+  override val patchFiles = "Patch-Dateien"
+  override fun patchFilesSubtitle(files: Int) = "$files ${if (files == 1) "Datei" else "Dateien"} aus dem Seed"
+  override val noPatchFiles = "Der Seed bringt keine Dateien zum Herunterladen mit."
   override val filesTip = "Jeder Spieler lädt seine eigenen unter Deine Verbindung herunter; hier die aller Slots."
   override fun slotNumber(n: Int) = "Slot $n"
   override val noneRunning = "keine läuft"
