@@ -258,14 +258,17 @@ docker compose up -d
    *Generate and start*. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
-   name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
-   before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
+   name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
+   slot yet: one message names them (and tells someone who isn't an Administrator to ask one to upload it), and they
+   become slots by themselves once the APWorld is there (uploaded by anyone, anywhere). If Generate.py fails, the panel names the games that may be the cause (one the error mentions,
    or one whose APWorld comes from another release) above its output.
-3. **New players are invited** by e-mail, right in a slot's player field (only an address that has no account; someone
-   who has one is picked by name), or beforehand by an Administrator (*Users*): they get a link, valid for 7 days,
-   and choose their name and password themselves. Until they sign up, the session shows them by the suggested name.
+3. **Players are added** per slot, from a dropdown with a search (a slot starts without players). **New players are
+   invited** by e-mail right there (type their address: only one that has no account), or beforehand by an
+   Administrator (*Users*): they get a link, valid for 7 days, and choose their name and password themselves. Until
+   they sign up, the session shows them by the suggested name. When a session ends, its invitations nobody accepted
+   go (unless another running session has them).
    **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
-   Archipelago), type *Hosted* into the slot's player field. The slot then has no players and no field to add any; the
+   Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
    dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
    see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
    server up. No account can be named *Hosted*; Randogeddon Bridge leaves hosted slots out.
