@@ -37,11 +37,13 @@ func (s Session) Running() bool {
 	return s.Status == "" || s.Status == "live" || s.Status == "finishing"
 }
 
-// Slot is one of the user's slots in a session, with its password.
+// Slot is one of the user's slots in a session, with its password. A hosted one runs as a server of its own, which
+// the game joins instead of Archipelago: nothing for the bridge.
 type Slot struct {
 	Name     string `json:"name"`
 	Game     string `json:"game"`
 	Password string `json:"password"`
+	Hosted   bool   `json:"hosted"`
 }
 
 // Connection is where a session's game clients connect and the user's slots in it

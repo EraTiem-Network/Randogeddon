@@ -333,7 +333,9 @@ func (a *App) handleSlots(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []entry{}
 	for _, s := range conn.Slots {
-		out = append(out, entry{s.Name, s.Game})
+		if !s.Hosted {
+			out = append(out, entry{s.Name, s.Game})
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -363,7 +365,7 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 			return Slot{}, "", err
 		}
 		for _, s := range conn.Slots {
-			if s.Name == body.Slot {
+			if s.Name == body.Slot && !s.Hosted {
 				return s, upstreamURL(conn.Server), nil
 			}
 		}
