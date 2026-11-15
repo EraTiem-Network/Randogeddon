@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.UserStore
+import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -57,6 +59,7 @@ class SessionLifecycle(
   private val finishes: SessionFinishStore,
   private val archives: Archives,
   private val gameServer: GameServerClient,
+  private val users: UserStore,
 ) {
   private val mutex = Mutex()
 
@@ -164,6 +167,27 @@ class SessionLifecycle(
     finishes.finish(session.seedName, by, now)
     session.disconnect()
     runCatching { gameServer.control(session.id, "stop") }.onFailure { logger.warn("Could not stop the game server of {}: {}", session.id, it.message) }
+    runCatching { cancelInvitations(session) }.onFailure { logger.warn("Could not cancel the invitations of {}: {}", session.id, it.message) }
     logger.info("Session {} finished{}", session.id, by?.let { " by $it" } ?: " (every slot done)")
   }
+
+  /** The session's invitations nobody accepted go: the invited accounts (and their links) no other running session has. */
+  private suspend fun cancelInvitations(session: LiveSession) {
+    val setup = session.setup ?: return
+    val elsewhere = sessions.all().filter { it.id != session.id && !it.finished }
+      .flatMap { other -> other.setup?.let { it.members.keys + it.roles.keys }.orEmpty() }.toSet()
+    val invited = (setup.members.keys + setup.roles.keys).mapNotNull { users.account(it) }
+      .filter { it.signedUpAt == null }.associateBy { it.id }
+    for (id in invitationsToCancel(setup.members.keys + setup.roles.keys, elsewhere, invited.keys)) {
+      users.delete(id)
+      logger.info("Session {} finished: the invitation of {} is cancelled", session.id, invited.getValue(id).email)
+    }
+  }
 }
+
+/**
+ * Who of a finished session's people ([part]) loses their invitation: the [invited] ones (not signed up yet) that no
+ * running session still has ([elsewhere]).
+ */
+internal fun invitationsToCancel(part: Set<Uuid>, elsewhere: Set<Uuid>, invited: Set<Uuid>): Set<Uuid> =
+  (part - elsewhere) intersect invited

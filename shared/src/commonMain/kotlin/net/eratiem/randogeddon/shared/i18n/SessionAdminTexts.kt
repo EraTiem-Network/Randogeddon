@@ -89,8 +89,6 @@ interface SessionAdminTexts {
   fun removeAll(n: Int): String
   fun removeFile(file: String): String
   fun notAdded(problem: String): String
-  val uploadMissing: String
-  val checkAgain: String
   val stepPlayers: String
   val playersHint: String
   val locks: String
@@ -120,9 +118,16 @@ interface SessionAdminTexts {
   val inviting: String
   fun inviteAddress(address: String): String
   val noAccountMatches: String
-  /** A slot's player field: making it a hosted slot (typed "Hosted"), and what that means (its chip's tip). */
-  val makeHosted: String
+  /** A slot's *Hosted* checkbox, what it means (its tip), the question before it clears the players, the slot's line. */
+  val hostedCheck: String
   val hostedTip: String
+  val hostedQuestion: String
+  val yesHosted: String
+  val hostedLine: String
+  /** YAMLs whose games the release has no APWorld for ([files]: each with its games), then what to do. */
+  fun missingApworlds(files: String, version: String): String
+  val uploadThem: String
+  val askAdministrator: String
   fun invitedName(name: String): String
   val sessionCreated: String
   fun startLocked(slots: String): String
@@ -253,8 +258,6 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override fun removeAll(n: Int) = "Remove all $n YAMLs? The players and locks chosen so far go too."
   override fun removeFile(file: String) = "Remove $file?"
   override fun notAdded(problem: String) = "Not added: $problem"
-  override val uploadMissing = "Upload the missing APWorlds below, then:"
-  override val checkAgain = "Check again"
   override val stepPlayers = "2. Who plays which slot"
   override val playersHint =
     "One slot per YAML. A slot can have several players (they play it together). New names get a login when the " +
@@ -286,7 +289,14 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val inviting = "Inviting…"
   override fun inviteAddress(address: String) = "Invite $address"
   override val noAccountMatches = "No account matches; type their e-mail address to invite them"
-  override val makeHosted = "Hosted: the game runs as a server of its own"
+  override val hostedCheck = "Hosted"
+  override val hostedQuestion = "Make this slot hosted? Its players are removed: its game runs as a server of its own."
+  override val yesHosted = "Yes, hosted"
+  override val hostedLine = "No players: the game runs as a server of its own, which they join with their games."
+  override fun missingApworlds(files: String, version: String) =
+    "No slots yet for $files: Archipelago $version has no APWorld for their games. They come by themselves once it has."
+  override val uploadThem = "Upload them under APWorlds."
+  override val askAdministrator = "Ask an Administrator to upload them."
   override val hostedTip = "A hosted slot: its game runs as a server of its own, which the players join with their games; " +
     "nobody plays it from here. The Session-Managers see its connection, to set the server up; the players its patch files."
   override fun invitedName(name: String) = "$name (invited)"
@@ -387,8 +397,6 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override fun removeAll(n: Int) = "Alle $n YAMLs entfernen? Die bisher gewählten Spieler und Sperren gehen mit."
   override fun removeFile(file: String) = "$file entfernen?"
   override fun notAdded(problem: String) = "Nicht hinzugefügt: $problem"
-  override val uploadMissing = "Lade die fehlenden APWorlds unten hoch, dann:"
-  override val checkAgain = "Erneut prüfen"
   override val stepPlayers = "2. Wer spielt welchen Slot"
   override val playersHint =
     "Ein Slot pro YAML. Ein Slot kann mehrere Spieler haben (sie spielen ihn zusammen). Neue Namen bekommen eine " +
@@ -420,7 +428,15 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val inviting = "Wird eingeladen…"
   override fun inviteAddress(address: String) = "$address einladen"
   override val noAccountMatches = "Kein Konto passt; gib die E-Mail-Adresse ein, um die Person einzuladen"
-  override val makeHosted = "Hosted: Das Spiel läuft als eigener Server"
+  override val hostedCheck = "Hosted"
+  override val hostedQuestion = "Diesen Slot hosten? Seine Spieler werden entfernt: Sein Spiel läuft als eigener Server."
+  override val yesHosted = "Ja, hosten"
+  override val hostedLine = "Keine Spieler: Das Spiel läuft als eigener Server, dem sie mit ihren Spielen beitreten."
+  override fun missingApworlds(files: String, version: String) =
+    "Noch keine Slots für $files: Archipelago $version hat keine APWorld für ihre Spiele. Sie kommen von selbst, " +
+      "sobald es sie hat."
+  override val uploadThem = "Lade sie unter APWorlds hoch."
+  override val askAdministrator = "Bitte einen Administrator, sie hochzuladen."
   override val hostedTip = "Ein gehosteter Slot: Sein Spiel läuft als eigener Server, dem die Spieler mit ihren Spielen " +
     "beitreten; von hier spielt ihn niemand. Die Session-Manager sehen seine Verbindung, um den Server einzurichten; die " +
     "Spieler seine Patch-Dateien."

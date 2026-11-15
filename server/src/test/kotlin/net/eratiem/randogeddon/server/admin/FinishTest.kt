@@ -4,11 +4,25 @@ import net.eratiem.randogeddon.server.session.completed
 import net.eratiem.randogeddon.server.session.deletesAt
 import net.eratiem.randogeddon.server.session.reopenUntil
 import java.time.Instant
+import kotlin.uuid.Uuid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class FinishTest {
+  @Test
+  fun `a finished session's open invitations go, unless another running session has them`() {
+    val (signedUp, invited, invitedElsewhere) = List(3) { Uuid.random() }
+    assertEquals(
+      setOf(invited),
+      invitationsToCancel(
+        part = setOf(signedUp, invited, invitedElsewhere),
+        elsewhere = setOf(invitedElsewhere),
+        invited = setOf(invited, invitedElsewhere),
+      ),
+    )
+  }
+
   private val now = Instant.parse("2026-11-13T20:00:00Z")
 
   @Test

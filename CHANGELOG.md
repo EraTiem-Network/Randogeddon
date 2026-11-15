@@ -9,6 +9,17 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.8: The new-session form, invitations
+- *Hosted* is a checkbox on a slot's row, next to *starts locked*, asked once more; it removes the slot's players and
+  its player picker (unticked, they come back). Typing *Hosted* into the player field is gone.
+- A slot starts without players (they were guessed from its name before).
+- Players are added from a dropdown with a search; a typed e-mail address that no account has offers its invitation.
+- A YAML whose game the release has no APWorld for gets no slot: one message names the files and their games (and
+  tells someone who isn't an Administrator to ask one to upload them); the form checks again by itself every few
+  seconds, so an upload by anyone, anywhere, makes them slots. Generating leaves those files out.
+- A session that ends cancels its invitations nobody accepted: the invited accounts that no other running session has
+  go, and with them their links.
+
 ### 0.13.7: Logging out starts fresh, the ID, the versions
 - Without a login (logged out, or the login ended), the settings kept in the browser go back to the defaults: theme
   and mode, language, the live feed's place and visibility, the bridge folded. A login sets the account's theme, mode

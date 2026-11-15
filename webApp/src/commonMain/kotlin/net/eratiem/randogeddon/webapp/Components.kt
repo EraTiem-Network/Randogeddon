@@ -468,7 +468,7 @@ private const val TIP_DELAY_MS = 600L
  * A popup closed less than a moment ago: the tap on its own anchor that closed it (popups close on the press outside
  * them) mustn't open it again on release.
  */
-private fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
+internal fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
 
 /**
  * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it. A click
@@ -578,7 +578,7 @@ private const val SEARCH_FROM = 10
  * cover the list).
  */
 @Composable
-private fun DropdownSearch(query: String, onChange: (String) -> Unit) {
+internal fun DropdownSearch(query: String, onChange: (String) -> Unit) {
   val focus = remember { FocusRequester() }
   FilterField(query, onChange, LocalTexts.current.common.search, Modifier.fillMaxWidth().focusRequester(focus))
   LaunchedEffect(Unit) { if (!Platform.touchScreen()) focus.requestFocus() }
