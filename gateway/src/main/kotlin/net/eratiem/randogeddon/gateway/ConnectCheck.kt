@@ -10,8 +10,8 @@ sealed interface Verdict {
   /** Passes on to MultiServer unchanged. */
   data object Forward : Verdict
 
-  /** A Connect with a wrong password: answered with [REFUSAL] here, MultiServer never sees it. */
-  data class Refuse(val slot: String?) : Verdict
+  /** A Connect with a wrong password ([REFUSAL]), or of a slot still locked ([REFUSAL_LOCKED]): MultiServer never sees it. */
+  data class Refuse(val slot: String?, val locked: Boolean = false) : Verdict
 
   /** Not the Archipelago protocol (no JSON array): the connection is closed. */
   data class Close(val reason: String) : Verdict
@@ -19,6 +19,9 @@ sealed interface Verdict {
 
 /** What Archipelago clients show for a wrong room password; the same field now carries the slot's password. */
 const val REFUSAL = """[{"cmd":"ConnectionRefused","errors":["InvalidPassword"]}]"""
+
+/** A slot still locked (its key isn't found yet): clients show the error as it is. */
+const val REFUSAL_LOCKED = """[{"cmd":"ConnectionRefused","errors":["SlotLocked"]}]"""
 
 // Strict (not lenient), and like Python's json.loads it keeps the last of duplicate keys, so both read the same packet
 private val json = Json
@@ -30,9 +33,14 @@ private val json = Json
  * Each `Connect` packet must carry the password of its `name` in [passwords] (slot name -> password of the current
  * seed; only asked for when the frame has a Connect). A name without a password is passed on: MultiServer doesn't know
  * that slot either and refuses it with InvalidSlot, which tells the player about a typo. While no passwords are known
- * at all (no seed yet, database unreachable), every Connect is refused.
+ * at all (no seed yet, database unreachable), every Connect is refused. A slot still [locked] is refused even with its
+ * password, until its key is found.
  */
-suspend fun checkClientFrame(text: String, passwords: suspend () -> Map<String, String>): Verdict {
+suspend fun checkClientFrame(
+  text: String,
+  passwords: suspend () -> Map<String, String>,
+  locked: suspend () -> Set<String> = { emptySet() },
+): Verdict {
   val packets = runCatching { json.parseToJsonElement(text) }.getOrNull() as? JsonArray
     ?: return Verdict.Close("not a JSON array of packets")
   for (packet in packets) {
@@ -42,6 +50,7 @@ suspend fun checkClientFrame(text: String, passwords: suspend () -> Map<String, 
     if (known.isEmpty()) return Verdict.Refuse(slot)
     val expected = known[slot] ?: continue
     if (packet.string("password") != expected) return Verdict.Refuse(slot)
+    if (slot != null && slot in locked()) return Verdict.Refuse(slot, locked = true)
   }
   return Verdict.Forward
 }

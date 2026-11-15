@@ -6,11 +6,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ConnectCheckTest {
+  @Test
+  fun `a locked slot is refused even with its password, until its key is found`() {
+    val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "pw")
+    fun connectWith(locked: Set<String>): Verdict =
+      runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(connect("Alice-HK", "s3cr3t!"), { passwords }, { locked }) }
+    assertEquals(Verdict.Refuse("Alice-HK", locked = true), connectWith(setOf("Alice-HK")))
+    assertEquals(Verdict.Forward, connectWith(setOf("Bob-Yacht")))
+    assertEquals(Verdict.Forward, connectWith(emptySet()))
+  }
+
   private val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "other")
 
   /** The check with a fixed password map. */
   private fun checkClientFrame(text: String, passwords: Map<String, String>) =
-    runBlocking { checkClientFrame(text) { passwords } }
+    runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(text, { passwords }) }
 
   private fun connect(name: String, password: String) =
     """[{"cmd":"Connect","password":"$password","game":"","name":"$name","uuid":"x","items_handling":7,"tags":[]}]"""

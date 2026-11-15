@@ -32,11 +32,11 @@ suspend fun DefaultWebSocketServerSession.relay(http: HttpClient, upstreamUrl: S
         val up = launch {
           pump(from = client, to = upstream) { frame ->
             when (frame) {
-              is Frame.Text -> when (val verdict = checkClientFrame(frame.readText(), passwords::current)) {
+              is Frame.Text -> when (val verdict = checkClientFrame(frame.readText(), passwords::current, passwords::locked)) {
                 Verdict.Forward -> frame
                 is Verdict.Refuse -> {
-                  logger.info("Refused {} as {}: wrong password", address, verdict.slot)
-                  client.send(Frame.Text(REFUSAL))
+                  logger.info("Refused {} as {}: {}", address, verdict.slot, if (verdict.locked) "still locked" else "wrong password")
+                  client.send(Frame.Text(if (verdict.locked) REFUSAL_LOCKED else REFUSAL))
                   null
                 }
                 is Verdict.Close -> {
