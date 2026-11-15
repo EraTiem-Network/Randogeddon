@@ -560,6 +560,14 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - Built strictly: nobody's game client connects a locked slot, Session-Managers' and support's neither (the
           tracker's own connections go to the game server directly, not through the gateway, so the dashboard keeps
           seeing it)
+    - [x] Polish: the panel's *Players* and *People* said the same twice: one *People*
+        - Everyone of the session as a pill with their part (no slots on the pill); a click opens their panel: their
+          slots (game, how far, how it stands), how far they are in the session, played, last active
+        - In the panel: another part for them (a player becomes Session-Manager or support besides their slots), or
+          taking theirs (a playing one only plays then)
+        - The last Session-Manager stays, for Administrators too: someone else becomes Session-Manager first (the
+          panel says so; `KEEP_MANAGER` on the server)
+        - What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes
