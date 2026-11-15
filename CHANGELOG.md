@@ -9,6 +9,15 @@ the bridge's builds and its part of this file as the notes.
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.7: Logging out starts fresh, the ID, the versions
+- Without a login (logged out, or the login ended), the settings kept in the browser go back to the defaults: theme
+  and mode, language, the live feed's place and visibility, the bridge folded. A login sets the account's theme, mode
+  and language again.
+- *Your account*: Administrators with single sign-on see their ID too, in *Your Authentik account*.
+- The panel's *General* has *Versions* last (Administrators): the tracker's, the gateway's and this page's version,
+  and the gateway's Archipelago releases, to check a deploy. The build writes the version into `shared`
+  (`RandogeddonVersion`); the gateway answers it on `GET /internal/version`, the tracker on `GET /api/admin/versions`.
+
 ### 0.13.6: Hosted slots
 - For games that run as a server of their own, which their players join with their games instead of Archipelago:
   *Hosted* typed into a slot's player field makes it a hosted slot (no players, no field to add any; × makes it an
