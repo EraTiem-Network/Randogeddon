@@ -15,6 +15,8 @@ version="${1:?the version}" image="${2:?the tracker image}" dry="${3:-}"
 REGISTRY="${BRIDGE_REGISTRY:-https://pkg.example.org}"
 REPOSITORY="${BRIDGE_REPOSITORY:-randogeddon-bridge}"
 TOKEN_FILE="${BRIDGE_TOKEN_FILE:-$HOME/.config/randogeddon/bridge-publish.token}"
+# The GitHub repository by name: the deploy's clone (~/rg-deploy) has a local path as its remote, which gh can't place
+export GH_REPO="${GH_REPO:-EraTiem-Network/Randogeddon}"
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
