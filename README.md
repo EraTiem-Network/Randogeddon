@@ -264,6 +264,11 @@ docker compose up -d
 3. **New players are invited** by e-mail, right in a slot's player field (only an address that has no account; someone
    who has one is picked by name), or beforehand by an Administrator (*Users*): they get a link, valid for 7 days,
    and choose their name and password themselves. Until they sign up, the session shows them by the suggested name.
+   **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
+   Archipelago), type *Hosted* into the slot's player field. The slot then has no players and no field to add any; the
+   dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
+   see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
+   server up. No account can be named *Hosted*; Randogeddon Bridge leaves hosted slots out.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
