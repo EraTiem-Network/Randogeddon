@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.11: One People
+- The panel's *Players* and *People* are one *People*: everyone of the session as a pill with their part. A click opens
+  their panel: their slots (game, how far, how it stands), how far they are in the session, played and last active;
+  there they get another part (`PUT /api/sessions/{id}/people/{user}`: a player becomes Session-Manager or support
+  besides their slots), or theirs is taken (a playing one only plays then).
+- A session keeps its last Session-Manager, for Administrators too (`KEEP_MANAGER`): someone else becomes
+  Session-Manager first, and the panel says so.
+- What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*.
+
 ### 0.13.10: Locked slots stay locked, more polish
 - A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
   too. *Your connection* shows it as locked, without a password, and the bridge doesn't offer it. Migration V16:
