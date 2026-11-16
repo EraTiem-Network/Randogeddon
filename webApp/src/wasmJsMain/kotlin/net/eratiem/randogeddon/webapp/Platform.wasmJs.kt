@@ -11,7 +11,11 @@ actual object Platform {
   actual suspend fun request(method: String, path: String, body: String?): HttpResult? = suspendCancellableCoroutine { cont ->
     jsFetch(
       method, path, body,
-      { status, text -> if (cont.isActive) cont.resume(HttpResult(status, text)) },
+      { status, text ->
+        // An ended login shows the login form, whichever request noticed it
+        LoginWatch.seen(status, text)
+        if (cont.isActive) cont.resume(HttpResult(status, text))
+      },
       { if (cont.isActive) cont.resume(null) },
     )
   }

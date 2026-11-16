@@ -579,6 +579,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Polish: the spoiler log's playthrough marks the steps already checked, reads *Item @ Check*, and has a
           search that filters its rows
     - [x] Bug: the page scrolls, but shows no scroll bar (drawn on a canvas): one on everything that scrolls
+    - [x] Bug: a login ended at Authentik showed "not logged in" in a field instead of the login form
+    - [x] Bug: the playthrough's *Fold all* / *Unfold all* didn't follow the list (the filtered spheres, folding by hand)
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes

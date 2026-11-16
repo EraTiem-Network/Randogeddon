@@ -67,6 +67,12 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
   private var close: (() -> Unit)? = null
   private var checking: Job? = null
+
+  init {
+    // Any request finding the login ended: the same as at the start, the login form; once (while the form is open,
+    // other requests answering the same don't open it again over what is typed)
+    LoginWatch.onEnded = { if (_me.value != null) checkLogin() }
+  }
   private var listing: Job? = null
 
   fun start() = checkLogin()

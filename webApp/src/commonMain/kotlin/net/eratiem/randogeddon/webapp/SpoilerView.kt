@@ -151,10 +151,16 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
   fun shown(number: Int) = steps[number].orEmpty()
     .filter { (slot == null || it.itemSlot == slot || it.locationSlot == slot) && matches(it) }
   val search: @Composable (Modifier) -> Unit = { modifier -> FilterField(query, { query = it }, t.spoiler.searchSteps, modifier) }
+  // The spheres the slot and the search leave (with a step); they unfold when filtered, fold back when not, and each
+  // folds by hand either way
+  val visibleNumbers = spheres.filter { shown(it.number).isNotEmpty() }.map { it.number }.toSet()
+  val allOpen = visibleNumbers.isNotEmpty() && open.containsAll(visibleNumbers)
+  LaunchedEffect(slot, needle) { open = if (slot != null || needle.isNotEmpty()) visibleNumbers else emptySet() }
   val controls: @Composable () -> Unit = {
     Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, slot, { slot = it })
-    SmallButton(if (open.size == spheres.size) t.spoiler.foldAll else t.spoiler.unfoldAll, {
-      open = if (open.size == spheres.size) emptySet() else spheres.map { it.number }.toSet()
+    // Follows the list: "Fold all" once every sphere shown is unfolded (by hand too), else "Unfold all"
+    SmallButton(if (allOpen) t.spoiler.foldAll else t.spoiler.unfoldAll, {
+      open = if (allOpen) open - visibleNumbers else open + visibleNumbers
     })
   }
   Section(
@@ -172,7 +178,7 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
     }
     Column(Modifier.fillMaxWidth().card(p)) {
-      val visible = spheres.filter { shown(it.number).isNotEmpty() }
+      val visible = spheres.filter { it.number in visibleNumbers }
       if (visible.isEmpty()) {
         Txt(
           if (needle.isNotEmpty()) t.spoiler.nothingMatches(query.trim()) else t.spoiler.nothingFor(slot.orEmpty()),
@@ -182,7 +188,7 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
       visible.forEachIndexed { i, sphere ->
         if (i > 0) Divider()
         val entries = shown(sphere.number)
-        val unfolded = sphere.number in open || slot != null || needle.isNotEmpty()
+        val unfolded = sphere.number in open
         Row(
           Modifier.fillMaxWidth().hand().clickable { open = if (sphere.number in open) open - sphere.number else open + sphere.number }
             .padding(horizontal = if (narrow) 12.dp else 16.dp, vertical = 10.dp),
