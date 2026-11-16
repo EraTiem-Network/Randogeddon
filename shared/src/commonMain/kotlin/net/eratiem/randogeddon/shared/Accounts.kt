@@ -144,6 +144,12 @@ data class AdminUser(
   val createdAt: Long = 0,
   /** When the invitation link stops working (only while invited). */
   val invitationExpiresAt: Long? = null,
+  /** An Administrator keeps them out for now (timed out or suspended); `null`: they can log in. */
+  val block: AccountBlock? = null,
+  /** How many running sessions of their own they may have at once; `null`: the default ([AppSettings]). */
+  val sessionLimit: Int? = null,
+  /** How many running sessions they created (what the limit counts). */
+  val sessionsRunning: Int = 0,
   val autoDelete: AutoDelete = AutoDelete.NEVER,
   /** When the account will be deleted by itself, as of now; `null`: not planned. */
   val deletesAt: Long? = null,
@@ -154,6 +160,38 @@ data class AdminUser(
   /** The language they chose (its code); `null`: their browser's. */
   val language: String? = null,
 )
+
+/**
+ * An account an Administrator keeps out: since when, [until] when (`null`: suspended, until it is taken back), why
+ * (what the Administrator wrote; the person reads it too) and who did it. While it lasts they can't log in and their
+ * logins are ended; their sessions go on.
+ */
+@Serializable
+data class AccountBlock(val since: Long, val until: Long? = null, val reason: String? = null, val by: String? = null)
+
+/** How long a time-out lasts. */
+@Serializable
+enum class TimeOut(val hours: Int) {
+  @SerialName("1h") HOUR(1),
+  @SerialName("1d") DAY(24),
+  @SerialName("7d") WEEK(24 * 7),
+  @SerialName("30d") MONTH(24 * 30),
+}
+
+/**
+ * `POST /api/admin/users/{id}/block`: time the account out for [timeOut], or suspend it (`null`: until taken back),
+ * with a [reason] the person is told (optional). `POST …/delete` takes the same, for its [reason].
+ */
+@Serializable
+data class AccountActionRequest(val timeOut: TimeOut? = null, val reason: String? = null) {
+  companion object {
+    const val MAX_REASON = 200
+  }
+}
+
+/** `PUT /api/admin/users/{id}/session-limit`: the account's own limit of running sessions; `null`: the default. */
+@Serializable
+data class SessionLimitRequest(val limit: Int? = null)
 
 /** `POST /api/admin/users`: invite someone; [suggestedName] is prefilled on their sign-up page. */
 @Serializable

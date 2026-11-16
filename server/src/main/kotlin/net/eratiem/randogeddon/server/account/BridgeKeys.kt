@@ -53,7 +53,7 @@ class BridgeKeys(private val users: UserStore, private val logins: LoginSessionS
     val hash = tokenHash(key)
     val (id, method) = logins.loginOf(hash, now) ?: return null
     if (method != LoginMethods.BRIDGE) return null
-    val user = users.findActive(id) ?: return null
+    val user = users.findActive(id)?.takeUnless { it.keptOut(now) } ?: return null
     logins.touch(hash, now)
     return user.copy(loginMethod = method)
   }

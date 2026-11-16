@@ -121,24 +121,22 @@ class SessionLifecycle(
 
   /**
    * Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. It runs
-   * again then, for [by] and for its Session-Managers: none of them may be at their limit (unless an Administrator
-   * reopens it).
+   * again then and counts towards its creator's limit, who may not be at it (unless an Administrator reopens it; a
+   * session whose creator isn't known or is gone counts for nobody).
    */
   suspend fun reopen(id: String, by: User) = mutex.withLock {
     val session = session(id)
     if (!by.administrator) {
-      limit.reached(by.id)?.let {
+      val creator = session.setup?.createdBy
+      creator?.let { limit.of(it) }?.takeIf { it.reached }?.let {
         throw SessionProblem(
           HttpStatusCode.Forbidden,
-          if (it.limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_REOPEN)
-          else Refusal.of(Problem.SESSION_LIMIT, "running" to it.running, "limit" to it.limit),
+          when {
+            creator != by.id -> Refusal.of(Problem.CREATOR_AT_LIMIT, "name" to it.name, "running" to it.running, "limit" to it.limit)
+            it.limit == 0 -> Refusal(Problem.ONLY_ADMINISTRATORS_REOPEN)
+            else -> Refusal.of(Problem.SESSION_LIMIT, "running" to it.running, "limit" to it.limit)
+          },
         )
-      }
-      for (manager in session.managers() - by.id) {
-        limit.reached(manager)?.let {
-          val name = session.setup?.roles?.get(manager)?.name
-          throw SessionProblem(HttpStatusCode.Conflict, Problem.MANAGER_AT_LIMIT, "name" to name, "running" to it.running, "limit" to it.limit)
-        }
       }
     }
     val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_FINISHED, "id" to id)

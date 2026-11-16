@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.TimeOut
+
 /** The panel's APWorlds: the games of each Archipelago release, uploads, tries, removals. */
 interface ApworldTexts {
   val title: String
@@ -99,8 +101,6 @@ interface UserAdminTexts {
   val otherAddress: String
   val sendThere: String
   fun linkWentTo(address: String): String
-  val settings: String
-  val settingsSubtitle: String
   /** What runs now (after a deploy): the tracker, the gateway, this page, the Archipelago releases. */
   val versions: String
   val versionsSubtitle: String
@@ -111,8 +111,40 @@ interface UserAdminTexts {
   val notReachable: String
   val sessionsPerUser: String
   val sessionsPerUserTip: String
+  /** In an account's panel: its running sessions against its limit, and its own number. */
+  val ownSessionsLabel: String
+  fun sessionsOf(running: Int, limit: Int): String
+  val theDefault: String
+  val noLimit: String
+  val ownLimit: String
+  val useDefault: String
+  fun limitSaved(name: String): String
   val saved: String
   val zeroToTwenty: String
+  // Keeping an account out, deleting it
+  val timedOutPill: String
+  val suspendedPill: String
+  val accessLabel: String
+  val mayLogIn: String
+  fun timedOutUntil(date: String): String
+  val suspended: String
+  /** After the state: who did it, and why if they said. */
+  fun keptOutBy(name: String): String
+  fun keptOutFor(reason: String): String
+  val reason: String
+  fun timeOut(time: TimeOut): String
+  val timeOutButton: String
+  val suspendButton: String
+  val letInButton: String
+  val deleteButton: String
+  fun reallyDelete(name: String): String
+  val deleteNow: String
+  fun timedOutDone(name: String): String
+  fun suspendedDone(name: String): String
+  fun letInDone(name: String): String
+  fun deletedDone(name: String): String
+  val keptOutTip: String
+  val managedElsewhere: String
 }
 
 internal object EnglishApworlds : ApworldTexts {
@@ -265,8 +297,6 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val otherAddress = "Other address"
   override val sendThere = "Send the link there"
   override fun linkWentTo(address: String) = "A new link went to $address."
-  override val settings = "Settings"
-  override val settingsSubtitle = "for everyone"
   override val versions = "Versions"
   override val versionsSubtitle = "what runs now"
   override val trackerVersion = "Tracker"
@@ -274,12 +304,50 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val pageVersion = "This page"
   override val releasesLabel = "Archipelago"
   override val notReachable = "not reachable"
-  override val sessionsPerUser = "Sessions per user"
+  override val sessionsPerUser = "Sessions per user (default)"
   override val sessionsPerUserTip =
-    "How many running sessions one user may create and manage at once (0 to 20; 0: only Administrators create " +
-      "sessions). Administrators have no limit; the game servers' number applies to everyone."
+    "How many running sessions of their own a user may have at once (0 to 20; 0: only Administrators create " +
+      "sessions). It counts the sessions someone created, not the ones they were made Session-Manager of. An account " +
+      "can get its own number in its panel; this is for all others. Administrators have no limit; the game " +
+      "servers' number applies to everyone."
+  override val ownSessionsLabel = "Own sessions"
+  override fun sessionsOf(running: Int, limit: Int) = "$running running, $limit at once"
+  override val theDefault = "(the default)"
+  override val noLimit = "no limit"
+  override val ownLimit = "Own limit"
+  override val useDefault = "Use the default"
+  override fun limitSaved(name: String) = "Saved for $name."
   override val saved = "Saved."
   override val zeroToTwenty = "0 to 20"
+  override val timedOutPill = "timed out"
+  override val suspendedPill = "suspended"
+  override val accessLabel = "Access"
+  override val mayLogIn = "can log in"
+  override fun timedOutUntil(date: String) = "timed out until $date"
+  override val suspended = "suspended until taken back"
+  override fun keptOutBy(name: String) = "by $name"
+  override fun keptOutFor(reason: String) = "Reason: $reason"
+  override val reason = "Reason (they are told; optional)"
+  override fun timeOut(time: TimeOut) = when (time) {
+    TimeOut.HOUR -> "1 hour"
+    TimeOut.DAY -> "1 day"
+    TimeOut.WEEK -> "7 days"
+    TimeOut.MONTH -> "30 days"
+  }
+  override val timeOutButton = "Time out"
+  override val suspendButton = "Suspend"
+  override val letInButton = "Let in again"
+  override val deleteButton = "Delete account"
+  override fun reallyDelete(name: String) = "Really delete $name? Their sessions keep their name; the account can't be brought back."
+  override val deleteNow = "Delete now"
+  override fun timedOutDone(name: String) = "$name is timed out and was told by mail."
+  override fun suspendedDone(name: String) = "$name is suspended and was told by mail."
+  override fun letInDone(name: String) = "$name can log in again and was told by mail."
+  override fun deletedDone(name: String) = "$name is deleted."
+  override val keptOutTip =
+    "A timed-out or suspended account can't log in, and its logins (Randogeddon Bridge's too) end at once. Its " +
+      "sessions go on and its games stay connected. A time-out ends by itself."
+  override val managedElsewhere = "Administrators are managed where they log in."
 }
 
 internal object GermanUserAdmin : UserAdminTexts {
@@ -324,8 +392,6 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val otherAddress = "Andere Adresse"
   override val sendThere = "Den Link dorthin senden"
   override fun linkWentTo(address: String) = "Ein neuer Link ging an $address."
-  override val settings = "Einstellungen"
-  override val settingsSubtitle = "für alle"
   override val versions = "Versionen"
   override val versionsSubtitle = "was gerade läuft"
   override val trackerVersion = "Tracker"
@@ -333,10 +399,48 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val pageVersion = "Diese Seite"
   override val releasesLabel = "Archipelago"
   override val notReachable = "nicht erreichbar"
-  override val sessionsPerUser = "Sessions pro Benutzer"
+  override val sessionsPerUser = "Sessions pro Benutzer (Standard)"
   override val sessionsPerUserTip =
-    "Wie viele laufende Sessions ein Benutzer gleichzeitig erstellen und verwalten darf (0 bis 20; 0: nur " +
-      "Administratoren erstellen Sessions). Administratoren haben keine Grenze; die Zahl der Spielserver gilt für alle."
+    "Wie viele eigene laufende Sessions ein Benutzer gleichzeitig haben darf (0 bis 20; 0: nur Administratoren " +
+      "erstellen Sessions). Es zählen die Sessions, die jemand erstellt hat, nicht die, deren Session-Manager er " +
+      "wurde. Ein Konto kann in seinem Fenster eine eigene Zahl bekommen; diese gilt für alle anderen. " +
+      "Administratoren haben keine Grenze; die Zahl der Spielserver gilt für alle."
+  override val ownSessionsLabel = "Eigene Sessions"
+  override fun sessionsOf(running: Int, limit: Int) = "$running laufend, $limit gleichzeitig"
+  override val theDefault = "(der Standard)"
+  override val noLimit = "keine Grenze"
+  override val ownLimit = "Eigene Grenze"
+  override val useDefault = "Standard verwenden"
+  override fun limitSaved(name: String) = "Für $name gespeichert."
   override val saved = "Gespeichert."
   override val zeroToTwenty = "0 bis 20"
+  override val timedOutPill = "Auszeit"
+  override val suspendedPill = "gesperrt"
+  override val accessLabel = "Zugang"
+  override val mayLogIn = "kann sich anmelden"
+  override fun timedOutUntil(date: String) = "Auszeit bis $date"
+  override val suspended = "gesperrt, bis es zurückgenommen wird"
+  override fun keptOutBy(name: String) = "von $name"
+  override fun keptOutFor(reason: String) = "Grund: $reason"
+  override val reason = "Grund (wird der Person mitgeteilt; optional)"
+  override fun timeOut(time: TimeOut) = when (time) {
+    TimeOut.HOUR -> "1 Stunde"
+    TimeOut.DAY -> "1 Tag"
+    TimeOut.WEEK -> "7 Tage"
+    TimeOut.MONTH -> "30 Tage"
+  }
+  override val timeOutButton = "Auszeit geben"
+  override val suspendButton = "Sperren"
+  override val letInButton = "Wieder zulassen"
+  override val deleteButton = "Konto löschen"
+  override fun reallyDelete(name: String) = "$name wirklich löschen? Die Sessions behalten den Namen; das Konto lässt sich nicht zurückholen."
+  override val deleteNow = "Jetzt löschen"
+  override fun timedOutDone(name: String) = "$name hat eine Auszeit und wurde per Mail informiert."
+  override fun suspendedDone(name: String) = "$name ist gesperrt und wurde per Mail informiert."
+  override fun letInDone(name: String) = "$name kann sich wieder anmelden und wurde per Mail informiert."
+  override fun deletedDone(name: String) = "$name ist gelöscht."
+  override val keptOutTip =
+    "Ein Konto mit Auszeit oder Sperre kann sich nicht anmelden, und seine Anmeldungen (auch die von Randogeddon " +
+      "Bridge) enden sofort. Seine Sessions laufen weiter, und seine Spiele bleiben verbunden. Eine Auszeit endet von selbst."
+  override val managedElsewhere = "Administratoren werden dort verwaltet, wo sie sich anmelden."
 }

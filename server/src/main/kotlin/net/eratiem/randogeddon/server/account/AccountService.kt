@@ -1,6 +1,11 @@
 package net.eratiem.randogeddon.server.account
 
 import net.eratiem.randogeddon.shared.ThemeMode
+import net.eratiem.randogeddon.shared.AccountActionRequest
+import net.eratiem.randogeddon.shared.AccountBlock
+import net.eratiem.randogeddon.shared.i18n.MailTexts
+import java.time.Duration
+import net.eratiem.randogeddon.server.config.MAX_SESSIONS_PER_USER
 import net.eratiem.randogeddon.shared.FontChoice
 import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Theme
@@ -16,6 +21,7 @@ import net.eratiem.randogeddon.database.Account
 import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -67,6 +73,7 @@ class AccountService(
   private val sessions: LiveSessions,
   private val config: TrackerConfig,
   private val mailLimits: MailLimits,
+  private val setups: SessionSetupStore,
 ) {
   /**
    * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
@@ -293,6 +300,7 @@ class AccountService(
     val members = sessions.all().flatMap { s -> s.setup?.members?.keys.orEmpty().map { it to s.id } }
       .groupBy({ it.first }, { it.second })
     val due = users.activity().associate { it.user.id to deletesAt(it, now) }
+    val created = setups.runningCreated()
     return users.accounts().map { a ->
       AdminUser(
         id = a.id.toString(),
@@ -309,8 +317,91 @@ class AccountService(
         singleSignOn = a.linked,
         twoFactor = a.twoFactor,
         language = a.language,
+        block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
+        sessionLimit = a.sessionLimit,
+        sessionsRunning = created[a.id] ?: 0,
       )
     }.sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
+  }
+
+  /**
+   * Keeps the account [id] out, by the Administrator [by]: timed out for [request]'s time, or suspended until it is
+   * taken back. Its logins end at once, the next try to log in is told why, and a mail tells them too. Never an
+   * Administrator's account (they are managed where they log in), so never one's own; not an invitation.
+   */
+  suspend fun keepOut(id: Uuid, request: AccountActionRequest, by: User, now: Instant = Instant.now()) {
+    val account = theirs(id, by)
+    if (account.signedUpAt == null) throw AccountProblem(HttpStatusCode.Conflict, Problem.NOT_SIGNED_UP_YET, "name" to (account.email ?: id))
+    val reason = reason(request.reason)
+    val until = request.timeOut?.let { now.plus(Duration.ofHours(it.hours.toLong())) }
+    users.block(id, until, reason, by.name, now)
+    sessions.refresh()
+    logger.info("{} {} {}{}", by.name, if (until != null) "timed out (until $until)" else "suspended", account.name, reason?.let { ": $it" } ?: "")
+    tell(account) { to, name, texts -> Mails.keptOut(to, name, until?.let(UNTIL::format), reason, texts) }
+  }
+
+  /** Lets the account [id] in again before its time (or after a suspension), by the Administrator [by]. */
+  suspend fun letIn(id: Uuid, by: User, now: Instant = Instant.now()) {
+    val account = theirs(id, by)
+    if (account.block?.holds(now) != true) throw AccountProblem(HttpStatusCode.Conflict, Problem.NOT_KEPT_OUT, "name" to (account.name ?: id))
+    users.unblock(id)
+    sessions.refresh()
+    logger.info("{} let {} in again", by.name, account.name)
+    tell(account) { to, name, texts -> Mails.letIn(to, name, texts) }
+  }
+
+  /**
+   * Deletes the account [id], by the Administrator [by]: as it deletes itself ([UserStore.delete]: the sessions keep
+   * its name), told by mail before its address goes. An invitation is taken back without a mail.
+   */
+  suspend fun remove(id: Uuid, request: AccountActionRequest, by: User) {
+    val account = theirs(id, by)
+    val reason = reason(request.reason)
+    if (account.signedUpAt != null) tell(account) { to, name, texts -> Mails.removed(to, name, reason, texts) }
+    users.delete(id)
+    sessions.refresh()
+    logger.info("{} deleted the account of {}{}", by.name, account.name ?: account.email, reason?.let { ": $it" } ?: "")
+  }
+
+  /**
+   * The account [id]'s own limit of running sessions ([limit]: 0 to [MAX_SESSIONS_PER_USER]; `null`: the default
+   * again), by the Administrator [by]. An Administrator's account has no limit, so none is set for one.
+   */
+  suspend fun setSessionLimit(id: Uuid, limit: Int?, by: User) {
+    val account = users.account(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+    if (account.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.ADMINISTRATOR_ELSEWHERE, "name" to (account.name ?: id))
+    if (limit != null && limit !in 0..MAX_SESSIONS_PER_USER) {
+      throw AccountProblem(HttpStatusCode.BadRequest, Problem.SESSIONS_PER_USER, "max" to MAX_SESSIONS_PER_USER)
+    }
+    users.setSessionLimit(id, limit)
+    logger.info("{} set the sessions of {} to {}", by.name, account.name ?: account.email, limit ?: "the default")
+  }
+
+  /** The account [id] for an action of the Administrator [by] on it: not their own, not an Administrator's. */
+  private suspend fun theirs(id: Uuid, by: User): Account {
+    val account = users.account(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+    if (id == by.id) throw AccountProblem(HttpStatusCode.Conflict, Problem.NOT_YOUR_OWN)
+    if (account.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.ADMINISTRATOR_ELSEWHERE, "name" to (account.name ?: id))
+    return account
+  }
+
+  /** A reason as it is kept and told: one line, without control characters; `null` if there is none. */
+  private fun reason(text: String?): String? {
+    val reason = text.orEmpty().map { if (it.isISOControl()) ' ' else it }.joinToString("").trim().ifEmpty { return null }
+    if (reason.length > AccountActionRequest.MAX_REASON) {
+      throw AccountProblem(HttpStatusCode.BadRequest, Problem.REASON_TOO_LONG, "max" to AccountActionRequest.MAX_REASON)
+    }
+    return reason
+  }
+
+  /** A mail to [account] in its language, if it has an address; one that can't be sent is only logged. */
+  private suspend fun tell(account: Account, mail: (to: String, name: String, texts: MailTexts) -> Mail) {
+    val to = account.email ?: return
+    try {
+      mailer.send(mail(to, account.name.orEmpty(), texts(Language.of(account.language) ?: Language.DEFAULT).mails))
+    } catch (e: IOException) {
+      logger.warn("Could not send a mail to {}: {}", account.name, e.message)
+    }
   }
 
   private suspend fun invited(id: Uuid): Account {

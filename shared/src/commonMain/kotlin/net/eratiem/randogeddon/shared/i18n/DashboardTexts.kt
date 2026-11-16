@@ -4,6 +4,8 @@ import net.eratiem.randogeddon.shared.PlayerStatus
 
 /** A session's dashboard: the overview tiles, the players and their slots, the hints. */
 interface DashboardTexts {
+  /** A Session-Manager of the session can't act for it at the moment. */
+  val managerUnavailable: String
   // The overview
   val overview: String
   fun overviewSubtitle(slots: Int, checked: String, total: String): String
@@ -133,6 +135,8 @@ interface FinishTexts {
 }
 
 internal object EnglishDashboard : DashboardTexts {
+  override val managerUnavailable =
+    "A Session-Manager of this session isn't available at the moment. If you need help with managing the session, reach out to an Administrator."
   override val overview = "Overview"
   override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots slots · $checked of $total checks"
   override val goals = "Goals"
@@ -205,6 +209,8 @@ internal object EnglishDashboard : DashboardTexts {
 }
 
 internal object GermanDashboard : DashboardTexts {
+  override val managerUnavailable =
+    "Ein Session-Manager dieser Session ist im Moment nicht erreichbar. Wenn du Hilfe beim Verwalten der Session brauchst, wende dich an einen Administrator."
   override val overview = "Überblick"
   override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots Slots · $checked von $total Checks"
   override val goals = "Ziele"

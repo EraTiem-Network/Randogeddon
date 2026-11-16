@@ -623,14 +623,18 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] A font change is animated (asked for later): the page's letters take the new font one by one, in no order
 - The check of every page in English and German side by side is Phase 16 now
 
-## Phase 15: More Polish
+## Phase 15: More Polish (done)
 
 *What the Administrators still miss for the accounts.*
 
-- [ ] An Administrator can time an account out (for a while), suspend it (until taken back) or delete it, under
+- [x] An Administrator can time an account out (for a while), suspend it (until taken back) or delete it, under
       *Users*; never their own
-- [ ] *Sessions per user* moves from the settings into the user panel: the Administrator sets it per user. It counts
+    - Decided: time-outs of 1 hour, 1 day, 7 days or 30 days; the login form and a mail tell them, with a reason
+      if one is given; never an Administrator's account (they are managed where they log in); their sessions go
+      on, and a session whose Session-Manager is kept out tells its people to turn to an Administrator
+- [x] *Sessions per user* moves from the settings into the user panel: the Administrator sets it per user. It counts
       the sessions that user created (not the ones they were made Session-Manager of)
+    - Decided: a default (the setting so far, in the users' card) plus an account's own number in its panel
 
 ## Phase 16: English and German Side by Side
 

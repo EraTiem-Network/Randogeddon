@@ -108,6 +108,7 @@ class SessionAdmin(
   private val spoilers: Spoilers,
   private val roles: SessionRoleStore,
   private val settings: AppSettingsStore,
+  private val limit: SessionLimit,
 ) {
   /**
    * The sessions [user] manages with their game servers (an Administrator: every session), and what a new one needs.
@@ -127,7 +128,7 @@ class SessionAdmin(
       suggestedId = suggestId(random) { it in taken },
       taken = taken.sorted(),
       inUse = all.count { it.server?.port != null },
-      left = if (user.administrator) null else (sessionsPerUser(settings) - roles.runningManagedBy(user.id)).coerceAtLeast(0),
+      left = if (user.administrator) null else limit.of(user.id)?.left,
     )
   }
 
@@ -143,7 +144,7 @@ class SessionAdmin(
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       suggestedId = suggestId(random) { it in taken },
       people = users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
-      left = if (user.administrator) null else (sessionsPerUser(settings) - roles.runningManagedBy(user.id)).coerceAtLeast(0),
+      left = if (user.administrator) null else limit.of(user.id)?.left,
       capacity = servers?.capacity ?: sessions.capacity,
       running = servers?.sessions?.count { it.port != null } ?: 0,
       taken = taken.sorted(),
@@ -218,13 +219,11 @@ class SessionAdmin(
   private suspend fun createReserved(request: CreateSessionRequest, creator: User): CreateSessionResult {
     val admin = creator.name
     if (!creator.administrator) {
-      val limit = sessionsPerUser(settings)
-      val running = roles.runningManagedBy(creator.id)
-      if (running >= limit) {
+      limit.of(creator.id)?.takeIf { it.reached }?.let {
         throw SessionProblem(
           HttpStatusCode.Forbidden,
-          if (limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_CREATE)
-          else Refusal.of(Problem.SESSION_LIMIT, "running" to running, "limit" to limit),
+          if (it.limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_CREATE)
+          else Refusal.of(Problem.SESSION_LIMIT, "running" to it.running, "limit" to it.limit),
         )
       }
     }
@@ -278,6 +277,8 @@ class SessionAdmin(
       id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
       plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
       hosted = plans.filterValues { it.hosted }.keys,
+      // It counts towards the creator's limit while it runs
+      createdBy = creator.id,
     )
     slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
     // No one connects a locked slot until its key is found (the tracker opens it then)

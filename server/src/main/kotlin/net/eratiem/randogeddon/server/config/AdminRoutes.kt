@@ -271,7 +271,7 @@ private fun RoutingContext.byRole(list: SessionList): String =
 
 /** The key of the setting, and its highest value. */
 const val SESSIONS_PER_USER = "sessions_per_user"
-private const val MAX_SESSIONS_PER_USER = 20
+const val MAX_SESSIONS_PER_USER = 20
 
 /** How many running sessions one user (not an Administrator) may manage at once. */
 suspend fun sessionsPerUser(settings: AppSettingsStore): Int = settings.get(SESSIONS_PER_USER)?.toIntOrNull() ?: 1

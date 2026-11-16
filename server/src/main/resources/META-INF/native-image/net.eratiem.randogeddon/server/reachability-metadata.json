@@ -2316,6 +2316,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.AccountActionRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.AccountActionRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.BridgeFont",
       "fields": [
         {
@@ -2342,6 +2359,23 @@
     },
     {
       "type": "net.eratiem.randogeddon.shared.FontRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SessionLimitRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SessionLimitRequest$Companion",
       "methods": [
         {
           "name": "serializer",

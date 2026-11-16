@@ -7,6 +7,36 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 15: More Polish
+What the Administrators missed for the accounts: an account can be timed out, suspended or deleted, and the limit of
+running sessions is set per user, counting the sessions someone created. Updating: migrations V20 and V21 run by
+themselves; the limit so far (the setting) stays as the default, and existing sessions get their creator from who
+first managed them.
+
+### 0.15.2: Sessions per user, per user; Phase 15 done
+- **An account's own limit** of running sessions in its panel under *Users* (*Own limit*, *Use the default*); the
+  setting so far is the default for all others and moved into the users' card (the *Settings* section is gone).
+  `PUT /api/admin/users/{id}/session-limit`; `AdminUser.sessionLimit`, `sessionsRunning`.
+- **It counts the sessions someone created** (`sessions.created_by`), not the ones they manage: asked when creating
+  and when reopening (for the creator: `CREATOR_AT_LIMIT` if someone else reopens). Becoming Session-Manager of a
+  running session is free again. Migration V21 (`users.session_limit`, `sessions.created_by`, filled from who first
+  managed each session).
+- **Fixed:** a call without a login to a route with a second guard (the admin panel's, a session's) was answered
+  with 401 as it should, but threw on the server and wrote a stack trace into the log each time.
+- TODO: Phase 15 done.
+
+### 0.15.1: Time out, suspend or delete an account
+- **Administrators keep an account out** (its panel under *Users*): *Time out* for 1 hour, 1 day, 7 days or 30 days,
+  or *Suspend* until taken back, with an optional reason. The account's logins end at once (bridge keys too), a login
+  is refused after the right password with until when and why (`ACCOUNT_TIMED_OUT`, `ACCOUNT_SUSPENDED`), and a mail
+  tells them. *Let in again* ends it early. Never an Administrator's account, so never one's own.
+- **Delete account** there too (asks once more): as an account deletes itself, told by mail; an invitation is taken
+  back.
+- **Their sessions go on.** A running session with a Session-Manager who is kept out (or gone) tells its people on
+  the dashboard to turn to an Administrator (`Summary.managerUnavailable`).
+- `POST` and `DELETE /api/admin/users/{id}/block`, `POST /api/admin/users/{id}/delete`; migration V20
+  (`users.blocked_at`, `blocked_until`, `blocked_reason`, `blocked_by`).
+
 ## Phase 14: More Themes
 More to pick from under *Your account*, *Appearance*: 26 themes in groups (Randogeddon's own, and the ones inspired by
 Nintendo's, the PlayStation and the Xbox consoles and by SteamOS, with a trademark notice), each light and dark, and a

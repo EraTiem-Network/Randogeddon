@@ -11,6 +11,16 @@ interface MailTexts {
   fun addressChange(name: String, newAddress: String): String
   fun deletionSubject(date: String): String
   fun deletionWarning(name: String, date: String, settingsLink: String): String
+  /** An Administrator keeps the account out: [until] when (`null`: suspended), and why if they said. */
+  val timedOutSubject: String
+  val suspendedSubject: String
+  fun keptOut(name: String, until: String?, reason: String?): String
+  /** They can log in again (taken back before its time). */
+  val letInSubject: String
+  fun letIn(name: String): String
+  /** An Administrator deleted the account. */
+  val removedSubject: String
+  fun removed(name: String, reason: String?): String
 }
 
 internal object EnglishMails : MailTexts {
@@ -62,6 +72,31 @@ internal object EnglishMails : MailTexts {
     |$settingsLink
     |
     |A new session you play in postpones the deletion too.
+    |""".trimMargin()
+  override val timedOutSubject = "Your Randogeddon account is timed out"
+  override val suspendedSubject = "Your Randogeddon account is suspended"
+  override fun keptOut(name: String, until: String?, reason: String?) = """
+    |Hi $name,
+    |
+    |${if (until != null) "an Administrator has timed your Randogeddon account out until $until. Until then" else "an Administrator has suspended your Randogeddon account. Until that is taken back"}
+    |you can't log in, and your logins (Randogeddon Bridge's too) have ended.${if (reason.isNullOrBlank()) "" else "\n|\n|The reason given: $reason"}
+    |
+    |Your sessions go on, and your games stay connected.
+    |""".trimMargin()
+
+  override val letInSubject = "You can log in to Randogeddon again"
+  override fun letIn(name: String) = """
+    |Hi $name,
+    |
+    |an Administrator has let your Randogeddon account in again: you can log in as before.
+    |""".trimMargin()
+
+  override val removedSubject = "Your Randogeddon account was deleted"
+  override fun removed(name: String, reason: String?) = """
+    |Hi $name,
+    |
+    |an Administrator has deleted your Randogeddon account (login, e-mail address, settings). Your sessions stay, with
+    |your name in them.${if (reason.isNullOrBlank()) "" else "\n|\n|The reason given: $reason"}
     |""".trimMargin()
 }
 
@@ -115,5 +150,30 @@ internal object GermanMails : MailTexts {
     |$settingsLink
     |
     |Eine neue Session, in der du mitspielst, schiebt das Löschen auch hinaus.
+    |""".trimMargin()
+  override val timedOutSubject = "Dein Randogeddon-Konto ist vorübergehend gesperrt"
+  override val suspendedSubject = "Dein Randogeddon-Konto ist gesperrt"
+  override fun keptOut(name: String, until: String?, reason: String?) = """
+    |Hallo $name,
+    |
+    |${if (until != null) "ein Administrator hat dein Randogeddon-Konto bis $until gesperrt. Bis dahin" else "ein Administrator hat dein Randogeddon-Konto gesperrt. Bis das zurückgenommen wird,"}
+    |kannst du dich nicht anmelden, und deine Anmeldungen (auch die von Randogeddon Bridge) sind beendet.${if (reason.isNullOrBlank()) "" else "\n|\n|Der angegebene Grund: $reason"}
+    |
+    |Deine Sessions laufen weiter, und deine Spiele bleiben verbunden.
+    |""".trimMargin()
+
+  override val letInSubject = "Du kannst dich wieder bei Randogeddon anmelden"
+  override fun letIn(name: String) = """
+    |Hallo $name,
+    |
+    |ein Administrator hat die Sperre deines Randogeddon-Kontos aufgehoben: Du kannst dich wie zuvor anmelden.
+    |""".trimMargin()
+
+  override val removedSubject = "Dein Randogeddon-Konto wurde gelöscht"
+  override fun removed(name: String, reason: String?) = """
+    |Hallo $name,
+    |
+    |ein Administrator hat dein Randogeddon-Konto gelöscht (Anmeldung, E-Mail-Adresse, Einstellungen). Deine Sessions
+    |bleiben, mit deinem Namen darin.${if (reason.isNullOrBlank()) "" else "\n|\n|Der angegebene Grund: $reason"}
     |""".trimMargin()
 }

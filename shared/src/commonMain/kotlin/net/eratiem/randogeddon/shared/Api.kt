@@ -84,6 +84,11 @@ data class Summary(
   val finishesAt: Long? = null,
   /** The session is finished (read-only from then on); epoch ms. */
   val finishedAt: Long? = null,
+  /**
+   * A Session-Manager of it can't log in for now (timed out or suspended by an Administrator) or is gone: its people
+   * are told to turn to an Administrator for what a Session-Manager does.
+   */
+  val managerUnavailable: Boolean = false,
   /** Increases with every change of the session state. */
   val version: Long,
   val totals: Totals,

@@ -36,6 +36,16 @@ object UsersTable : Table("users") {
   val font = varchar("font", 16).nullable()
   /** Where it shows (`all`, `headings`; V19); `null`: as the font is made. */
   val fontScope = varchar("font_scope", 8).nullable()
+  /**
+   * Kept out by an Administrator (V20): since when, until when (`null`: suspended, until taken back), why and by
+   * whom. A time-out that ran out counts as none.
+   */
+  val blockedAt = timestamp("blocked_at").nullable()
+  val blockedUntil = timestamp("blocked_until").nullable()
+  val blockedReason = varchar("blocked_reason", 200).nullable()
+  val blockedBy = varchar("blocked_by", 64).nullable()
+  /** How many running sessions of their own they may have at once (V21); `null`: the default (a setting). */
+  val sessionLimit = integer("session_limit").nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
@@ -112,6 +122,8 @@ object SessionsTable : Table("sessions") {
   val keep = bool("keep").default(false)
   /** Its auto-deletion was enabled again then: the retention counts from there (`null`: from [finishedAt]). */
   val retainedSince = timestamp("retained_since").nullable()
+  /** Who created it (V21): it counts towards their limit while it runs. `null`: nobody known (a seed from the CLI). */
+  val createdBy = uuid("created_by").references(UsersTable.id).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 

@@ -185,6 +185,14 @@ object Mails {
   fun addressChange(to: String, name: String, newAddress: String, texts: MailTexts) =
     Mail(to, texts.addressChangeSubject, texts.addressChange(name, newAddress))
 
+  fun keptOut(to: String, name: String, until: String?, reason: String?, texts: MailTexts) =
+    Mail(to, if (until != null) texts.timedOutSubject else texts.suspendedSubject, texts.keptOut(name, until, reason))
+
+  fun letIn(to: String, name: String, texts: MailTexts) = Mail(to, texts.letInSubject, texts.letIn(name))
+
+  fun removed(to: String, name: String, reason: String?, texts: MailTexts) =
+    Mail(to, texts.removedSubject, texts.removed(name, reason))
+
   fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String, texts: MailTexts) =
     Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink))
 }
