@@ -20,6 +20,12 @@ services:
       traefik.http.routers.randogeddon-ap.tls.certresolver: ${TRAEFIK_DNS_CERTRESOLVER:-letsencrypt-dns}
       traefik.http.routers.randogeddon-ap.tls.domains[0].main: "*.${BASE_DOMAIN:-randogeddon.eratiem.net}"
       traefik.http.services.randogeddon-ap.loadbalancer.server.port: "38281"
+      # How fast one address (an IPv6 /64 as one) opens new connections to the game servers: 100 at once, then 2 a
+      # second, 429 past it. Not how many it holds (behind a shared address are many households)
+      traefik.http.routers.randogeddon-ap.middlewares: randogeddon-ap-rate
+      traefik.http.middlewares.randogeddon-ap-rate.ratelimit.average: "2"
+      traefik.http.middlewares.randogeddon-ap-rate.ratelimit.burst: "100"
+      traefik.http.middlewares.randogeddon-ap-rate.ratelimit.sourcecriterion.ipstrategy.ipv6subnet: "64"
 
   tracker:
     networks: [default, traefik]
