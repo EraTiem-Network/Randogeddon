@@ -158,8 +158,13 @@ has *Administrators: log in with Authentik*. Members of the Authentik group `OID
 first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
 app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
 `randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
-(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
-application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`, *Logout URI*
+`https://<BASE_DOMAIN>/api/login/oidc/backchannel` with the method *Back-channel*) and its application bound to the
+group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
+(they log out there, an admin ends it, the person is deactivated, it expires), Authentik's back-channel logout
+(`POST /api/login/oidc/backchannel`, a logout token signed by Authentik) ends the logins here from that session, and an
+open dashboard notices within 30 seconds. Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
+account*). Players keep their name and password.
 Authentik holds their account: *Your account* starts with *Your Authentik account*, a link to Authentik's user
 settings (`<issuer's host>/if/user/`, or `OIDC_ACCOUNT_URL`), where they change their name, password, e-mail address
 and second factor; the panels for those and for the deletion aren't there for them, and the server refuses those
@@ -554,8 +559,8 @@ API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
 `POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
-`.../callback`, `POST /api/login/link` (a CLI login link), and Authentik's webhooks `POST /api/login/oidc/deleted` and
-`.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
+`.../callback`, `POST /api/login/link` (a CLI login link), Authentik's back-channel logout
+`POST /api/login/oidc/backchannel`, and its webhooks `POST /api/login/oidc/deleted` and `.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
 sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
