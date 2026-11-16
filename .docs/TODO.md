@@ -618,6 +618,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           from the dashboard and serves them on its own page (0.14.4)
 - [x] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart): all 26 themes
       do, light and dark; it also asks now that the accent is readable on the panel
+- [x] Where the font shows is a choice for every font (asked for later): as the font is made, all text, or the
+      headings only
 - [x] A font change is animated (asked for later): the page's letters take the new font one by one, in no order
 - The check of every page in English and German side by side is Phase 16 now
 
