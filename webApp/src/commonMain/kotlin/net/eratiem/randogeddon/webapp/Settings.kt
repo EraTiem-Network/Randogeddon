@@ -140,12 +140,16 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
           }
         }
         Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
-        // Every theme as it looks in the mode that shows now (automatic: the device's), a click picks it
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          Theme.entries.forEach { theme ->
-            ThemeCard(theme, acc.theme(theme), theme == Themes.theme) { save(theme, Themes.mode) }
+        // Every theme as it looks in the mode that shows now (automatic: the device's), a click picks it; by group
+        Theme.entries.groupBy { it.group }.forEach { (group, themes) ->
+          Txt(acc.themeGroup(group), size = 12.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            themes.forEach { theme ->
+              ThemeCard(theme, acc.theme(theme), theme == Themes.theme) { save(theme, Themes.mode) }
+            }
           }
         }
+        Txt(acc.themesNotice, size = 11.5.sp, color = p.muted, modifier = Modifier.padding(top = 4.dp))
         appearanceState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }
     }
