@@ -49,12 +49,24 @@ class FontsTest {
   }
 
   @Test
-  fun `the bridge gets the font that shows, a display font for the headings unless wanted everywhere`() {
-    assertNull(bridgeFont(Theme.RANDOGEDDON, null, everywhere = false))
-    assertNull(bridgeFont(Theme.NES, FontChoice.ORIGINAL, everywhere = true))
-    assertEquals(BridgeFont("fonts/nes-regular.ttf", null, headingsOnly = true, scale = 0.75f), bridgeFont(Theme.NES, null, everywhere = false))
-    assertEquals(false, bridgeFont(Theme.NES, null, everywhere = true)?.headingsOnly)
-    assertEquals(BridgeFont("fonts/wii-regular.ttf", "fonts/wii-bold.ttf"), bridgeFont(Theme.PS2, "wii", everywhere = false))
+  fun `where a font shows is as the font is made, all text or the headings only`() {
+    val pixel = fontOf(Theme.NES)!!
+    val plain = fontOf(Theme.WII)!!
+    assertEquals(listOf(true, false, true), FontScope.entries.map { it.headingsOnly(pixel) })
+    assertEquals(listOf(false, false, true), FontScope.entries.map { it.headingsOnly(plain) })
+    assertEquals(FontScope.AUTO, FontScope.of(null))
+    assertEquals(FontScope.AUTO, FontScope.of("true"))
+    assertEquals(FontScope.HEADINGS, FontScope.of("headings"))
+  }
+
+  @Test
+  fun `the bridge gets the font that shows, for the headings or all text by the font and the choice`() {
+    assertNull(bridgeFont(Theme.RANDOGEDDON, null, FontScope.AUTO))
+    assertNull(bridgeFont(Theme.NES, FontChoice.ORIGINAL, FontScope.ALL))
+    assertEquals(BridgeFont("fonts/nes-regular.ttf", null, headingsOnly = true, scale = 0.75f), bridgeFont(Theme.NES, null, FontScope.AUTO))
+    assertEquals(false, bridgeFont(Theme.NES, null, FontScope.ALL)?.headingsOnly)
+    assertEquals(BridgeFont("fonts/wii-regular.ttf", "fonts/wii-bold.ttf"), bridgeFont(Theme.PS2, "wii", FontScope.AUTO))
+    assertEquals(true, bridgeFont(Theme.PS2, "wii", FontScope.HEADINGS)?.headingsOnly)
   }
 
   @Test

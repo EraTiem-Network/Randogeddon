@@ -177,9 +177,10 @@ interface AccountTexts {
   fun fontOfTheme(family: String?): String
   val fontOriginal: String
   fun fontOf(theme: String, family: String): String
-  /** Where a display font (a pixel font) shows. */
-  val fontHeadings: String
-  val fontEverywhere: String
+  /** Where the font shows: as it is made ([display]: a font for headings), in all text, in the headings only. */
+  fun fontScopeAuto(display: Boolean): String
+  val fontScopeAll: String
+  val fontScopeHeadings: String
   // Randogeddon Bridge's keys
   val bridgeKeys: String
   val bridgeKeysSubtitle: String

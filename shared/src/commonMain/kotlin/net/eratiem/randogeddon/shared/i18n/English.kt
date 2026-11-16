@@ -201,8 +201,9 @@ object English : Texts {
     override fun fontOfTheme(family: String?) = if (family != null) "Font: the theme's ($family)" else "Font: the theme's (the original)"
     override val fontOriginal = "Font: Randogeddon's original"
     override fun fontOf(theme: String, family: String) = "Font: $theme's ($family)"
-    override val fontHeadings = "This font for headings only"
-    override val fontEverywhere = "This font for all text"
+    override fun fontScopeAuto(display: Boolean) = if (display) "As the font is made (headings only)" else "As the font is made (all text)"
+    override val fontScopeAll = "This font for all text"
+    override val fontScopeHeadings = "This font for headings only"
     override val bridgeKeys = "Bridge keys"
     override val bridgeKeysSubtitle = "Randogeddon Bridge's logins; a new password ends them too"
     override fun bridgeKey(made: String, used: String?, until: String) =
