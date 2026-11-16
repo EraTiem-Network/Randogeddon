@@ -575,6 +575,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Polish: Randogeddon Bridge quits once its page or the browser is closed (unless back within 10 seconds)
     - [x] Polish: a login through Authentik ends with the Authentik session (its back-channel logout); an open
           dashboard notices within 30 seconds
+    - [x] Polish: the cheat *Check a location* from the slot or to it (another world's location holding its item)
+    - [x] Polish: the spoiler log's playthrough marks the steps already checked, reads *Item @ Check*, and has a
+          search that filters its rows
+    - [x] Bug: the page scrolls, but shows no scroll bar (drawn on a canvas): one on everything that scrolls
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes
