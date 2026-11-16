@@ -42,6 +42,7 @@ type App struct {
 	language string // the page's Accept-Language, so the dashboard words its refusals for the user
 	relays   []*Relay
 	next     int
+	fonts    map[string][]byte // the dashboard's font files this page showed, by their path there
 
 	// The pages open now (each keeps /api/alive open); once the last is gone for [App.pageGrace], the bridge quits
 	pages     int
@@ -154,6 +155,8 @@ func (a *App) Handler() http.Handler {
 		a.check()
 		a.handleState(w, r)
 	})
+	// The account's font, fetched from the dashboard by the bridge: the page loads nothing from elsewhere
+	mux.HandleFunc("GET /font/{weight}", a.handleFont)
 	mux.HandleFunc("POST /api/login", a.handleLogin)
 	mux.HandleFunc("POST /api/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/sessions", a.handleSessions)
@@ -286,6 +289,47 @@ func (a *App) handleState(w http.ResponseWriter, _ *http.Request) {
 		s.UpdateURL = s.Server + "/downloads/bridge/" + buildName(runtime.GOOS, runtime.GOARCH)
 	}
 	writeJSON(w, http.StatusOK, s)
+}
+
+// handleFont serves the regular or the bold file of the account's font (as `GET /bridge/info` named it), fetched from
+// the dashboard once and kept while the bridge runs. Without a font, or if it can't be fetched: 404, and the page
+// keeps the system's font.
+func (a *App) handleFont(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	var path string
+	if a.info != nil && a.info.Font != nil {
+		switch r.PathValue("weight") {
+		case "regular":
+			path = a.info.Font.Regular
+		case "bold":
+			if a.info.Font.Bold != nil {
+				path = *a.info.Font.Bold
+			}
+		}
+	}
+	data := a.fonts[path]
+	a.mu.Unlock()
+	if !fontPath.MatchString(path) {
+		http.NotFound(w, r)
+		return
+	}
+	if data == nil {
+		fetched, err := a.client().File(path)
+		if err != nil {
+			log.Printf("The font couldn't be fetched: %v", err)
+			http.NotFound(w, r)
+			return
+		}
+		data = fetched
+		a.mu.Lock()
+		if a.fonts == nil {
+			a.fonts = map[string][]byte{}
+		}
+		a.fonts[path] = data
+		a.mu.Unlock()
+	}
+	w.Header().Set("Content-Type", "font/ttf")
+	w.Write(data)
 }
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
