@@ -678,7 +678,8 @@ Each user picks a theme and a mode under *Your account*, *Appearance*, each them
 the device and switches with it. The themes are cards under a heading per group, each a small page in its colours in
 the mode that shows now:
 
-- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast.
+- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
+  Sepia.
 - **Inspired by Nintendo's consoles:** NES, SNES, N64, GameCube, Wii, Wii U, Switch, Switch 2.
 - **Inspired by the PlayStation consoles:** PlayStation, PlayStation 2, 3, 4 and 5.
 - **Inspired by the Xbox consoles:** Xbox, Xbox 360, Xbox Series X|S.

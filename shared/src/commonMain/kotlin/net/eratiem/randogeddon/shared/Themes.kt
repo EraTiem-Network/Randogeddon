@@ -20,6 +20,10 @@ enum class Theme(val code: String, val group: ThemeGroup = ThemeGroup.OWN) {
   @SerialName("forest") FOREST("forest"),
   @SerialName("ember") EMBER("ember"),
   @SerialName("contrast") CONTRAST("contrast"),
+  @SerialName("midnight") MIDNIGHT("midnight"),
+  @SerialName("sakura") SAKURA("sakura"),
+  @SerialName("terminal") TERMINAL("terminal"),
+  @SerialName("sepia") SEPIA("sepia"),
   // Inspired by consoles: their colours only (the names are their owners' trademarks; see the notice under the cards)
   @SerialName("nes") NES("nes", ThemeGroup.NINTENDO),
   @SerialName("snes") SNES("snes", ThemeGroup.NINTENDO),
@@ -102,6 +106,10 @@ fun palettes(theme: Theme): Pair<ThemeColors, ThemeColors> = when (theme) {
   Theme.FOREST -> FOREST_LIGHT to FOREST_DARK
   Theme.EMBER -> EMBER_LIGHT to EMBER_DARK
   Theme.CONTRAST -> CONTRAST_LIGHT to CONTRAST_DARK
+  Theme.MIDNIGHT -> MIDNIGHT_LIGHT to MIDNIGHT_DARK
+  Theme.SAKURA -> SAKURA_LIGHT to SAKURA_DARK
+  Theme.TERMINAL -> TERMINAL_LIGHT to TERMINAL_DARK
+  Theme.SEPIA -> SEPIA_LIGHT to SEPIA_DARK
   Theme.NES -> NES_LIGHT to NES_DARK
   Theme.SNES -> SNES_LIGHT to SNES_DARK
   Theme.N64 -> N64_LIGHT to N64_DARK
@@ -333,6 +341,82 @@ private val SWITCH2_DARK = ThemeColors(
   useful = 0xFF5CC4E4, trap = 0xFFF2707C, ok = 0xFF63C98C, warn = 0xFFF5A25D, key = 0xFFE9C46A, locked = 0xFF9AA1A9,
   barBackground = 0xFF343940, shadow = 0x66000000, liveDot = 0xFF5CD6EE, offlineDot = 0xFFFF9AA2,
   hues = listOf(0xFFE85A68, 0xFF3BB4D8, 0xFFA78BFA, 0xFF63C98C, 0xFFF5A25D, 0xFF5CC4E4, 0xFFF2707C, 0xFFE9C46A),
+)
+
+/** Midnight: deep indigo and navy, cyan to violet. */
+private val MIDNIGHT_LIGHT = ThemeColors(
+  dark = false,
+  background = 0xFFF1F2FA, panel = 0xFFFFFFFF, panelAlt = 0xFFF5F6FC, border = 0xFFD9DCEE, text = 0xFF12143A,
+  muted = 0xFF555A85, brandStart = 0xFF0891B2, brandEnd = 0xFF5B3FD9, onBrand = 0xFFFFFFFF, progression = 0xFF5B3FD9,
+  useful = 0xFF0E7490, trap = 0xFFE03131, ok = 0xFF2B8A3E, warn = 0xFFE8590C, key = 0xFFB8860B, locked = 0xFF868686,
+  barBackground = 0xFFE4E6F4, shadow = 0x1A12143A, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFF0891B2, 0xFF5B3FD9, 0xFF5B3FD9, 0xFF0E7490, 0xFF2B8A3E, 0xFFE8590C, 0xFFE03131, 0xFFB8860B),
+)
+
+private val MIDNIGHT_DARK = ThemeColors(
+  dark = true,
+  background = 0xFF070818, panel = 0xFF0F1126, panelAlt = 0xFF151833, border = 0xFF252A52, text = 0xFFE8EAFB,
+  muted = 0xFF9499C7, brandStart = 0xFF22D3EE, brandEnd = 0xFF8B7BFF, onBrand = 0xFF070818, progression = 0xFFB3A6FF,
+  useful = 0xFF38BDF8, trap = 0xFFFF6B6B, ok = 0xFF51CF66, warn = 0xFFFF922B, key = 0xFFFCC419, locked = 0xFF9E9E9E,
+  barBackground = 0xFF252A52, shadow = 0x66000000, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFF22D3EE, 0xFF8B7BFF, 0xFFB3A6FF, 0xFF38BDF8, 0xFF51CF66, 0xFFFF922B, 0xFFFF6B6B, 0xFFFCC419),
+)
+
+/** Sakura: soft pink and plum, rose. */
+private val SAKURA_LIGHT = ThemeColors(
+  dark = false,
+  background = 0xFFFBF3F6, panel = 0xFFFFFFFF, panelAlt = 0xFFFDF7F9, border = 0xFFF0DCE4, text = 0xFF2E1522,
+  muted = 0xFF7A5466, brandStart = 0xFFF06595, brandEnd = 0xFFC2255C, onBrand = 0xFFFFFFFF, progression = 0xFF6741D9,
+  useful = 0xFF1971C2, trap = 0xFFD9480F, ok = 0xFF2B8A3E, warn = 0xFFB45309, key = 0xFF8D6E00, locked = 0xFF868686,
+  barBackground = 0xFFF5E6EC, shadow = 0x1A2E1522, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFFF06595, 0xFFC2255C, 0xFF6741D9, 0xFF1971C2, 0xFF2B8A3E, 0xFFB45309, 0xFFD9480F, 0xFF8D6E00),
+)
+
+private val SAKURA_DARK = ThemeColors(
+  dark = true,
+  background = 0xFF160B11, panel = 0xFF21121A, panelAlt = 0xFF2A1822, border = 0xFF402534, text = 0xFFFBEAF1,
+  muted = 0xFFC49BAE, brandStart = 0xFFFFA8C5, brandEnd = 0xFFF783AC, onBrand = 0xFF160B11, progression = 0xFFA78BFA,
+  useful = 0xFF4DABF7, trap = 0xFFFF8A5C, ok = 0xFF51CF66, warn = 0xFFE8A33D, key = 0xFFFFE066, locked = 0xFF9E9E9E,
+  barBackground = 0xFF402534, shadow = 0x66000000, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFFFFA8C5, 0xFFF783AC, 0xFFA78BFA, 0xFF4DABF7, 0xFF51CF66, 0xFFE8A33D, 0xFFFF8A5C, 0xFFFFE066),
+)
+
+/** Terminal: green phosphor on near-black; in the light, ink on pale green. */
+private val TERMINAL_LIGHT = ThemeColors(
+  dark = false,
+  background = 0xFFEEF5EC, panel = 0xFFFAFDF9, panelAlt = 0xFFF2F8F0, border = 0xFFD3E2CF, text = 0xFF0E2412,
+  muted = 0xFF4A6350, brandStart = 0xFF2F9E44, brandEnd = 0xFF1B6E2B, onBrand = 0xFFFFFFFF, progression = 0xFF6741D9,
+  useful = 0xFF1971C2, trap = 0xFFE03131, ok = 0xFF1B6E2B, warn = 0xFFE8590C, key = 0xFFB8860B, locked = 0xFF868686,
+  barBackground = 0xFFE0ECDD, shadow = 0x1A0E2412, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFF2F9E44, 0xFF1B6E2B, 0xFF6741D9, 0xFF1971C2, 0xFF1B6E2B, 0xFFE8590C, 0xFFE03131, 0xFFB8860B),
+)
+
+private val TERMINAL_DARK = ThemeColors(
+  dark = true,
+  background = 0xFF030803, panel = 0xFF091209, panelAlt = 0xFF0E190E, border = 0xFF1C2E1C, text = 0xFFD6F5D0,
+  muted = 0xFF7FB07A, brandStart = 0xFF69DB7C, brandEnd = 0xFF40C057, onBrand = 0xFF030803, progression = 0xFFA78BFA,
+  useful = 0xFF4DABF7, trap = 0xFFFF6B6B, ok = 0xFF8CE99A, warn = 0xFFFF922B, key = 0xFFFCC419, locked = 0xFF9E9E9E,
+  barBackground = 0xFF1C2E1C, shadow = 0x66000000, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFF69DB7C, 0xFF40C057, 0xFFA78BFA, 0xFF4DABF7, 0xFF8CE99A, 0xFFFF922B, 0xFFFF6B6B, 0xFFFCC419),
+)
+
+/** Sepia: warm paper, brown ink, amber. */
+private val SEPIA_LIGHT = ThemeColors(
+  dark = false,
+  background = 0xFFF6F0E4, panel = 0xFFFCF8EF, panelAlt = 0xFFF8F3E8, border = 0xFFE4D9C3, text = 0xFF2B2014,
+  muted = 0xFF6B5B45, brandStart = 0xFFD9822B, brandEnd = 0xFF9A5B13, onBrand = 0xFFFFFFFF, progression = 0xFF6741D9,
+  useful = 0xFF1971C2, trap = 0xFFE03131, ok = 0xFF2B8A3E, warn = 0xFFD9480F, key = 0xFFA67C00, locked = 0xFF8C8273,
+  barBackground = 0xFFECE3D1, shadow = 0x1A2B2014, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFFD9822B, 0xFF9A5B13, 0xFF6741D9, 0xFF1971C2, 0xFF2B8A3E, 0xFFD9480F, 0xFFE03131, 0xFFA67C00),
+)
+
+private val SEPIA_DARK = ThemeColors(
+  dark = true,
+  background = 0xFF14100A, panel = 0xFF1E1810, panelAlt = 0xFF261F15, border = 0xFF3A3022, text = 0xFFF3E9D8,
+  muted = 0xFFB5A48A, brandStart = 0xFFF0A04B, brandEnd = 0xFFD9822B, onBrand = 0xFF14100A, progression = 0xFFA78BFA,
+  useful = 0xFF4DABF7, trap = 0xFFFF6B6B, ok = 0xFF51CF66, warn = 0xFFFF922B, key = 0xFFFCC419, locked = 0xFFA8997F,
+  barBackground = 0xFF3A3022, shadow = 0x66000000, liveDot = 0xFF6CF0C9, offlineDot = 0xFFFFB4A8,
+  hues = listOf(0xFFF0A04B, 0xFFD9822B, 0xFFA78BFA, 0xFF4DABF7, 0xFF51CF66, 0xFFFF922B, 0xFFFF6B6B, 0xFFFCC419),
 )
 
 /** NES: its grey with the red of its letters. */

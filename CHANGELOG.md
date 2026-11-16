@@ -9,6 +9,12 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 14: More Themes
 
+### 0.14.2: Four more of Randogeddon's own themes
+- **Midnight** (deep indigo and navy, cyan to violet), **Sakura** (soft pink and plum, rose), **Terminal** (green
+  phosphor on near-black; in the light, ink on pale green) and **Sepia** (warm paper, brown ink, amber), each light
+  and dark.
+- TODO: Phase 15 (*More Polish*) with its first two points.
+
 ### 0.14.1: Console themes, in groups
 - **Eleven more themes inspired by consoles and systems**, each light and dark: NES, SNES, PlayStation, PlayStation 2
   to 5, Xbox, Xbox 360, Xbox Series X|S and SteamOS (their colours only).
