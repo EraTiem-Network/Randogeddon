@@ -242,9 +242,9 @@ private fun TrackerApp() {
     else Themes.apply(user.theme, user.themeMode)
   }
   // The account's font choice (nothing chosen: the theme's)
-  LaunchedEffect(me?.name, me?.font, me?.fontEverywhere) {
+  LaunchedEffect(me?.name, me?.font, me?.fontScope) {
     val user = me ?: return@LaunchedEffect
-    Themes.applyFont(user.font, user.fontEverywhere)
+    Themes.applyFont(user.font, user.fontScope)
   }
   // Another session: its own slots and people
   LaunchedEffect(selected) {

@@ -36,15 +36,15 @@ data class BridgeInfo(
 
 /**
  * The font of the user's choice for the bridge's page: its files among the dashboard's static files ([regular], and
- * [bold] if it has one), whether it is for the headings only (a display font, unless they want it everywhere), and
+ * [bold] if it has one), whether it is for the headings only (by the font and their choice, [FontScope]), and
  * how large it is drawn against the system's font at the same size.
  */
 @Serializable
 data class BridgeFont(val regular: String, val bold: String? = null, val headingsOnly: Boolean = false, val scale: Float = 1f)
 
 /** [choice] (as stored with the account) with [theme], as the bridge gets it. */
-fun bridgeFont(theme: Theme, choice: String?, everywhere: Boolean): BridgeFont? =
-  FontChoice.font(theme, choice)?.let { BridgeFont(it.regularFile, it.boldFile, it.display && !everywhere, it.scale) }
+fun bridgeFont(theme: Theme, choice: String?, scope: FontScope): BridgeFont? =
+  FontChoice.font(theme, choice)?.let { BridgeFont(it.regularFile, it.boldFile, scope.headingsOnly(it), it.scale) }
 
 /** `GET /downloads/bridge` (no login): what the dashboard offers, for *Your connection*. */
 @Serializable

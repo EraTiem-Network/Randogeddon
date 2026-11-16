@@ -695,8 +695,9 @@ link's page, the browser's last choice applies (the login page takes its colours
 
 **Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
 *the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
-display font (the pixel fonts of NES and SNES, PlayStation 2's wide one) shows in the headings only; a second choice
-puts it in all text. The choice is stored with the account like the theme. A font's files are only loaded once it is
+third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
+NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
+the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
 used (20 to 130 KB each); until then, and without them, the original shows. A change of the font is animated: the
 letters take the new one one by one, in no order. The login page keeps the system's font.
 

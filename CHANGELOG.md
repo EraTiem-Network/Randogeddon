@@ -10,8 +10,14 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 ## Phase 14: More Themes
 More to pick from under *Your account*, *Appearance*: 26 themes in groups (Randogeddon's own, and the ones inspired by
 Nintendo's, the PlayStation and the Xbox consoles and by SteamOS, with a trademark notice), each light and dark, and a
-font per theme with a font choice of its own; Randogeddon Bridge follows both. Updating: migration V18 runs by itself;
+font per theme with a font choice of its own; Randogeddon Bridge follows both. Updating: migrations V18 and V19 run by themselves;
 nothing to set. A new bridge (0.14.4 or newer) for the font on its page.
+
+### 0.14.6: Where the font shows, for every font
+- **Three choices for any font** beside the font under *Appearance*: as the font is made (the default: a display
+  font in the headings only, every other in all text), all text, or the headings only. Before, only display fonts
+  had a choice, of two. `FontScope`; `PUT /api/account/font` takes `scope`; migration V19 (`users.font_scope` in
+  place of `users.font_everywhere`, which it carries over). The bridge's page follows.
 
 ### 0.14.5: Letters change the font one by one; Phase 14 done
 - **A font change is animated:** the page's letters take the new font one by one, in no order, within about 0.6

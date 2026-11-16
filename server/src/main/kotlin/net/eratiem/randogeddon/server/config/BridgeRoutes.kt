@@ -28,6 +28,7 @@ import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.BridgeDownload
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeInfo
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.bridgeFont
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -120,7 +121,7 @@ fun Route.bridgeRoutes(
       call.respond(
         BridgeInfo(
           offered.version, offered.downloads, light.css(), dark.css(), ThemeMode.of(user.themeMode) ?: ThemeMode.AUTO,
-          Language.of(user.language)?.code, bridgeFont(theme, user.font, user.fontEverywhere),
+          Language.of(user.language)?.code, bridgeFont(theme, user.font, FontScope.of(user.fontScope)),
         )
       )
     }

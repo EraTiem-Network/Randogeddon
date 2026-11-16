@@ -18,7 +18,7 @@ import net.eratiem.randogeddon.shared.letterTurn
 /**
  * The fonts the page draws with: [text] for everything, [heading] for the large lines ([Txt] from 16 sp up, the
  * name on top). `null`: Randogeddon's original (the one the app comes with). A display font (a pixel font) is only
- * the [heading] one, unless the account wants it everywhere.
+ * the [heading] one, unless the account chose otherwise (`FontScope`).
  */
 data class PageFonts(val text: FontFamily? = null, val heading: FontFamily? = null, val textScale: Float = 1f, val headingScale: Float = 1f)
 

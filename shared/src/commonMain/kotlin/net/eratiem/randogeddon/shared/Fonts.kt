@@ -1,10 +1,13 @@
 package net.eratiem.randogeddon.shared
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 /**
  * The font a theme brings: its [family]'s name (for the licences' list), and its files among the web app's static
  * files (`fonts/<the theme's code>-regular.ttf`, and `-bold.ttf` if it has a bold of its own; made by
  * `scripts/fonts.py`). A [display] font (a pixel font, a wide techno one) is hard to read small: it is for headings
- * only, unless the account asks for it everywhere. All are free to ship (SIL OFL or Apache 2.0).
+ * only, unless the account says otherwise ([FontScope]). All are free to ship (SIL OFL or Apache 2.0).
  */
 data class ThemeFont(
   val theme: Theme,
@@ -16,6 +19,30 @@ data class ThemeFont(
 ) {
   val regularFile: String get() = "fonts/${theme.code}-regular.ttf"
   val boldFile: String? get() = "fonts/${theme.code}-bold.ttf".takeIf { bold }
+}
+
+/**
+ * Where the chosen font shows, the account's choice for any font: as the font is made ([AUTO]: a display font in the
+ * headings only, every other in all text), in all text, or in the headings only (the rest stays the original).
+ */
+@Serializable
+enum class FontScope(val code: String) {
+  @SerialName("auto") AUTO("auto"),
+  @SerialName("all") ALL("all"),
+  @SerialName("headings") HEADINGS("headings"),
+  ;
+
+  /** Whether [font] shows only in the headings with this choice. */
+  fun headingsOnly(font: ThemeFont): Boolean = when (this) {
+    AUTO -> font.display
+    ALL -> false
+    HEADINGS -> true
+  }
+
+  companion object {
+    /** By its stored code; `null` and anything unknown: [AUTO]. */
+    fun of(code: String?): FontScope = entries.firstOrNull { it.code == code } ?: AUTO
+  }
 }
 
 private val FONTS: Map<Theme, ThemeFont> = listOf(

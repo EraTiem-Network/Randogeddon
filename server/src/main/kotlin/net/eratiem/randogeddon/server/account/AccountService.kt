@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.server.account
 
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.FontChoice
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -165,7 +166,7 @@ class AccountService(
       theme = Theme.of(user.theme),
       themeMode = ThemeMode.of(user.themeMode),
       font = user.font.takeIf(FontChoice::valid),
-      fontEverywhere = user.fontEverywhere,
+      fontScope = FontScope.of(user.fontScope),
     )
   }
 
@@ -274,10 +275,10 @@ class AccountService(
   /** The theme and mode [user] sees the app in; `null`: the default theme, automatic. */
   suspend fun setTheme(user: User, theme: Theme?, mode: ThemeMode?) = users.setTheme(user.id, theme?.code, mode?.code)
 
-  /** The font [user] reads the app in ([FontChoice]; `null`: the theme's), and a display font in all text. */
-  suspend fun setFont(user: User, font: String?, everywhere: Boolean) {
+  /** The font [user] reads the app in ([FontChoice]; `null`: the theme's), and where it shows. */
+  suspend fun setFont(user: User, font: String?, scope: FontScope) {
     if (!FontChoice.valid(font)) throw AccountProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_FONT)
-    users.setFont(user.id, font, everywhere)
+    users.setFont(user.id, font, scope.code.takeIf { scope != FontScope.AUTO })
   }
 
   suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) {
