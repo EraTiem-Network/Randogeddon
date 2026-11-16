@@ -438,7 +438,12 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
-  changes. A wrong one gets `InvalidPassword`. There is no room password (`AP_PASSWORD` is gone).
+  changes. A wrong one gets `InvalidPassword`, and a name that is no slot `InvalidSlot` from the gateway itself: only
+  the slots with a password get to MultiServer at all (it would take a client in under an item link's group name
+  without any password). There is no room password (`AP_PASSWORD` is gone).
+- **Before a client is in a slot** it gets little of the gateway: frames of at most 1 MiB (unpacked too; a client's
+  packets are small), 5 minutes and 32 frames until its `Connect` passes, at most 8 such connections from one address
+  (48 in all from it; an IPv6 /64 counts as one address) and 256 of everyone. Past a limit the connection is closed.
 - Slot passwords use only characters every client accepts and that don't break config files (printable ASCII without
   spaces, quotes or backslashes). Some games only have an in-game text field without paste, so the dashboard shows
   them in a monospaced font.
