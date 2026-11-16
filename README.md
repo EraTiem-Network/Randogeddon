@@ -674,16 +674,27 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 
 ### Appearance
 
-Each user picks a theme and a mode under *Your account*, *Appearance*: Randogeddon (the default), Ocean, Forest,
-Ember, High contrast, or one inspired by Nintendo's consoles (N64, GameCube, Wii, Wii U, Switch, Switch 2), each light
-or dark; *Automatic* follows the device and switches with it. The themes are cards, each a small page in its colours
-in the mode that shows now. The button on the top card cycles light, dark and automatic, and shows the mode it is in
+Each user picks a theme and a mode under *Your account*, *Appearance*, each theme light or dark; *Automatic* follows
+the device and switches with it. The themes are cards under a heading per group, each a small page in its colours in
+the mode that shows now:
+
+- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast.
+- **Inspired by Nintendo's consoles:** NES, SNES, N64, GameCube, Wii, Wii U, Switch, Switch 2.
+- **Inspired by the PlayStation consoles:** PlayStation, PlayStation 2, 3, 4 and 5.
+- **Inspired by the Xbox consoles:** Xbox, Xbox 360, Xbox Series X|S.
+- **Inspired by SteamOS:** SteamOS.
+
+The console and SteamOS themes are only inspired by those systems' colours (no logos, no artwork). Their names are
+trademarks of their owners; Randogeddon is not affiliated with or endorsed by Nintendo, Sony, Microsoft or Valve. The
+page says so under the cards.
+
+The button on the top card cycles light, dark and automatic, and shows the mode it is in
 (a sun, a moon, a half-filled circle). A new theme or mode fades in. It is stored with the account, so it follows them to every device; before the login, and on a share
 link's page, the browser's last choice applies (the login page takes its colours too).
 
-A new theme: an entry in `Theme` and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
+A new theme: an entry in `Theme` (with its group) and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
 (*Texts and languages*). `ThemesTest` checks that it is at least as readable as the default (text, muted text and the
-text on the brand, the item and status colours on the panel) and that its item and status colours stay apart.
+text on the brand, the accent and the item and status colours on the panel) and that its item and status colours stay apart.
 
 ### Language
 
