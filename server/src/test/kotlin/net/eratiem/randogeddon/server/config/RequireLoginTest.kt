@@ -5,6 +5,9 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.application.hooks.CallFailed
+import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -46,10 +49,14 @@ class RequireLoginTest {
     override fun roleIn(user: User, id: String) = roles[id]?.get(user)
   }
 
+  /** What a call threw on the server (the client still gets its answer, so only this shows it). */
+  private val failures = mutableListOf<Throwable>()
+
   private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {
     var handled = false
     testApplication {
       install(ContentNegotiation) { json(ApiJson) }
+      install(createApplicationPlugin("failures") { on(CallFailed) { _, cause -> failures += cause } })
       routing {
         route("/api") {
           install(RequireLogin) { logins = check }
@@ -111,6 +118,18 @@ class RequireLoginTest {
 
     assertEquals(HttpStatusCode.Unauthorized, client.get("/api/sessions/brave-otter/state") { cookie(SESSION_COOKIE, "unknown") }.status)
     assertFalse(handled())
+  }
+
+  @Test
+  fun `without a login the guards under the login's say nothing more and throw nothing`() = test { handled ->
+    for (path in listOf("/api/sessions/brave-otter/state", "/api/sessions/brave-otter/manage", "/api/sessions/brave-otter/support", "/api/admin/sessions")) {
+      val response = client.get(path)
+      assertEquals(HttpStatusCode.Unauthorized, response.status, path)
+      assertTrue("NOT_LOGGED_IN" in response.bodyAsText(), path)
+    }
+    assertFalse(handled())
+    // Each threw once (a missing login in the call's attributes), which filled the log with a stack trace per call
+    assertEquals(emptyList(), failures.map { it.toString() })
   }
 
   @Test
