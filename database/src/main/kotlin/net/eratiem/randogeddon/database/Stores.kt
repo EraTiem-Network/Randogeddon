@@ -55,6 +55,8 @@ data class User(
   val fontScope: String? = null,
   /** An Administrator keeps them out (it may have run out: [Block.holds]); `null`: not. */
   val block: Block? = null,
+  /** How many running sessions of their own they may have at once; `null`: the default. */
+  val sessionLimit: Int? = null,
 ) {
   /** They can't log in at [now]: timed out or suspended. */
   fun keptOut(now: Instant = Instant.now()): Boolean = block?.holds(now) == true
@@ -78,6 +80,8 @@ data class Account(
   val twoFactor: Boolean = false,
   /** An Administrator keeps them out (it may have run out: [Block.holds]); `null`: not. */
   val block: Block? = null,
+  /** How many running sessions of their own they may have at once; `null`: the default. */
+  val sessionLimit: Int? = null,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -290,6 +294,12 @@ class UserStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
+  /** How many running sessions of their own [id] may have at once; `null`: the default. */
+  suspend fun setSessionLimit(id: Uuid, limit: Int?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[sessionLimit] = limit }
+    Unit
+  }
+
   /** Lets [id] in again. */
   suspend fun unblock(id: Uuid) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
@@ -340,6 +350,7 @@ class UserStore(private val db: RandogeddonDatabase) {
       twoFactor = row[UsersTable.totpEnabledAt] != null, language = row[UsersTable.language],
       theme = row[UsersTable.theme], themeMode = row[UsersTable.themeMode],
       font = row[UsersTable.font], fontScope = row[UsersTable.fontScope], block = block(row),
+      sessionLimit = row[UsersTable.sessionLimit],
     )
   }
 
@@ -351,7 +362,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
     hasPassword = row[UsersTable.passwordHash] != null, linked = row[UsersTable.oidcSubject] != null,
-    twoFactor = row[UsersTable.totpEnabledAt] != null, block = block(row),
+    twoFactor = row[UsersTable.totpEnabledAt] != null, block = block(row), sessionLimit = row[UsersTable.sessionLimit],
   )
 }
 
@@ -699,6 +710,8 @@ data class SessionSetup(
   val roles: Map<Uuid, SessionRoleEntry> = emptyMap(),
   /** Its hosted slots: games that run as a server of their own, played by no account. */
   val hosted: Set<String> = emptySet(),
+  /** Who created it: it counts towards their limit while it runs. `null`: nobody known. */
+  val createdBy: Uuid? = null,
 )
 
 /** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
@@ -718,6 +731,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     worlds: Map<String, List<Uuid>>,
     now: Instant = Instant.now(),
     hosted: Set<String> = emptySet(),
+    createdBy: Uuid? = null,
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -725,6 +739,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
         it[SessionsTable.publicId] = publicId
         it[SessionsTable.apVersion] = apVersion
         it[SessionsTable.optionsJson] = options
+        it[SessionsTable.createdBy] = createdBy
       }
       val names = names(worlds.values.flatten().distinct())
       for ((slot, users) in worlds) {
@@ -768,6 +783,17 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       ?.let { it[SessionsTable.apVersion] to it[SessionsTable.optionsJson] }
   }
 
+  /** How many sessions that aren't finished each account created (for the limit per user); none: not in it. */
+  suspend fun runningCreated(): Map<Uuid, Int> = db.query {
+    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNull() and SessionsTable.createdBy.isNotNull() }
+      .groupingBy { it[SessionsTable.createdBy]!! }.eachCount()
+  }
+
+  /** How many sessions that aren't finished [userId] created. */
+  suspend fun runningCreatedBy(userId: Uuid): Int = db.query {
+    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNull() and (SessionsTable.createdBy eq userId) }.count().toInt()
+  }
+
   suspend fun of(seedName: String): SessionSetup? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
     val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
@@ -790,7 +816,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       .map { it[SessionHostedSlotsTable.slotName] }.toSet()
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted, roles, hosted,
+      deleted, roles, hosted, row[SessionsTable.createdBy],
     )
   }
 
