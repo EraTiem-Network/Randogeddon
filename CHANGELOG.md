@@ -9,6 +9,26 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.18: A second security scan; its Medium and the tracker's findings
+- **A second scan** (the code since the first, what stays open after a right ends, ways around the limits, the
+  servers' logs, versions and settings): one Medium, eleven Low, in `.docs/TODO.md`. Fixed here: the Medium and the
+  tracker's four; the servers' are still open.
+- **The limit of running sessions per user holds everywhere:** it was only asked when creating a session, so
+  finishing, creating and reopening went around it, and so did passing sessions on to another account. Now also when
+  reopening (for whoever reopens and for the session's Session-Managers: `ONLY_ADMINISTRATORS_REOPEN`,
+  `SESSION_LIMIT`, `MANAGER_AT_LIMIT`) and when someone becomes Session-Manager of a running session. Administrators
+  decide freely, as before.
+- **Live streams end with the right to them** (checked every 30 seconds, like the login before): a session's stream
+  when the part in it is taken, the game server's log when its reader no longer manages the session or logs out, a
+  share link's stream when the link is switched off or replaced.
+- **The login form shows only the server's words:** why a login through the provider failed comes in a short-lived
+  cookie (`randogeddon_login_problem`) to `#/login-problem`; a text in the link is ignored (it showed anything).
+- **The tracker's own database role** (`TRACKER_DB_USER`, `TRACKER_DB_PASSWORD`; the compose service
+  `database-roles`): the tables' owner and no superuser, so a taken-over tracker runs no programs in the database's
+  container. Tried on a throwaway database with live's tables and with the released tracker. The gateway's role is
+  made without the attributes only a superuser may name.
+- `signing-key.pub`, `SHA256SUMS.sig` are served as plain text.
+
 ### 0.13.17: The scan's Low findings
 - **The page runs only its own scripts:** index.html's inline scripts are `theme.js` and `page.js`, and the policy is
   `default-src 'self'` with `script-src 'self' 'wasm-unsafe-eval'` (tried in a headless browser: nothing blocked).
