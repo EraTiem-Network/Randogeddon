@@ -36,6 +36,14 @@ object UsersTable : Table("users") {
   val font = varchar("font", 16).nullable()
   /** Where it shows (`all`, `headings`; V19); `null`: as the font is made. */
   val fontScope = varchar("font_scope", 8).nullable()
+  /**
+   * Kept out by an Administrator (V20): since when, until when (`null`: suspended, until taken back), why and by
+   * whom. A time-out that ran out counts as none.
+   */
+  val blockedAt = timestamp("blocked_at").nullable()
+  val blockedUntil = timestamp("blocked_until").nullable()
+  val blockedReason = varchar("blocked_reason", 200).nullable()
+  val blockedBy = varchar("blocked_by", 64).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
