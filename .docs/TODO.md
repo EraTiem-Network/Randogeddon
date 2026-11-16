@@ -573,6 +573,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Polish: Randogeddon Bridge on the command line, for the computer a hosted game runs on: `login` (the key from
           standard input), `slots`, `relay -session -slot [-port]`, `logout`
     - [x] Polish: Randogeddon Bridge quits once its page or the browser is closed (unless back within 10 seconds)
+    - [x] Polish: a login through Authentik ends with the Authentik session (its back-channel logout); an open
+          dashboard notices within 30 seconds
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes
