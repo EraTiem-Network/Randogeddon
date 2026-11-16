@@ -614,7 +614,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       be readable at the dashboard's small sizes (a pixel font maybe only for headings)
     - Done in the web app (0.14.3): 25 fonts, one per theme but the default; display fonts in the headings, or
       everywhere if chosen. The login page follows nothing
-    - [ ] The bridge's page follows the font too (as it follows the theme)
+    - [x] The bridge's page follows the font too (as it follows the theme): the bridge fetches the font's files
+          from the dashboard and serves them on its own page (0.14.4)
 - [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
 - [ ] Afterwards every page checked in English and German side by side (moved here from Phase 13: the new themes and
       fonts change the pages once more)
