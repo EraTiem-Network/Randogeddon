@@ -418,6 +418,40 @@ class StoresTest {
   }
 
   @Test
+  fun `the sessions someone created count while they run, and an account can have its own limit`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val roles = SessionRoleStore(db)
+    val ida = users.create("Ida", "hash")
+    val jo = users.create("Jo", "hash")
+    setups.create("ida-one", "801", "0.6.8", "{}", emptyMap(), createdBy = ida.id)
+    setups.create("ida-two", "802", "0.6.8", "{}", emptyMap(), createdBy = ida.id)
+    setups.create("cli-seed", "803", "0.6.8", "{}", emptyMap())
+    // Jo manages one of Ida's: it still counts for Ida, who created it, and not for Jo
+    assertTrue(roles.add("ida-one", jo.id, "manager", "Jo", "Ida"))
+    assertEquals(2, setups.runningCreatedBy(ida.id))
+    assertEquals(0, setups.runningCreatedBy(jo.id))
+    assertEquals(mapOf(ida.id to 2), setups.runningCreated())
+    assertEquals(ida.id, setups.of("801")?.createdBy)
+    assertNull(setups.of("803")?.createdBy)
+    // A finished one no longer counts; reopened it does again
+    SessionFinishStore(db).finish("801", by = null)
+    assertEquals(1, setups.runningCreatedBy(ida.id))
+    SessionFinishStore(db).reopen("801")
+    assertEquals(2, setups.runningCreatedBy(ida.id))
+
+    // An account's own limit: none (the default) until set, and the default again when taken back
+    assertNull(users.account(ida.id)?.sessionLimit)
+    users.setSessionLimit(ida.id, 5)
+    assertEquals(5, users.account(ida.id)?.sessionLimit)
+    assertEquals(5, users.findActive(ida.id)?.sessionLimit)
+    users.setSessionLimit(ida.id, 0)
+    assertEquals(0, users.account(ida.id)?.sessionLimit)
+    users.setSessionLimit(ida.id, null)
+    assertNull(users.account(ida.id)?.sessionLimit)
+  }
+
+  @Test
   fun `a share link is one per session, replaced by a new one and gone with its session`() = runBlocking {
     val links = ShareLinkStore(db)
     val setups = SessionSetupStore(db)

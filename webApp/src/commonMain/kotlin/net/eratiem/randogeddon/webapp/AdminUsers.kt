@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.AccountState
+import net.eratiem.randogeddon.shared.SessionLimitRequest
 import net.eratiem.randogeddon.shared.TimeOut
 import net.eratiem.randogeddon.shared.AdminUser
 import net.eratiem.randogeddon.shared.AppSettings
@@ -79,6 +80,8 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
   val scope = rememberCoroutineScope()
   var users by remember { mutableStateOf<List<AdminUser>?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
+  // The default of the sessions per user; null until it is loaded
+  var default by remember { mutableStateOf<Int?>(null) }
   suspend fun load() {
     when (val r = call("GET", "api/admin/users", null) { ApiJson.decodeFromString(ListSerializer(AdminUser.serializer()), it) }) {
       is Answer.Ok -> { users = r.value; problem = null }
@@ -112,6 +115,9 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
       }
       (nameProblem ?: state)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      // The limit of running sessions for accounts without a number of their own
+      Divider()
+      SessionsDefault { default = it }
       // One pill per account, in a box that scrolls once there are many; a click shows the account floating over it
       var opened by remember { mutableStateOf<String?>(null) }
       if (list.isNotEmpty()) {
@@ -123,7 +129,7 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
         }
       }
       list.firstOrNull { it.id == opened }?.let { user ->
-        UserPanel(user, onChanged = { scope.launch { load(); onChanged() } }, onSession = onSession, onClose = { opened = null })
+        UserPanel(user, default, onChanged = { scope.launch { load(); onChanged() } }, onSession = onSession, onClose = { opened = null })
       }
     }
   }
@@ -156,7 +162,7 @@ private fun UserPill(user: AdminUser, onOpen: () -> Unit) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String) -> Unit, onClose: () -> Unit) {
+private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onSession: (String) -> Unit, onClose: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val u = t.users
@@ -203,6 +209,17 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
             user.invitationExpiresAt?.let { if (it < Platform.now()) u.linkExpired else u.linkWorksUntil(t.date(it)) } ?: none,
           )
           InfoLine(u.deletionLabel, deletion ?: none)
+          // Their running sessions against their limit (their own number, or the default)
+          InfoLine(
+            u.ownSessionsLabel,
+            when {
+              user.administrator -> u.noLimit
+              invited -> none
+              else -> (user.sessionLimit ?: default)?.let { limit ->
+                u.sessionsOf(user.sessionsRunning, limit) + if (user.sessionLimit == null) " ${u.theDefault}" else ""
+              } ?: none
+            },
+          )
           val block = user.block
           InfoLine(
             u.accessLabel,
@@ -259,12 +276,46 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
           state?.let { Txt(it, size = 12.sp, color = p.muted) }
           // Keeping it out, letting it in again, deleting it: never an Administrator's account
           Divider()
-          if (user.administrator) Txt(u.managedElsewhere, size = 12.sp, color = p.muted)
-          else AccountActions(user, onDone = { state = it; onChanged() }, onDeleted = { onChanged(); onClose() })
+          if (user.administrator) {
+            Txt(u.managedElsewhere, size = 12.sp, color = p.muted)
+          } else {
+            if (!invited) OwnLimit(user, onDone = { state = it; onChanged() })
+            AccountActions(user, onDone = { state = it; onChanged() }, onDeleted = { onChanged(); onClose() })
+          }
         }
       }
     }
   }
+}
+
+/** An account's own limit of running sessions: a number of its own, or the default again. */
+@Composable
+private fun OwnLimit(user: AdminUser, onDone: (String) -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val u = t.users
+  val scope = rememberCoroutineScope()
+  var text by remember(user.id, user.sessionLimit) { mutableStateOf(user.sessionLimit?.toString().orEmpty()) }
+  var problem by remember(user.id) { mutableStateOf<String?>(null) }
+  val value = text.trim().toIntOrNull()?.takeIf { it in 0..20 }
+  fun save(limit: Int?) {
+    scope.launch {
+      val body = ApiJson.encodeToString(SessionLimitRequest.serializer(), SessionLimitRequest(limit))
+      when (val r = call("PUT", "api/admin/users/${user.id}/session-limit", body) { }) {
+        is Answer.Ok -> { problem = null; onDone(u.limitSaved(user.name.orEmpty())) }
+        is Answer.Failed -> problem = r.message
+      }
+    }
+  }
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Txt(u.ownLimit, size = 13.sp, weight = FontWeight.SemiBold)
+    FilterField(text, { text = it; problem = null }, "", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
+    Button(t.common.save, enabled = value != null && value != user.sessionLimit) { save(value) }
+    if (user.sessionLimit != null) SmallButton(u.useDefault, { save(null) })
+    InfoTip(u.sessionsPerUserTip)
+  }
+  if (value == null && text.isNotBlank()) Txt(u.zeroToTwenty, size = 12.5.sp, color = p.trap)
+  problem?.let { Txt(it, size = 12.sp, color = p.trap) }
 }
 
 /**
@@ -348,9 +399,12 @@ private fun InfoLine(label: String, value: String, after: @Composable () -> Unit
   }
 }
 
-/** What Administrators set for everyone: how many running sessions one user may manage at once (0: none). */
+/**
+ * How many running sessions of their own a user may have at once, unless their account has its own number (0: only
+ * Administrators create sessions): a row of the users' card. [onLoaded]: the number, for the accounts' panels.
+ */
 @Composable
-fun AppSettingsSection() {
+private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val scope = rememberCoroutineScope()
@@ -359,31 +413,27 @@ fun AppSettingsSection() {
   var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   LaunchedEffect(Unit) {
     when (val r = call("GET", "api/admin/settings", null) { ApiJson.decodeFromString(AppSettings.serializer(), it) }) {
-      is Answer.Ok -> { saved = r.value; perUser = r.value.sessionsPerUser.toString() }
+      is Answer.Ok -> { saved = r.value; perUser = r.value.sessionsPerUser.toString(); onLoaded(r.value.sessionsPerUser) }
       is Answer.Failed -> state = false to r.message
     }
   }
   val value = perUser.trim().toIntOrNull()?.takeIf { it in 0..20 }
-  Section(t.users.settings, subtitle = t.users.settingsSubtitle) {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
-        InfoTip(t.users.sessionsPerUserTip)
-        FilterField(perUser, { perUser = it; state = null }, "1", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
-        Button(t.common.save, enabled = value != null && value != saved?.sessionsPerUser) {
-          scope.launch {
-            val settings = AppSettings(value!!)
-            state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), settings)) { }) {
-              is Answer.Ok -> { saved = settings; true to t.users.saved }
-              is Answer.Failed -> false to r.message
-            }
-          }
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
+    InfoTip(t.users.sessionsPerUserTip)
+    FilterField(perUser, { perUser = it; state = null }, "1", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
+    Button(t.common.save, enabled = value != null && value != saved?.sessionsPerUser) {
+      scope.launch {
+        val settings = AppSettings(value!!)
+        state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), settings)) { }) {
+          is Answer.Ok -> { saved = settings; onLoaded(settings.sessionsPerUser); true to t.users.saved }
+          is Answer.Failed -> false to r.message
         }
       }
-      if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
-      state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
     }
   }
+  if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
+  state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
 }
 
 /**

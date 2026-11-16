@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.server.config
 
 import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.FontRequest
+import net.eratiem.randogeddon.shared.SessionLimitRequest
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -161,6 +162,13 @@ fun Route.adminUserRoutes(accounts: AccountService, logins: LoginCheck) {
     post("/{user}/invite") {
       accountCall {
         accounts.resend(userId(), call.language())
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    // How many running sessions of their own the account may have (null: the default again)
+    put("/{user}/session-limit") {
+      accountCall {
+        accounts.setSessionLimit(userId(), call.receive<SessionLimitRequest>().limit, call.loggedIn.user)
         call.respond(HttpStatusCode.NoContent)
       }
     }

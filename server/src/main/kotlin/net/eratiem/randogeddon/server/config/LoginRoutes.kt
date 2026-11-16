@@ -157,6 +157,7 @@ val RequireBridgeKey = createRouteScopedPlugin("RequireBridgeKey", ::RequireBrid
 val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
+    if (!call.attributes.contains(LOGGED_IN)) return@onCall // RequireLogin has answered: nobody is logged in
     val me = call.actor
     val id = call.parameters["id"].orEmpty()
     if (logins.maySee(me, id)) return@onCall
@@ -176,6 +177,7 @@ val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::Req
 val RequireAdministrator = createRouteScopedPlugin("RequireAdministrator", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
+    if (!call.attributes.contains(LOGGED_IN)) return@onCall // RequireLogin has answered: nobody is logged in
     logins.administratorProblem(call.loggedIn.user)?.let { call.refuse(HttpStatusCode.Forbidden, it) }
   }
 }
@@ -193,6 +195,7 @@ val RequireSessionRole = createRouteScopedPlugin("RequireSessionRole", ::Require
   val logins = pluginConfig.logins
   val roles = pluginConfig.roles
   onCall { call ->
+    if (!call.attributes.contains(LOGGED_IN)) return@onCall // RequireLogin has answered: nobody is logged in
     val user = call.loggedIn.user
     if (logins.roleIn(user, call.parameters["id"].orEmpty()) in roles) return@onCall
     val problem = logins.administratorProblem(user)
