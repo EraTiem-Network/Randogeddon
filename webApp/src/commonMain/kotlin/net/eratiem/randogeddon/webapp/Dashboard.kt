@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -456,8 +457,10 @@ private fun TrackerApp() {
 internal fun Headline() {
   val p = LocalPalette.current
   Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+    val change = LocalFontChange.current
     BasicText(
-      "RANDOGEDDON",
+      // Its letters change with the page's when the font does
+      if (change != null) AnnotatedString("RANDOGEDDON").inChange(change, heading = true, 34.sp) else AnnotatedString("RANDOGEDDON"),
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
         fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,

@@ -4,13 +4,16 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.FontChoice
 import net.eratiem.randogeddon.shared.ItemKind
 import net.eratiem.randogeddon.shared.Theme
@@ -165,7 +168,31 @@ private const val THEME_FADE_MS = 300
 
 @Composable
 fun RandogeddonTheme(palette: Palette, content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalPalette provides palette.fading(), LocalFonts provides Themes.fonts, content = content)
+  // A new font (chosen, the new theme's, or one that just finished loading) doesn't jump in: the letters take it
+  // one by one, in no order ([FontChange]). The colours fade by themselves meanwhile.
+  val fonts = Themes.fonts
+  var shown by remember { mutableStateOf(fonts) }
+  var change by remember { mutableStateOf<FontChange?>(null) }
+  LaunchedEffect(fonts) {
+    if (fonts == shown) {
+      change = null
+      return@LaunchedEffect
+    }
+    val running = FontChange(shown, fonts)
+    change = running
+    repeat(FONT_CHANGE_TURNS) {
+      delay(FONT_CHANGE_TURN_MS)
+      running.turn = it + 1
+    }
+    shown = fonts
+    change = null
+  }
+  CompositionLocalProvider(
+    LocalPalette provides palette.fading(),
+    LocalFonts provides (if (change != null) fonts else shown),
+    LocalFontChange provides change,
+    content = content,
+  )
 }
 
 /** [this], with every colour fading from the one before when the theme or the mode changes. */
