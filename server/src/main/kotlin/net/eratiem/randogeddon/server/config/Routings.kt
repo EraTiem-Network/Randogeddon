@@ -81,7 +81,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)

@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.session.Archives
@@ -60,6 +61,7 @@ class SessionLifecycle(
   private val archives: Archives,
   private val gameServer: GameServerClient,
   private val users: UserStore,
+  private val limit: SessionLimit,
 ) {
   private val mutex = Mutex()
 
@@ -117,9 +119,28 @@ class SessionLifecycle(
     logger.info("{} cancelled the finishing of {}", admin, id)
   }
 
-  /** Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. */
-  suspend fun reopen(id: String, admin: String) = mutex.withLock {
+  /**
+   * Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. It runs
+   * again then, for [by] and for its Session-Managers: none of them may be at their limit (unless an Administrator
+   * reopens it).
+   */
+  suspend fun reopen(id: String, by: User) = mutex.withLock {
     val session = session(id)
+    if (!by.administrator) {
+      limit.reached(by.id)?.let {
+        throw SessionProblem(
+          HttpStatusCode.Forbidden,
+          if (it.limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_REOPEN)
+          else Refusal.of(Problem.SESSION_LIMIT, "running" to it.running, "limit" to it.limit),
+        )
+      }
+      for (manager in session.managers() - by.id) {
+        limit.reached(manager)?.let {
+          val name = session.setup?.roles?.get(manager)?.name
+          throw SessionProblem(HttpStatusCode.Conflict, Problem.MANAGER_AT_LIMIT, "name" to name, "running" to it.running, "limit" to it.limit)
+        }
+      }
+    }
     val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_FINISHED, "id" to id)
     val until = reopenUntil(finishedAt, completed(archives.read(id)?.summary?.totals?.percent))
       ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.COMPLETED_NO_REOPEN, "id" to id)
@@ -138,7 +159,7 @@ class SessionLifecycle(
     // Every slot may still be done: no new countdown until one isn't
     session.countdownCancelled = true
     sessions.refresh()
-    logger.info("{} reopened session {}", admin, id)
+    logger.info("{} reopened session {}", by.name, id)
   }
 
   private fun session(id: String): LiveSession =
