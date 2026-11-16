@@ -55,6 +55,9 @@ class HardeningTest {
     assertEquals("DENY", page.headers["X-Frame-Options"])
     assertEquals(PAGE_POLICY, page.headers["Content-Security-Policy"])
     assertTrue("frame-ancestors 'none'" in PAGE_POLICY)
+    // Scripts only from the page's own files: nothing inline, no eval but WebAssembly's
+    assertTrue("script-src 'self' 'wasm-unsafe-eval';" in PAGE_POLICY)
+    assertFalse("script-src 'self' 'unsafe" in PAGE_POLICY)
     assertEquals("max-age=31536000; includeSubDomains", page.headers[HttpHeaders.StrictTransportSecurity])
     // The page itself may be kept (it is revalidated); the API's answers not
     assertNull(page.headers[HttpHeaders.CacheControl])

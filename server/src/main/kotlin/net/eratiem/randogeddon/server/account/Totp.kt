@@ -95,7 +95,10 @@ object Base32 {
   }
 }
 
-/** One-time codes for a lost authenticator: 10 of `xxxx-xxxx` (about 41 bits each), shown once, stored hashed. */
+/**
+ * One-time codes for a lost authenticator: 10 of `xxxx-xxxx` (about 41 bits each), shown once, stored as a keyed hash
+ * ([SecretBox.mac]; [hash] is how codes from before were stored, still taken until they are used or replaced).
+ */
 object RecoveryCodes {
   const val COUNT = 10
   // No 0/o, 1/l/i: easy to read off a printout
@@ -128,6 +131,16 @@ class SecretBox(private val key: ByteArray) {
     val iv = ByteArray(12).also(random::nextBytes)
     val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv)) }
     return Base64.getEncoder().encodeToString(iv + cipher.doFinal(plain))
+  }
+
+  /**
+   * A keyed hash of [text] (HMAC-SHA256, hex) under a key of its own made from this one for [purpose]: what is stored
+   * of a short secret, which a plain hash would give away to anyone with the database.
+   */
+  fun mac(purpose: String, text: String): String {
+    fun hmac(key: ByteArray, data: String) = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }
+      .doFinal(data.toByteArray())
+    return hmac(hmac(key, purpose), text).joinToString("") { "%02x".format(it) }
   }
 
   fun open(sealed: String): ByteArray {

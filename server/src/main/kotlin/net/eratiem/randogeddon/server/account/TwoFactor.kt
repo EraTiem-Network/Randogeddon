@@ -28,6 +28,9 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
   private val singleSignOn = config.oidc != null
   private val provider = config.oidc?.name.orEmpty()
 
+  /** What is stored of a recovery code: keyed with the server's key (41 bits are guessed at once from a plain hash). */
+  private fun codeHash(code: String): String = box.mac("recovery codes", RecoveryCodes.normalize(code))
+
   /** With single sign-on, an Administrator's second factor is the provider's. */
   private fun requireOwn(user: User) {
     if (user.administrator && singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to provider)
@@ -54,7 +57,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     val step = Totp.match(box.open(state.secret), code, now.toEpochMilli())
       ?: throw AccountProblem(HttpStatusCode.BadRequest, Problem.CODE_MISMATCH)
     val codes = RecoveryCodes.generate()
-    store.enable(user.id, codes.map(RecoveryCodes::hash), now)
+    store.enable(user.id, codes.map(::codeHash), now)
     store.useStep(user.id, step)
     logger.info("{} turned two-factor login on", user.name)
     return codes
@@ -67,7 +70,8 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
   suspend fun check(user: User, code: String, now: Instant = Instant.now()): Boolean {
     val state = store.of(user.id)?.takeIf { it.enabledAt != null } ?: return false
     if (RecoveryCodes.looksLike(code)) {
-      val used = store.useCode(user.id, RecoveryCodes.hash(code), now)
+      // A code from before the keyed hash is still taken (its plain hash), until it is used or the codes are replaced
+      val used = store.useCode(user.id, codeHash(code), now) || store.useCode(user.id, RecoveryCodes.hash(code), now)
       if (used) logger.info("{} used a recovery code ({} left)", user.name, store.codesLeft(user.id))
       return used
     }
@@ -89,7 +93,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     requireOwn(user)
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     val codes = RecoveryCodes.generate()
-    store.replaceCodes(user.id, codes.map(RecoveryCodes::hash))
+    store.replaceCodes(user.id, codes.map(::codeHash))
     return codes
   }
 

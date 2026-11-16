@@ -242,6 +242,14 @@ class AccountService(
       logger.warn("Could not send the address confirmation to {}: {}", address, e.message)
       throw AccountProblem(HttpStatusCode.BadGateway, Problem.MAIL_FAILED, "address" to address, "reason" to e.message)
     }
+    // The address so far is told (changing it asks for no password): whoever it wasn't can still act
+    user.email?.let { old ->
+      try {
+        mailer.send(Mails.addressChange(old, user.name, address, texts(language).mails))
+      } catch (e: IOException) {
+        logger.warn("Could not tell {} about the new address asked for: {}", old, e.message)
+      }
+    }
   }
 
   /** The link of a confirmation mail: its address becomes the account's; the address, for the answer. */

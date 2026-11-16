@@ -230,7 +230,8 @@ fun Route.loginRoutes(
       call.response.cookies.append(oidcCookie("", 0, secure))
       // The state must be this browser's (no logins slipped in from elsewhere)
       val problem = when {
-        code == null -> Refusal(Problem.SSO_CANCELLED, detail = call.request.queryParameters["error_description"])
+        // Not the provider's own words (`error_description`): anyone can put a text into a link to here
+        code == null -> Refusal(Problem.SSO_CANCELLED)
         cookie == null || cookie != state -> Refusal(Problem.SSO_NOT_HERE)
         else -> try {
           val (user, providerSession) = sso.finish(state, code)
