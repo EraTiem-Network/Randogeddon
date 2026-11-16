@@ -565,7 +565,12 @@ data class KeepRequest(val keep: Boolean)
 
 /** One sphere of the spoiler's playthrough: what is reachable (and needed) at that step, "Location (Slot): Item (Slot)". */
 @Serializable
-data class Sphere(val number: Int, val entries: List<String>)
+data class Sphere(
+  val number: Int,
+  val entries: List<String>,
+  /** Per entry: its location is checked already (as the tracker sees it now); empty if not known. */
+  val checked: List<Boolean> = emptyList(),
+)
 
 /** `GET /api/sessions/{id}/spoiler`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
 @Serializable
@@ -588,9 +593,12 @@ enum class CheatAction {
   @SerialName("hint_location") HINT_LOCATION,
 }
 
-/** `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. */
+/**
+ * `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. [from]: a location checked
+ * *to* the slot: the other world it is in (one of [CheatNames.incoming]); `null`: the slot's own location.
+ */
 @Serializable
-data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null)
+data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null, val from: String? = null)
 
 /** One cheat, as logged. */
 @Serializable
@@ -632,9 +640,22 @@ data class SlotFile(
 @Serializable
 data class SlotFiles(val files: List<SlotFile> = emptyList())
 
-/** `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. */
+/**
+ * `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. [incoming]:
+ * the locations of other worlds, not checked yet, that hold one of the slot's items (from the spoiler log's
+ * placements; [placementsKnown] `false` without them).
+ */
 @Serializable
-data class CheatNames(val items: List<String> = emptyList(), val locations: List<String> = emptyList())
+data class CheatNames(
+  val items: List<String> = emptyList(),
+  val locations: List<String> = emptyList(),
+  val incoming: List<IncomingCheck> = emptyList(),
+  val placementsKnown: Boolean = false,
+)
+
+/** A location of [world], not checked yet, that holds [item] for the slot asked about. */
+@Serializable
+data class IncomingCheck(val location: String, val world: String, val item: String)
 
 /** `GET /api/admin/sessions/{id}`: one session, what a new one can use, and who has a login. */
 @Serializable

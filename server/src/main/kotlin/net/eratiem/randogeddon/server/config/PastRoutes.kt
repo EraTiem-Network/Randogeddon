@@ -1,8 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -18,22 +15,26 @@ import io.ktor.server.routing.route
 import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SlotDownloads
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
+import net.eratiem.randogeddon.server.session.markChecked
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Connection
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SlotFiles
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
@@ -92,7 +93,9 @@ fun Route.sessionRoutes(
         try {
           val spoiler = spoilers.of(live.id, live.seedName)
             ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
-          call.respond(spoiler)
+          // The steps already checked, as the tracker sees them now
+          val open = runCatching { live.tracker.read { openLocations() } }.getOrDefault(emptyMap())
+          call.respond(markChecked(spoiler, open))
         } catch (e: GameServerUnavailable) {
           call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
         }

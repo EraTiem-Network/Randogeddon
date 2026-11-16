@@ -1976,6 +1976,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.IncomingCheck",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.IncomingCheck$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.CheatNames",
       "fields": [
         {
