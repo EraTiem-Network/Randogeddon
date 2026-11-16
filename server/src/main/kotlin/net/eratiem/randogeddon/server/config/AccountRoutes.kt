@@ -126,7 +126,7 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, bridgeKe
     put("/font") {
       accountCall {
         val request = call.receive<FontRequest>()
-        accounts.setFont(call.loggedIn.user, request.font, request.everywhere)
+        accounts.setFont(call.loggedIn.user, request.font, request.scope)
         call.respond(HttpStatusCode.NoContent)
       }
     }
