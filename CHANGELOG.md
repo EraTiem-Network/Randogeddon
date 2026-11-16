@@ -9,6 +9,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.13: An ended login shows the login form; folding the playthrough
+- A login that ends while the page is open (logged out at Authentik, elsewhere, expired) shows the login form at the
+  first request that finds it so (`NOT_LOGGED_IN`, `LoginWatch`), not that request's own error in its field. While the
+  form is open, other requests answering the same don't open it again over what is typed.
+- The playthrough's *Fold all* / *Unfold all* follows the list: it counts only the spheres shown (with the slot and
+  the search), and folding them by hand changes it too. A filter unfolds what it finds as before, but each sphere
+  folds by hand then too; without a filter they fold back.
+- Authentik's Randogeddon provider has its *Logout URI* (*Back-channel*) now, set on the auth VM; logging out there ends
+  the login here.
+
 ### 0.13.12: The bridge for hosted slots, on the command line; Authentik logouts; checks to a slot; the playthrough checked; scroll bars
 - Randogeddon Bridge offers a session's hosted slots to its Session-Managers and Administrators (who see their
   password), for a hosted game that can't do TLS; its players still don't get them, and a locked slot never.
