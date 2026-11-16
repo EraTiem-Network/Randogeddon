@@ -9,11 +9,21 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
-### 0.13.12: The bridge for hosted slots, on the command line; Authentik logouts
+### 0.13.12: The bridge for hosted slots, on the command line; Authentik logouts; checks to a slot; the playthrough checked; scroll bars
 - Randogeddon Bridge offers a session's hosted slots to its Session-Managers and Administrators (who see their
   password), for a hosted game that can't do TLS; its players still don't get them, and a locked slot never.
 - A command line for a computer without a browser: `login` (the key from standard input), `slots`, `relay -session
   <id> -slot <name> [-port <port>]` (until Ctrl+C, on a fixed port if wanted) and `logout`.
+- The cheat *Check a location* goes either way: *from the slot* (its own location, as before) or *to the slot*: an
+  open location of another world holding one of the slot's items, listed with the item (from the spoiler log's
+  `Locations:`; `CheatNames.incoming`). Checked there (`/send_location <that world> <location>`), the slot gets it;
+  logged as that world's check.
+- The spoiler log's playthrough marks the steps already checked (a ✓, as the tracker sees it when the page loads), and
+  each sphere says how many of its checks are done (`Sphere.checked`). It reads *Item @ Check* (was an arrow), and a
+  search keeps only the steps whose item, check or slot contains the text.
+- Scroll bars: the page, the dialogs and the lists show where they are scrolled (a thumb in the theme's colours on the
+  right edge, while there is more than fits); the mouse drags it, a click beside it jumps there. The browser shows
+  none of its own, since the page is drawn on a canvas.
 - A login through Authentik lasts only as long as the Authentik session: Authentik's back-channel logout (`POST
   /api/login/oidc/backchannel`, its signed logout token checked: issuer, client, signature, age, the logout event, no
   nonce, not seen before) ends the logins from the ended session (logged out there, ended by an admin, the person
