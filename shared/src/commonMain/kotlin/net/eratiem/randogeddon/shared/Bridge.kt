@@ -20,7 +20,8 @@ data class BridgeDownload(val os: String, val arch: String, val file: String, va
 /**
  * `GET /bridge/info` (with a key): the bridge the dashboard offers ([version], `null`: none; [downloads]), and how the
  * user sees Randogeddon, so the app's page looks the same: their theme's two palettes as CSS colours by name
- * (`background`, `text`, `brandStart`, …), their mode and language.
+ * (`background`, `text`, `brandStart`, …), their mode and language, and the [font] they read it in (`null`: the
+ * original; the app's page then keeps the system's).
  */
 @Serializable
 data class BridgeInfo(
@@ -30,7 +31,20 @@ data class BridgeInfo(
   val dark: Map<String, String> = emptyMap(),
   val mode: ThemeMode = ThemeMode.AUTO,
   val language: String? = null,
+  val font: BridgeFont? = null,
 )
+
+/**
+ * The font of the user's choice for the bridge's page: its files among the dashboard's static files ([regular], and
+ * [bold] if it has one), whether it is for the headings only (a display font, unless they want it everywhere), and
+ * how large it is drawn against the system's font at the same size.
+ */
+@Serializable
+data class BridgeFont(val regular: String, val bold: String? = null, val headingsOnly: Boolean = false, val scale: Float = 1f)
+
+/** [choice] (as stored with the account) with [theme], as the bridge gets it. */
+fun bridgeFont(theme: Theme, choice: String?, everywhere: Boolean): BridgeFont? =
+  FontChoice.font(theme, choice)?.let { BridgeFont(it.regularFile, it.boldFile, it.display && !everywhere, it.scale) }
 
 /** `GET /downloads/bridge` (no login): what the dashboard offers, for *Your connection*. */
 @Serializable

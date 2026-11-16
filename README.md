@@ -545,7 +545,7 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
 - **Login:** with a key, made under *Your connection* (*Create key*, shown once) and pasted into the bridge's page. The
   bridge never sees a password, so Administrators who log in through Authentik use it too. A key is a login for 30
   days; *Your account* lists them (made, last used, until when) with *End*, and a new password ends them all.
-- **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
+- **Use:** the bridge opens its page in the default browser, in the account's theme, mode, font and language. Pick the
   session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
   once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
   password don't matter: the bridge fills in the slot's. It offers the user's own slots, and to Session-Managers and
@@ -584,7 +584,7 @@ How it stays safe:
 
 - A key reaches only the bridge's routes (`/bridge/…`: who, the sessions, a session's connection, the bridge offered,
   its own logout), sent as `Authorization: Bearer`; never `/api`, not even as the cookie. It is stored as its SHA-256
-  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode and language again,
+  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode, font and language again,
   right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
   browser can play a slot through them.

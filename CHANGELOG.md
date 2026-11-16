@@ -9,6 +9,13 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 14: More Themes
 
+### 0.14.4: The bridge follows the font
+- **Randogeddon Bridge's page shows the account's font** as it shows its theme: for all text, or for the headings
+  only with a display font. `GET /bridge/info` names the font's files (`BridgeFont`); the bridge fetches them from the
+  dashboard itself and serves them on its own page (`/font/regular`, `/font/bold`), so the page still loads nothing
+  from elsewhere. Without a font, or if it can't be fetched, the system's font stays. Needs the new bridge (an older
+  one keeps the system's font).
+
 ### 0.14.3: A font per theme
 - **Every theme but the default brings a font** (25 free fonts, SIL OFL or Apache 2.0, their licences beside them):
   a pixel font for NES and SNES, a book serif for Sepia, a monospace for Terminal, and so on (README, *Appearance*).

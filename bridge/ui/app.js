@@ -70,6 +70,34 @@ function applyColours() {
 }
 dark.addEventListener("change", applyColours);
 
+// The account's font (the bridge fetches its files from the dashboard): for all text, or for the headings only.
+// Without one, or until it is loaded, the system's font shows.
+let fontShown = "";
+function applyFont() {
+  const font = state && state.info && state.info.font;
+  const key = font ? JSON.stringify(font) : "";
+  if (key === fontShown) return;
+  fontShown = key;
+  const root = document.documentElement;
+  for (const name of ["--font-text", "--font-heading", "--text-scale", "--heading-scale"]) root.style.removeProperty(name);
+  if (!font) return;
+  // A name of its own per font: a changed choice doesn't show the one loaded before
+  const family = "account-" + font.regular.replace(/[^a-z0-9]/g, "-");
+  const faces = [new FontFace(family, `url(/font/regular?f=${encodeURIComponent(font.regular)})`, { weight: "400" })];
+  if (font.bold) faces.push(new FontFace(family, `url(/font/bold?f=${encodeURIComponent(font.bold)})`, { weight: "700" }));
+  Promise.all(faces.map((face) => face.load())).then((loaded) => {
+    if (key !== fontShown) return;
+    loaded.forEach((face) => document.fonts.add(face));
+    const scale = String(font.scale || 1);
+    root.style.setProperty("--font-heading", `"${family}"`);
+    root.style.setProperty("--heading-scale", scale);
+    if (!font.headingsOnly) {
+      root.style.setProperty("--font-text", `"${family}"`);
+      root.style.setProperty("--text-scale", scale);
+    }
+  }, () => { /* the system's font stays */ });
+}
+
 async function api(method, path, body) {
   const response = await fetch(path, {
     method,
@@ -133,6 +161,7 @@ function render() {
   const wanted = info && info.language ? info.language : lang;
   if (wanted !== lang && TEXTS[wanted]) { lang = wanted; t = TEXTS[lang]; applyTexts(); }
   applyColours();
+  applyFont();
   $("brand").href = state.server;
   $("version").textContent = state.version;
   $("user").hidden = !user;

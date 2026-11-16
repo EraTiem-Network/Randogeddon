@@ -28,6 +28,7 @@ import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.BridgeDownload
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeInfo
+import net.eratiem.randogeddon.shared.bridgeFont
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.Theme
@@ -113,12 +114,13 @@ fun Route.bridgeRoutes(
     install(RequireBridgeKey) { userOf = keys::userOf }
     get("/info") {
       val user = call.loggedIn.user
-      val (light, dark) = palettes(Theme.of(user.theme) ?: Theme.DEFAULT)
+      val theme = Theme.of(user.theme) ?: Theme.DEFAULT
+      val (light, dark) = palettes(theme)
       val offered = bridgeDownloads(config.bridgeDir)
       call.respond(
         BridgeInfo(
           offered.version, offered.downloads, light.css(), dark.css(), ThemeMode.of(user.themeMode) ?: ThemeMode.AUTO,
-          Language.of(user.language)?.code,
+          Language.of(user.language)?.code, bridgeFont(theme, user.font, user.fontEverywhere),
         )
       )
     }
