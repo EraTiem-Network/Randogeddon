@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.TimeOut
+
 /** The panel's APWorlds: the games of each Archipelago release, uploads, tries, removals. */
 interface ApworldTexts {
   val title: String
@@ -113,6 +115,30 @@ interface UserAdminTexts {
   val sessionsPerUserTip: String
   val saved: String
   val zeroToTwenty: String
+  // Keeping an account out, deleting it
+  val timedOutPill: String
+  val suspendedPill: String
+  val accessLabel: String
+  val mayLogIn: String
+  fun timedOutUntil(date: String): String
+  val suspended: String
+  /** After the state: who did it, and why if they said. */
+  fun keptOutBy(name: String): String
+  fun keptOutFor(reason: String): String
+  val reason: String
+  fun timeOut(time: TimeOut): String
+  val timeOutButton: String
+  val suspendButton: String
+  val letInButton: String
+  val deleteButton: String
+  fun reallyDelete(name: String): String
+  val deleteNow: String
+  fun timedOutDone(name: String): String
+  fun suspendedDone(name: String): String
+  fun letInDone(name: String): String
+  fun deletedDone(name: String): String
+  val keptOutTip: String
+  val managedElsewhere: String
 }
 
 internal object EnglishApworlds : ApworldTexts {
@@ -280,6 +306,35 @@ internal object EnglishUserAdmin : UserAdminTexts {
       "sessions). Administrators have no limit; the game servers' number applies to everyone."
   override val saved = "Saved."
   override val zeroToTwenty = "0 to 20"
+  override val timedOutPill = "timed out"
+  override val suspendedPill = "suspended"
+  override val accessLabel = "Access"
+  override val mayLogIn = "can log in"
+  override fun timedOutUntil(date: String) = "timed out until $date"
+  override val suspended = "suspended until taken back"
+  override fun keptOutBy(name: String) = "by $name"
+  override fun keptOutFor(reason: String) = "Reason: $reason"
+  override val reason = "Reason (they are told; optional)"
+  override fun timeOut(time: TimeOut) = when (time) {
+    TimeOut.HOUR -> "1 hour"
+    TimeOut.DAY -> "1 day"
+    TimeOut.WEEK -> "7 days"
+    TimeOut.MONTH -> "30 days"
+  }
+  override val timeOutButton = "Time out"
+  override val suspendButton = "Suspend"
+  override val letInButton = "Let in again"
+  override val deleteButton = "Delete account"
+  override fun reallyDelete(name: String) = "Really delete $name? Their sessions keep their name; the account can't be brought back."
+  override val deleteNow = "Delete now"
+  override fun timedOutDone(name: String) = "$name is timed out and was told by mail."
+  override fun suspendedDone(name: String) = "$name is suspended and was told by mail."
+  override fun letInDone(name: String) = "$name can log in again and was told by mail."
+  override fun deletedDone(name: String) = "$name is deleted."
+  override val keptOutTip =
+    "A timed-out or suspended account can't log in, and its logins (Randogeddon Bridge's too) end at once. Its " +
+      "sessions go on and its games stay connected. A time-out ends by itself."
+  override val managedElsewhere = "Administrators are managed where they log in."
 }
 
 internal object GermanUserAdmin : UserAdminTexts {
@@ -339,4 +394,33 @@ internal object GermanUserAdmin : UserAdminTexts {
       "Administratoren erstellen Sessions). Administratoren haben keine Grenze; die Zahl der Spielserver gilt für alle."
   override val saved = "Gespeichert."
   override val zeroToTwenty = "0 bis 20"
+  override val timedOutPill = "Auszeit"
+  override val suspendedPill = "gesperrt"
+  override val accessLabel = "Zugang"
+  override val mayLogIn = "kann sich anmelden"
+  override fun timedOutUntil(date: String) = "Auszeit bis $date"
+  override val suspended = "gesperrt, bis es zurückgenommen wird"
+  override fun keptOutBy(name: String) = "von $name"
+  override fun keptOutFor(reason: String) = "Grund: $reason"
+  override val reason = "Grund (wird der Person mitgeteilt; optional)"
+  override fun timeOut(time: TimeOut) = when (time) {
+    TimeOut.HOUR -> "1 Stunde"
+    TimeOut.DAY -> "1 Tag"
+    TimeOut.WEEK -> "7 Tage"
+    TimeOut.MONTH -> "30 Tage"
+  }
+  override val timeOutButton = "Auszeit geben"
+  override val suspendButton = "Sperren"
+  override val letInButton = "Wieder zulassen"
+  override val deleteButton = "Konto löschen"
+  override fun reallyDelete(name: String) = "$name wirklich löschen? Die Sessions behalten den Namen; das Konto lässt sich nicht zurückholen."
+  override val deleteNow = "Jetzt löschen"
+  override fun timedOutDone(name: String) = "$name hat eine Auszeit und wurde per Mail informiert."
+  override fun suspendedDone(name: String) = "$name ist gesperrt und wurde per Mail informiert."
+  override fun letInDone(name: String) = "$name kann sich wieder anmelden und wurde per Mail informiert."
+  override fun deletedDone(name: String) = "$name ist gelöscht."
+  override val keptOutTip =
+    "Ein Konto mit Auszeit oder Sperre kann sich nicht anmelden, und seine Anmeldungen (auch die von Randogeddon " +
+      "Bridge) enden sofort. Seine Sessions laufen weiter, und seine Spiele bleiben verbunden. Eine Auszeit endet von selbst."
+  override val managedElsewhere = "Administratoren werden dort verwaltet, wo sie sich anmelden."
 }

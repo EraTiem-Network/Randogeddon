@@ -111,6 +111,13 @@ internal object EnglishProblems : ProblemTexts {
       ONLY_ADMINISTRATORS_CREATE -> "Only Administrators create sessions here"
       ONLY_ADMINISTRATORS_REOPEN -> "Only Administrators reopen sessions here"
       NO_SUCH_FONT -> "There is no such font"
+      ACCOUNT_TIMED_OUT -> "An Administrator has timed your account out until ${a("until")}." + a("reason").let { if (it.isEmpty()) "" else " Reason: $it" }
+      ACCOUNT_SUSPENDED -> "An Administrator has suspended your account." + a("reason").let { if (it.isEmpty()) "" else " Reason: $it" }
+      NOT_YOUR_OWN -> "Not your own account"
+      ADMINISTRATOR_ELSEWHERE -> "${a("name")} is an Administrator: their account is managed where they log in"
+      NOT_SIGNED_UP_YET -> "${a("name")} hasn't signed up yet: an invitation can only be deleted"
+      NOT_KEPT_OUT -> "${a("name")} isn't timed out or suspended"
+      REASON_TOO_LONG -> "The reason: at most ${a("max")} characters"
       MANAGER_AT_LIMIT -> "${a("name")} manages ${a("running")} running sessions already and can't take another (${a("limit")} at once)"
       SESSION_LIMIT -> "You manage ${a("running")} running sessions; ${a("limit")} at once (finish one first)"
       SERVERS_IN_USE -> "All ${a("capacity")} game servers are in use; finish or stop a session first"
@@ -258,6 +265,13 @@ internal object GermanProblems : ProblemTexts {
       ONLY_ADMINISTRATORS_CREATE -> "Hier erstellen nur Administratoren Sessions"
       ONLY_ADMINISTRATORS_REOPEN -> "Hier öffnen nur Administratoren Sessions wieder"
       NO_SUCH_FONT -> "Diese Schrift gibt es nicht"
+      ACCOUNT_TIMED_OUT -> "Ein Administrator hat dein Konto bis ${a("until")} gesperrt." + a("reason").let { if (it.isEmpty()) "" else " Grund: $it" }
+      ACCOUNT_SUSPENDED -> "Ein Administrator hat dein Konto gesperrt." + a("reason").let { if (it.isEmpty()) "" else " Grund: $it" }
+      NOT_YOUR_OWN -> "Nicht dein eigenes Konto"
+      ADMINISTRATOR_ELSEWHERE -> "${a("name")} ist Administrator: Das Konto wird dort verwaltet, wo sich Administratoren anmelden"
+      NOT_SIGNED_UP_YET -> "${a("name")} ist noch nicht registriert: Eine Einladung lässt sich nur löschen"
+      NOT_KEPT_OUT -> "${a("name")} ist nicht gesperrt"
+      REASON_TOO_LONG -> "Der Grund: höchstens ${a("max")} Zeichen"
       MANAGER_AT_LIMIT -> "${a("name")} verwaltet schon ${a("running")} laufende Sessions und kann keine weitere übernehmen (${a("limit")} gleichzeitig)"
       SESSION_LIMIT -> "Du verwaltest ${a("running")} laufende Sessions; ${a("limit")} gleichzeitig (beende zuerst eine)"
       SERVERS_IN_USE -> "Alle ${a("capacity")} Spielserver sind belegt; beende oder stoppe zuerst eine Session"
