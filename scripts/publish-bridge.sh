@@ -27,7 +27,9 @@ docker rm "$container" >/dev/null
 built="$(cat "$out/files/VERSION" 2>/dev/null || true)"
 [[ "$built" == "$version" ]] || { echo "The image's bridge is ${built:-missing}, not $version"; exit 1; }
 rm "$out/files/VERSION"
-(cd "$out/files" && sha256sum randogeddon-bridge-* > SHA256SUMS)
+# The image brings its checksums (signed, if its build had the key) and the public key; an older one gets them here
+[[ -s "$out/files/SHA256SUMS" ]] || (cd "$out/files" && sha256sum randogeddon-bridge-* > SHA256SUMS)
+(cd "$out/files" && sha256sum --quiet -c SHA256SUMS) || { echo "The image's checksums don't match its builds"; exit 1; }
 files=("$out"/files/*)
 
 echo "== The bridge's builds to $REGISTRY ($REPOSITORY/$version/)"

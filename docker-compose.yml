@@ -11,7 +11,7 @@ name: randogeddon
 x-build: &build
   context: .
   dockerfile: kotlin.Dockerfile
-  secrets: [gradle_init]
+  secrets: [gradle_init, bridge_signing_key]
   # One plain linux/amd64 image: without these, BuildKit adds attestations and the image becomes an index (a registry
   # shows it as multi-arch, with an `unknown/unknown` entry)
   provenance: false
@@ -19,6 +19,9 @@ x-build: &build
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
     AP_VERSION: ${AP_VERSION:-0.6.8}
+    # The commit of that release's tag (git ls-remote https://github.com/ArchipelagoMW/Archipelago refs/tags/<version>):
+    # the build stops if the tag has moved
+    AP_COMMIT: ${AP_COMMIT:-54803be064fc7e80c4628777ed0b46a9390f255f}
     # Randogeddon Bridge's version: the project's (deploy.sh sets it)
     BRIDGE_VERSION: ${BRIDGE_VERSION:-dev}
 
@@ -34,6 +37,7 @@ services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
       POSTGRES_DB: randogeddon
       POSTGRES_USER: randogeddon
@@ -61,6 +65,9 @@ services:
     # Generate.py and the game servers share this container: a seed too large for it ends there, not the VM
     mem_limit: ${GATEWAY_MEMORY:-5g}
     pids_limit: 4096
+    # It runs as its own user and needs nothing of root's
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     environment:
       # Its own database role with only its rights, once GATEWAY_DB_USER and GATEWAY_DB_PASSWORD are set (the tracker
       # makes the role at its start); until then the tracker's login. Archipelago's Python runs here: with the role
@@ -85,6 +92,10 @@ services:
       <<: *build
       target: tracker
     restart: unless-stopped
+    mem_limit: ${TRACKER_MEMORY:-2g}
+    pids_limit: 1024
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,3 +152,6 @@ secrets:
   # Gradle init script with the token for pkg.example.org (entry `example`); only needed when the images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}
+  # The SSH key the bridge's checksums are signed with (scripts/deploy.sh names it); without one they aren't signed
+  bridge_signing_key:
+    file: ${BRIDGE_SIGNING_KEY:-/dev/null}
