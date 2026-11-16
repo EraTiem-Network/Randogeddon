@@ -44,9 +44,11 @@ current="$(setting IMAGE_TAG)" current_gateway="$(setting GATEWAY_TAG)"
 # Before every switch: the database as it is
 if docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
   mkdir -p /srv/backups
+  chmod 700 /srv/backups
   dump="/srv/backups/randogeddon-$(date +%Y%m%d-%H%M%S)-before-${tag}.sql.gz"
-  # </dev/null: this script itself comes over stdin, which `exec -T` would read
-  docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump"
+  # </dev/null: this script itself comes over stdin, which `exec -T` would read. The dump (password hashes, addresses,
+  # the slot passwords) for root only
+  (umask 077; docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump")
   echo "Database dumped to $dump"
 fi
 sed -i '/^IMAGE_REGISTRY=/d' .env
