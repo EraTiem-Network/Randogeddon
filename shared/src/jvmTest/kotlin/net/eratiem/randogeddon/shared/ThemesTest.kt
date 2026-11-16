@@ -52,6 +52,8 @@ class ThemesTest {
       assertTrue(contrast(p.onBrand, p.brandEnd) >= 3.0, "$name: on the accent ${contrast(p.onBrand, p.brandEnd)}")
       // The top card's text spans the whole gradient (the default's coral start: 2.6)
       assertTrue(contrast(p.onBrand, p.brandStart) >= 2.5, "$name: on the gradient's start ${contrast(p.onBrand, p.brandStart)}")
+      // The accent is small text on the panel too (the small buttons; the default's: 4.3)
+      assertTrue(contrast(p.brandEnd, p.panel) >= 4.0, "$name: the accent on the panel ${contrast(p.brandEnd, p.panel)}")
     }
   }
 
@@ -69,6 +71,17 @@ class ThemesTest {
         assertTrue(d >= 20.0, "$name: ${colours[i].key} and ${colours[j].key} too close ($d)")
       }
     }
+  }
+
+  @Test
+  fun `a theme's code fits its column, and a group's themes stand together`() {
+    assertEquals(Theme.entries.size, Theme.entries.map { it.code }.toSet().size)
+    for (theme in Theme.entries) assertTrue(theme.code.length <= 16 && Regex("[a-z0-9-]+").matches(theme.code), theme.code)
+    // Own first, then by maker: one run per group (the cards are shown under one heading each)
+    val groups = Theme.entries.map { it.group }
+    assertEquals(ThemeGroup.entries.toList(), groups.distinct())
+    assertEquals(groups.distinct().size, groups.zipWithNext().count { (a, b) -> a != b } + 1)
+    assertEquals(ThemeGroup.OWN, Theme.DEFAULT.group)
   }
 
   @Test
