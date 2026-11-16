@@ -163,7 +163,7 @@ app's two-factor login for them. They can't log in with a password any more; if 
 group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
 (they log out there, an admin ends it, the person is deactivated, it expires), Authentik's back-channel logout
 (`POST /api/login/oidc/backchannel`, a logout token signed by Authentik) ends the logins here from that session, and an
-open dashboard notices within 30 seconds. Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
+open dashboard notices within 30 seconds and shows the login form (as does any request that finds a login ended). Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
 account*). Players keep their name and password.
 Authentik holds their account: *Your account* starts with *Your Authentik account*, a link to Authentik's user
 settings (`<issuer's host>/if/user/`, or `OIDC_ACCOUNT_URL`), where they change their name, password, e-mail address
