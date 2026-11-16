@@ -103,10 +103,11 @@ class LoginService(
   suspend fun user(id: Uuid): User? = users.findActive(id)
 
   /** A new login of [user] (after the password, or right after signing up; [method]: how); its token for the cookie. */
-  suspend fun start(user: User, method: String = LoginMethods.PASSWORD): String {
+  /** A new login for [user]; [providerSession]: its session at the provider, for a login through it. */
+  suspend fun start(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null): String {
     logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
-    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()), method = method)
+    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()), method = method, providerSession = providerSession)
     return token
   }
 
