@@ -15,3 +15,4 @@ V13__theme.sql
 V14__bridge_keys.sql
 V15__hosted_slots.sql
 V16__locked_slots.sql
+V17__provider_sessions.sql
