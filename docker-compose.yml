@@ -35,10 +35,19 @@ x-database: &database
 # Between tracker and gateway (the admin panel's control of the game servers)
 x-internal-token: &internal-token ${INTERNAL_TOKEN:?set INTERNAL_TOKEN in .env}
 
+# The containers' logs stay small: Docker keeps the newest 5 files of 10 MB each (without this they grow until the
+# disk is full)
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
+    logging: *logging
     security_opt: ["no-new-privileges:true"]
     environment:
       POSTGRES_DB: randogeddon
@@ -59,6 +68,7 @@ services:
   database-roles:
     image: postgres:18-alpine
     restart: "no"
+    logging: *logging
     user: postgres
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
@@ -89,6 +99,7 @@ services:
       <<: *build
       target: gateway
     restart: unless-stopped
+    logging: *logging
     # MultiServer saves on /exit when the gateway stops; give it the time
     stop_grace_period: 30s
     depends_on:
@@ -124,6 +135,7 @@ services:
       <<: *build
       target: tracker
     restart: unless-stopped
+    logging: *logging
     mem_limit: ${TRACKER_MEMORY:-2g}
     pids_limit: 1024
     security_opt: ["no-new-privileges:true"]
