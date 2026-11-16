@@ -419,8 +419,7 @@ Below the finished sessions, Administrators find *General*: *Users* (every accou
 Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
 language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
 them, for an invited one *Send again* and *Other address*, and what an Administrator does to it: see below),
-*APWorlds*, *Settings* (how many running sessions one
-user may manage at once) and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
+*APWorlds* and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
 
@@ -440,6 +439,14 @@ the gateway back after crashes or reboots; it starts every session's game server
 with `docker compose down` and starting with `up -d` keeps the progress.
 
 ## Logins and passwords
+
+**Sessions per user:** how many running sessions of their own a user may have at once (0 to 20; 0: only
+Administrators create sessions). *Sessions per user (default)* in the users' card is for every account without a
+number of its own; an account's panel shows its running sessions against its limit and takes its *Own limit* (or
+*Use the default* again). It counts the sessions someone **created**, while they run: being made Session-Manager of
+someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
+its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
+(`AP_PORTS`) applies to everyone.
 
 **Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
 managed where Administrators log in, so never one's own):
