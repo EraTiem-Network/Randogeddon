@@ -162,6 +162,7 @@ fun main() {
       }
     }
   }
+  val connections = ConnectionLimits()
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
     "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once", config.port,
@@ -182,11 +183,7 @@ fun main() {
       // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up
       useLastProxy()
     }
-    install(WebSockets) {
-      maxFrameSize = Long.MAX_VALUE
-      pingPeriod = 30.seconds
-      extensions { install(WebSocketDeflateExtension) }
-    }
+    gameClientWebSockets()
     install(ContentNegotiation) { json(ApiJson) }
     routing {
       // The port the connection came in on: port() would take the one the client asked for (Host header,
@@ -201,9 +198,9 @@ fun main() {
           if (session == null || port == null) {
             val why = if (id == null) "Which session? Connect to <session>.<domain>" else "Session $id isn't running"
             close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
-          } else {
-            relay(http, "ws://localhost:$port", session.passwords)
+            return@webSocket
           }
+          serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections)
         }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
