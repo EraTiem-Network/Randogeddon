@@ -156,6 +156,10 @@ Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
 (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` in `.env`): it publishes 38281 and 8000 and keeps the
 public addresses (`BASE_DOMAIN`, the login cookie only over HTTPS).
 
+**A release is deployed only from a signed tag:** `scripts/deploy.sh` checks `v<version>`'s signature against the
+keyring of the machine it runs on and stops without one that checks out (the signers' public keys are imported there:
+`gpg --import`). Anything else than a release (a commit without its version's tag) goes out as `edge`, unchecked.
+
 **The tracker's own database login:** `POSTGRES_PASSWORD` is the database's superuser, who can run programs in the
 database's container. With `TRACKER_DB_USER` and `TRACKER_DB_PASSWORD` in `.env` (`openssl rand -hex 32`), the compose
 service `database-roles` makes the tracker a role of its own before each start of the tracker (as the superuser: the
