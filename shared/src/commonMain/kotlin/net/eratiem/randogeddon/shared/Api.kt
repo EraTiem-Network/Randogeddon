@@ -341,6 +341,9 @@ data class Me(
   /** The theme and mode they chose; `null`: the default theme, automatic. */
   val theme: Theme? = null,
   val themeMode: ThemeMode? = null,
+  /** The font they chose ([FontChoice]); `null`: the theme's. And whether a display font shows in all text. */
+  val font: String? = null,
+  val fontEverywhere: Boolean = false,
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
