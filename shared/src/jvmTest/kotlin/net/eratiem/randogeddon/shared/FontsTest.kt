@@ -47,4 +47,13 @@ class FontsTest {
     // The pixel fonts and the wide one are for headings
     assertEquals(setOf(Theme.NES, Theme.SNES, Theme.PS2), Theme.entries.filter { fontOf(it)?.display == true }.toSet())
   }
+
+  @Test
+  fun `the bridge gets the font that shows, a display font for the headings unless wanted everywhere`() {
+    assertNull(bridgeFont(Theme.RANDOGEDDON, null, everywhere = false))
+    assertNull(bridgeFont(Theme.NES, FontChoice.ORIGINAL, everywhere = true))
+    assertEquals(BridgeFont("fonts/nes-regular.ttf", null, headingsOnly = true, scale = 0.75f), bridgeFont(Theme.NES, null, everywhere = false))
+    assertEquals(false, bridgeFont(Theme.NES, null, everywhere = true)?.headingsOnly)
+    assertEquals(BridgeFont("fonts/wii-regular.ttf", "fonts/wii-bold.ttf"), bridgeFont(Theme.PS2, "wii", everywhere = false))
+  }
 }
