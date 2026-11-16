@@ -23,6 +23,10 @@ class GatewayRoleTest {
     for (table in listOf("users", "login_sessions", "recovery_codes", "invitations", "email_changes", "login_links", "share_links")) {
       assertFalse(grants.any { table in it.substringAfter("ON ").substringBefore(" TO").split(", ", " ") }, table)
     }
+    // The tracker may run them without being a superuser: the attributes only a superuser may name are asked for
+    // only if one runs them
+    assertTrue(statements.none { it.startsWith("ALTER ROLE") && ("NOSUPERUSER" in it || "NOCREATEDB" in it || "NOCREATEROLE" in it) })
+    assertTrue(statements.any { it.startsWith("DO") && "rolsuper" in it && "NOSUPERUSER NOCREATEDB NOCREATEROLE" in it })
     // What it had before is taken first
     assertTrue(statements.indexOfFirst { it.startsWith("REVOKE ALL ON ALL TABLES") } < statements.indexOfFirst { it.startsWith("GRANT SELECT") })
   }
