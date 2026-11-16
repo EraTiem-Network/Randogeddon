@@ -540,11 +540,29 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
   *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
   back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
 - **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
-  `randogeddon-bridge login` reads the key from standard input (`echo <key> | randogeddon-bridge login`; never an
-  argument, which others on the computer could see), `slots` lists what it can open (session, slot, game, hosted),
+  `randogeddon-bridge login` asks for the key (typed or pasted at a terminal it isn't shown; or from a file:
+  `randogeddon-bridge login < keyfile`; never an argument or an `echo`, which the process list and the shell's
+  history would keep), `slots` lists what it can open (session, slot, game, hosted),
   `relay -session <id> -slot <name> [-port <port>]` runs one relay until Ctrl+C (a fixed port keeps the game's
   setting; its state as it changes; it ends once the key is ended), `logout` ends the key. `-server <url>` goes
   before the command; the command line logs only to the terminal.
+- **On a shared computer:** a relay takes whatever connects to its port on that computer and fills in the slot's
+  password for it (a game has nowhere to put a token), so the bridge belongs on a computer that is yours alone.
+- **Checking a download:** the systems don't know the builds (no bought certificate), so they warn as above. What
+  can be checked for free: *Checksums*, *Signature* and *Key* beside the downloads give `SHA256SUMS`, its signature
+  and the key it was made with (`bridge/signing-key.pub` in this repository, `SHA256:Y/hZRRTeTgoizXJ9CVzWCpIcr3RISfCy+STg3hp+v6w`).
+  In the folder with the download, with OpenSSH (Windows, macOS and Linux have it):
+
+  ```sh
+  ssh-keygen -Y verify -f signing-key.pub -I bridge@randogeddon -n randogeddon-bridge -s SHA256SUMS.sig < SHA256SUMS
+  sha256sum --ignore-missing -c SHA256SUMS     # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+  ```
+
+  The first says the checksums are Randogeddon's (*Good "randogeddon-bridge" signature*), the second that the file
+  is the one they name. The key itself should come from somewhere you trust, e.g. this repository, not only from
+  the same page as the download. The builds are signed where they are built (`scripts/deploy.sh`, with
+  `~/.config/randogeddon/bridge-signing-key` on that machine: keep a copy of it somewhere safe; without it the next
+  builds are unsigned, and a new key means a new `signing-key.pub`).
 - **Kept:** the dashboard's address and the key in the user's config directory, `Randogeddon/bridge.json` (readable
   only by them; removed at *Log out*), and `bridge.log` of the last run. `-server <url>` points it at another dashboard
   (the local demo: `-server http://localhost:8000`), `-no-browser` only writes the page's link to the log.
@@ -790,13 +808,23 @@ and review the result:
 ./gradlew :server:metadataCopy                  # likewise :gateway:run and :gateway:metadataCopy
 ```
 
+## Known flaws in the dependencies
+
+`./scripts/audit.sh` looks the bridge's Go modules, the tracker's and the gateway's JVM libraries and the gateway
+image's Python packages up in the OSV database (osv-scanner, in Docker) and ends with 1 if it finds something. Run
+it before a release and when a dependency changes. Where Gradle and Docker aren't on the same machine, give it
+Gradle's list: `GRADLE_DEPENDENCIES=<file> ./scripts/audit.sh`, the file from `./gradlew :server:dependencies
+--configuration runtimeClasspath :gateway:dependencies --configuration runtimeClasspath`.
+
 ## Updating Archipelago
 
 A session keeps the Archipelago release it was generated with, and the gateway runs it only with that release: one
 it doesn't have can't be started (the panel and the gateway's log say so). The gateway image has one release
 (`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the panel offers what it has.
 
-To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
+To update: set `AP_VERSION` to the new release tag and `AP_COMMIT` to that tag's commit
+(`git ls-remote https://github.com/ArchipelagoMW/Archipelago refs/tags/<version>`; the build stops if a tag doesn't
+stand for its commit any more), `docker compose build`, and recreate the gateway once no session
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
 other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.
