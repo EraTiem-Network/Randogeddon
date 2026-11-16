@@ -9,6 +9,17 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.15: The security scan's findings
+- The scan (Fable 5.2) over the server's routes, the gateway, the bridge and the infrastructure: its 27 findings are in
+  the to-do list (Phase 13), most severe first. Fixed so far, both in the gateway:
+- A client no longer gets into a session without a password under an item link's group name: the gateway refuses every
+  `Connect` whose name has no slot password with `InvalidSlot` itself (MultiServer knows the groups as names to connect
+  as, and asks them for nothing). `Verdict.Join` tells a passed `Connect` from other frames.
+- The gateway gives little to a client that isn't in a slot: frames of at most 1 MiB, on the wire and unpacked (they
+  were unlimited), 5 minutes and 32 frames until its `Connect` passes, 8 waiting connections per address (48 in all;
+  an IPv6 /64 is one address) and 256 of everyone (`ConnectionLimits`). A refused name is logged without control
+  characters.
+
 ### 0.13.14: Open points decided
 - The earlier phases' open points looked at again: the only one, which languages follow English and German, is
   decided: those two for now, another one can come later.
