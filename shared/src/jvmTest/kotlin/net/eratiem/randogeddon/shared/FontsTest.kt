@@ -56,4 +56,17 @@ class FontsTest {
     assertEquals(false, bridgeFont(Theme.NES, null, everywhere = true)?.headingsOnly)
     assertEquals(BridgeFont("fonts/wii-regular.ttf", "fonts/wii-bold.ttf"), bridgeFont(Theme.PS2, "wii", everywhere = false))
   }
+
+  @Test
+  fun `the letters of a text take the new font one by one, in no order, each at a turn of its own`() {
+    val text = "Pick one of your sessions"
+    val turns = text.indices.map { letterTurn(text.hashCode(), it, 14) }
+    assertTrue(turns.all { it in 0 until 14 })
+    // Spread over the turns, not in the letters' order, and the same every time
+    assertTrue(turns.toSet().size >= 8, turns.toString())
+    assertTrue(turns != turns.sorted() && turns != turns.sortedDescending())
+    assertEquals(turns, text.indices.map { letterTurn(text.hashCode(), it, 14) })
+    // Another text, another order
+    assertTrue(turns != text.indices.map { letterTurn("Pick one of your sessions!".hashCode(), it, 14) })
+  }
 }

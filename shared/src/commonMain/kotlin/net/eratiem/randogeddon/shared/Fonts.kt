@@ -71,3 +71,16 @@ object FontChoice {
   /** Everything there is to choose besides "the theme's": the original and each theme with a font. */
   val themes: List<Theme> get() = Theme.entries.filter { fontOf(it) != null }
 }
+
+/**
+ * When a font changes, the letters change one by one in no order: the turn (0 until [turns]) at which the letter at
+ * [index] of a text takes the new font. [seed] is the text's own (its hash), so every text has its own order, and the
+ * same one each time it is drawn while the change runs.
+ */
+fun letterTurn(seed: Int, index: Int, turns: Int): Int {
+  var h = seed xor (index * -1640531527)
+  h = h xor (h ushr 15)
+  h *= -2048144789
+  h = h xor (h ushr 13)
+  return (h and Int.MAX_VALUE) % turns
+}
