@@ -2,6 +2,8 @@ package net.eratiem.randogeddon.server.account
 
 import java.lang.invoke.MethodHandles
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -53,6 +55,17 @@ fun loginDuration(method: String): Duration =
  * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
  * account gets in (accounts belong to people, not to a session); what they see of the sessions is checked per session.
  */
+/** Until when a time-out lasts, as the person reads it (the server's time: UTC, said so). */
+internal val UNTIL: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+
+/** Why [user] is kept out at [now] (timed out until when, or suspended; with the reason if one was given); `null`: they aren't. */
+internal fun keptOutRefusal(user: User, now: Instant): Refusal? {
+  val block = user.block?.takeIf { it.holds(now) } ?: return null
+  val reason = listOfNotNull(block.reason?.let { "reason" to it }).toTypedArray()
+  return block.until?.let { Refusal.of(Problem.ACCOUNT_TIMED_OUT, "until" to UNTIL.format(it), *reason) }
+    ?: Refusal.of(Problem.ACCOUNT_SUSPENDED, *reason)
+}
+
 interface LoginCheck {
   suspend fun userOf(token: String): User?
 
@@ -102,7 +115,13 @@ class LoginService(
 
   /** Why [user] can't log in with their password; `null`: they can. With single sign-on, Administrators can't. */
   fun passwordLoginProblem(user: User): Refusal? =
-    config.oidc?.takeIf { user.administrator }?.let { Refusal.of(Problem.ADMINISTRATOR_PASSWORD, "provider" to it.name) }
+    keptOutProblem(user) ?: config.oidc?.takeIf { user.administrator }?.let { Refusal.of(Problem.ADMINISTRATOR_PASSWORD, "provider" to it.name) }
+
+  /**
+   * Why [user] can't log in for now: an Administrator timed them out (until when) or suspended them, with the reason
+   * if one was given. Told only after the right password, so nobody else learns it. `null`: they aren't kept out.
+   */
+  fun keptOutProblem(user: User, now: Instant = Instant.now()): Refusal? = keptOutRefusal(user, now)
 
   /**
    * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited
@@ -132,7 +151,10 @@ class LoginService(
   }
 
   override suspend fun userOf(token: String): User? =
-    logins.loginOf(tokenHash(token))?.let { (id, method) -> users.findActive(id)?.copy(loginMethod = method) }
+    logins.loginOf(tokenHash(token))?.let { (id, method) ->
+      // Someone kept out has no logins left; a login that is there all the same (made in the same moment) counts for nothing
+      users.findActive(id)?.takeUnless { it.keptOut() }?.copy(loginMethod = method)
+    }
 
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 

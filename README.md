@@ -418,7 +418,8 @@ hand stays stopped until started again.
 Below the finished sessions, Administrators find *General*: *Users* (every account as a pill, marked if invited or an
 Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
 language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
-them, and for an invited one *Send again* and *Other address*), *APWorlds*, *Settings* (how many running sessions one
+them, for an invited one *Send again* and *Other address*, and what an Administrator does to it: see below),
+*APWorlds*, *Settings* (how many running sessions one
 user may manage at once) and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
@@ -439,6 +440,20 @@ the gateway back after crashes or reboots; it starts every session's game server
 with `docker compose down` and starting with `up -d` keeps the progress.
 
 ## Logins and passwords
+
+**Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
+managed where Administrators log in, so never one's own):
+
+- **Time out** for 1 hour, 1 day, 7 days or 30 days, or **Suspend** until it is taken back, with a reason if wanted
+  (at most 200 characters; the person reads it). Their logins end at once (Randogeddon Bridge's too) and they can't
+  log in: after the right password the login form says so, until when and why, and a mail tells them. A time-out ends
+  by itself; *Let in again* ends either before (a mail again). The list marks such accounts.
+- Their **sessions go on**, and their games stay connected (a slot's password isn't the account's). If they are a
+  Session-Manager of a running session, its dashboard tells its people to turn to an Administrator for what a
+  Session-Manager does.
+- **Delete account** asks once more, then deletes it as it would delete itself: login, address and settings go, the
+  sessions keep the name. A mail tells them (with the reason, if one is given). For an invited one it takes the
+  invitation back, without a mail.
 
 Nobody sees anything of the session without logging in, and nobody joins the game without their own password.
 

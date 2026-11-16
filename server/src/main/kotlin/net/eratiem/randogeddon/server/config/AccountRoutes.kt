@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.FontRequest
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.Problem
@@ -160,6 +161,25 @@ fun Route.adminUserRoutes(accounts: AccountService, logins: LoginCheck) {
     post("/{user}/invite") {
       accountCall {
         accounts.resend(userId(), call.language())
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    // Keeping an account out (a time-out or a suspension), letting it in again, deleting it: never an Administrator's
+    post("/{user}/block") {
+      accountCall {
+        accounts.keepOut(userId(), call.receive<AccountActionRequest>(), call.loggedIn.user)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    delete("/{user}/block") {
+      accountCall {
+        accounts.letIn(userId(), call.loggedIn.user)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    post("/{user}/delete") {
+      accountCall {
+        accounts.remove(userId(), call.receive<AccountActionRequest>(), call.loggedIn.user)
         call.respond(HttpStatusCode.NoContent)
       }
     }

@@ -378,6 +378,46 @@ class StoresTest {
   }
 
   @Test
+  fun `an account kept out loses its logins, is let in again, and a session knows its manager isn't there`() = runBlocking {
+    val users = UserStore(db)
+    val logins = LoginSessionStore(db)
+    val nora = users.create("Nora", "hash", email = "nora@example.org")
+    val later = Instant.now().plusSeconds(3600)
+    logins.create("nora-login", nora.id, later)
+    logins.create("nora-bridge", nora.id, later, method = "bridge")
+    SessionSetupStore(db).create("nora-one", "777", "0.6.8", "{}", emptyMap())
+    assertTrue(SessionRoleStore(db).add("nora-one", nora.id, "manager", "Nora", "Nora"))
+    assertEquals(false, SessionSetupStore(db).of("777")?.roles?.get(nora.id)?.unavailable())
+
+    // A time-out: the logins are gone (the bridge's too), the account says until when, why and by whom
+    val until = Instant.now().plusSeconds(86400)
+    users.block(nora.id, until, "Spam", "Admin")
+    assertNull(logins.loginOf("nora-login"))
+    assertNull(logins.loginOf("nora-bridge"))
+    val timedOut = users.findActive(nora.id)!!
+    assertTrue(timedOut.keptOut())
+    assertEquals("Spam" to "Admin", timedOut.block?.reason to timedOut.block?.by)
+    assertEquals(false, timedOut.keptOut(until.plusSeconds(1)))
+    assertEquals(true, users.account(nora.id)?.block?.holds())
+    assertEquals(true, SessionSetupStore(db).of("777")?.roles?.get(nora.id)?.unavailable())
+    // They are still found for a login (to be told why), and nothing else of the account changed
+    assertEquals(nora.id, users.findLogin("nora@example.org")?.id)
+
+    // A suspension has no end; taking it back clears everything
+    users.block(nora.id, null, null, "Admin")
+    assertTrue(users.findActive(nora.id)!!.keptOut(Instant.now().plusSeconds(10L * 365 * 86400)))
+    users.unblock(nora.id)
+    assertNull(users.findActive(nora.id)?.block)
+    assertEquals(false, SessionSetupStore(db).of("777")?.roles?.get(nora.id)?.unavailable())
+
+    // A deleted account is no longer kept out (its row stays for the sessions); its manager's part says it is gone
+    users.block(nora.id, null, "x", "Admin")
+    users.delete(nora.id)
+    assertNull(users.account(nora.id))
+    assertEquals(true, SessionSetupStore(db).of("777")?.roles?.get(nora.id)?.unavailable())
+  }
+
+  @Test
   fun `a share link is one per session, replaced by a new one and gone with its session`() = runBlocking {
     val links = ShareLinkStore(db)
     val setups = SessionSetupStore(db)
