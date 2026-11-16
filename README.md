@@ -123,6 +123,7 @@ http:
       rule: "HostRegexp(`^[a-z0-9-]+[.]randogeddon[.]eratiem[.]net$`)"
       entryPoints: [websecure]
       service: randogeddon-ap          # http://<vm>:38281, the gateway (websocket; no extra config)
+      middlewares: [randogeddon-ap-rate]
       tls: &randogeddon-tls
         certResolver: letsencrypt-dns
         domains:
@@ -133,6 +134,16 @@ http:
       entryPoints: [websecure]
       service: randogeddon             # http://<vm>:8000, the tracker (SSE; Traefik doesn't buffer it by default)
       tls: *randogeddon-tls
+  middlewares:
+    # How fast one address (an IPv6 /64 as one) opens new connections to the game servers: 100 at once, then 2 a
+    # second, 429 past it. Not how many it holds (behind a VPN's or a shared gateway's address are many households)
+    randogeddon-ap-rate:
+      rateLimit:
+        average: 2
+        burst: 100
+        sourceCriterion:
+          ipStrategy:
+            ipv6Subnet: 64
 ```
 
 Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
@@ -438,7 +449,14 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
-  changes. A wrong one gets `InvalidPassword`. There is no room password (`AP_PASSWORD` is gone).
+  changes. A wrong one gets `InvalidPassword`, and a name that is no slot `InvalidSlot` from the gateway itself: only
+  the slots with a password get to MultiServer at all (it would take a client in under an item link's group name
+  without any password). There is no room password (`AP_PASSWORD` is gone).
+- **Before a client is in a slot** it gets little of the gateway: frames of at most 1 MiB (unpacked too; a client's
+  packets are small), 5 minutes and 32 frames until its `Connect` passes, and at most 1024 connections of everyone
+  wait for theirs at once. Past a limit the connection is closed. How many connections an address holds isn't
+  limited (a VPN's, a carrier's or a shared gateway's address is many households), nor are clients in a slot; Traefik
+  only limits how fast one address opens new ones (100 at once, then 2 a second; 429 past it, clients try again).
 - Slot passwords use only characters every client accepts and that don't break config files (printable ASCII without
   spaces, quotes or backslashes). Some games only have an in-game text field without paste, so the dashboard shows
   them in a monospaced font.

@@ -377,12 +377,15 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 *Everything tested by hand, and what comes up fixed.*
 
-- [ ] Every page, role and flow tested in a browser (and on a phone), in English and German: logins (password,
-      two-factor, Authentik, CLI link), invitations and sign-up, sessions from creation to deletion, cheats and
-      support, watchers and share links, downloads, the mails, the bridge
+- [x] Every page, role and flow tested in a browser (and on a phone): logins (password, two-factor, Authentik, CLI
+      link), invitations and sign-up, sessions from creation to deletion, cheats and support, watchers and share links,
+      downloads, the mails, the bridge
+    - English and German side by side are checked after Phase 14 (its themes and fonts change the pages once more)
 - [ ] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
       gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
       or noted with why not
+    - Scanned on 2026-11-16 at 0.13.14: 2 High, 9 Medium and 17 Low findings, all fixed or noted with why not
+      (0.13.15 to 0.13.17); the findings are kept outside this repository
 - [ ] What comes up is collected here and fixed, phase by phase as needed
     - [x] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
     - [x] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
@@ -604,3 +607,5 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - Fonts bundled with the app (free licences only, e.g. SIL OFL), loaded only when used; every font must still
       be readable at the dashboard's small sizes (a pixel font maybe only for headings)
 - [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
+- [ ] Afterwards every page checked in English and German side by side (moved here from Phase 13: the new themes and
+      fonts change the pages once more)
