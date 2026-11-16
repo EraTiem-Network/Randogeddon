@@ -17,3 +17,4 @@ V15__hosted_slots.sql
 V16__locked_slots.sql
 V17__provider_sessions.sql
 V18__fonts.sql
+V19__font_scope.sql
