@@ -11,12 +11,14 @@ import (
 	"os/signal"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // cliUsage is what `randogeddon-bridge help` prints.
 const cliUsage = `Randogeddon Bridge on the command line (for a computer without a browser, e.g. the one a hosted game runs on):
 
-  randogeddon-bridge [-server <url>] login              the key from Your connection, read from standard input
+  randogeddon-bridge [-server <url>] login              the key from Your connection: typed (not shown), or login < keyfile
   randogeddon-bridge logout                             ends the key on the dashboard and forgets it
   randogeddon-bridge slots                              the slots it can open, per running session
   randogeddon-bridge relay -session <id> -slot <name> [-port <port>]
@@ -68,11 +70,10 @@ func cliLogin(dir string, cfg Config, stdin io.Reader, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Key for %s (Your connection, Create key): ", cfg.Server)
-	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	key, err := readKey(stdin)
+	if err != nil {
 		return err
 	}
-	key := strings.TrimSpace(line)
 	if key == "" {
 		return errors.New("no key given")
 	}
@@ -86,6 +87,21 @@ func cliLogin(dir string, cfg Config, stdin io.Reader, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Logged in as %s at %s\n", me.Name, cfg.Server)
 	return nil
+}
+
+// readKey reads the key: typed at a terminal it isn't shown (it is a login), otherwise one line of what comes in (a
+// file or a pipe).
+func readKey(stdin io.Reader) (string, error) {
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		typed, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(os.Stderr)
+		return strings.TrimSpace(string(typed)), err
+	}
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }
 
 func cliLogout(dir string, cfg Config, out io.Writer) error {
