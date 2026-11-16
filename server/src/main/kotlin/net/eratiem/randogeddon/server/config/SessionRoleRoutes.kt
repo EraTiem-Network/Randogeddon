@@ -30,9 +30,9 @@ import net.eratiem.randogeddon.shared.SessionRole
  */
 fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
   // The panel: the sessions the user manages (an Administrator: every session), and what a new one can use
-  get("/manage") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
+  get("/manage") { gatewayCall { call.respond(admin.overview(call.actor)) } }
   route("/sessions/new") {
-    get { gatewayCall { call.respond(admin.newSession(call.loggedIn.user)) } }
+    get { gatewayCall { call.respond(admin.newSession(call.actor)) } }
     // The slots of the uploaded YAMLs, before the players are assigned; games the release lacks are problems
     post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
     // How far a new session's generation is, while its form waits for it (no content: none runs)
@@ -50,7 +50,7 @@ fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
     }
   }
   post("/sessions") {
-    gatewayCall { call.respond(admin.create(call.receive<CreateSessionRequest>(), call.loggedIn.user)) }
+    gatewayCall { call.respond(admin.create(call.receive<CreateSessionRequest>(), call.actor)) }
   }
 }
 
@@ -66,25 +66,25 @@ fun Route.peopleRoutes(people: SessionPeopleService, logins: LoginCheck) {
       roles = setOf(SessionRole.MANAGER)
     }
     get {
-      val user = call.loggedIn.user
+      val user = call.actor
       call.respond(people.list(id()).copy(you = user.id.toString(), mayLeave = user.administrator))
     }
     get("/choices") { call.respond(people.choices(id())) }
     post {
-      accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.loggedIn.user, call.language())) }
+      accountCall { call.respond(HttpStatusCode.Created, people.add(id(), call.receive<AddPersonRequest>(), call.actor, call.language())) }
     }
     put("/{user}") {
       accountCall {
         val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
           ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
-        call.respond(people.change(id(), user, call.receive<RoleRequest>().role, call.loggedIn.user))
+        call.respond(people.change(id(), user, call.receive<RoleRequest>().role, call.actor))
       }
     }
     delete("/{user}") {
       accountCall {
         val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
           ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
-        people.remove(id(), user, call.loggedIn.user)
+        people.remove(id(), user, call.actor)
         call.respond(HttpStatusCode.NoContent)
       }
     }

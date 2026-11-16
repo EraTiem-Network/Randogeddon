@@ -97,7 +97,8 @@ fun Route.bridgeRoutes(
       )
     }
     meRoute(list)
-    get("/sessions") { call.respond(list.visibleTo(call.loggedIn.user)) }
+    // A key never acts as an Administrator: the sessions its user has a part in
+    get("/sessions") { call.respond(list.visibleTo(call.actor)) }
     route("/sessions/{id}") {
       install(RequireSessionMember) { this.logins = logins }
       connectionRoute(config, sessions, slotPasswords)

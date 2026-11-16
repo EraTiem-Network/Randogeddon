@@ -65,6 +65,21 @@ internal fun compareVersions(a: String, b: String): Int {
 }
 
 /**
+ * What Archipelago's processes keep of the gateway's environment: what Python and the release need, nothing else (the
+ * last ones are what a process needs on Windows, where the tests run).
+ */
+private val KEPT = setOf(
+  "PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONUNBUFFERED", "SKIP_REQUIREMENTS_UPDATE", "AP_HOME",
+  "SYSTEMROOT", "PATHEXT", "COMSPEC", "TEMP", "TMP",
+)
+
+/**
+ * Archipelago's Python (Generate.py, MultiServer, the worlds and apworlds) runs without the gateway's secrets: its
+ * environment (the database login, the internal token, the admin password) isn't passed on.
+ */
+internal fun ProcessBuilder.withoutSecrets(): ProcessBuilder = apply { environment().keys.removeIf { it.uppercase() !in KEPT } }
+
+/**
  * Starts MultiServer for a seed with its session's Archipelago version and options (from the database, as the admin
  * panel created it). A seed from before without them runs on the newest release with the default options.
  */
@@ -77,7 +92,7 @@ class Launcher(
   /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]. */
   fun prepare(seed: Path, roomJson: Path) {
     val proc = ProcessBuilder(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
-      .directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
+      .withoutSecrets().directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
     val output = proc.inputStream.bufferedReader().readText()
     check(proc.waitFor() == 0) { "room_info.py failed: ${output.trim().lines().lastOrNull()}" }
   }
@@ -87,9 +102,9 @@ class Launcher(
    * seed's name comes from [roomJson].
    */
   fun launch(seed: Path, roomJson: Path, port: Int): Launch {
-    val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.of(name) } }
-    val version = setup?.apVersion ?: archipelago.newest
-    val options = setup?.options?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
+    val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.launchOf(name) } }
+    val version = setup?.first ?: archipelago.newest
+    val options = setup?.second?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
     val command = buildList {
       addAll(listOf(archipelago.python, "serve.py", seed.absolutePathString(), "--host", "0.0.0.0", "--port", port.toString()))
       addAll(listOf("--hint_cost", options.hintCost.toString(), "--location_check_points", options.locationCheckPoints.toString()))
@@ -145,15 +160,17 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       val proc = ProcessBuilder(
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
         "--outputpath", output.absolutePathString(),
-      ).directory(home.toFile()).redirectErrorStream(true).start()
+      ).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
       Thread { if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
-      val lines = mutableListOf<String>()
+      // Only its end is of use (the error, the seed's name): the rest of a long output isn't kept
+      val lines = ArrayDeque<String>()
       proc.inputStream.bufferedReader().useLines { output ->
         output.forEach { line ->
-          lines += line
+          lines += line.take(MAX_LOG_LINE)
+          if (lines.size > MAX_LOG_LINES) lines.removeFirst()
           generationProgress(line)?.let(onProgress)
         }
       }
@@ -210,6 +227,10 @@ private val STAGES = listOf(
   "Creating final archive" to GenerationProgress(GenerationStage.ARCHIVE, 97),
   "Done." to GenerationProgress(GenerationStage.DONE, 100),
 )
+
+/** How much of Generate.py's output is kept: its last lines, each cut. */
+private const val MAX_LOG_LINES = 2000
+private const val MAX_LOG_LINE = 2000
 
 private val OUTPUT_FILES = Regex("""Generating output files \((\d+)/(\d+)\)""")
 private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items placed""")

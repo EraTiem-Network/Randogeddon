@@ -55,4 +55,18 @@ class PlayerYamlsTest {
     assertTrue("empty.yaml: empty" in problems, problems)
     assertTrue(result.problems.any { it.code == Problem.YAML_DUPLICATE && it.args["n"] == "2" }, problems)
   }
+
+  @Test
+  fun `a session takes only so many files and slots`() {
+    fun yaml(n: Int) = UploadedYaml("p$n.yaml", "name: P$n\ngame: APQuest\n")
+    // Too many files aren't even read
+    val files = PlayerYamls.inspect((1..PlayerYamls.MAX_FILES + 1).map(::yaml))
+    assertEquals(listOf(Problem.TOO_MANY_YAMLS), files.problems.map { it.code })
+    assertEquals(emptyList(), files.worlds)
+    assertEquals(emptyList(), PlayerYamls.inspect((1..PlayerYamls.MAX_FILES).map(::yaml)).problems)
+    // Few files, many slots in them
+    val documents = (1..PlayerYamls.MAX_SLOTS + 1).joinToString("---\n") { "name: S$it\ngame: APQuest\n" }
+    val slots = PlayerYamls.inspect(listOf(UploadedYaml("all.yaml", documents)))
+    assertEquals(listOf(Problem.TOO_MANY_SLOTS), slots.problems.map { it.code })
+  }
 }

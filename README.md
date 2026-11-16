@@ -58,7 +58,7 @@ restart or update doesn't drop the players.
 
 ```sh
 git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
-cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, BASE_DOMAIN, TRAEFIK_* …
+cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, GATEWAY_DB_*, BASE_DOMAIN, TRAEFIK_* …
 docker compose build     # takes a few minutes (every game's requirements, the native builds)
 ```
 
@@ -134,6 +134,12 @@ http:
       entryPoints: [websecure]
       service: randogeddon             # http://<vm>:8000, the tracker (SSE; Traefik doesn't buffer it by default)
       tls: *randogeddon-tls
+    # Plain HTTP goes to HTTPS (a redirectScheme middleware; the tracker's answers then say HTTPS only for a year)
+    randogeddon-http:
+      rule: "HostRegexp(`^([a-z0-9-]+[.])?randogeddon[.]eratiem[.]net$`)"
+      entryPoints: [web]
+      middlewares: [web-to-websecure]
+      service: noop@internal
   middlewares:
     # How fast one address (an IPv6 /64 as one) opens new connections to the game servers: 100 at once, then 2 a
     # second, 429 past it. Not how many it holds (behind a VPN's or a shared gateway's address are many households)
@@ -150,13 +156,21 @@ Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
 (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` in `.env`): it publishes 38281 and 8000 and keeps the
 public addresses (`BASE_DOMAIN`, the login cookie only over HTTPS).
 
+**The gateway's own database login:** the gateway runs Archipelago's Python next to itself (Generate.py, the game
+servers, the APWorlds), which must not reach the accounts. With `GATEWAY_DB_USER` and `GATEWAY_DB_PASSWORD` in `.env`
+(`openssl rand -hex 32`), the tracker makes that role at each start with only the gateway's rights (the sessions and
+the slot passwords to read, the session time to count), and the gateway's container gets only this login; without
+them it uses the tracker's. Archipelago's processes get nothing of the gateway's environment either way, and the
+gateway's container is limited to 5 GB of memory (`GATEWAY_MEMORY`): a seed too large for it ends there.
+
 The gateway runs as uid 1000 and writes the sessions' files to `data/`; when moving from the old `archipelago`
 container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`. Seeds from before
 several sessions (one seed in `data/` itself, finished ones in `data/sessions/<seed>/`) are moved into
 `data/sessions/s-<seed>/` on the first start, and get the session ID `s-<seed>`; their players were in `session.yaml`,
 which is no longer read, so only Administrators see them.
 
-The first Administrator, who then invites the others (every user can create sessions):
+Without single sign-on (a local setup, the demo), the first Administrator, who then invites the others (every user
+can create sessions):
 
 ```sh
 docker compose exec tracker randogeddon admins --create <person>   # prints the password once
@@ -167,8 +181,13 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
 `randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
 first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
-app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
-`randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
+app's two-factor login for them. Their login lasts a day (the group is asked again at each one, so leaving it
+shows within a day), and only such a login reads as an Administrator: an older password login, or a bridge key, sees
+no more than any user. There is no other way to an Administrator then: no password login for them, and the CLI
+makes none (`admins --create`, `--grant` and `--login` are refused; `--revoke` still takes the flag). While Authentik
+can't be reached nobody administrates (the sessions run on, their Session-Managers manage them). The application in
+Authentik also asks for a second factor: someone in the group without one set up there doesn't get in. In Authentik:
+an OAuth2/OpenID provider
 (confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`, *Logout URI*
 `https://<BASE_DOMAIN>/api/login/oidc/backchannel` with the method *Back-channel*) and its application bound to the
 group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
@@ -216,7 +235,7 @@ only what runs; the images are built on a PC (WSL) and come from the registry `p
 | `.env`, `docker-compose.yml`, `docker-compose.proxy.yml` | `/srv/randogeddon/` (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml`) |
 | `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
 | the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
-| dumps (each update's, a daily one kept 14 days) | `/srv/backups/` |
+| dumps (each update's, a daily one kept 14 days; for root only) | `/srv/backups/` |
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
@@ -418,7 +437,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
   (ending that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict cookie). Failed logins and
-  sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
+  sign-ups are slowed down and limited to 5 per minute per address (an IPv6 /64 as one), and after 10 wrong passwords
+  or two-factor codes within 10 minutes that account's login waits until the oldest is 10 minutes old. An account
+  sends at most 10 mails in 10 minutes and 40 a day (invitations, address confirmations). A player sees the sessions they play in, and no
   other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
@@ -428,8 +449,10 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
   device and the recovery codes (an Administrator sets it up again at the next login).
-- **Roles:** an **Administrator** (`randogeddon admins --grant`) reaches everything: every session, the APWorlds, the
-  users and the settings. **Every user can create a session** and is its **Session-Manager**: they manage it (its
+- **Roles:** an **Administrator** (Authentik's group; without single sign-on `randogeddon admins --grant`) reaches
+  everything: every session, the APWorlds, the
+  users and the settings. **Every user can create a session** (one at a time, of at most 100 YAML files and 250
+  slots) and is its **Session-Manager**: they manage it (its
   state, finishing and reopening, deleting it, its game server, console and log, the cheats, its spoiler log while it
   runs) and give its people a part: Session-Managers (co-managers), support and watchers; a player can get one besides
   their slots. A session keeps its last Session-Manager, for Administrators too: someone else becomes one first. How many running sessions one

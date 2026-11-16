@@ -23,7 +23,15 @@ private val YAML_FILE = Regex("(?i).+\\.ya?ml")
  * [InspectResult.invalid]: the panel refuses it.
  */
 object PlayerYamls {
+  /** The most files and slots one session takes (a generation is the gateway's heaviest work). */
+  const val MAX_FILES = 100
+  const val MAX_SLOTS = 250
+
   fun inspect(files: List<UploadedYaml>): InspectResult {
+    // Too many aren't even read
+    if (files.size > MAX_FILES) {
+      return InspectResult(emptyList(), listOf(Refusal.of(Problem.TOO_MANY_YAMLS, "max" to MAX_FILES).toApiError()), emptyList())
+    }
     val worlds = mutableListOf<YamlWorld>()
     val problems = mutableListOf<ApiError>()
     val invalid = mutableSetOf<String>()
@@ -59,6 +67,7 @@ object PlayerYamls {
         }
       }
     }
+    if (worlds.size > MAX_SLOTS) problems += Refusal.of(Problem.TOO_MANY_SLOTS, "max" to MAX_SLOTS).toApiError()
     worlds.groupBy { it.name.lowercase() }.filterValues { it.size > 1 }.forEach { (_, same) ->
       problems += Refusal.of(
         Problem.YAML_DUPLICATE, "n" to same.size, "name" to same.first().name, "files" to same.joinToString { it.fileName },

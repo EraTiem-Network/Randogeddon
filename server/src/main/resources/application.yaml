@@ -67,3 +67,7 @@ randogeddon:
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
     user: "$DB_USER:randogeddon"
     password: "$DB_PASSWORD:"
+    # The gateway's own role, made by the tracker at its start with only the gateway's rights (the sessions and the slot
+    # passwords to read, the session time to count); without a password none is made and the gateway uses the login above
+    gatewayUser: "$GATEWAY_DB_USER:randogeddon_gateway"
+    gatewayPassword: "$GATEWAY_DB_PASSWORD:"

@@ -5,7 +5,10 @@
 set -euo pipefail
 KEEP_DAYS="${KEEP_DAYS:-14}"
 cd /srv/randogeddon
+# The dumps hold password hashes, addresses and the slot passwords: for root only
+umask 077
 mkdir -p /srv/backups
+chmod 700 /srv/backups
 dump="/srv/backups/randogeddon-$(date +%Y%m%d-%H%M%S)-daily.sql.gz"
 docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump.part"
 mv "$dump.part" "$dump"

@@ -57,7 +57,7 @@ fun Route.sessionRoutes(
   spoilers: Spoilers,
   downloads: SlotDownloads,
 ) {
-  get("/sessions") { call.respond(list.visibleTo(call.loggedIn.user)) }
+  get("/sessions") { call.respond(list.visibleTo(call.actor)) }
   route("/sessions/{id}") {
     install(RequireSessionMember) { this.logins = logins }
     get("/state") { session(sessions) { call.respondText(it.json(), ContentType.Application.Json) } }
@@ -71,10 +71,10 @@ fun Route.sessionRoutes(
       }
     }
     // The seed's files of the user's slots (patches, mods; every slot's for Session-Managers and Administrators)
-    get("/files") { gatewayCall { call.respond(SlotFiles(downloads.of(id(), call.loggedIn.user))) } }
+    get("/files") { gatewayCall { call.respond(SlotFiles(downloads.of(id(), call.actor))) } }
     get("/files/{name}") {
       gatewayCall {
-        val (file, bytes) = downloads.file(id(), call.parameters["name"].orEmpty(), call.loggedIn.user)
+        val (file, bytes) = downloads.file(id(), call.parameters["name"].orEmpty(), call.actor)
         call.response.header(
           HttpHeaders.ContentDisposition,
           ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, file.name).toString(),
@@ -85,7 +85,7 @@ fun Route.sessionRoutes(
     // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it
     get("/spoiler") {
       session(sessions) { live ->
-        val user = call.loggedIn.user
+        val user = call.actor
         val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
         if (!helps && !live.finished) {
           return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
@@ -117,7 +117,7 @@ fun Route.sessionRoutes(
 internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions, slotPasswords: SlotPasswords) {
   get("/connection") {
     session(sessions) { live ->
-      val user = call.loggedIn.user
+      val user = call.actor
       val manages = user.administrator || live.roleOf(user) == SessionRole.MANAGER
       call.respond(Connection(config.addressOf(live.id), slotPasswords.of(live, live.personOf(user), manages)))
     }

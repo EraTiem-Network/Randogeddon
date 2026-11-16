@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
+import net.eratiem.randogeddon.server.account.LoginAttempts
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.LoginMethods
 import net.eratiem.randogeddon.server.account.LoginService
@@ -35,6 +36,7 @@ import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SsoRefused
 import net.eratiem.randogeddon.server.account.TwoFactor
+import net.eratiem.randogeddon.server.account.loginDuration
 import net.eratiem.randogeddon.server.config.apiError
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.SessionList
@@ -70,12 +72,24 @@ private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
   extensions = mapOf("SameSite" to "Lax"),
 )
 
-/** The logged-in user of a call that passed [RequireLogin]. */
-data class LoggedIn(val user: User)
+/**
+ * The logged-in user of a call that passed [RequireLogin]. [strong]: this login may act as an Administrator
+ * ([LoginCheck.administratorProblem]: with two-factor login, or through single sign-on); never a bridge key.
+ */
+data class LoggedIn(val user: User, val strong: Boolean = false)
 
 private val LOGGED_IN = AttributeKey<LoggedIn>("LoggedIn")
 
 val ApplicationCall.loggedIn: LoggedIn get() = attributes[LOGGED_IN]
+
+/**
+ * Who a call acts as: the logged-in user, as an Administrator only with a login that may be one. What an
+ * Administrator sees beyond their own sessions (every session, its spoiler log, hosted slots' passwords, every slot's
+ * files) goes by this, like the admin routes go by [RequireAdministrator]: an older password login of an account that
+ * became an Administrator, or a bridge key, reads no more than any user. The account's own settings go by [loggedIn].
+ */
+val ApplicationCall.actor: User
+  get() = loggedIn.let { if (it.user.administrator && !it.strong) it.user.copy(administrator = false) else it.user }
 
 /**
  * Lets a call through only with a valid login: 401 without (the web app then shows the login). A session's own routes
@@ -94,7 +108,7 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
       call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.NOT_LOGGED_IN))
       return@onCall
     }
-    call.attributes.put(LOGGED_IN, LoggedIn(user))
+    call.attributes.put(LOGGED_IN, LoggedIn(user, strong = logins.administratorProblem(user) == null))
   }
 }
 
@@ -130,9 +144,14 @@ val RequireBridgeKey = createRouteScopedPlugin("RequireBridgeKey", ::RequireBrid
 val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
-    val me = call.loggedIn
+    val me = call.actor
     val id = call.parameters["id"].orEmpty()
-    if (!logins.maySee(me.user, id)) call.refuse(HttpStatusCode.Forbidden, Refusal.of(Problem.NOT_PART, "name" to me.user.name, "id" to id))
+    if (logins.maySee(me, id)) return@onCall
+    // An Administrator whose login may not act as one is told why (two-factor login, or the provider), like on the
+    // admin routes; everyone else that they have no part in it
+    val account = call.loggedIn.user
+    val problem = logins.administratorProblem(account).takeIf { account.administrator }
+    call.refuse(HttpStatusCode.Forbidden, problem ?: Refusal.of(Problem.NOT_PART, "name" to me.name, "id" to id))
   }
 }
 
@@ -184,11 +203,12 @@ fun Route.loginRoutes(
   twoFactor: TwoFactor,
   pending: PendingLogins,
   sso: SingleSignOn,
+  attempts: LoginAttempts,
   publicUrl: String,
   secure: Boolean = true,
 ) {
   suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null) {
-    call.response.cookies.append(sessionCookie(logins.start(user, method, providerSession), LOGIN_DURATION.inWholeSeconds, secure))
+    call.response.cookies.append(sessionCookie(logins.start(user, method, providerSession), loginDuration(method).inWholeSeconds, secure))
   }
   // A rate limit of their own; outside it (or the login's) they would be under /api's login check
   rateLimit(SSO_RATE_LIMIT) {
@@ -230,7 +250,6 @@ fun Route.loginRoutes(
     // The provider's back-channel logout (its Logout URI, method Back-channel): a session there ended, its logins here
     // end too. 200 when done, 400 for a token that doesn't pass (OpenID Connect Back-Channel Logout 1.0)
     post("/api/login/oidc/backchannel") {
-      call.response.header(HttpHeaders.CacheControl, "no-store")
       val token = runCatching { call.receiveParameters()["logout_token"] }.getOrNull()
       if (token.isNullOrBlank() || !sso.backchannelLogout(token)) {
         return@post call.respondText("""{"error":"invalid_request"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
@@ -281,8 +300,12 @@ fun Route.loginRoutes(
   rateLimit(LOGIN_RATE_LIMIT) {
     post("/api/login") {
       val request = call.receive<LoginRequest>()
+      // Wrong passwords are counted per name too (the rate limit only counts per address)
+      val key = LoginAttempts.password(request.username)
+      if (attempts.blocked(key)) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
       val user = logins.verify(request.username, request.password)
       if (user == null) {
+        attempts.failed(key)
         // Slows down guessing on top of the rate limit
         delay(1.seconds)
         return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_LOGIN))
@@ -302,7 +325,11 @@ fun Route.loginRoutes(
       val request = call.receive<CodeRequest>()
       val token = request.pending.orEmpty()
       val user = pendingUser(token) ?: return@post
+      // Wrong codes are counted per account: a new pending login (the password again) doesn't start them afresh
+      val key = LoginAttempts.code(user.id.toString())
+      if (attempts.blocked(key)) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
       if (!twoFactor.check(user, request.code)) {
+        attempts.failed(key)
         pending.wrongCode(token)
         delay(1.seconds)
         return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_CODE))

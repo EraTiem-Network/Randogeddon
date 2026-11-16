@@ -58,8 +58,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Generate.py and the game servers share this container: a seed too large for it ends there, not the VM
+    mem_limit: ${GATEWAY_MEMORY:-5g}
+    pids_limit: 4096
     environment:
-      <<: *database
+      # Its own database role with only its rights, once GATEWAY_DB_USER and GATEWAY_DB_PASSWORD are set (the tracker
+      # makes the role at its start); until then the tracker's login. Archipelago's Python runs here: with the role
+      # it never gets the tracker's password
+      DB_URL: jdbc:postgresql://postgres:5432/randogeddon
+      DB_USER: ${GATEWAY_DB_USER:-randogeddon}
+      DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
       INTERNAL_TOKEN: *internal-token
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
       # One MultiServer per running session, each on one of these ports (inside compose only): as many run at once
@@ -88,6 +96,9 @@ services:
       GATEWAY_HOST: gateway
       GAME_SERVER_API: http://gateway:8001
       INTERNAL_TOKEN: *internal-token
+      # The gateway's own database role: made here at each start, with only the gateway's rights
+      GATEWAY_DB_USER: ${GATEWAY_DB_USER:-randogeddon_gateway}
+      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-}
       # Shown to a session's players ({id}: the session); the Traefik overlay sets the public host names
       PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-ws://localhost:38281/{id}}
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
