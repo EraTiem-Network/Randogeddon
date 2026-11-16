@@ -23,6 +23,13 @@ interface CheatTexts {
   val sending: String
   val send: String
   val cheat: String
+  /** Check a location: one of the slot's own (its item goes out), or one of another world holding the slot's item. */
+  val fromSlot: String
+  val toSlot: String
+  /** A location of another world for the picker: `Mantis Claw · Crossroads (in Bob-SM64)`. */
+  fun incoming(item: String, location: String, world: String): String
+  val noIncoming: String
+  val noPlacements: String
   /** After it was sent: `Done: gave Mantis Claw to Alice-HK`. */
   fun done(action: CheatAction, slot: String, value: String?): String
   fun logTitle(support: Boolean): String
@@ -43,7 +50,8 @@ internal object EnglishCheats : CheatTexts {
   }
   override fun tip(action: CheatAction) = when (action) {
     CheatAction.ITEM -> "The slot gets the item from the server, as if it was found."
-    CheatAction.LOCATION -> "The location of the slot counts as checked: its item goes to whoever it belongs to."
+    CheatAction.LOCATION -> "From the slot: its location counts as checked, its item goes to whoever it belongs to. " +
+      "To the slot: a location of another world that holds the slot's item counts as checked, the slot gets it."
     CheatAction.RELEASE -> "The slot's remaining items are sent to their owners, as if it released."
     CheatAction.COLLECT -> "The slot gets its items that are still in other slots."
     CheatAction.HINT -> "A free hint: where the slot's item is."
@@ -70,6 +78,11 @@ internal object EnglishCheats : CheatTexts {
   override val sending = "Sending…"
   override val send = "Send"
   override val cheat = "Cheat"
+  override val fromSlot = "From the slot"
+  override val toSlot = "To the slot"
+  override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
+  override val noIncoming = "None of its items is left in other worlds"
+  override val noPlacements = "The spoiler log doesn't say where items are"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "gave $value to $slot"
     CheatAction.LOCATION -> "checked $value in $slot"
@@ -101,7 +114,8 @@ internal object GermanCheats : CheatTexts {
   }
   override fun tip(action: CheatAction) = when (action) {
     CheatAction.ITEM -> "Der Slot bekommt das Item vom Server, als wäre es gefunden worden."
-    CheatAction.LOCATION -> "Der Ort des Slots gilt als gecheckt: Sein Item geht an den, dem es gehört."
+    CheatAction.LOCATION -> "Vom Slot: Sein Ort gilt als gecheckt, sein Item geht an den, dem es gehört. " +
+      "Zum Slot: Ein Ort einer anderen Welt mit einem Item des Slots gilt als gecheckt, der Slot bekommt es."
     CheatAction.RELEASE -> "Die restlichen Items des Slots gehen an ihre Besitzer, als hätte er freigegeben."
     CheatAction.COLLECT -> "Der Slot bekommt seine Items, die noch in anderen Slots liegen."
     CheatAction.HINT -> "Ein Gratis-Hinweis: wo das Item des Slots liegt."
@@ -129,6 +143,11 @@ internal object GermanCheats : CheatTexts {
   override val sending = "Wird gesendet…"
   override val send = "Senden"
   override val cheat = "Cheaten"
+  override val fromSlot = "Vom Slot"
+  override val toSlot = "Zum Slot"
+  override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
+  override val noIncoming = "Keins seiner Items liegt noch in anderen Welten"
+  override val noPlacements = "Das Spoiler-Log sagt nicht, wo die Items liegen"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "$slot hat $value bekommen"
     CheatAction.LOCATION -> "$value in $slot gecheckt"

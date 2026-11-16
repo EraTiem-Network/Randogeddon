@@ -66,6 +66,9 @@ fun CheatSection(
   var slot by remember { mutableStateOf<String?>(null) }
   var names by remember { mutableStateOf<CheatNames?>(null) }
   var value by remember { mutableStateOf<String?>(null) }
+  // Check a location to the slot: one of another world's (value its location, from that world)
+  var toSlot by remember { mutableStateOf(false) }
+  var from by remember { mutableStateOf<String?>(null) }
   var outcome by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   var busy by remember { mutableStateOf(false) }
 
@@ -88,6 +91,7 @@ fun CheatSection(
   LaunchedEffect(slot) {
     names = null
     value = null
+    from = null
   }
   // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
   LaunchedEffect(slot, view) {
@@ -95,7 +99,9 @@ fun CheatSection(
     val answer = call("GET", "$path/names?slot=${s.percentEncoded()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
     if (answer is Answer.Ok) {
       names = answer.value
-      if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
+      if (toSlot && action == CheatAction.LOCATION) {
+        if (answer.value.incoming.none { it.location == value && it.world == from }) { value = null; from = null }
+      } else if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
     }
   }
 
@@ -119,6 +125,7 @@ fun CheatSection(
           val actions = CheatAction.entries.filter { (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) }
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
+          val incoming = toSlot && action == CheatAction.LOCATION
           val choices = when (action) {
             in WITH_ITEM -> names?.items
             in WITH_LOCATION -> names?.locations
@@ -127,7 +134,7 @@ fun CheatSection(
           val what: @Composable (Modifier) -> Unit = { modifier ->
             Tip(t.cheats.tip(action)) {
               SearchableSelect(
-                actions.map { Triple(it, t.cheats.action(it), "") }, action, { action = it; value = null },
+                actions.map { Triple(it, t.cheats.action(it), "") }, action, { action = it; value = null; from = null },
                 modifier, chip = false, minHeight = CONTROL_HEIGHT,
               )
             }
@@ -138,9 +145,32 @@ fun CheatSection(
               modifier, chip = false, placeholder = t.cheats.slot, minHeight = CONTROL_HEIGHT,
             )
           }
+          // Check a location: from the slot (its own) or to it (another world's, holding the slot's item)
+          val direction: @Composable (Modifier) -> Unit = { modifier ->
+            Select(
+              listOf(false to t.cheats.fromSlot, true to t.cheats.toSlot), toSlot,
+              { toSlot = it; value = null; from = null }, modifier, minHeight = CONTROL_HEIGHT,
+            )
+          }
           val needsValue = action in WITH_ITEM || action in WITH_LOCATION
           val which: @Composable (Modifier) -> Unit = { modifier ->
-            SearchableSelect(
+            if (incoming) {
+              // Another world's location holding one of the slot's items: picked as "world\u0000location"
+              val options = names?.incoming.orEmpty()
+              SearchableSelect(
+                options.map { Triple<String?, String, String>("${it.world}\u0000${it.location}", t.cheats.incoming(it.item, it.location, it.world), "") },
+                from?.let { w -> value?.let { "$w\u0000$it" } },
+                { key -> val (w, l) = key?.split('\u0000', limit = 2).orEmpty().let { it.getOrNull(0) to it.getOrNull(1) }; from = w; value = l },
+                modifier, chip = false, minHeight = CONTROL_HEIGHT,
+                placeholder = when {
+                  slot == null -> t.cheats.pickSlotFirst
+                  names == null -> "…"
+                  names?.placementsKnown != true -> t.cheats.noPlacements
+                  options.isEmpty() -> t.cheats.noIncoming
+                  else -> t.cheats.location
+                },
+              )
+            } else SearchableSelect(
               choices.orEmpty().map { Triple<String?, String, String>(it, it, "") }, value, { value = it },
               modifier, chip = false, minHeight = CONTROL_HEIGHT,
               placeholder = when {
@@ -157,9 +187,10 @@ fun CheatSection(
               busy = true
               outcome = null
               scope.launch {
-                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value))
+                val world = from.takeIf { incoming }
+                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world))
                 outcome = when (val answer = call("POST", path, body) { }) {
-                  is Answer.Ok -> true to t.cheats.done(action, slot.orEmpty(), value)
+                  is Answer.Ok -> true to t.cheats.done(action, world ?: slot.orEmpty(), value)
                   is Answer.Failed -> false to answer.message
                 }
                 busy = false
@@ -172,6 +203,7 @@ fun CheatSection(
               // A phone: what, the slot, the item or location one below the other, each as wide as the card
               Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.fillMaxWidth())
+                if (action == CheatAction.LOCATION) direction(Modifier.fillMaxWidth())
                 forSlot(Modifier.fillMaxWidth())
                 if (needsValue) which(Modifier.fillMaxWidth())
                 send()
@@ -180,6 +212,7 @@ fun CheatSection(
               // One line: what, for which slot, which item or location, and the button; all as tall as the button
               Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.width(170.dp))
+                if (action == CheatAction.LOCATION) direction(Modifier.width(140.dp))
                 forSlot(Modifier.width(200.dp))
                 if (needsValue) which(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
                 send()
