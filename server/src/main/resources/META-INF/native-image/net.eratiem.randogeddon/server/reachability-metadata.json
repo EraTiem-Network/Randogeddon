@@ -2367,6 +2367,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.SessionLimitRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SessionLimitRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ThemeRequest",
       "fields": [
         {

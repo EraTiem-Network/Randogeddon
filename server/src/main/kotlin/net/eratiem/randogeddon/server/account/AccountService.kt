@@ -5,6 +5,7 @@ import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.AccountBlock
 import net.eratiem.randogeddon.shared.i18n.MailTexts
 import java.time.Duration
+import net.eratiem.randogeddon.server.config.MAX_SESSIONS_PER_USER
 import net.eratiem.randogeddon.shared.FontChoice
 import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Theme
@@ -20,6 +21,7 @@ import net.eratiem.randogeddon.database.Account
 import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -71,6 +73,7 @@ class AccountService(
   private val sessions: LiveSessions,
   private val config: TrackerConfig,
   private val mailLimits: MailLimits,
+  private val setups: SessionSetupStore,
 ) {
   /**
    * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
@@ -297,6 +300,7 @@ class AccountService(
     val members = sessions.all().flatMap { s -> s.setup?.members?.keys.orEmpty().map { it to s.id } }
       .groupBy({ it.first }, { it.second })
     val due = users.activity().associate { it.user.id to deletesAt(it, now) }
+    val created = setups.runningCreated()
     return users.accounts().map { a ->
       AdminUser(
         id = a.id.toString(),
@@ -314,6 +318,8 @@ class AccountService(
         twoFactor = a.twoFactor,
         language = a.language,
         block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
+        sessionLimit = a.sessionLimit,
+        sessionsRunning = created[a.id] ?: 0,
       )
     }.sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
   }
@@ -355,6 +361,20 @@ class AccountService(
     users.delete(id)
     sessions.refresh()
     logger.info("{} deleted the account of {}{}", by.name, account.name ?: account.email, reason?.let { ": $it" } ?: "")
+  }
+
+  /**
+   * The account [id]'s own limit of running sessions ([limit]: 0 to [MAX_SESSIONS_PER_USER]; `null`: the default
+   * again), by the Administrator [by]. An Administrator's account has no limit, so none is set for one.
+   */
+  suspend fun setSessionLimit(id: Uuid, limit: Int?, by: User) {
+    val account = users.account(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+    if (account.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.ADMINISTRATOR_ELSEWHERE, "name" to (account.name ?: id))
+    if (limit != null && limit !in 0..MAX_SESSIONS_PER_USER) {
+      throw AccountProblem(HttpStatusCode.BadRequest, Problem.SESSIONS_PER_USER, "max" to MAX_SESSIONS_PER_USER)
+    }
+    users.setSessionLimit(id, limit)
+    logger.info("{} set the sessions of {} to {}", by.name, account.name ?: account.email, limit ?: "the default")
   }
 
   /** The account [id] for an action of the Administrator [by] on it: not their own, not an Administrator's. */
