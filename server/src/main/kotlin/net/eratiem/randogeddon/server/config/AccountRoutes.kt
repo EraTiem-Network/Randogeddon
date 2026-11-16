@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.shared.FontRequest
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -119,6 +120,13 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, bridgeKe
       accountCall {
         val request = call.receive<ThemeRequest>()
         accounts.setTheme(call.loggedIn.user, request.theme, request.mode)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    put("/font") {
+      accountCall {
+        val request = call.receive<FontRequest>()
+        accounts.setFont(call.loggedIn.user, request.font, request.everywhere)
         call.respond(HttpStatusCode.NoContent)
       }
     }

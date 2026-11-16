@@ -32,6 +32,9 @@ object UsersTable : Table("users") {
   /** The theme's code and the mode (`light`, `dark`, `auto`; V13); `null`: the default theme, automatic. */
   val theme = varchar("theme", 16).nullable()
   val themeMode = varchar("theme_mode", 8).nullable()
+  /** The font (`original`, or a theme's code; V18); `null`: the chosen theme's. And a display font in all text. */
+  val font = varchar("font", 16).nullable()
+  val fontEverywhere = bool("font_everywhere").default(false)
   override val primaryKey = PrimaryKey(id)
 }
 

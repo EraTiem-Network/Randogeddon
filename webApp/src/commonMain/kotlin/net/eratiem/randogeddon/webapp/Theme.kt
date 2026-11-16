@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import net.eratiem.randogeddon.shared.FontChoice
 import net.eratiem.randogeddon.shared.ItemKind
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeColors
@@ -73,6 +74,7 @@ fun ThemeColors.palette() = Palette(
 val LocalPalette = staticCompositionLocalOf { palettes(Theme.DEFAULT).first.palette() }
 
 private const val THEME_KEY = "ap-theme"
+private const val FONT_KEY = "ap-font"
 
 /**
  * Which theme and mode the app is in: the account's once someone is logged in ([apply]), else the one last used in
@@ -87,7 +89,18 @@ object Themes {
     private set
   private var systemDark by mutableStateOf(Platform.systemDarkMode())
 
+  /** The font choice ([FontChoice]; `null`: the theme's), and whether a display font shows in all text. */
+  var font: String? by mutableStateOf(null)
+    private set
+  var fontEverywhere: Boolean by mutableStateOf(false)
+    private set
+
   init {
+    // `<choice>:<everywhere>`, the choice empty for the theme's
+    Platform.loadSetting(FONT_KEY)?.split(':')?.let { parts ->
+      font = parts.getOrNull(0)?.takeIf { it.isNotEmpty() && FontChoice.valid(it) }
+      fontEverywhere = parts.getOrNull(1) == "true"
+    }
     val stored = Platform.loadSetting(THEME_KEY)
     when (stored) {
       "light" -> mode = ThemeMode.LIGHT
@@ -111,6 +124,22 @@ object Themes {
       }
       return (if (isDark) dark else light).palette()
     }
+
+  /** The fonts that show now: the chosen one (or the theme's), once it is loaded. */
+  val fonts: PageFonts
+    get() {
+      val chosen = FontChoice.font(theme, font) ?: return PageFonts()
+      val family = Fonts.of(chosen.theme) ?: return PageFonts()
+      return if (chosen.display && !fontEverywhere) PageFonts(heading = family, headingScale = chosen.scale)
+      else PageFonts(family, family, chosen.scale, chosen.scale)
+    }
+
+  /** Applies the font [choice] (`null`: the theme's) and whether a display font shows [everywhere]. */
+  fun applyFont(choice: String?, everywhere: Boolean) {
+    font = choice?.takeIf(FontChoice::valid)
+    fontEverywhere = everywhere
+    Platform.saveSetting(FONT_KEY, "${font.orEmpty()}:$everywhere")
+  }
 
   /** Applies [theme] and [mode] (`null`: the default theme, automatic). */
   fun apply(theme: Theme?, mode: ThemeMode?) {
@@ -136,7 +165,7 @@ private const val THEME_FADE_MS = 300
 
 @Composable
 fun RandogeddonTheme(palette: Palette, content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalPalette provides palette.fading(), content = content)
+  CompositionLocalProvider(LocalPalette provides palette.fading(), LocalFonts provides Themes.fonts, content = content)
 }
 
 /** [this], with every colour fading from the one before when the theme or the mode changes. */

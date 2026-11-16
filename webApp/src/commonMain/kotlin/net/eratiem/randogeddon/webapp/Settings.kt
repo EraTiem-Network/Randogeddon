@@ -2,6 +2,11 @@ package net.eratiem.randogeddon.webapp
 
 import net.eratiem.randogeddon.shared.BridgeKeyView
 import kotlinx.serialization.builtins.ListSerializer
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.text.TextStyle
+import net.eratiem.randogeddon.shared.FontChoice
+import net.eratiem.randogeddon.shared.FontRequest
+import net.eratiem.randogeddon.shared.fontOf
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.Theme
@@ -139,7 +144,35 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
             }
           }
         }
-        Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+        fun saveFont(choice: String?, everywhere: Boolean) {
+          Themes.applyFont(choice, everywhere)
+          scope.launch {
+            appearanceState = when (val r = call("PUT", "api/account/font", body(FontRequest(choice, everywhere))) { }) {
+              is Answer.Ok -> { load(); null }
+              is Answer.Failed -> r.message
+            }
+          }
+        }
+        // The mode, the font, and for a display font where it shows
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, minHeight = FIELD_HEIGHT)
+          val own = fontOf(Themes.theme)?.family
+          Select(
+            listOf<Pair<String?, String>>(null to acc.fontOfTheme(own), FontChoice.ORIGINAL to acc.fontOriginal) +
+              FontChoice.themes.map { it.code to acc.fontOf(acc.theme(it), fontOf(it)!!.family) },
+            Themes.font,
+            { saveFont(it, Themes.fontEverywhere) },
+            minHeight = FIELD_HEIGHT,
+          )
+          if (FontChoice.font(Themes.theme, Themes.font)?.display == true) {
+            Select(
+              listOf(false to acc.fontHeadings, true to acc.fontEverywhere),
+              Themes.fontEverywhere,
+              { saveFont(Themes.font, it) },
+              minHeight = FIELD_HEIGHT,
+            )
+          }
+        }
         // Every theme as it looks in the mode that shows now (automatic: the device's), a click picks it; by group
         Theme.entries.groupBy { it.group }.forEach { (group, themes) ->
           Txt(acc.themeGroup(group), size = 12.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
@@ -447,7 +480,8 @@ private fun ThemeCard(theme: Theme, name: String, chosen: Boolean, onPick: () ->
         Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(t.panel)
           .border(1.dp, t.border, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 4.dp),
       ) {
-        Txt("Aa", size = 12.sp, color = t.text, weight = FontWeight.SemiBold)
+        // In the theme's own font if that is loaded already (it isn't fetched for the card)
+        BasicText("Aa", style = TextStyle(color = t.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = Fonts.there(theme) ?: LocalFonts.current.text))
         Box(Modifier.padding(top = 3.dp).width(64.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(t.muted))
       }
       Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

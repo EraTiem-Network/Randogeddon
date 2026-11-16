@@ -693,6 +693,34 @@ The button on the top card cycles light, dark and automatic, and shows the mode 
 (a sun, a moon, a half-filled circle). A new theme or mode fades in. It is stored with the account, so it follows them to every device; before the login, and on a share
 link's page, the browser's last choice applies (the login page takes its colours too).
 
+**Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
+*the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
+display font (the pixel fonts of NES and SNES, PlayStation 2's wide one) shows in the headings only; a second choice
+puts it in all text. The choice is stored with the account like the theme. A font's files are only loaded once it is
+used (20 to 130 KB each); until then, and without them, the original shows. The login page keeps the system's font.
+
+| Theme | Font | Theme | Font |
+|---|---|---|---|
+| Ocean | Mulish | Wii U | Fredoka |
+| Forest | Roboto Slab | Switch | Rubik |
+| Ember | Alegreya Sans | Switch 2 | Figtree |
+| High contrast | Atkinson Hyperlegible | PlayStation | Chakra Petch |
+| Midnight | Space Grotesk | PlayStation 2 | Orbitron |
+| Sakura | Varela Round | PlayStation 3 | Outfit |
+| Terminal | JetBrains Mono | PlayStation 4 | Public Sans |
+| Sepia | Literata | PlayStation 5 | Montserrat |
+| NES | Press Start 2P | Xbox | Oxanium |
+| SNES | Pixelify Sans | Xbox 360 | Exo 2 |
+| N64 | Baloo 2 | Xbox Series X\|S | Selawik |
+| GameCube | Jost | SteamOS | Inter |
+| Wii | Nunito | | |
+
+None of them is a console's own font. All are free to ship: the SIL Open Font License 1.1, Roboto Slab the Apache
+License 2.0; each licence's text is served beside the files (`/fonts/licences/`). `scripts/fonts.py` fetches them and
+makes the files in `webApp/src/wasmJsMain/resources/fonts/` (a regular and a bold one per font, cut down to the Latin
+letters the app writes; a font with a reserved name is shipped as it is). A new font: a line there, one in
+`shared/…/shared/Fonts.kt`, and `FontsTest` checks that the files and the licence are there.
+
 A new theme: an entry in `Theme` (with its group) and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
 (*Texts and languages*). `ThemesTest` checks that it is at least as readable as the default (text, muted text and the
 text on the brand, the accent and the item and status colours on the panel) and that its item and status colours stay apart.

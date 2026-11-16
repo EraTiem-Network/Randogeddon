@@ -173,6 +173,13 @@ interface AccountTexts {
   /** Under the cards: the console themes are only inspired, the names are trademarks. */
   val themesNotice: String
   fun mode(mode: ThemeMode): String
+  /** The font choice: the chosen theme's ([family]; `null`: it has none of its own), the original, another theme's. */
+  fun fontOfTheme(family: String?): String
+  val fontOriginal: String
+  fun fontOf(theme: String, family: String): String
+  /** Where a display font (a pixel font) shows. */
+  val fontHeadings: String
+  val fontEverywhere: String
   // Randogeddon Bridge's keys
   val bridgeKeys: String
   val bridgeKeysSubtitle: String

@@ -203,6 +203,11 @@ object German : Texts {
       ThemeMode.DARK -> "Dunkel"
       ThemeMode.AUTO -> "Automatisch (wie das Gerät)"
     }
+    override fun fontOfTheme(family: String?) = if (family != null) "Schrift: die des Themes ($family)" else "Schrift: die des Themes (das Original)"
+    override val fontOriginal = "Schrift: Randogeddons Original"
+    override fun fontOf(theme: String, family: String) = "Schrift: die von $theme ($family)"
+    override val fontHeadings = "Diese Schrift nur für Überschriften"
+    override val fontEverywhere = "Diese Schrift für alle Texte"
     override val bridgeKeys = "Bridge-Schlüssel"
     override val bridgeKeysSubtitle = "die Anmeldungen der Randogeddon Bridge; ein neues Passwort beendet sie auch"
     override fun bridgeKey(made: String, used: String?, until: String) =
