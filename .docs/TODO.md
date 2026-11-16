@@ -373,7 +373,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       with their SHA-256 sums); from 1.0.0 on also as a GitHub release (with the version's changelog)
 - [x] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
-## Phase 13: Polish and Bug Fixes
+## Phase 13: Polish and Bug Fixes (done)
 
 *Everything tested by hand, and what comes up fixed.*
 
@@ -386,12 +386,12 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       or noted with why not
     - Scanned on 2026-11-16 at 0.13.14: 2 High, 9 Medium and 17 Low findings, all fixed or noted with why not
       (0.13.15 to 0.13.17); the findings are kept outside this repository
-- [ ] A second security scan with Fable 5.2, where the first was thin: the code since then, the page's own script,
+- [x] A second security scan with Fable 5.2, where the first was thin: the code since then, the page's own script,
       what stays open after a right ends, the limits' ways around, logs and disks, the versions on the servers,
       Authentik's own settings, the host's mail and firewall, the repository
     - Scanned on 2026-11-16 at 0.13.17: 1 Medium and 12 Low findings, all fixed or noted with why not (0.13.18,
       0.13.19); the findings are kept outside this repository
-- [ ] What comes up is collected here and fixed, phase by phase as needed
+- [x] What comes up is collected here and fixed, phase by phase as needed
     - [x] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
     - [x] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
           themes, but doesn't show what each looks like before it is picked
