@@ -568,6 +568,17 @@ The target of this project, phase by phase. Items within a phase are roughly in 
         - The last Session-Manager stays, for Administrators too: someone else becomes Session-Manager first (the
           panel says so; `KEEP_MANAGER` on the server)
         - What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*
+    - [x] Polish: Randogeddon Bridge for hosted slots: offered to the session's Session-Managers and Administrators
+          (they have the password), still not to its players, never a locked one
+    - [x] Polish: Randogeddon Bridge on the command line, for the computer a hosted game runs on: `login` (the key from
+          standard input), `slots`, `relay -session -slot [-port]`, `logout`
+    - [x] Polish: Randogeddon Bridge quits once its page or the browser is closed (unless back within 10 seconds)
+    - [x] Polish: a login through Authentik ends with the Authentik session (its back-channel logout); an open
+          dashboard notices within 30 seconds
+    - [x] Polish: the cheat *Check a location* from the slot or to it (another world's location holding its item)
+    - [x] Polish: the spoiler log's playthrough marks the steps already checked, reads *Item @ Check*, and has a
+          search that filters its rows
+    - [x] Bug: the page scrolls, but shows no scroll bar (drawn on a canvas): one on everything that scrolls
 - [ ] Open points from earlier phases looked at again (e.g. which languages follow)
 
 ## Phase 14: More Themes

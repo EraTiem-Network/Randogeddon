@@ -29,8 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -379,7 +377,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
           IconButton(onClose, Icon.CLOSE)
         }
         Divider()
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           ProgressBar((past.percent / 100).toFloat())
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Fact(t.dialogs.slots, "${past.slots}")
@@ -1022,7 +1020,7 @@ private fun PlayerPicker(
         DropdownSearch(query) { query = it }
         val matches = choices.filter { query.isBlank() || it.label.contains(query.trim(), ignoreCase = true) }.take(200)
         val address = EmailAddresses.normalize(query)
-        Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+        Column(Modifier.heightIn(max = 260.dp).scrolling()) {
           matches.forEach { user ->
             Txt(
               user.label, size = 13.sp, maxLines = 1, color = if (user.name == null) p.muted else p.text,

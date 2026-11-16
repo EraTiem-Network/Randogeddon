@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -140,7 +138,7 @@ fun WatchApp(token: String) {
     ) {
       val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
       Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().scrolling().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
       ) {
         SelectionContainer {

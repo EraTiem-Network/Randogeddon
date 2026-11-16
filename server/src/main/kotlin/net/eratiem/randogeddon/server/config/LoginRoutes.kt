@@ -1,11 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.ThemeMode
-import net.eratiem.randogeddon.shared.Theme
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
-import net.eratiem.randogeddon.server.config.apiError
+import io.ktor.http.ContentType
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -14,14 +9,18 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -36,20 +35,25 @@ import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SsoRefused
 import net.eratiem.randogeddon.server.account.TwoFactor
+import net.eratiem.randogeddon.server.config.apiError
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.LinkLoginRequest
-import net.eratiem.randogeddon.shared.LoginOptions
 import net.eratiem.randogeddon.shared.LoginNext
-import net.eratiem.randogeddon.shared.LoginStep
-import net.eratiem.randogeddon.shared.PendingRequest
-import net.eratiem.randogeddon.shared.RecoveryCodeList
-import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.LoginOptions
 import net.eratiem.randogeddon.shared.LoginRequest
+import net.eratiem.randogeddon.shared.LoginStep
 import net.eratiem.randogeddon.shared.Me
+import net.eratiem.randogeddon.shared.PendingRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.RecoveryCodeList
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.i18n.Language
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. Secure
@@ -183,8 +187,8 @@ fun Route.loginRoutes(
   publicUrl: String,
   secure: Boolean = true,
 ) {
-  suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD) {
-    call.response.cookies.append(sessionCookie(logins.start(user, method), LOGIN_DURATION.inWholeSeconds, secure))
+  suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null) {
+    call.response.cookies.append(sessionCookie(logins.start(user, method, providerSession), LOGIN_DURATION.inWholeSeconds, secure))
   }
   // A rate limit of their own; outside it (or the login's) they would be under /api's login check
   rateLimit(SSO_RATE_LIMIT) {
@@ -209,7 +213,8 @@ fun Route.loginRoutes(
         code == null -> Refusal(Problem.SSO_CANCELLED, detail = call.request.queryParameters["error_description"])
         cookie == null || cookie != state -> Refusal(Problem.SSO_NOT_HERE)
         else -> try {
-          loggedIn(sso.finish(state, code), LoginMethods.OIDC)
+          val (user, providerSession) = sso.finish(state, code)
+          loggedIn(user, LoginMethods.OIDC, providerSession)
           null
         } catch (e: SsoRefused) {
           e.refusal
@@ -221,6 +226,16 @@ fun Route.loginRoutes(
       }?.let { call.apiError(it).let { e -> e.message + (e.detail?.let { d -> " ($d)" } ?: "") } }
       // Back to the app; a problem shows on its login form
       call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
+    }
+    // The provider's back-channel logout (its Logout URI, method Back-channel): a session there ended, its logins here
+    // end too. 200 when done, 400 for a token that doesn't pass (OpenID Connect Back-Channel Logout 1.0)
+    post("/api/login/oidc/backchannel") {
+      call.response.header(HttpHeaders.CacheControl, "no-store")
+      val token = runCatching { call.receiveParameters()["logout_token"] }.getOrNull()
+      if (token.isNullOrBlank() || !sso.backchannelLogout(token)) {
+        return@post call.respondText("""{"error":"invalid_request"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+      }
+      call.respond(HttpStatusCode.OK)
     }
     // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
     post("/api/login/oidc/deleted") {

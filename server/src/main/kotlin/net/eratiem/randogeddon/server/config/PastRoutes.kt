@@ -1,8 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -18,25 +15,31 @@ import io.ktor.server.routing.route
 import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SlotDownloads
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
+import net.eratiem.randogeddon.server.session.markChecked
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Connection
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SlotFiles
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
+/** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
+private val LOGIN_CHECK = 30.seconds
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
@@ -90,7 +93,9 @@ fun Route.sessionRoutes(
         try {
           val spoiler = spoilers.of(live.id, live.seedName)
             ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
-          call.respond(spoiler)
+          // The steps already checked, as the tracker sees them now
+          val open = runCatching { live.tracker.read { openLocations() } }.getOrDefault(emptyMap())
+          call.respond(markChecked(spoiler, open))
         } catch (e: GameServerUnavailable) {
           call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
         }
@@ -100,7 +105,9 @@ fun Route.sessionRoutes(
     // a release) becomes one update.
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
-      follow(live) { live.json() }
+      val token = call.request.cookies[SESSION_COOKIE]
+      // Ends once its login does: the page's next request then finds it logged out
+      follow(live, stillLoggedIn = { token != null && logins.userOf(token) != null }) { live.json() }
     }
   }
 }
@@ -126,10 +133,19 @@ internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Ar
 }
 
 /** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
-internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend () -> String) {
+internal suspend fun ServerSSESession.follow(
+  live: LiveSession,
+  stillLoggedIn: suspend () -> Boolean = { true },
+  json: suspend () -> String,
+) {
   var sentVersion = -1L
   var idle = 0.milliseconds
+  var unchecked = 0.milliseconds
   while (true) {
+    if (unchecked >= LOGIN_CHECK) {
+      if (!stillLoggedIn()) return
+      unchecked = 0.milliseconds
+    }
     // A finished session's summary no longer changes, but finishing (and reopening) changes the version
     val version = live.version()
     if (version != sentVersion) {
@@ -142,6 +158,7 @@ internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend ()
     }
     delay(POLL_INTERVAL)
     idle += POLL_INTERVAL
+    unchecked += POLL_INTERVAL
   }
 }
 

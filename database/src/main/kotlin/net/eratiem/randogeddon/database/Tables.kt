@@ -74,6 +74,8 @@ object LoginSessionsTable : Table("login_sessions") {
   val method = varchar("method", 16).default("password")
   /** When a bridge key was last used (V14; updated every few minutes at most); `null`: not yet, or not a key. */
   val lastUsedAt = timestamp("last_used_at").nullable()
+  /** A login through the provider: its session there (V17, the ID token's `sid`); its back-channel logout ends it. */
+  val providerSession = varchar("provider_session", 128).nullable()
   override val primaryKey = PrimaryKey(tokenHash)
 }
 

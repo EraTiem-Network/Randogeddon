@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -114,7 +112,7 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
       var opened by remember { mutableStateOf<String?>(null) }
       if (list.isNotEmpty()) {
         Divider()
-        Box(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth().heightIn(max = 260.dp).scrolling()) {
           FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             list.forEach { user -> UserPill(user) { opened = user.id } }
           }
@@ -180,7 +178,7 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
           IconButton(onClose, Icon.CLOSE)
         }
         Divider()
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           val none = u.notAvailable
           val logins = listOfNotNull(u.passwordLogin.takeIf { user.password }, u.ssoLogin.takeIf { user.singleSignOn })
           val deletion = user.deletesAt?.let { u.deletedOn(t.date(it)) }

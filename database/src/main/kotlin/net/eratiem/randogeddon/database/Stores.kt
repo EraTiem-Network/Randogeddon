@@ -455,18 +455,42 @@ class EmailChangeStore(private val db: RandogeddonDatabase) {
 
 /** Logged-in browsers, by the SHA-256 of their cookie token. */
 class LoginSessionStore(private val db: RandogeddonDatabase) {
-  /** [method]: how the login was made (`password`, `oidc`, `link`). */
-  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now(), method: String = "password") =
-    db.query {
-      LoginSessionsTable.insert {
-        it[LoginSessionsTable.tokenHash] = tokenHash
-        it[LoginSessionsTable.userId] = userId
-        it[createdAt] = now
-        it[LoginSessionsTable.expiresAt] = expiresAt
-        it[LoginSessionsTable.method] = method
-      }
-      Unit
+  /** [method]: how the login was made (`password`, `oidc`, `link`); [providerSession]: its session at the provider. */
+  suspend fun create(
+    tokenHash: String,
+    userId: Uuid,
+    expiresAt: Instant,
+    now: Instant = Instant.now(),
+    method: String = "password",
+    providerSession: String? = null,
+  ) = db.query {
+    LoginSessionsTable.insert {
+      it[LoginSessionsTable.tokenHash] = tokenHash
+      it[LoginSessionsTable.userId] = userId
+      it[createdAt] = now
+      it[LoginSessionsTable.expiresAt] = expiresAt
+      it[LoginSessionsTable.method] = method
+      it[LoginSessionsTable.providerSession] = providerSession
     }
+    Unit
+  }
+
+  /**
+   * Ends the logins of [method] that came from the provider's session [providerSession]; with [userId] also that
+   * user's logins of [method] without one (made before it was kept). How many ended.
+   */
+  suspend fun deleteOfProviderSession(method: String, providerSession: String, userId: Uuid?): Int = db.query {
+    LoginSessionsTable.deleteWhere {
+      val ofSession = (LoginSessionsTable.method eq method) and (LoginSessionsTable.providerSession eq providerSession)
+      if (userId == null) ofSession
+      else ofSession or ((LoginSessionsTable.method eq method) and (LoginSessionsTable.userId eq userId) and LoginSessionsTable.providerSession.isNull())
+    }
+  }
+
+  /** Ends all of [userId]'s logins made by [method]. How many ended. */
+  suspend fun deleteOf(userId: Uuid, method: String): Int = db.query {
+    LoginSessionsTable.deleteWhere { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) }
+  }
 
   /** The user of a session that hasn't expired yet. */
   suspend fun userOf(tokenHash: String, now: Instant = Instant.now()): Uuid? = loginOf(tokenHash, now)?.first

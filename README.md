@@ -158,8 +158,13 @@ has *Administrators: log in with Authentik*. Members of the Authentik group `OID
 first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
 app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
 `randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
-(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
-application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`, *Logout URI*
+`https://<BASE_DOMAIN>/api/login/oidc/backchannel` with the method *Back-channel*) and its application bound to the
+group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
+(they log out there, an admin ends it, the person is deactivated, it expires), Authentik's back-channel logout
+(`POST /api/login/oidc/backchannel`, a logout token signed by Authentik) ends the logins here from that session, and an
+open dashboard notices within 30 seconds. Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
+account*). Players keep their name and password.
 Authentik holds their account: *Your account* starts with *Your Authentik account*, a link to Authentik's user
 settings (`<issuer's host>/if/user/`, or `OIDC_ACCOUNT_URL`), where they change their name, password, e-mail address
 and second factor; the panels for those and for the deletion aren't there for them, and the server refuses those
@@ -268,7 +273,8 @@ docker compose up -d
    Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
    dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
    see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
-   server up. No account can be named *Hosted*; Randogeddon Bridge leaves hosted slots out.
+   server up. No account can be named *Hosted*. Randogeddon Bridge offers a hosted slot to its Session-Managers and
+   Administrators (for a hosted game that can't do TLS), not to its players.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
@@ -304,7 +310,9 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them).
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The
+  playthrough reads *Item @ Check*, marks the steps already checked with a ✓, and each sphere says how many of its
+  checks are done; its search keeps only the steps whose item, check or slot contains the text (and unfolds them).
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
 
@@ -354,8 +362,11 @@ Archipelago's commands say `<player>` for a slot.
 Up and down in the console bring back earlier commands. Every action is logged with the name of who did it in the tracker's
 log.
 
-**Cheats** (the panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
-the slot and the item or location from searchable lists. Free hints (`/hint`, `/hint_location`) only if the session
+**Cheats** (the panel, *Cheats*): give a slot an item, check a location, release or collect for it, pick
+the slot and the item or location from searchable lists. *Check a location* goes either way: *from the slot* (one of
+its own open locations: its item goes to whoever owns it) or *to the slot* (an open location of another world that
+holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
+placements, so only for a seed whose spoiler log has them). Free hints (`/hint`, `/hint_location`) only if the session
 was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
@@ -483,8 +494,16 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
 - **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
   session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
   once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
-  password don't matter: the bridge fills in the slot's. Starting it again opens the running one's page; *Quit* ends
-  it (on Windows it has no console window). A newer bridge on the dashboard shows a notice with its download.
+  password don't matter: the bridge fills in the slot's. It offers the user's own slots, and to Session-Managers and
+  Administrators the session's hosted slots too; never a locked one. Starting it again opens the running one's page;
+  *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
+  back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
+- **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
+  `randogeddon-bridge login` reads the key from standard input (`echo <key> | randogeddon-bridge login`; never an
+  argument, which others on the computer could see), `slots` lists what it can open (session, slot, game, hosted),
+  `relay -session <id> -slot <name> [-port <port>]` runs one relay until Ctrl+C (a fixed port keeps the game's
+  setting; its state as it changes; it ends once the key is ended), `logout` ends the key. `-server <url>` goes
+  before the command; the command line logs only to the terminal.
 - **Kept:** the dashboard's address and the key in the user's config directory, `Randogeddon/bridge.json` (readable
   only by them; removed at *Log out*), and `bridge.log` of the last run. `-server <url>` points it at another dashboard
   (the local demo: `-server http://localhost:8000`), `-no-browser` only writes the page's link to the log.
@@ -530,6 +549,9 @@ which the gateway writes before it starts the session's game server.
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
   choice is remembered in their browser. On narrow screens it always sits below the players.
+- **Scroll bars:** the page, the dialogs and the lists show a thin bar on the right edge while there is more than fits
+  (the page is drawn on a canvas, so the browser has none of its own); the mouse drags it, a click beside it jumps
+  there, touch scrolls the content.
 - **Other sessions:** the viewer's other sessions (all for Administrators), running or finished, below; a click shows one.
 
 Known limitations:
@@ -545,8 +567,8 @@ API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
 `POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
-`.../callback`, `POST /api/login/link` (a CLI login link), and Authentik's webhooks `POST /api/login/oidc/deleted` and
-`.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
+`.../callback`, `POST /api/login/link` (a CLI login link), Authentik's back-channel logout
+`POST /api/login/oidc/backchannel`, and its webhooks `POST /api/login/oidc/deleted` and `.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
 sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),

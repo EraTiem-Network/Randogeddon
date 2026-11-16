@@ -10,9 +10,9 @@ const TEXTS = {
       "computer until you log out.",
     key: "Key", dashboard: "Dashboard", login: "Log in",
     session: "Session", slot: "Slot", address: "Address", state: "State", close: "Close", open: "Open",
-    copy: "Copy", copied: "Copied",
+    copy: "Copy", copied: "Copied", hosted: "hosted",
     none: "No connection open yet: pick a session and a slot below.",
-    noSessions: "No running session with a slot of yours.",
+    noSessions: "No running session with a slot of yours (or a hosted one you manage).",
     howTo: "In the game, connect to the address (some games call it server or host). Any slot name and no password: " +
       "the bridge fills in yours.",
     states: { waiting: "Waiting for the game", connecting: "Connecting…", connected: "Connected", error: "Error" },
@@ -28,9 +28,9 @@ const TEXTS = {
       "bleibt auf diesem Computer, bis du dich abmeldest.",
     key: "Schlüssel", dashboard: "Dashboard", login: "Anmelden",
     session: "Session", slot: "Slot", address: "Adresse", state: "Status", close: "Schließen", open: "Öffnen",
-    copy: "Kopieren", copied: "Kopiert",
+    copy: "Kopieren", copied: "Kopiert", hosted: "gehostet",
     none: "Noch keine Verbindung offen: Wähle unten eine Session und einen Slot.",
-    noSessions: "Keine laufende Session mit einem Slot von dir.",
+    noSessions: "Keine laufende Session mit einem Slot von dir (oder einem gehosteten, den du verwaltest).",
     howTo: "Verbinde dich im Spiel mit der Adresse (manche Spiele nennen sie Server oder Host). Beliebiger Slot-Name " +
       "und kein Passwort: Die Bridge trägt deine ein.",
     states: { waiting: "Wartet auf das Spiel", connecting: "Verbindet…", connected: "Verbunden", error: "Fehler" },
@@ -200,7 +200,7 @@ async function loadSlots() {
   if (!session) return;
   try {
     const slots = await api("GET", `/api/slots?session=${encodeURIComponent(session)}`);
-    select.replaceChildren(...slots.map((s) => el("option", { value: s.name }, `${s.name} · ${s.game}`)));
+    select.replaceChildren(...slots.map((s) => el("option", { value: s.name }, `${s.name} · ${s.game}${s.hosted ? ` · ${t.hosted}` : ""}`)));
     select.disabled = !slots.length;
   } catch (e) {
     showProblem(e.message);
@@ -234,7 +234,16 @@ $("quit").addEventListener("click", async () => {
   $("quitted").hidden = false;
 });
 
+// While this page is open the bridge runs: it quits once the page is closed (or the browser is), unless it comes back
+// within a few seconds (a reload). Dropped otherwise (the bridge restarting): tried again.
+function stayAlive() {
+  if (quitted) return;
+  const socket = new WebSocket(`ws://${location.host}/api/alive`);
+  socket.addEventListener("close", () => { if (!quitted) setTimeout(stayAlive, 2000); });
+}
+
 applyTexts();
+stayAlive();
 refresh();
 setInterval(refresh, 1500);
 // Back on this page: the account's theme, mode and language as they are now (changed on the dashboard meanwhile)

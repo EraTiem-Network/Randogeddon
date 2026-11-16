@@ -1,21 +1,27 @@
 package net.eratiem.randogeddon.server.account
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.english
-import net.eratiem.randogeddon.database.LoginLinkStore
-import net.eratiem.randogeddon.database.User
-import net.eratiem.randogeddon.database.UserStore
-import net.eratiem.randogeddon.server.config.TrackerConfig
-import net.eratiem.randogeddon.server.util.logger
-import net.eratiem.randogeddon.shared.UserNames
-import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import net.eratiem.randogeddon.database.LoginLinkStore
+import net.eratiem.randogeddon.database.LoginSessionStore
+import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.config.english
+import net.eratiem.randogeddon.server.util.logger
+import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.UserNames
+import org.koin.core.annotation.Single
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
@@ -99,6 +105,7 @@ class SingleSignOn(
   private val users: UserStore,
   private val links: LoginLinkStore,
   private val accounts: AccountService,
+  private val sessions: LoginSessionStore,
 ) {
   private data class Pending(val nonce: String, val verifier: String, val expiresAt: Long)
 
@@ -120,8 +127,11 @@ class SingleSignOn(
     return state to oidc.authorizationUrl(state, login.nonce, login.verifier)
   }
 
-  /** Finishes the login of [state] with the callback's [code]: the account to log in, an Administrator. */
-  suspend fun finish(state: String, code: String, now: Long = System.currentTimeMillis()): User {
+  /**
+   * Finishes the login of [state] with the callback's [code]: the account to log in, an Administrator, and the login's
+   * session at the provider (for its back-channel logout).
+   */
+  suspend fun finish(state: String, code: String, now: Long = System.currentTimeMillis()): Pair<User, String?> {
     val oidc = client ?: throw SsoRefused(Problem.NO_SSO)
     val login = pending.remove(state)?.takeIf { it.expiresAt > now } ?: throw SsoRefused(Problem.SSO_EXPIRED)
     val identity = try {
@@ -159,8 +169,47 @@ class SingleSignOn(
     }
     if (!user.administrator) users.setAdmin(user.id, true)
     accounts.syncFromProvider(user, wantedName(identity), identity.email?.takeIf { identity.emailVerified })
-    return users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)
+    return (users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)) to identity.sessionId
   }
+
+  /** Recently seen logout tokens (`jti`, until when): one isn't taken twice. */
+  private val seenLogouts = ConcurrentHashMap<String, Long>()
+
+  /**
+   * The provider's back-channel logout ([logoutToken], checked): its session ended (logged out there, ended by an
+   * admin, the person deactivated, expired), so the logins here from that session end too; without a session in it,
+   * all of the person's logins through the provider. Their bridge keys stay (a login of their own). `false`: refused.
+   */
+  suspend fun backchannelLogout(logoutToken: String, now: Long = System.currentTimeMillis()): Boolean {
+    val oidc = client ?: return false
+    val logout = try {
+      oidc.logout(logoutToken)
+    } catch (e: OidcProblem) {
+      logger.warn("A back-channel logout from {} was refused: {}", config.oidc?.name, e.message)
+      return false
+    }
+    jti(logoutToken)?.let { id ->
+      seenLogouts.entries.removeIf { it.value <= now }
+      if (seenLogouts.putIfAbsent(id, now + PENDING.inWholeMilliseconds) != null) {
+        logger.warn("A back-channel logout from {} came twice: refused", config.oidc?.name)
+        return false
+      }
+    }
+    val user = logout.subject?.let { users.findBySubject(it) }
+    val ended = when {
+      logout.sessionId != null -> sessions.deleteOfProviderSession(LoginMethods.OIDC, logout.sessionId, user?.id)
+      user != null -> sessions.deleteOf(user.id, LoginMethods.OIDC)
+      else -> 0
+    }
+    logger.info("{} ended a session{}: {} login(s) here ended", config.oidc?.name, user?.let { " of ${it.name}" } ?: "", ended)
+    return true
+  }
+
+  /** The `jti` of a (checked) JWT. */
+  private fun jti(token: String): String? = runCatching {
+    val claims = ApiJson.parseToJsonElement(String(Base64.getUrlDecoder().decode(token.split('.')[1]))).jsonObject
+    (claims["jti"] as? JsonPrimitive)?.contentOrNull
+  }.getOrNull()
 
   /** A one-time login link for [user] (the CLI), for [LOGIN_LINK_DURATION]. */
   suspend fun createLink(user: User, now: Instant = Instant.now()): String = createLoginLink(links, config.publicUrl, user, now)

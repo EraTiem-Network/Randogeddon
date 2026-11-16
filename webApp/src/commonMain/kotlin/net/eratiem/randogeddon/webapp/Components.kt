@@ -27,13 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.DisableSelection
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -628,7 +626,7 @@ fun <T> Select(
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           if (searchable) DropdownSearch(query) { query = it }
-          Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+          Column(Modifier.heightIn(max = 320.dp).scrolling()) {
             if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label) ->
               val active = value == selected
@@ -721,7 +719,7 @@ fun <T> SearchableSelect(
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           if (searchable) DropdownSearch(query) { query = it }
-          Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+          Column(Modifier.heightIn(max = 280.dp).scrolling()) {
             if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label, detail) ->
               val active = value == selected

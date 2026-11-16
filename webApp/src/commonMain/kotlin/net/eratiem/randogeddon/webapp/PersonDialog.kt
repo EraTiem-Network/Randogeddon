@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,7 +99,7 @@ fun PersonDialog(
             IconButton(onClose, Icon.CLOSE)
           }
           Divider()
-          Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+          Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             ProgressBar((person.percent / 100).toFloat())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               Fact(t.dialogs.played, t.duration(played))
@@ -169,7 +167,7 @@ fun PersonDialog(
               Spacer(Modifier.height(10.dp))
               Section(t.dialogs.recentActivity)
               if (activity.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
-              Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+              Column(Modifier.heightIn(max = 520.dp).scrolling()) {
                 activity.forEach { FeedRow(it) }
               }
             }

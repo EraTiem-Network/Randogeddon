@@ -44,7 +44,18 @@ data class OidcIdentity(
   val preferredUsername: String?,
   val name: String?,
   val groups: List<String>,
+  /** The login's session at the provider (`sid`), for its back-channel logout; `null` if it names none. */
+  val sessionId: String? = null,
 )
+
+/** A back-channel logout from the provider: its person ([subject]) and/or its session ([sessionId]), at least one. */
+data class OidcLogout(val subject: String?, val sessionId: String?)
+
+/** The event a back-channel logout token carries (OpenID Connect Back-Channel Logout 1.0). */
+private const val LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout"
+
+/** How old a logout token may be. */
+private const val LOGOUT_MAX_AGE_SECONDS = 5 * 60L
 
 /** The ID token was refused: why (for the log; the person sees a plain "the login didn't work"). */
 class OidcProblem(message: String) : Exception(message)
@@ -70,10 +81,10 @@ internal fun rsaKeys(jwks: String): Map<String, PublicKey> {
 }
 
 /**
- * Checks an ID token (a JWT signed with RS256) and reads it: the signature with one of [keys] (by its `kid`), the
- * issuer, this client in its audience, not expired, and the [nonce] of this login. [OidcProblem] if anything fails.
+ * The claims of a JWT signed with RS256 by one of [keys] (by its `kid`), from [issuer] and for [clientId];
+ * [OidcProblem] if anything fails.
  */
-internal fun verifyIdToken(token: String, keys: Map<String, PublicKey>, issuer: String, clientId: String, nonce: String, now: Instant): OidcIdentity {
+private fun verifiedClaims(token: String, keys: Map<String, PublicKey>, issuer: String, clientId: String): JsonObject {
   val parts = token.split('.')
   if (parts.size != 3) throw OidcProblem("Not a JWT")
   val header = runCatching { ApiJson.parseToJsonElement(String(b64url.decode(parts[0]))).jsonObject }.getOrNull()
@@ -95,6 +106,15 @@ internal fun verifyIdToken(token: String, keys: Map<String, PublicKey>, issuer: 
     else -> emptyList()
   }
   if (clientId !in audience) throw OidcProblem("Not for this client")
+  return claims
+}
+
+/**
+ * Checks an ID token (a JWT signed with RS256) and reads it: the signature with one of [keys] (by its `kid`), the
+ * issuer, this client in its audience, not expired, and the [nonce] of this login. [OidcProblem] if anything fails.
+ */
+internal fun verifyIdToken(token: String, keys: Map<String, PublicKey>, issuer: String, clientId: String, nonce: String, now: Instant): OidcIdentity {
+  val claims = verifiedClaims(token, keys, issuer, clientId)
   val expires = claims["exp"]?.jsonPrimitive?.longOrNull ?: throw OidcProblem("No expiry")
   if (now.epochSecond > expires + CLOCK_SKEW_SECONDS) throw OidcProblem("Expired")
   if (claims.string("nonce") != nonce) throw OidcProblem("Wrong nonce")
@@ -106,7 +126,27 @@ internal fun verifyIdToken(token: String, keys: Map<String, PublicKey>, issuer: 
     preferredUsername = claims.string("preferred_username"),
     name = claims.string("name"),
     groups = (claims["groups"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+    sessionId = claims.string("sid")?.takeIf { it.isNotEmpty() },
   )
+}
+
+/**
+ * Checks a back-channel logout token (OpenID Connect Back-Channel Logout 1.0, section 2.6): signed like an ID token,
+ * from the issuer, for this client, issued within the last minutes (not in the future), the logout event, no nonce
+ * (so an ID token can't pass as one), and a subject or a session. [OidcProblem] if anything fails.
+ */
+internal fun verifyLogoutToken(token: String, keys: Map<String, PublicKey>, issuer: String, clientId: String, now: Instant): OidcLogout {
+  val claims = verifiedClaims(token, keys, issuer, clientId)
+  val issued = claims["iat"]?.jsonPrimitive?.longOrNull ?: throw OidcProblem("No issue time")
+  if (issued > now.epochSecond + CLOCK_SKEW_SECONDS || issued < now.epochSecond - LOGOUT_MAX_AGE_SECONDS - CLOCK_SKEW_SECONDS) {
+    throw OidcProblem("Issued at the wrong time")
+  }
+  claims["exp"]?.jsonPrimitive?.longOrNull?.let { if (now.epochSecond > it + CLOCK_SKEW_SECONDS) throw OidcProblem("Expired") }
+  if ((claims["events"] as? JsonObject)?.containsKey(LOGOUT_EVENT) != true) throw OidcProblem("Not a logout")
+  if (claims.containsKey("nonce")) throw OidcProblem("A nonce in a logout token")
+  val logout = OidcLogout(claims.string("sub")?.takeIf { it.isNotEmpty() }, claims.string("sid")?.takeIf { it.isNotEmpty() })
+  if (logout.subject == null && logout.sessionId == null) throw OidcProblem("Neither subject nor session")
+  return logout
 }
 
 /**
@@ -160,6 +200,18 @@ class OidcClient(private val config: OidcConfig, private val redirectUri: String
       // A rotated key: once more with the current ones
       if (e.message?.startsWith("Unknown key") != true) throw e
       verifyIdToken(idToken, discovery(force = true).let { keys }, d.issuer, config.clientId, nonce, now)
+    }
+  }
+
+  /** Checks a back-channel [logoutToken] of the provider; [OidcProblem] if refused. */
+  suspend fun logout(logoutToken: String): OidcLogout {
+    val d = discovery()
+    val now = Instant.now()
+    return try {
+      verifyLogoutToken(logoutToken, keys, d.issuer, config.clientId, now)
+    } catch (e: OidcProblem) {
+      if (e.message?.startsWith("Unknown key") != true) throw e
+      verifyLogoutToken(logoutToken, discovery(force = true).let { keys }, d.issuer, config.clientId, now)
     }
   }
 

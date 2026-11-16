@@ -11,11 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -303,7 +301,7 @@ private fun PersonPanel(
           IconButton(onClose, Icon.CLOSE)
         }
         Divider()
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           if (stats != null) {
             ProgressBar((stats.percent / 100).toFloat())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

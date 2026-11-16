@@ -31,11 +31,30 @@ const defaultServer = "https://randogeddon.eratiem.net"
 func main() {
 	server := flag.String("server", "", "the dashboard's address (default: the last one used, else "+defaultServer+")")
 	noBrowser := flag.Bool("no-browser", false, "don't open the page; its link is in the log")
+	flag.Usage = func() {
+		fmt.Fprint(flag.CommandLine.Output(), cliUsage+"\nOptions:\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	dir, err := configDir()
 	if err != nil {
 		fail(err)
+	}
+	// A command: on the command line, without the page
+	if flag.NArg() > 0 {
+		if !isCommand(flag.Arg(0)) {
+			fmt.Fprintf(os.Stderr, "Randogeddon Bridge: unknown command %q\n\n%s", flag.Arg(0), cliUsage)
+			os.Exit(2)
+		}
+		cfg := loadConfig(dir)
+		if *server != "" {
+			cfg.Server = strings.TrimRight(*server, "/")
+		}
+		if cfg.Server == "" {
+			cfg.Server = defaultServer
+		}
+		os.Exit(runCLI(dir, cfg, flag.Args(), os.Stdin, os.Stdout))
 	}
 	logTo(dir)
 

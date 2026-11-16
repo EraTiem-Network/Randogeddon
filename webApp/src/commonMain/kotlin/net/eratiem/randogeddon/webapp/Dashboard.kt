@@ -32,11 +32,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -283,7 +281,7 @@ private fun TrackerApp() {
       val narrow = maxWidth < NARROW
       val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
       Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().scrolling().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
       ) {
         // Text can be selected (and copied) anywhere on the page
@@ -987,7 +985,7 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     HintRow(listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot, "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
     Divider()
   }
-  Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
+  Column(Modifier.heightIn(max = 600.dp).scrolling()) {
     hints.forEachIndexed { i, h ->
       if (i > 0) Divider()
       if (compact) CompactHint(h) else HintRow(listOf(
@@ -1120,7 +1118,7 @@ internal fun Feed(
       } else {
         Column(
           (if (fillHeight) Modifier.weight(1f) else Modifier.heightIn(max = if (position == FeedPosition.BELOW) 520.dp else 640.dp))
-            .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)
+            .scrolling().padding(vertical = 4.dp)
         ) {
           events.forEach { FeedRow(it) }
         }
