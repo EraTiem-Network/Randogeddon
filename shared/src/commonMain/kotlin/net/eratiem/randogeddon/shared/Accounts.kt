@@ -146,6 +146,10 @@ data class AdminUser(
   val invitationExpiresAt: Long? = null,
   /** An Administrator keeps them out for now (timed out or suspended); `null`: they can log in. */
   val block: AccountBlock? = null,
+  /** How many running sessions of their own they may have at once; `null`: the default ([AppSettings]). */
+  val sessionLimit: Int? = null,
+  /** How many running sessions they created (what the limit counts). */
+  val sessionsRunning: Int = 0,
   val autoDelete: AutoDelete = AutoDelete.NEVER,
   /** When the account will be deleted by itself, as of now; `null`: not planned. */
   val deletesAt: Long? = null,
@@ -184,6 +188,10 @@ data class AccountActionRequest(val timeOut: TimeOut? = null, val reason: String
     const val MAX_REASON = 200
   }
 }
+
+/** `PUT /api/admin/users/{id}/session-limit`: the account's own limit of running sessions; `null`: the default. */
+@Serializable
+data class SessionLimitRequest(val limit: Int? = null)
 
 /** `POST /api/admin/users`: invite someone; [suggestedName] is prefilled on their sign-up page. */
 @Serializable
