@@ -9,6 +9,28 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.16: The scan's Medium findings
+- **The gateway's Python reaches less.** Archipelago's processes (Generate.py, the game servers, the APWorlds) get only
+  what Python needs of the gateway's environment, and the gateway has a database role of its own
+  (`GATEWAY_DB_USER`, `GATEWAY_DB_PASSWORD`; made by the tracker at each start): the sessions and the slot passwords to
+  read, the session time to count, nothing of the accounts. Its container gets only that login.
+- **Requests have a size:** 256 KB by default, 8 MB for a new session's YAMLs, 96 MB for APWorlds; larger ones (or a
+  body without a length) are refused before they are read.
+- **Creating a session is limited:** one at a time per user (the ones running count against the game servers), at
+  most 100 YAML files and 250 slots, the gateway's container at 5 GB (`GATEWAY_MEMORY`).
+- **An Administrator reads as one only with a login that may act as one** (two-factor, or through Authentik): every
+  session, the spoiler logs, hosted slots' passwords and every slot's files go by that; a bridge key never does. A
+  login through Authentik lasts a day instead of 30, so leaving the group there shows within a day.
+- **Administrators only through Authentik** (with single sign-on): a CLI link no longer acts as one, and the CLI
+  makes no Administrators and no login links then (`--revoke` stays). In Authentik, Randogeddon's application also
+  asks for a second factor set up there (`infra/auth/setup.py`, already set on the server).
+- **Mails per account:** at most 10 in 10 minutes and 40 a day (invitations, address confirmations).
+- **Logins:** the rate limits count an IPv6 /64 as one address; after 10 wrong passwords or two-factor codes within 10
+  minutes that account's login waits until the oldest is 10 minutes old.
+- **Headers:** every answer carries `Strict-Transport-Security`, `nosniff`, `Referrer-Policy`, `X-Frame-Options` and a
+  policy against framing; the API's answers aren't stored. Plain HTTP is redirected to HTTPS (Traefik).
+- **Infrastructure:** the host's sshd takes keys only; the database dumps are written for root only.
+
 ### 0.13.15: The security scan's findings
 - The scan (Fable 5.2) over the server's routes, the gateway, the bridge and the infrastructure: its 27 findings are in
   the to-do list (Phase 13), most severe first. Fixed so far, both in the gateway:
