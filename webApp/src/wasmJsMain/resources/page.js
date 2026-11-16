@@ -328,10 +328,12 @@ window.randogeddonLogin = (function () {
       var link = /^#\/login\/([^/]+)/.exec(location.hash);
       if (link) { useLink(decodeURIComponent(link[1])); return; }
       // Back from the provider without a login: why
-      var problem = /^#\/login-problem\/(.+)/.exec(location.hash);
-      if (problem) {
+      // Its text comes in a cookie the server set, never from the link (which could carry anyone's words)
+      if (/^#\/login-problem/.test(location.hash)) {
         leaveInvitation();
-        text = decodeURIComponent(problem[1]);
+        var problem = /(?:^|; )randogeddon_login_problem=([^;]*)/.exec(document.cookie);
+        document.cookie = "randogeddon_login_problem=; Max-Age=0; path=/";
+        if (problem) { try { text = decodeURIComponent(problem[1].replace(/\+/g, " ")); } catch (e) { /* not ours */ } }
       }
       open("login", text);
       var form = forms.login;

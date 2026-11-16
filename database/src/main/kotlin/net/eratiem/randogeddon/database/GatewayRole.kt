@@ -16,7 +16,11 @@ object GatewayRole {
     val secret = "'" + password.replace("'", "''") + "'"
     return listOf(
       "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$role') THEN CREATE ROLE $role; END IF; END $$",
-      "ALTER ROLE $role LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD $secret",
+      // Back to no more than a login. Only a superuser may name these (the tracker with its own role isn't one: there
+      // the compose service database-roles does it, as the superuser)
+      "DO $$ BEGIN IF (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN " +
+        "ALTER ROLE $role NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; END $$",
+      "ALTER ROLE $role LOGIN PASSWORD $secret",
       // Whatever it had before (a table it no longer needs): gone
       "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM $role",
       "REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM $role",

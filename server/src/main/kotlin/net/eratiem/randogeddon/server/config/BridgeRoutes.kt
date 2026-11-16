@@ -105,7 +105,8 @@ fun Route.bridgeRoutes(
       val file = config.bridgeDir.resolve(name)
       if ((!BRIDGE_FILE.matches(name) && name !in CHECK_FILES) || !file.isRegularFile()) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_FILE))
       call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, name).toString())
-      call.respondFile(file.toFile())
+      // The signature and the key are text; by their endings they would be something else (.pub: a Publisher file)
+      if (name in CHECK_FILES) call.respondText(file.readText(), ContentType.Text.Plain) else call.respondFile(file.toFile())
     }
   }
   route("/bridge") {

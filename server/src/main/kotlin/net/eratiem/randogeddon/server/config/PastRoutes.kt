@@ -40,7 +40,7 @@ import net.eratiem.randogeddon.shared.SlotFiles
 private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
 /** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
-private val LOGIN_CHECK = 30.seconds
+internal val LOGIN_CHECK = 30.seconds
 
 /** The live streams open per account (each polls for as long as it is open): only so many at once. */
 object OpenStreams {
@@ -123,9 +123,10 @@ fun Route.sessionRoutes(
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
       val token = call.request.cookies[SESSION_COOKIE]
-      // Ends once its login does: the page's next request then finds it logged out
+      val me = call.actor
+      // Ends once its login does (the page's next request then finds it logged out), or their part in the session
       OpenStreams.counted(call.loggedIn.user.id.toString()) {
-        follow(live, stillLoggedIn = { token != null && logins.userOf(token) != null }) { live.json() }
+        follow(live, stillAllowed = { token != null && logins.userOf(token) != null && logins.maySee(me, live.id) }) { live.json() }
       }
     }
   }
@@ -154,7 +155,7 @@ internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Ar
 /** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
 internal suspend fun ServerSSESession.follow(
   live: LiveSession,
-  stillLoggedIn: suspend () -> Boolean = { true },
+  stillAllowed: suspend () -> Boolean = { true },
   json: suspend () -> String,
 ) {
   var sentVersion = -1L
@@ -162,7 +163,7 @@ internal suspend fun ServerSSESession.follow(
   var unchecked = 0.milliseconds
   while (true) {
     if (unchecked >= LOGIN_CHECK) {
-      if (!stillLoggedIn()) return
+      if (!stillAllowed()) return
       unchecked = 0.milliseconds
     }
     // A finished session's summary no longer changes, but finishing (and reopening) changes the version

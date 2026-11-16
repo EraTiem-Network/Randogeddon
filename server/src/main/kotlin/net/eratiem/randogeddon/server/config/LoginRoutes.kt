@@ -73,6 +73,17 @@ private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
 )
 
 /**
+ * Why a login through the provider didn't work, for the login form: the page reads it at `#/login-problem` and takes
+ * it away. In a cookie, because a link could carry anyone's words onto the form (only this server sets cookies here).
+ */
+const val LOGIN_PROBLEM_COOKIE = "randogeddon_login_problem"
+
+internal fun problemCookie(text: String, secure: Boolean) = Cookie(
+  LOGIN_PROBLEM_COOKIE, text, maxAge = 60, path = "/", secure = secure, httpOnly = false,
+  extensions = mapOf("SameSite" to "Lax"),
+)
+
+/**
  * The logged-in user of a call that passed [RequireLogin]. [strong]: this login may act as an Administrator
  * ([LoginCheck.administratorProblem]: with two-factor login, or through single sign-on); never a bridge key.
  */
@@ -218,7 +229,8 @@ fun Route.loginRoutes(
       val (state, url) = try {
         sso.start()
       } catch (e: Exception) {
-        return@get call.respondRedirect("$publicUrl/#/login-problem/${"${sso.name} can't be reached".encodeURLPathPart()}")
+        call.response.cookies.append(problemCookie(call.apiError(Refusal.of(Problem.SSO_UNREACHABLE, "provider" to sso.name)).message, secure))
+        return@get call.respondRedirect("$publicUrl/#/login-problem")
       }
       call.response.cookies.append(oidcCookie(state, 600, secure))
       call.respondRedirect(url)
@@ -246,7 +258,8 @@ fun Route.loginRoutes(
         }
       }?.let { call.apiError(it).let { e -> e.message + (e.detail?.let { d -> " ($d)" } ?: "") } }
       // Back to the app; a problem shows on its login form
-      call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
+      if (problem != null) call.response.cookies.append(problemCookie(problem, secure))
+      call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem")
     }
     // The provider's back-channel logout (its Logout URI, method Back-channel): a session there ended, its logins here
     // end too. 200 when done, 400 for a token that doesn't pass (OpenID Connect Back-Channel Logout 1.0)

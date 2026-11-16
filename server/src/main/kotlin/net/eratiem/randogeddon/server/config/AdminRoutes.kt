@@ -144,6 +144,7 @@ fun Route.manageRoutes(
   cheats: Cheats,
   sessions: LiveSessions,
   list: SessionList,
+  logins: LoginCheck,
 ) {
   get { gatewayCall { call.respond(admin.view(id())) } }
   delete {
@@ -167,7 +168,7 @@ fun Route.manageRoutes(
   }
   post("/reopen") {
     gatewayCall {
-      lifecycle.reopen(id(), call.loggedIn.user.name)
+      lifecycle.reopen(id(), call.actor)
       call.respond(HttpStatusCode.NoContent)
     }
   }
@@ -221,16 +222,26 @@ fun Route.manageRoutes(
   // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
   sse("/stream") {
     val id = call.parameters["id"].orEmpty()
-    OpenStreams.counted(call.loggedIn.user.id.toString()) { serverStream(gameServer, id) }
+    val token = call.request.cookies[SESSION_COOKIE]
+    // Ends once the login does, or the right to manage the session (as RequireSessionRole asks it for a call)
+    val stillAllowed: suspend () -> Boolean = {
+      token?.let { logins.userOf(it) }?.let { logins.roleIn(it, id) == SessionRole.MANAGER || logins.administratorProblem(it) == null } == true
+    }
+    OpenStreams.counted(call.loggedIn.user.id.toString()) { serverStream(gameServer, id, stillAllowed) }
   }
 }
 
 /** A session's game server as the panel follows it: its state whenever it changes, and its new log lines. */
-private suspend fun ServerSSESession.serverStream(gameServer: GameServerClient, id: String) {
+private suspend fun ServerSSESession.serverStream(gameServer: GameServerClient, id: String, stillAllowed: suspend () -> Boolean = { true }) {
   var since = 0L
   var lastState: GameServerState? = null
   var reachable = true
+  var unchecked = 0.milliseconds
   while (true) {
+    if (unchecked >= LOGIN_CHECK) {
+      if (!stillAllowed()) return
+      unchecked = 0.milliseconds
+    }
     try {
       val state = gameServer.state(id)
       if (state != lastState || !reachable) {
@@ -250,6 +261,7 @@ private suspend fun ServerSSESession.serverStream(gameServer: GameServerClient, 
       reachable = false
     }
     delay(LOG_POLL)
+    unchecked += LOG_POLL
   }
 }
 

@@ -25,10 +25,12 @@ x-build: &build
     # Randogeddon Bridge's version: the project's (deploy.sh sets it)
     BRIDGE_VERSION: ${BRIDGE_VERSION:-dev}
 
+# The tracker's database login: its own role once TRACKER_DB_USER and TRACKER_DB_PASSWORD are set (database-roles
+# makes it); until then the database's superuser
 x-database: &database
   DB_URL: jdbc:postgresql://postgres:5432/randogeddon
-  DB_USER: randogeddon
-  DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  DB_USER: ${TRACKER_DB_USER:-randogeddon}
+  DB_PASSWORD: ${TRACKER_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
 
 # Between tracker and gateway (the admin panel's control of the game servers)
 x-internal-token: &internal-token ${INTERNAL_TOKEN:?set INTERNAL_TOKEN in .env}
@@ -49,6 +51,36 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # The tracker's own database role, made (or brought back to its rights) by the database's superuser before the
+  # tracker starts: the tracker owns the tables (it migrates them) and may make roles (the gateway's), but it is no
+  # superuser, which could run programs in the database's container. So the superuser's password stays with this
+  # one-off service and the dumps. Without TRACKER_DB_PASSWORD it does nothing
+  database-roles:
+    image: postgres:18-alpine
+    restart: "no"
+    user: postgres
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: randogeddon
+      PGUSER: randogeddon
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      TRACKER_DB_USER: ${TRACKER_DB_USER:-randogeddon_tracker}
+      TRACKER_DB_PASSWORD: ${TRACKER_DB_PASSWORD:-}
+      GATEWAY_DB_USER: ${GATEWAY_DB_USER:-randogeddon_gateway}
+    configs:
+      - source: database_roles
+        target: /database-roles.sql
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        if [ -z "$$TRACKER_DB_PASSWORD" ]; then echo "No TRACKER_DB_PASSWORD: the tracker uses the database's superuser"; exit 0; fi
+        psql -X -q -v ON_ERROR_STOP=1 -f /database-roles.sql && echo "The tracker's database role $$TRACKER_DB_USER has its rights"
 
   gateway:
     # Locally as built; on the server from the registry (GATEWAY_IMAGE, GATEWAY_TAG set by scripts/deploy.sh)
@@ -99,6 +131,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      database-roles:
+        condition: service_completed_successfully
       gateway:
         condition: service_started
     environment:
@@ -147,6 +181,38 @@ services:
 volumes:
   tracker-state:
   postgres-data:
+
+configs:
+  # What database-roles runs (psql, as the superuser). Every statement is made from the names with format(), so a
+  # name or a password is never part of the script's text
+  database_roles:
+    content: |
+      \getenv tracker TRACKER_DB_USER
+      \getenv password TRACKER_DB_PASSWORD
+      \getenv gateway GATEWAY_DB_USER
+      SELECT :'tracker' = current_user AS same \gset
+      \if :same
+        \echo TRACKER_DB_USER is the superuser itself: nothing to do
+        \quit
+      \endif
+      SELECT format('CREATE ROLE %I', :'tracker') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'tracker') \gexec
+      SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', :'tracker', :'password') \gexec
+      -- Everything of the schema is the tracker's (it migrates it); what a table owns (its sequences) goes with it
+      SELECT format('ALTER SCHEMA public OWNER TO %I', :'tracker') \gexec
+      SELECT format('ALTER TABLE public.%I OWNER TO %I', c.relname, :'tracker') FROM pg_class c
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p', 'v', 'm') AND c.relowner <> :'tracker'::regrole \gexec
+      SELECT format('ALTER SEQUENCE public.%I OWNER TO %I', c.relname, :'tracker') FROM pg_class c
+        WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'S' AND c.relowner <> :'tracker'::regrole
+          AND NOT EXISTS (SELECT FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype IN ('a', 'i')) \gexec
+      SELECT format('ALTER TYPE public.%I OWNER TO %I', t.typname, :'tracker') FROM pg_type t
+        WHERE t.typnamespace = 'public'::regnamespace AND t.typtype IN ('e', 'd') AND t.typowner <> :'tracker'::regrole \gexec
+      SELECT format('ALTER ROUTINE %s OWNER TO %I', p.oid::regprocedure, :'tracker') FROM pg_proc p
+        WHERE p.pronamespace = 'public'::regnamespace AND p.proowner <> :'tracker'::regrole \gexec
+      -- The gateway's role, if the superuser made it before: no more than a login, and the tracker's to change from now on
+      SELECT format('ALTER ROLE %I NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', :'gateway')
+        WHERE :'gateway' <> :'tracker' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
+      SELECT format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET FALSE', :'gateway', :'tracker')
+        WHERE :'gateway' <> :'tracker' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
 
 secrets:
   # Gradle init script with the token for pkg.example.org (entry `example`); only needed when the images are built
