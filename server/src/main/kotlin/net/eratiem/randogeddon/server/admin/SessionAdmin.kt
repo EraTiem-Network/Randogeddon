@@ -1,26 +1,30 @@
 package net.eratiem.randogeddon.server.admin
 
-import net.eratiem.randogeddon.server.config.toApiError
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.english
-import net.eratiem.randogeddon.shared.SessionRole
-import net.eratiem.randogeddon.shared.NewSessionView
-import net.eratiem.randogeddon.server.config.sessionsPerUser
-import net.eratiem.randogeddon.database.User
-import net.eratiem.randogeddon.database.SessionRoleStore
-import net.eratiem.randogeddon.database.AppSettingsStore
 import io.ktor.http.HttpStatusCode
+import java.lang.invoke.MethodHandles
+import java.security.SecureRandom
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
+import kotlin.random.asKotlinRandom
+import kotlin.time.Duration.Companion.hours
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
+import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.account.PasswordGenerator
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.config.english
+import net.eratiem.randogeddon.server.config.sessionsPerUser
+import net.eratiem.randogeddon.server.config.toApiError
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -36,23 +40,21 @@ import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
-import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
-import net.eratiem.randogeddon.shared.UserRef
+import net.eratiem.randogeddon.shared.NewSessionView
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
 import org.koin.core.annotation.Single
-import java.lang.invoke.MethodHandles
-import java.security.SecureRandom
-import java.time.Instant
-import kotlin.time.Duration.Companion.hours
-import kotlin.random.Random
-import kotlin.random.asKotlinRandom
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
@@ -197,8 +199,23 @@ class SessionAdmin(
     })
   }
 
-  /** A new session of [creator], who becomes its Session-Manager. */
+  /** Who creates a session right now (its seed generates for minutes); each one at a time. */
+  private val creating = ConcurrentHashMap.newKeySet<Uuid>()
+
+  /**
+   * A new session of [creator], who becomes its Session-Manager. One at a time each: the limits (theirs, and the game
+   * servers') are checked before the seed generates, and the session only counts once it has one.
+   */
   suspend fun create(request: CreateSessionRequest, creator: User): CreateSessionResult {
+    if (!creating.add(creator.id)) throw SessionProblem(HttpStatusCode.Conflict, Problem.CREATING_ALREADY)
+    try {
+      return createReserved(request, creator)
+    } finally {
+      creating.remove(creator.id)
+    }
+  }
+
+  private suspend fun createReserved(request: CreateSessionRequest, creator: User): CreateSessionResult {
     val admin = creator.name
     if (!creator.administrator) {
       val limit = sessionsPerUser(settings)
@@ -215,7 +232,8 @@ class SessionAdmin(
     SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
     if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
     val servers = gameServer.sessions()
-    if (servers.sessions.count { it.port != null } >= servers.capacity) {
+    // The sessions others are creating right now will take a game server each too
+    if (servers.sessions.count { it.port != null } + creating.size - 1 >= servers.capacity) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVERS_IN_USE, "capacity" to servers.capacity)
     }
     val inspected = inspect(InspectRequest(request.yamls, request.apVersion))

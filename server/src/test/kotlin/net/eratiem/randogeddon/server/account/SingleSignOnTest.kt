@@ -50,9 +50,15 @@ class SingleSignOnTest {
   }
 
   @Test
-  fun `with single sign-on only its logins and CLI links act as an Administrator`() {
+  fun `with single sign-on only a login through it acts as an Administrator`() {
     assertNull(ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.OIDC), "Authentik"))
-    assertNull(ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.LINK), "Authentik"))
+    // Not a CLI link, a bridge key or a password (two-factor or not)
+    for (method in listOf(LoginMethods.LINK, LoginMethods.BRIDGE)) {
+      assertEquals(
+        Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to "Authentik"),
+        ssoAdministratorProblem(ada.copy(loginMethod = method), "Authentik"), method,
+      )
+    }
     assertEquals(
       Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to "Authentik"),
       ssoAdministratorProblem(ada.copy(loginMethod = LoginMethods.PASSWORD, twoFactor = true), "Authentik"),

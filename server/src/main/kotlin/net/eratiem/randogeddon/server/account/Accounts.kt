@@ -1,38 +1,50 @@
 package net.eratiem.randogeddon.server.account
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
+import java.lang.invoke.MethodHandles
+import java.time.Instant
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
-import net.eratiem.randogeddon.shared.UserNames
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.UserNames
 import org.koin.core.annotation.Single
-import java.lang.invoke.MethodHandles
-import java.time.Instant
-import kotlin.uuid.Uuid
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /** How long a login lasts; logging in again starts a new one. */
 val LOGIN_DURATION = 30.days
+
+/**
+ * How long a login through the provider (or a CLI link) lasts: an Administrator's. Their place in the provider's
+ * group is only asked at a login, so it is asked again each day (one click while the provider's session lasts);
+ * leaving the group, or the provider, shows within a day.
+ */
+val SSO_LOGIN_DURATION = 1.days
+
+/** How long a login made by [method] lasts (a CLI link's as short as the provider's: it stands in for a password). */
+fun loginDuration(method: String): Duration =
+  if (method == LoginMethods.OIDC || method == LoginMethods.LINK) SSO_LOGIN_DURATION else LOGIN_DURATION
 
 /**
  * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
@@ -58,17 +70,20 @@ interface LoginCheck {
   }
 }
 
-/** With single sign-on through [provider]: only a login through it (or a CLI link) acts as an Administrator. */
+/**
+ * With single sign-on through [provider]: only a login through it acts as an Administrator. No password, no CLI link:
+ * who is an Administrator, and with which second factor, is the provider's to say, at every login.
+ */
 internal fun ssoAdministratorProblem(user: User, provider: String): Refusal? = when {
   !user.administrator -> Refusal(Problem.ONLY_ADMINISTRATORS)
-  user.loginMethod == LoginMethods.OIDC || user.loginMethod == LoginMethods.LINK -> null
+  user.loginMethod == LoginMethods.OIDC -> null
   else -> Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to provider)
 }
 
 /**
  * Logging in and out, and which sessions the logged-in users are part of. With single sign-on configured
- * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider (or a CLI link), and
- * not with their password.
+ * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider, and can't log in
+ * with their password.
  */
 @Single
 class LoginService(
@@ -107,7 +122,7 @@ class LoginService(
   suspend fun start(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null): String {
     logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
-    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()), method = method, providerSession = providerSession)
+    logins.create(tokenHash(token), user.id, Instant.now().plus(loginDuration(method).toJavaDuration()), method = method, providerSession = providerSession)
     return token
   }
 

@@ -64,6 +64,7 @@ class AccountService(
   private val mailer: Mailer,
   private val sessions: LiveSessions,
   private val config: TrackerConfig,
+  private val mailLimits: MailLimits,
 ) {
   /**
    * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
@@ -82,6 +83,7 @@ class AccountService(
     }
     val suggested = suggestedName?.trim()?.takeIf { it.isNotEmpty() }
     suggested?.let { name -> UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
+    mailLimits.count(by)
     val account = users.invite(address)
     logger.info("{} invites {}", by, address)
     sendInvitation(account.id, address, suggested, language)
@@ -230,6 +232,7 @@ class AccountService(
       throw AccountProblem(HttpStatusCode.BadRequest, Problem.SAME_ADDRESS)
     }
     users.accountByEmail(address)?.let { throw AccountProblem(HttpStatusCode.Conflict, Problem.ADDRESS_OTHER_ACCOUNT, "address" to address) }
+    mailLimits.count(user.name)
     val token = newToken()
     emailChanges.create(tokenHash(token), user.id, address, Instant.now().plus(EMAIL_CONFIRMATION_VALID.toJavaDuration()))
     val link = "${config.publicUrl}/#/email/$token"
