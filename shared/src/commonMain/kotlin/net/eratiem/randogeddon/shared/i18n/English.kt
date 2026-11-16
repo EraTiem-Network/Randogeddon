@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.shared.i18n
 
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeGroup
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.SessionStatus
 
@@ -161,13 +162,33 @@ object English : Texts {
       Theme.FOREST -> "Forest"
       Theme.EMBER -> "Ember"
       Theme.CONTRAST -> "High contrast"
+      Theme.NES -> "NES"
+      Theme.SNES -> "SNES"
       Theme.N64 -> "N64"
       Theme.GAMECUBE -> "GameCube"
       Theme.WII -> "Wii"
       Theme.WIIU -> "Wii U"
       Theme.SWITCH -> "Switch"
       Theme.SWITCH2 -> "Switch 2"
+      Theme.PS1 -> "PlayStation"
+      Theme.PS2 -> "PlayStation 2"
+      Theme.PS3 -> "PlayStation 3"
+      Theme.PS4 -> "PlayStation 4"
+      Theme.PS5 -> "PlayStation 5"
+      Theme.XBOX -> "Xbox"
+      Theme.XBOX360 -> "Xbox 360"
+      Theme.XBOX_SERIES -> "Xbox Series X|S"
+      Theme.STEAMOS -> "SteamOS"
     }
+    override fun themeGroup(group: ThemeGroup) = when (group) {
+      ThemeGroup.OWN -> "Randogeddon's own"
+      ThemeGroup.NINTENDO -> "Inspired by Nintendo's consoles"
+      ThemeGroup.PLAYSTATION -> "Inspired by the PlayStation consoles"
+      ThemeGroup.STEAM -> "Inspired by SteamOS"
+      ThemeGroup.XBOX -> "Inspired by the Xbox consoles"
+    }
+    override val themesNotice = "The console and SteamOS themes are only inspired by those systems' colours. Their names are " +
+      "trademarks of their owners; Randogeddon is not affiliated with or endorsed by Nintendo, Sony, Microsoft or Valve."
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Light"
       ThemeMode.DARK -> "Dark"
