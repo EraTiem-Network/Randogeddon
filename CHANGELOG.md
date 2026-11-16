@@ -7,6 +7,20 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 15: More Polish
+
+### 0.15.1: Time out, suspend or delete an account
+- **Administrators keep an account out** (its panel under *Users*): *Time out* for 1 hour, 1 day, 7 days or 30 days,
+  or *Suspend* until taken back, with an optional reason. The account's logins end at once (bridge keys too), a login
+  is refused after the right password with until when and why (`ACCOUNT_TIMED_OUT`, `ACCOUNT_SUSPENDED`), and a mail
+  tells them. *Let in again* ends it early. Never an Administrator's account, so never one's own.
+- **Delete account** there too (asks once more): as an account deletes itself, told by mail; an invitation is taken
+  back.
+- **Their sessions go on.** A running session with a Session-Manager who is kept out (or gone) tells its people on
+  the dashboard to turn to an Administrator (`Summary.managerUnavailable`).
+- `POST` and `DELETE /api/admin/users/{id}/block`, `POST /api/admin/users/{id}/delete`; migration V20
+  (`users.blocked_at`, `blocked_until`, `blocked_reason`, `blocked_by`).
+
 ## Phase 14: More Themes
 More to pick from under *Your account*, *Appearance*: 26 themes in groups (Randogeddon's own, and the ones inspired by
 Nintendo's, the PlayStation and the Xbox consoles and by SteamOS, with a trademark notice), each light and dark, and a
