@@ -598,12 +598,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 *More themes to pick from, grouped, and clear that the console-inspired ones are only inspired.*
 
-- [ ] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
+- [x] SteamOS as a theme too (asked for later), in a group of its own, named in the trademark notice (Valve)
+- [x] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
       Xbox Series X|S
 - [ ] More of Randogeddon's own themes (not inspired by anything)
-- [ ] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
+- [x] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
       cards under a small heading per group)
-- [ ] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
+- [x] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
       consoles' colours; the names are their owners' trademarks, and Randogeddon isn't affiliated with or endorsed by
       Nintendo, Sony or Microsoft
 - [ ] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the

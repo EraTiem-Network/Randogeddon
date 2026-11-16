@@ -7,6 +7,18 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 14: More Themes
+
+### 0.14.1: Console themes, in groups
+- **Eleven more themes inspired by consoles and systems**, each light and dark: NES, SNES, PlayStation, PlayStation 2
+  to 5, Xbox, Xbox 360, Xbox Series X|S and SteamOS (their colours only).
+- **The themes in groups** under *Your account*, *Appearance*: Randogeddon's own, and the ones inspired by Nintendo's,
+  the PlayStation and the Xbox consoles and by SteamOS, each under a small heading (`ThemeGroup`).
+- **A trademark notice** under the cards and in the README: these themes are only inspired by the systems'
+  colours, the names are their owners' trademarks, no affiliation with Nintendo, Sony, Microsoft or Valve.
+- **The accent is readable as text:** `ThemesTest` now also asks that a theme's accent shows on the panel (it is the
+  small buttons' text); Ember's light accent was too pale for that and is a darker orange now.
+
 ## Phase 13: Polish and Bug Fixes
 Everything tested by hand and what came up fixed (the pages, the people of a session, the bridge, the logins), then
 two security scans and their findings: the gateway refuses by default and limits what a client may send, limits and
