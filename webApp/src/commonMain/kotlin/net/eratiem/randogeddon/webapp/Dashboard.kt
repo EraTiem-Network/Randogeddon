@@ -240,6 +240,11 @@ private fun TrackerApp() {
     if (user.theme == null && user.themeMode == null) saveTheme(Themes.theme, Themes.mode)
     else Themes.apply(user.theme, user.themeMode)
   }
+  // The account's font choice (nothing chosen: the theme's)
+  LaunchedEffect(me?.name, me?.font, me?.fontEverywhere) {
+    val user = me ?: return@LaunchedEffect
+    Themes.applyFont(user.font, user.fontEverywhere)
+  }
   // Another session: its own slots and people
   LaunchedEffect(selected) {
     detailSlot = null
@@ -455,7 +460,8 @@ internal fun Headline() {
       "RANDOGEDDON",
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
-        fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
+        fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
+        fontFamily = LocalFonts.current.heading,
         shadow = Shadow(p.brandEnd.copy(alpha = if (p.dark) 0.55f else 0.3f), Offset(0f, 4f), blurRadius = 18f),
       ),
     )
