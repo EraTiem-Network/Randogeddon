@@ -15,6 +15,7 @@ import io.ktor.server.routing.route
 import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
@@ -40,6 +41,22 @@ private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
 /** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
 private val LOGIN_CHECK = 30.seconds
+
+/** The live streams open per account (each polls for as long as it is open): only so many at once. */
+object OpenStreams {
+  const val MAX = 20
+  private val open = ConcurrentHashMap<String, Int>()
+
+  /** Runs [block] as one of [account]'s streams; not at all if they have [MAX] open already. */
+  suspend fun <T> counted(account: String, block: suspend () -> T): T? {
+    val mine = open.merge(account, 1, Int::plus) ?: 1
+    try {
+      return if (mine > MAX) null else block()
+    } finally {
+      open.compute(account) { _, n -> (n ?: 1).minus(1).takeIf { it > 0 } }
+    }
+  }
+}
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
@@ -107,7 +124,9 @@ fun Route.sessionRoutes(
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
       val token = call.request.cookies[SESSION_COOKIE]
       // Ends once its login does: the page's next request then finds it logged out
-      follow(live, stillLoggedIn = { token != null && logins.userOf(token) != null }) { live.json() }
+      OpenStreams.counted(call.loggedIn.user.id.toString()) {
+        follow(live, stillLoggedIn = { token != null && logins.userOf(token) != null }) { live.json() }
+      }
     }
   }
 }

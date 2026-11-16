@@ -48,6 +48,16 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
         -ldflags "-s -w $flags -X main.version=$BRIDGE_VERSION" -o "/out/$name" . || exit 1; \
     done
+# The builds' checksums, and their signature if this build has the key (the secret bridge_signing_key: an SSH key
+# without a passphrase; bridge/signing-key.pub is its public half, which people check the downloads against). The
+# key is only there for this step, never in a layer.
+RUN --mount=type=secret,id=bridge_signing_key,required=false \
+    cd /out && sha256sum randogeddon-bridge-* > SHA256SUMS && cp /src/signing-key.pub signing-key.pub \
+ && if [ -s /run/secrets/bridge_signing_key ]; then \
+      ssh-keygen -Y sign -q -f /run/secrets/bridge_signing_key -n randogeddon-bridge SHA256SUMS \
+      && ssh-keygen -Y verify -q -f signing-key.pub -I bridge@randogeddon -n randogeddon-bridge -s SHA256SUMS.sig < SHA256SUMS \
+      && echo "The builds' checksums are signed"; \
+    else echo "No bridge_signing_key: the builds' checksums aren't signed"; fi
 
 # The executables link only glibc (--static-nolibc). The build stage (Oracle Linux 9, glibc 2.34) is older than
 # Debian 12 (glibc 2.36), and glibc is backwards compatible.
@@ -79,6 +89,8 @@ CMD ["/app/randogeddon"]
 # native gateway runs on it too.
 FROM python:3.12-slim-bookworm AS archipelago
 ARG AP_VERSION=0.6.8
+# The commit the release's tag stands for: a tag can be moved, the commit can't (empty: not checked)
+ARG AP_COMMIT=54803be064fc7e80c4628777ed0b46a9390f255f
 ENV PYTHONUNBUFFERED=1 \
     AP_HOME=/opt/archipelago/${AP_VERSION}
 # libtk8.6: Python's tkinter needs it, and APWorlds import it for their client windows (only importing it, which needs
@@ -89,12 +101,17 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR ${AP_HOME}
 RUN git clone --depth 1 --branch "${AP_VERSION}" https://github.com/ArchipelagoMW/Archipelago.git . \
+ && { [ -z "${AP_COMMIT}" ] || [ "$(git rev-parse HEAD)" = "${AP_COMMIT}" ] \
+      || { echo "Archipelago ${AP_VERSION} is $(git rev-parse HEAD), not ${AP_COMMIT}: set AP_COMMIT with AP_VERSION" >&2; exit 1; }; } \
  && rm -rf .git
 # Core requirements + compiled speedups (otherwise AP tries to build them at runtime)
 RUN pip install --no-cache-dir -r requirements.txt cython "setuptools>=75,<81" \
  && cythonize -b -i _speedups.pyx
 # The requirements of every bundled world, so generation works for all games
 RUN python ModuleUpdate.py -y
+# The newest certificate bundle, whatever the requirements pulled in (scripts/audit.sh: an old one has known flaws)
+# hadolint ignore=DL3013
+RUN pip install --no-cache-dir --upgrade certifi
 # Never try to pip-install anything at runtime
 ENV SKIP_REQUIREMENTS_UPDATE=true
 

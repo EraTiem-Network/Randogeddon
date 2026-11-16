@@ -381,7 +381,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       link), invitations and sign-up, sessions from creation to deletion, cheats and support, watchers and share links,
       downloads, the mails, the bridge
     - English and German side by side are checked after Phase 14 (its themes and fonts change the pages once more)
-- [ ] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
+- [x] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
       gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
       or noted with why not
     - Scanned on 2026-11-16 at 0.13.14: 2 High, 9 Medium and 17 Low findings, all fixed or noted with why not

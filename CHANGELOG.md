@@ -9,6 +9,27 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.17: The scan's Low findings
+- **The page runs only its own scripts:** index.html's inline scripts are `theme.js` and `page.js`, and the policy is
+  `default-src 'self'` with `script-src 'self' 'wasm-unsafe-eval'` (tried in a headless browser: nothing blocked).
+- **No passwords in a session's log:** the gateway keeps the game server's lines without them (a refused `Connect`,
+  `/option …password`, `/options`). The host's `!admin` password goes in over the console, not on the command line.
+  Console lines lose every control character.
+- **Recovery codes** are stored as a keyed hash (codes from before work until used or replaced).
+- **Per account:** at most 10 bridge keys, 20 logins of a kind (a new one ends the oldest), 20 open live streams.
+- **A new e-mail address:** the address so far is told by mail. The provider's callback shows only our own words.
+- **Randogeddon Bridge:** the key isn't shown while it is typed (`login < keyfile` instead of `echo`), and the
+  downloads have their checksums beside them (`/downloads/bridge/SHA256SUMS`).
+- **The bridge's builds are signed, the free way:** their `SHA256SUMS` is signed at the build with an SSH key
+  (`SHA256SUMS.sig`, checked with `ssh-keygen -Y verify` against `bridge/signing-key.pub`); the page offers
+  *Checksums*, *Signature* and *Key*. The systems' own warnings stay (that would take bought certificates).
+- **Containers:** `no-new-privileges` for all, no capabilities and limits for the tracker and the gateway.
+- **On the servers:** only the host reaches the VMs' published ports (`infra/ports-firewall.sh`, on the three
+  VMs); Traefik writes an access log, checks its backends' certificates (but the three with their own), and its
+  dashboard is behind Authentik's login (`infra/auth/setup.py`: the application *Traefik*).
+- **Build:** Archipelago is checked against its tag's commit (`AP_COMMIT`), the gateway image gets the newest
+  `certifi`, and `scripts/audit.sh` looks the dependencies up for known flaws (Go and JVM clean at its first run).
+
 ### 0.13.16: The scan's Medium findings
 - **The gateway's Python reaches less.** Archipelago's processes (Generate.py, the game servers, the APWorlds) get only
   what Python needs of the gateway's environment, and the gateway has a database role of its own

@@ -27,8 +27,34 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.GameServer")
 
-/** One start of MultiServer: the command line, extra environment variables and the directory to run in. */
-data class Launch(val command: List<String>, val environment: Map<String, String> = emptyMap(), val workDir: Path? = null)
+/**
+ * One start of MultiServer: the command line, extra environment variables and the directory to run in. [firstLines]:
+ * console lines it gets right after the start, not shown in the log (what must not stand on the command line, which
+ * every process of the container can read).
+ */
+data class Launch(
+  val command: List<String>,
+  val environment: Map<String, String> = emptyMap(),
+  val workDir: Path? = null,
+  val firstLines: List<String> = emptyList(),
+)
+
+private val PASSWORD_FIELD = Regex("""(['"]password['"]\s*:\s*)(['"])(.*?)\2""")
+private val PASSWORD_OPTION = Regex("""((?:Set option|/option|Option)\s+(?:server_)?password(?:\s+(?:to|is set to))?\s+).+""")
+
+/**
+ * [line] of the game server's log without passwords: MultiServer logs a refused `Connect` whole, with the slot's
+ * password in it, answers `/option password …` with the new one and lists both passwords for `/options`. The log is
+ * read in the panel by the session's managers, who don't get the players' slot passwords otherwise, nor the host's
+ * password for `!admin` (one for every session).
+ */
+internal fun withoutPasswords(line: String): String =
+  PASSWORD_OPTION.replace(PASSWORD_FIELD.replace(line) { "${it.groupValues[1]}${it.groupValues[2]}***${it.groupValues[2]}" }) {
+    "${it.groupValues[1]}***"
+  }
+
+/** [line] as one console line: MultiServer's console takes every line break (`\r` too) as the end of a command. */
+internal fun oneLine(line: String): String = line.map { if (it.isISOControl()) ' ' else it }.joinToString("")
 
 /**
  * How to run MultiServer: [prepare] before each start (writes room.json), then [launch] for the seed file (which may
@@ -120,7 +146,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     val writer = stdin ?: return@withLock false
     note("> $line")
     withContext(Dispatchers.IO) {
-      writer.write(line.replace('\n', ' '))
+      writer.write(oneLine(line))
       writer.newLine()
       writer.flush()
     }
@@ -180,6 +206,11 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
         .start()
         .also { process = it; stdin = it.outputStream.bufferedWriter() }
     }
+    // What the server is told before anything else (it reads them once it is up); not noted in the log
+    if (launch.firstLines.isNotEmpty()) {
+      runCatching { stdin?.apply { launch.firstLines.forEach { write(oneLine(it)); newLine() }; flush() } }
+        .onFailure { note("Could not pass the first console lines: ${it.message}") }
+    }
     proc.inputStream.bufferedReader().useLines { lines -> lines.forEach(::output) }
     val code = proc.waitFor()
     process = null
@@ -214,14 +245,16 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       state = state.copy(status = GameServerStatus.RUNNING)
       state.seed?.let { runCatching { config.onRunning(it) } }
     }
-    log.add(line)
-    logger.info("[ap] {}", line)
+    val shown = withoutPasswords(line)
+    log.add(shown)
+    logger.info("[ap] {}", shown)
   }
 
   /** A line about the server, from the gateway. */
   private fun note(text: String) {
-    log.add("[gateway] $text")
-    logger.info(text)
+    val shown = withoutPasswords(text)
+    log.add("[gateway] $shown")
+    logger.info(shown)
   }
 }
 

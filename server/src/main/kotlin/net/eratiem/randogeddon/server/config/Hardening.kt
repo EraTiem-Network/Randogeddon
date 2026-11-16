@@ -16,11 +16,14 @@ class SecurityHeadersConfig {
 }
 
 /**
- * What a browser may do with the page, for every answer: nothing frames it, nothing is posted elsewhere, no plugins and
- * no `<base>` (the scripts' own sources stay open: index.html has inline ones). No guessing of content types, no
- * referrer to other sites.
+ * What a browser may do with the page, for every answer. Everything comes from the page's own address: scripts only
+ * as its files (none inline, no `eval`; the web app is WebAssembly, hence `wasm-unsafe-eval`), requests only to it.
+ * Styles may be inline (index.html's own, and what the scripts set). Nothing frames it, nothing is posted elsewhere, no
+ * plugins and no `<base>`.
  */
-const val PAGE_POLICY = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+const val PAGE_POLICY = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; " +
+  "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
 /**
  * The headers every answer carries: [PAGE_POLICY], HTTPS only for a year (with [SecurityHeadersConfig.secure]), and

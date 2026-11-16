@@ -1,13 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
-import net.eratiem.randogeddon.server.account.LoginCheck
-import net.eratiem.randogeddon.shared.SessionRole
-import net.eratiem.randogeddon.shared.AppSettings
-import net.eratiem.randogeddon.server.session.SessionList
-import net.eratiem.randogeddon.database.AppSettingsStore
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -18,32 +10,41 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
+import java.lang.invoke.MethodHandles
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
+import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
-import net.eratiem.randogeddon.shared.RandogeddonVersion
-import net.eratiem.randogeddon.shared.Versions
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.RandogeddonVersion
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionIds
-import java.lang.invoke.MethodHandles
-import kotlin.time.Duration.Companion.milliseconds
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.Versions
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 private val LOG_POLL = 750.milliseconds
@@ -220,30 +221,35 @@ fun Route.manageRoutes(
   // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
   sse("/stream") {
     val id = call.parameters["id"].orEmpty()
-    var since = 0L
-    var lastState: GameServerState? = null
-    var reachable = true
-    while (true) {
-      try {
-        val state = gameServer.state(id)
-        if (state != lastState || !reachable) {
-          send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
-          lastState = state
-          reachable = true
-        }
-        val lines = gameServer.log(id, since)
-        // The gateway restarted and counts from 1 again
-        if (lines.last < since) since = 0
-        if (lines.lines.isNotEmpty()) {
-          send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
-        }
-        since = lines.last
-      } catch (e: GameServerUnavailable) {
-        if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
-        reachable = false
+    OpenStreams.counted(call.loggedIn.user.id.toString()) { serverStream(gameServer, id) }
+  }
+}
+
+/** A session's game server as the panel follows it: its state whenever it changes, and its new log lines. */
+private suspend fun ServerSSESession.serverStream(gameServer: GameServerClient, id: String) {
+  var since = 0L
+  var lastState: GameServerState? = null
+  var reachable = true
+  while (true) {
+    try {
+      val state = gameServer.state(id)
+      if (state != lastState || !reachable) {
+        send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
+        lastState = state
+        reachable = true
       }
-      delay(LOG_POLL)
+      val lines = gameServer.log(id, since)
+      // The gateway restarted and counts from 1 again
+      if (lines.last < since) since = 0
+      if (lines.lines.isNotEmpty()) {
+        send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
+      }
+      since = lines.last
+    } catch (e: GameServerUnavailable) {
+      if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
+      reachable = false
     }
+    delay(LOG_POLL)
   }
 }
 

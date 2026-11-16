@@ -182,6 +182,9 @@ object Mails {
   fun emailConfirmation(to: String, name: String, link: String, validDays: Int, texts: MailTexts) =
     Mail(to, texts.confirmationSubject, texts.confirmation(name, link, validDays))
 
+  fun addressChange(to: String, name: String, newAddress: String, texts: MailTexts) =
+    Mail(to, texts.addressChangeSubject, texts.addressChange(name, newAddress))
+
   fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String, texts: MailTexts) =
     Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink))
 }

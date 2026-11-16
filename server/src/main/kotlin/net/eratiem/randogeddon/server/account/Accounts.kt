@@ -42,6 +42,9 @@ val LOGIN_DURATION = 30.days
  */
 val SSO_LOGIN_DURATION = 1.days
 
+/** The most logins of one kind (password, the provider, …) an account has at once; a new one ends the oldest. */
+const val MAX_LOGINS = 20
+
 /** How long a login made by [method] lasts (a CLI link's as short as the provider's: it stands in for a password). */
 fun loginDuration(method: String): Duration =
   if (method == LoginMethods.OIDC || method == LoginMethods.LINK) SSO_LOGIN_DURATION else LOGIN_DURATION
@@ -123,6 +126,8 @@ class LoginService(
     logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
     logins.create(tokenHash(token), user.id, Instant.now().plus(loginDuration(method).toJavaDuration()), method = method, providerSession = providerSession)
+    // Only so many logins of a kind at once: the oldest give way (a browser logged in long ago and never out)
+    logins.keepNewest(user.id, method, MAX_LOGINS)
     return token
   }
 

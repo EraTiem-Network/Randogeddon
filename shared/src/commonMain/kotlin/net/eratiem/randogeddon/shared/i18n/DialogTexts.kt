@@ -66,6 +66,11 @@ interface ConnectionTexts {
   val bridge: String
   /** The heading of the bridge's downloads, of [version]. */
   fun downloads(version: String): String
+  /** The button for the builds' checksums (the file `SHA256SUMS`). */
+  val checksums: String
+  /** The buttons for the checksums' signature and the key it is checked with. */
+  val signature: String
+  val signingKey: String
   /** The bridge's ⓘ, in parts: what it is, what it does, how to use it, then starting it on each system. */
   val bridgeWhatTitle: String
   val bridgeWhat: String
@@ -177,6 +182,9 @@ internal object EnglishConnection : ConnectionTexts {
     "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
   override val bridge = "Randogeddon Bridge"
   override fun downloads(version: String) = "Downloads · $version"
+  override val checksums = "Checksums"
+  override val signature = "Signature"
+  override val signingKey = "Key"
   override val bridgeWhatTitle = "What it is"
   override val bridgeWhat = "A small app for your PC, for games whose client can't connect securely (TLS). Randogeddon " +
     "only lets secure connections in."
@@ -228,6 +236,9 @@ internal object GermanConnection : ConnectionTexts {
     "die Archipelago-Anleitung des Spiels sagt."
   override val bridge = "Randogeddon Bridge"
   override fun downloads(version: String) = "Downloads · $version"
+  override val checksums = "Prüfsummen"
+  override val signature = "Signatur"
+  override val signingKey = "Schlüssel"
   override val bridgeWhatTitle = "Was sie ist"
   override val bridgeWhat = "Eine kleine App für deinen PC, für Spiele, deren Client sich nicht sicher (TLS) verbinden " +
     "kann. Randogeddon lässt nur sichere Verbindungen herein."

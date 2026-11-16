@@ -64,6 +64,9 @@ internal fun compareVersions(a: String, b: String): Int {
   return 0
 }
 
+/** A word for MultiServer's console, which splits its commands like a shell: in double quotes, `\` and `"` escaped. */
+internal fun consoleWord(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 /**
  * What Archipelago's processes keep of the gateway's environment: what Python and the release need, nothing else (the
  * last ones are what a process needs on Windows, where the tests run).
@@ -111,10 +114,11 @@ class Launcher(
       addAll(listOf("--release_mode", options.releaseMode, "--collect_mode", options.collectMode))
       addAll(listOf("--remaining_mode", options.remainingMode, "--countdown_mode", options.countdownMode))
       addAll(listOf("--auto_shutdown", "0", "--logtime"))
-      if (adminPassword.isNotBlank()) addAll(listOf("--server_password", adminPassword))
     }
     val environment = mapOf("AP_POINT_HINTS" to options.pointHints.toString(), "AP_AUTO_HINTS" to options.autoHints.toString())
-    return Launch(command, environment, archipelago.home(version))
+    // The password for `!admin` goes in over the console, not on the command line (every process here can read that)
+    val first = if (adminPassword.isBlank()) emptyList() else listOf("/option server_password ${consoleWord(adminPassword)}")
+    return Launch(command, environment, archipelago.home(version), first)
   }
 }
 

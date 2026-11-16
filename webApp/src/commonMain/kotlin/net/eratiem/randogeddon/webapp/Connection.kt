@@ -236,6 +236,14 @@ private fun BridgePart() {
         builds.forEach { d -> SmallButton(archName(d.os, d.arch), { Platform.download("downloads/bridge/${d.file}") }) }
       }
     }
+    // To check a download: the builds' checksums, and (if this build was signed) their signature and its key
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      SmallButton(c.checksums, { Platform.download("downloads/bridge/SHA256SUMS") })
+      if (offered?.signed == true) {
+        SmallButton(c.signature, { Platform.download("downloads/bridge/SHA256SUMS.sig") })
+        SmallButton(c.signingKey, { Platform.download("downloads/bridge/signing-key.pub") })
+      }
+    }
   }
 }
 

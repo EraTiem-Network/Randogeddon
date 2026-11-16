@@ -538,6 +538,15 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
   suspend fun delete(userId: Uuid, tokenHash: String): Boolean = db.query {
     LoginSessionsTable.deleteWhere { (LoginSessionsTable.tokenHash eq tokenHash) and (LoginSessionsTable.userId eq userId) } > 0
   }
+
+  /** Ends [userId]'s oldest logins made by [method] beyond the newest [keep]. How many ended. */
+  suspend fun keepNewest(userId: Uuid, method: String, keep: Int): Int = db.query {
+    val old = LoginSessionsTable.selectAll()
+      .where { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) }
+      .orderBy(LoginSessionsTable.createdAt, SortOrder.DESC)
+      .map { it[LoginSessionsTable.tokenHash] }.drop(keep)
+    if (old.isEmpty()) 0 else LoginSessionsTable.deleteWhere { LoginSessionsTable.tokenHash inList old }
+  }
 }
 
 /** A login as a list shows it: by the hash of its token. */
