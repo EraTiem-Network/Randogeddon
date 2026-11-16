@@ -37,6 +37,8 @@ import kotlin.time.Duration.Companion.seconds
 
 private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
+/** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
+private val LOGIN_CHECK = 30.seconds
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
@@ -100,7 +102,9 @@ fun Route.sessionRoutes(
     // a release) becomes one update.
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
-      follow(live) { live.json() }
+      val token = call.request.cookies[SESSION_COOKIE]
+      // Ends once its login does: the page's next request then finds it logged out
+      follow(live, stillLoggedIn = { token != null && logins.userOf(token) != null }) { live.json() }
     }
   }
 }
@@ -126,10 +130,19 @@ internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Ar
 }
 
 /** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
-internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend () -> String) {
+internal suspend fun ServerSSESession.follow(
+  live: LiveSession,
+  stillLoggedIn: suspend () -> Boolean = { true },
+  json: suspend () -> String,
+) {
   var sentVersion = -1L
   var idle = 0.milliseconds
+  var unchecked = 0.milliseconds
   while (true) {
+    if (unchecked >= LOGIN_CHECK) {
+      if (!stillLoggedIn()) return
+      unchecked = 0.milliseconds
+    }
     // A finished session's summary no longer changes, but finishing (and reopening) changes the version
     val version = live.version()
     if (version != sentVersion) {
@@ -142,6 +155,7 @@ internal suspend fun ServerSSESession.follow(live: LiveSession, json: suspend ()
     }
     delay(POLL_INTERVAL)
     idle += POLL_INTERVAL
+    unchecked += POLL_INTERVAL
   }
 }
 
