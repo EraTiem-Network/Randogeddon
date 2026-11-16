@@ -9,6 +9,10 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 13: Polish and Bug Fixes
 
+### 0.13.14: Open points decided
+- The earlier phases' open points looked at again: the only one, which languages follow English and German, is
+  decided: those two for now, another one can come later.
+
 ### 0.13.13: An ended login shows the login form; folding the playthrough
 - A login that ends while the page is open (logged out at Authentik, elsewhere, expired) shows the login form at the
   first request that finds it so (`NOT_LOGGED_IN`, `LoginWatch`), not that request's own error in its field. While the
