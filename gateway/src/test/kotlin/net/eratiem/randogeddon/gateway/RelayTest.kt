@@ -149,10 +149,10 @@ class RelayTest {
   }
 
   @Test
-  fun `an address has only so many connections waiting for their Connect`() = gateway(Limits(waitingPerAddress = 1)) { url, client ->
+  fun `only so many connections wait for their Connect at once`() = gateway(Limits(waiting = 1)) { url, client ->
     client.webSocket(url) {
       next()
-      // A second one from here, while this one isn't in a slot
+      // A second one, while this one isn't in a slot
       client.webSocket(url) { assertEquals(CloseReason.Codes.TRY_AGAIN_LATER.code, closed()?.code) }
       send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
       assertEquals("""[{"cmd":"Connected"}]""", next())

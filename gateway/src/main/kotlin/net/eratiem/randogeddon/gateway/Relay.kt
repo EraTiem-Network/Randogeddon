@@ -37,8 +37,8 @@ fun Application.gameClientWebSockets() {
 }
 
 /**
- * One game client's connection: its place among the [connections] (few from one address, and few in all, that aren't
- * in a slot yet; none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]).
+ * One game client's connection: its place among the [connections] (only so many of everyone aren't in a slot yet;
+ * none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]).
  */
 suspend fun DefaultWebSocketServerSession.serve(
   http: HttpClient,
@@ -48,9 +48,9 @@ suspend fun DefaultWebSocketServerSession.serve(
   connections: ConnectionLimits,
 ) {
   val address = call.request.origin.remoteHost
-  val ticket = connections.enter(address)
+  val ticket = connections.enter()
   if (ticket == null) {
-    logger.info("Refused {}: too many connections", address)
+    logger.info("Refused {}: too many connections wait for their Connect", address)
     close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Too many connections: try again in a moment"))
     return
   }
