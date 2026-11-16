@@ -34,4 +34,9 @@ data class BridgeInfo(
 
 /** `GET /downloads/bridge` (no login): what the dashboard offers, for *Your connection*. */
 @Serializable
-data class BridgeDownloads(val version: String? = null, val downloads: List<BridgeDownload> = emptyList())
+data class BridgeDownloads(
+  val version: String? = null,
+  val downloads: List<BridgeDownload> = emptyList(),
+  /** The builds' checksums are signed (`SHA256SUMS.sig`, checked against `signing-key.pub`). */
+  val signed: Boolean = false,
+)
