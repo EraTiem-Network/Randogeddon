@@ -8,6 +8,26 @@ Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a Gi
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 13: Polish and Bug Fixes
+Everything tested by hand and what came up fixed (the pages, the people of a session, the bridge, the logins), then
+two security scans and their findings: the gateway refuses by default and limits what a client may send, limits and
+security headers on the tracker, Administrators only through Authentik with a second factor, signed builds of the
+bridge, hardened containers and servers. Updating: the migrations up to V17 run by themselves. In `.env`:
+`GATEWAY_DB_USER`/`GATEWAY_DB_PASSWORD` and `TRACKER_DB_USER`/`TRACKER_DB_PASSWORD` for the two database roles
+(README). Run `infra/auth/setup.py` again in Authentik (the second factor, the logout, the login's limit). On each VM
+`infra/ports-firewall.sh` with its service. For signed builds: a key on the build machine (README, *Checking a
+download*), and the signers' public keys there for the deploy.
+
+### 0.13.19: The second scan's findings on the servers; Phase 13 done
+- **Logs stay small:** every container's log is limited to 5 files of 10 MB (the three compose files).
+- **A release is deployed only from a signed tag:** `scripts/deploy.sh` checks the tag's signature first.
+- **Authentik** (`infra/auth/setup.py`, the compose file): no login from an address after 10 failed ones there, a
+  second factor for Artifact Keeper too, the worker no longer runs as root.
+- **Set on the servers:** the three VMs restarted for their new kernel and restart by themselves from now on (03:00
+  UTC, only when an update asks for it); Traefik 3.7.19; on the host fail2ban for SSH, no X11 forwarding, its own
+  Postfix on loopback only.
+- TODO: Phase 13 done.
+- By the owner: CAA records (Let's Encrypt only), and the Proxmox firewall restarted, which applied its "pending
+  changes".
 
 ### 0.13.18: A second security scan; its Medium and the tracker's findings
 - **A second scan** (the code since the first, what stays open after a right ends, ways around the limits, the
