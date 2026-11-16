@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,8 +96,17 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
   }
 }
 
-/** One step of a sphere: an item for [itemSlot], found at [location] in [locationSlot] (none for sphere 0). */
-private data class Step(val item: String, val itemSlot: String?, val location: String?, val locationSlot: String?)
+/**
+ * One step of a sphere: an item for [itemSlot], found at [location] in [locationSlot] (none for sphere 0); [checked]:
+ * that location is checked already.
+ */
+private data class Step(
+  val item: String,
+  val itemSlot: String?,
+  val location: String?,
+  val locationSlot: String?,
+  val checked: Boolean = false,
+)
 
 /** "Name (Slot)" into its parts; the slot is the last parenthesis, since names can have their own. */
 private fun named(text: String): Pair<String, String?> {
@@ -124,32 +132,63 @@ private fun step(entry: String): Step {
 private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val steps = remember(spheres) { spheres.associate { it.number to it.entries.map(::step) } }
+  val steps = remember(spheres) {
+    spheres.associate { sphere ->
+      sphere.number to sphere.entries.mapIndexed { i, entry -> step(entry).copy(checked = sphere.checked.getOrNull(i) == true) }
+    }
+  }
   val slots = remember(steps) {
     steps.values.flatten().flatMap { listOfNotNull(it.itemSlot, it.locationSlot) }.distinct().sortedBy { it.lowercase() }
   }
   // Folded at first: it is the whole way through the seed; a slot filter unfolds what concerns that slot
   var open by remember { mutableStateOf(emptySet<Int>()) }
   var slot by remember { mutableStateOf<String?>(null) }
-  fun shown(number: Int) = steps[number].orEmpty().filter { slot == null || it.itemSlot == slot || it.locationSlot == slot }
+  // The search: the steps whose item, check or slots contain it (any case); like the slot, it unfolds what it finds
+  var query by remember { mutableStateOf("") }
+  val needle = query.trim().lowercase()
+  fun matches(step: Step) = needle.isEmpty() ||
+    listOfNotNull(step.item, step.location, step.itemSlot, step.locationSlot).any { needle in it.lowercase() }
+  fun shown(number: Int) = steps[number].orEmpty()
+    .filter { (slot == null || it.itemSlot == slot || it.locationSlot == slot) && matches(it) }
+  val search: @Composable (Modifier) -> Unit = { modifier -> FilterField(query, { query = it }, t.spoiler.searchSteps, modifier) }
+  // The spheres the slot and the search leave (with a step); they unfold when filtered, fold back when not, and each
+  // folds by hand either way
+  val visibleNumbers = spheres.filter { shown(it.number).isNotEmpty() }.map { it.number }.toSet()
+  val allOpen = visibleNumbers.isNotEmpty() && open.containsAll(visibleNumbers)
+  LaunchedEffect(slot, needle) { open = if (slot != null || needle.isNotEmpty()) visibleNumbers else emptySet() }
   val controls: @Composable () -> Unit = {
     Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, slot, { slot = it })
-    SmallButton(if (open.size == spheres.size) t.spoiler.foldAll else t.spoiler.unfoldAll, {
-      open = if (open.size == spheres.size) emptySet() else spheres.map { it.number }.toSet()
+    // Follows the list: "Fold all" once every sphere shown is unfolded (by hand too), else "Unfold all"
+    SmallButton(if (allOpen) t.spoiler.foldAll else t.spoiler.unfoldAll, {
+      open = if (allOpen) open - visibleNumbers else open + visibleNumbers
     })
   }
   Section(
     t.spoiler.playthrough, subtitle = t.spoiler.playthroughSubtitle,
-    actions = { if (!narrow) controls() },
+    actions = {
+      if (!narrow) {
+        search(Modifier.width(220.dp))
+        controls()
+      }
+    },
   ) {
-    if (narrow) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
+    // A phone: the search on a line of its own, the slot and folding below it
+    if (narrow) {
+      search(Modifier.fillMaxWidth())
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
+    }
     Column(Modifier.fillMaxWidth().card(p)) {
-      val visible = spheres.filter { shown(it.number).isNotEmpty() }
-      if (visible.isEmpty()) Txt(t.spoiler.nothingFor(slot.orEmpty()), color = p.muted, modifier = Modifier.padding(16.dp))
+      val visible = spheres.filter { it.number in visibleNumbers }
+      if (visible.isEmpty()) {
+        Txt(
+          if (needle.isNotEmpty()) t.spoiler.nothingMatches(query.trim()) else t.spoiler.nothingFor(slot.orEmpty()),
+          color = p.muted, modifier = Modifier.padding(16.dp),
+        )
+      }
       visible.forEachIndexed { i, sphere ->
         if (i > 0) Divider()
         val entries = shown(sphere.number)
-        val unfolded = sphere.number in open || slot != null
+        val unfolded = sphere.number in open
         Row(
           Modifier.fillMaxWidth().hand().clickable { open = if (sphere.number in open) open - sphere.number else open + sphere.number }
             .padding(horizontal = if (narrow) 12.dp else 16.dp, vertical = 10.dp),
@@ -161,6 +200,10 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
             if (sphere.number == 0) t.spoiler.sphereZero else t.spoiler.sphere(sphere.number),
             size = 13.5.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
           )
+          // How many of its checks are done (sphere 0 has none)
+          val withLocation = entries.count { it.location != null }
+          val done = entries.count { it.checked }
+          if (withLocation > 0 && done > 0) Pill(t.spoiler.checked(done, withLocation), if (done == withLocation) p.ok else p.useful)
           Pill(t.spoiler.steps(entries.size), p.muted)
         }
         if (unfolded) {
@@ -181,6 +224,17 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
 }
 
 private val SLOT_COLUMN = 150.dp
+private val CHECKED_COLUMN = 22.dp
+
+/** A step whose location is checked already: a ✓ in the status colour (the column stays for the others). */
+@Composable
+private fun CheckedMark(checked: Boolean) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  Box(Modifier.width(CHECKED_COLUMN), contentAlignment = Alignment.CenterEnd) {
+    if (checked) Tip(t.spoiler.checkedTip) { Txt("✓", size = 13.sp, weight = FontWeight.Bold, color = p.ok) }
+  }
+}
 private val ARROW_COLUMN = 28.dp
 
 /** The table's columns: whose item, the item, then the slot and location it lies at. */
@@ -194,10 +248,11 @@ private fun StepHeader() {
     Spacer(Modifier.width(ARROW_COLUMN))
     Txt(t.spoiler.slot, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.width(SLOT_COLUMN))
     Txt(t.spoiler.check, size = 11.5.sp, color = p.muted, weight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+    Spacer(Modifier.width(CHECKED_COLUMN))
   }
 }
 
-/** Slot · Item → Slot · Location; sphere 0 has no location (it is there from the start). */
+/** Slot · Item @ Slot · Location (the item is at that check); sphere 0 has no location (it is there from the start). */
 @Composable
 private fun StepRow(step: Step, odd: Boolean) {
   val p = LocalPalette.current
@@ -208,13 +263,14 @@ private fun StepRow(step: Step, odd: Boolean) {
   ) {
     Box(Modifier.width(SLOT_COLUMN)) { step.itemSlot?.let { SlotTag(it) } }
     Txt(step.item, size = 13.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(end = 8.dp))
-    Txt(if (step.location != null) "→" else "", size = 13.sp, color = p.muted, modifier = Modifier.width(ARROW_COLUMN))
+    Txt(if (step.location != null) "@" else "", size = 13.sp, color = p.muted, modifier = Modifier.width(ARROW_COLUMN))
     Box(Modifier.width(SLOT_COLUMN)) { step.locationSlot?.let { SlotTag(it) } }
     Txt(step.location.orEmpty(), size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1.2f))
+    CheckedMark(step.checked)
   }
 }
 
-/** A step on a phone: Slot · Item, and below it → Slot · Location. */
+/** A step on a phone: Slot · Item, and below it @ Slot · Location. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StepCard(step: Step, odd: Boolean) {
@@ -224,13 +280,14 @@ private fun StepCard(step: Step, odd: Boolean) {
       .padding(horizontal = 8.dp, vertical = 6.dp),
     verticalArrangement = Arrangement.spacedBy(3.dp),
   ) {
-    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
       step.itemSlot?.let { SlotTag(it) }
       Txt(step.item, size = 13.sp, weight = FontWeight.SemiBold)
+      if (step.checked) CheckedMark(true)
     }
     if (step.location != null) {
       FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Txt("→ ", size = 12.5.sp, color = p.muted)
+        Txt("@ ", size = 12.5.sp, color = p.muted)
         step.locationSlot?.let { SlotTag(it) }
         Txt(step.location, size = 12.5.sp, color = p.muted)
       }
@@ -331,7 +388,7 @@ private fun FullLog(text: String, narrow: Boolean) {
     if (narrow) search(Modifier.fillMaxWidth())
     Box(Modifier.fillMaxWidth().card(p).heightIn(max = 560.dp)) {
       SelectionContainer {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
           BasicText(
             marked, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
             onTextLayout = { layout = it },

@@ -14,7 +14,9 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.RandogeddonVersion
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
@@ -57,14 +59,16 @@ fun Route.internalApi(
   route("/internal") {
     install(InternalAuth) { this.token = token }
     get("/versions") { call.respond(archipelago.versions()) }
+    // This gateway's own version (the panel shows it)
+    get("/version") { call.respondText(RandogeddonVersion.VERSION) }
     // Every release with its games (the first listing of a release takes seconds) and the libraries
     get("/archipelago") { call.respond(apworlds.info()) }
     route("/apworlds") {
       post { library { call.respond(apworlds.upload(call.receive<ApworldUpload>())) } }
       post("/try") { library { call.respond(apworlds.tryWith(call.receive<ApworldTry>())) } }
-      delete("/{release}/{file}") {
+      post("/remove") {
         library {
-          apworlds.remove(call.parameters["release"]!!, call.parameters["file"]!!)
+          apworlds.remove(call.receive<ApworldRemoval>())
           call.respond(HttpStatusCode.NoContent)
         }
       }
@@ -83,6 +87,11 @@ fun Route.internalApi(
           }
           if (result.seedName != null) sessions.added(id)
           call.respond(result)
+        }
+        // How far its generation is, while it runs (no content: none runs)
+        get("/progress") {
+          val id = sessionId() ?: return@get
+          generator.progress(id)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
         }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {

@@ -6,7 +6,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import net.eratiem.randogeddon.shared.ApiJson
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import net.eratiem.randogeddon.shared.ApworldConflict
 import net.eratiem.randogeddon.shared.ApworldFile
+import net.eratiem.randogeddon.shared.ApworldRemoval
+import net.eratiem.randogeddon.shared.ApworldResults
 import net.eratiem.randogeddon.shared.ApworldResult
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
@@ -91,16 +96,71 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     uploaded + hand
   }
 
-  suspend fun upload(upload: ApworldUpload): ApworldResult {
+  /**
+   * Adds uploaded apworlds to the release's library, together (the release lists its games once for all of them). Each
+   * is named after the world inside it (Archipelago imports it by its file name, which must be the world's folder). A
+   * game the release brings itself is refused (its own world always wins); a file of the same name, or another
+   * uploaded file of the same game, is only replaced with [ApworldUpload.replace] (else its answer names it, and it
+   * isn't taken). One answer per file, in their order.
+   */
+  suspend fun upload(upload: ApworldUpload): ApworldResults {
     requireRelease(upload.release)
-    val name = apworldName(upload.fileName)
-    val bytes = runCatching { Base64.getDecoder().decode(upload.base64) }.getOrElse { throw ApworldProblem("Not base64") }
-    if (bytes.size > MAX_APWORLD_BYTES) throw ApworldProblem("$name is larger than ${MAX_APWORLD_BYTES / 1024 / 1024} MB")
-    checkApworld(bytes)?.let { throw ApworldProblem("$name: $it") }
-    return change(upload.release, name) { dir ->
-      dir.resolve(name).writeBytes(bytes)
-      dir.resolve("$name.from").deleteIfExists()
+    val answers = arrayOfNulls<ApworldResult>(upload.files.size)
+    val taken = mutableListOf<Pair<Int, Change>>()
+    val games = mutableMapOf<String, String>()
+    upload.files.forEachIndexed { i, file ->
+      // Its name as given, until the world inside names it
+      var shown = runCatching { apworldName(file.fileName) }.getOrDefault(file.fileName)
+      val given = shown
+      try {
+        val bytes = runCatching { Base64.getDecoder().decode(file.base64) }.getOrElse { throw ApworldProblem("$given: not base64") }
+        if (bytes.size > MAX_APWORLD_BYTES) throw ApworldProblem("$given is larger than ${MAX_APWORLD_BYTES / 1024 / 1024} MB")
+        checkApworld(bytes)?.let { throw ApworldProblem("$given: $it") }
+        val name = "${worldOf(bytes)}.apworld"
+        shown = name
+        val game = manifestGame(bytes)
+        // Two of this upload with the same world or game: the first one counts
+        taken.firstOrNull { it.second.name == name }?.let { throw ApworldProblem("$name is in this upload twice") }
+        game?.let { games[it] }?.let { throw ApworldProblem("$name brings $game, as $it in this upload does") }
+        val owner = game?.let { ownerOf(upload.release, it, name) }
+        when (owner?.source) {
+          GameSource.BUNDLED -> throw ApworldProblem("$name: Archipelago ${upload.release} brings $game itself, and its own world wins over an APWorld")
+          GameSource.MANUAL -> throw ApworldProblem("$name: $game comes from ${owner.apworld}, put on the server by hand (custom_worlds/)")
+          else -> {}
+        }
+        val sameFile = library.resolve(upload.release).resolve(name).exists()
+        val other = owner?.apworld
+        if (!upload.replace && (sameFile || other != null)) {
+          answers[i] = ApworldResult(name, conflict = ApworldConflict(sameFile, game.takeIf { other != null }, other))
+          return@forEachIndexed
+        }
+        game?.let { games[it] = name }
+        taken += i to Change(name, other) { dir ->
+          dir.resolve(name).writeBytes(bytes)
+          dir.resolve("$name.from").deleteIfExists()
+        }
+      } catch (e: ApworldProblem) {
+        answers[i] = ApworldResult(shown, error = e.message)
+      }
     }
+    if (taken.isNotEmpty()) {
+      change(upload.release, taken.map { it.second }).forEachIndexed { k, result -> answers[taken[k].first] = result }
+    }
+    return ApworldResults(answers.map { it!! })
+  }
+
+  /**
+   * Where [game] comes from in [release], besides [name]: the release itself, an uploaded or a hand-placed file (by
+   * their manifests, else by the release's list of games).
+   */
+  private suspend fun ownerOf(release: String, game: String, name: String): GameInfo? {
+    val listed = release(release).games.firstOrNull { it.game == game }
+    if (listed?.source == GameSource.BUNDLED) return listed
+    val uploaded = uploads(release).filter { it.name != name }
+    uploaded.firstOrNull { manifestGame(it.readBytes()) == game }?.let { return GameInfo(game, GameSource.UPLOADED, it.name) }
+    manualFiles().filter { m -> m.name != name && uploads(release).none { it.name == m.name } }
+      .firstOrNull { manifestGame(it.readBytes()) == game }?.let { return GameInfo(game, GameSource.MANUAL, it.name) }
+    return listed?.takeIf { it.apworld != name }
   }
 
   /** Copies an apworld of another release's library to [ApworldTry.release]'s, marked as from there (untested). */
@@ -110,56 +170,79 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     val source = library.resolve(request.from).resolve(name)
       .takeIf { request.from != request.release && request.from in archipelago.versions() && it.exists() }
       ?: throw ApworldProblem("$name is not in the library of Archipelago ${request.from}")
-    return change(request.release, name) { dir ->
+    return change(request.release, listOf(Change(name) { dir ->
       Files.copy(source, dir.resolve(name), StandardCopyOption.REPLACE_EXISTING)
       dir.resolve("$name.from").writeText(request.from)
-    }
+    })).single()
   }
 
-  suspend fun remove(release: String, file: String) {
-    requireRelease(release)
-    val name = apworldName(file)
-    val dir = library.resolve(release)
-    if (!dir.resolve(name).exists()) throw ApworldProblem("$name is not in the library of Archipelago $release")
+  /** Takes uploaded files out of a release's library, together; it lists its games again when it is next asked. */
+  suspend fun remove(removal: ApworldRemoval) {
+    requireRelease(removal.release)
+    val dir = library.resolve(removal.release)
+    val names = removal.files.map(::apworldName).distinct()
+    names.firstOrNull { !dir.resolve(it).exists() }?.let {
+      throw ApworldProblem("$it is not in the library of Archipelago ${removal.release}")
+    }
     mutex.withLock {
       withContext(Dispatchers.IO) {
-        dir.resolve(name).deleteIfExists()
-        dir.resolve("$name.from").deleteIfExists()
-        listed.remove(release)
-        sync(release)
+        names.forEach { name ->
+          dir.resolve(name).deleteIfExists()
+          dir.resolve("$name.from").deleteIfExists()
+        }
+        listed.remove(removal.release)
+        sync(removal.release)
       }
     }
-    logger.info("Removed {} from the library of Archipelago {}", name, release)
+    logger.info("Removed {} from the library of Archipelago {}", names.joinToString(", "), removal.release)
   }
 
-  /** Stores the file in the release's library, lists the release again and tells what the file brought. */
+  /** A file to store in a library ([store]), and the file of the same game it replaces. */
+  private class Change(val name: String, val replacing: String? = null, val store: (Path) -> Unit)
+
+  /** A library file as it was (`null`: not there), with its origin marker, to put back. */
+  private class Saved(val file: Path) {
+    private val marker = file.resolveSibling("${file.name}.from")
+    private val bytes = file.takeIf { it.exists() }?.readBytes()
+    private val from = marker.takeIf { it.exists() }?.readText()
+
+    fun restore() {
+      if (bytes != null) file.writeBytes(bytes) else file.deleteIfExists()
+      if (from != null) marker.writeText(from) else marker.deleteIfExists()
+    }
+  }
+
   /**
-   * Stores [name] with [store] and lists the release's games again. A file that brings no game (it doesn't load, or
-   * the release can't list its games with it) is refused: what was there before is put back, and the answer says why.
+   * Stores [changes] and lists the release's games once. A file that brings no game (it doesn't load, or the release
+   * can't list its games with it) is refused: what was there before (and the file it replaced) is put back, the
+   * release is listed again without it, and its answer says why. One answer per change, in their order.
    */
-  private suspend fun change(release: String, name: String, store: (Path) -> Unit): ApworldResult = mutex.withLock {
+  private suspend fun change(release: String, changes: List<Change>): List<ApworldResult> = mutex.withLock {
     withContext(Dispatchers.IO) {
       val dir = library.resolve(release).createDirectories()
-      val file = dir.resolve(name)
-      val marker = dir.resolve("$name.from")
-      val before = file.takeIf { it.exists() }?.readBytes()
-      val beforeFrom = marker.takeIf { it.exists() }?.readText()
-      store(dir)
-      listed.remove(release)
-      val info = list(release).also { listed[release] = it }
-      val games = info.games.filter { it.apworld == name }.map { it.game }
-      val failed = info.failed.firstOrNull { it.name == name.removeSuffix(".apworld") || name in it.reason }
-      val error = failed?.reason ?: info.error ?: if (games.isEmpty()) "No game loaded from it" else null
-      if (error == null) {
-        logger.info("Added {} to the library of Archipelago {}", name, release)
-        return@withContext ApworldResult(name, games)
+      val saved = changes.map { c -> listOfNotNull(Saved(dir.resolve(c.name)), c.replacing?.let { Saved(dir.resolve(it)) }) }
+      changes.forEach { c ->
+        // Another file of the same game goes
+        c.replacing?.let { dir.resolve(it).deleteIfExists(); dir.resolve("$it.from").deleteIfExists() }
+        c.store(dir)
       }
-      if (before != null) file.writeBytes(before) else file.deleteIfExists()
-      if (beforeFrom != null) marker.writeText(beforeFrom) else marker.deleteIfExists()
       listed.remove(release)
-      listed[release] = list(release)
-      logger.warn("Refused {} for Archipelago {}: {}", name, release, error)
-      ApworldResult(name, error = error)
+      var info = list(release)
+      val results = changes.map { c ->
+        val games = info.games.filter { it.apworld == c.name }.map { it.game }
+        val failed = info.failed.firstOrNull { it.name == c.name.removeSuffix(".apworld") || c.name in it.reason }
+        val error = failed?.reason ?: info.error ?: if (games.isEmpty()) "No game loaded from it" else null
+        if (error == null) ApworldResult(c.name, games) else ApworldResult(c.name, error = error)
+      }
+      val refused = changes.indices.filter { results[it].error != null }
+      refused.forEach { i -> saved[i].forEach(Saved::restore) }
+      if (refused.isNotEmpty()) info = list(release)
+      listed[release] = info
+      changes.forEachIndexed { i, c ->
+        if (i in refused) logger.warn("Refused {} for Archipelago {}: {}", c.name, release, results[i].error)
+        else logger.info("Added {} to the library of Archipelago {}{}", c.name, release, c.replacing?.let { ", instead of $it" }.orEmpty())
+      }
+      results
     }
   }
 
@@ -191,7 +274,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     val out = createTempFile("games", ".json")
     try {
       val proc = ProcessBuilder(archipelago.python, "list_games.py", out.absolutePathString())
-        .directory(home.toFile()).redirectErrorStream(true).start()
+        .withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
       Thread { if (!proc.waitFor(3, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
@@ -231,13 +314,34 @@ internal fun apworldName(given: String): String {
   return "$stem.apworld"
 }
 
+/** An apworld's entries (`/` as the separator), in order. */
+private fun zipEntries(bytes: ByteArray): List<String> = runCatching {
+  ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+    generateSequence { zip.nextEntry }.map { it.name.replace('\\', '/') }.toList()
+  }
+}.getOrDefault(emptyList())
+
+private val WORLD_ENTRY = Regex("^([^/]+)/__init__\\.py$")
+
+/** The world folder of an apworld (`<world>/__init__.py`): Archipelago imports it by this name. */
+internal fun worldOf(bytes: ByteArray): String? = zipEntries(bytes).firstNotNullOfOrNull { WORLD_ENTRY.find(it)?.groupValues?.get(1) }
+
+/** The game an apworld's manifest (`<world>/archipelago.json`) names, if it has one. */
+internal fun manifestGame(bytes: ByteArray): String? = runCatching {
+  ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+    generateSequence { zip.nextEntry }.firstOrNull { Regex("^[^/]+/archipelago\\.json$").matches(it.name.replace('\\', '/')) }
+      ?.let { ApiJson.parseToJsonElement(zip.readBytes().decodeToString()).jsonObject["game"] as? JsonPrimitive }
+      ?.takeIf { it.isString }?.content
+  }
+}.getOrNull()
+
 /**
- * What's wrong with an apworld, or `null`: it must be a zip with one world folder (`<world>/__init__.py`), and no
- * entry may lead out of it.
+ * What's wrong with an apworld, or `null`: it must be a zip with one world folder (`<world>/__init__.py`), named as a
+ * Python module can be (Archipelago imports it so), and no entry may lead out of it.
  */
 internal fun checkApworld(bytes: ByteArray): String? {
   var entries = 0
-  var world = false
+  val worlds = mutableSetOf<String>()
   try {
     ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
       while (true) {
@@ -247,7 +351,7 @@ internal fun checkApworld(bytes: ByteArray): String? {
         if (name.startsWith("/") || name.split('/').any { it == ".." } || Regex("^[A-Za-z]:").containsMatchIn(name)) {
           return "an entry leads out of the APWorld ($name)"
         }
-        if (Regex("^[^/]+/__init__\\.py$").matches(name)) world = true
+        WORLD_ENTRY.find(name)?.let { worlds += it.groupValues[1] }
       }
     }
   } catch (e: Exception) {
@@ -255,7 +359,9 @@ internal fun checkApworld(bytes: ByteArray): String? {
   }
   return when {
     entries == 0 -> "not a valid zip"
-    !world -> "no world inside (an APWorld holds a folder with an __init__.py)"
+    worlds.isEmpty() -> "no world inside (an APWorld holds a folder with an __init__.py)"
+    worlds.size > 1 -> "more than one world inside (${worlds.sorted().joinToString(", ")})"
+    !Regex("^[A-Za-z_][A-Za-z0-9_]*$").matches(worlds.single()) -> "its world ${worlds.single()} isn't a name Archipelago can load"
     else -> null
   }
 }

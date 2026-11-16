@@ -187,6 +187,17 @@ class RequireLoginTest {
   }
 
   @Test
+  fun `an Administrator reads other sessions only with a login that may act as one`() = test { handled ->
+    // Grace's login (no two-factor) reads no more than any user's, and she is told why
+    val grace = client.get("/api/sessions/quiet-fox/state") { cookie(SESSION_COOKIE, "g") }
+    assertEquals(HttpStatusCode.Forbidden, grace.status)
+    assertTrue("two-factor" in grace.bodyAsText(), grace.bodyAsText())
+    assertFalse(handled())
+    // Ada (two-factor login) sees a session she has no part in
+    assertEquals("state of quiet-fox for Ada", client.get("/api/sessions/quiet-fox/state") { cookie(SESSION_COOKIE, "ada") }.bodyAsText())
+  }
+
+  @Test
   fun `support helps, watchers only watch, players and Session-Managers add watchers`() = test {
     suspend fun status(path: String, who: String) = client.get(path) { cookie(SESSION_COOKIE, who) }.status
     // Watchers and support see the session

@@ -44,9 +44,11 @@ current="$(setting IMAGE_TAG)" current_gateway="$(setting GATEWAY_TAG)"
 # Before every switch: the database as it is
 if docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
   mkdir -p /srv/backups
+  chmod 700 /srv/backups
   dump="/srv/backups/randogeddon-$(date +%Y%m%d-%H%M%S)-before-${tag}.sql.gz"
-  # </dev/null: this script itself comes over stdin, which `exec -T` would read
-  docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump"
+  # </dev/null: this script itself comes over stdin, which `exec -T` would read. The dump (password hashes, addresses,
+  # the slot passwords) for root only
+  (umask 077; docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump")
   echo "Database dumped to $dump"
 fi
 sed -i '/^IMAGE_REGISTRY=/d' .env
@@ -84,6 +86,14 @@ fi
 # under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
 if [[ "$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)" == "$(git rev-parse HEAD)" ]]; then
+  # A release is what its tag's signature vouches for: checked against this machine's keyring (the signers' public
+  # keys: gpg --import). The repository has no branch protection, and a tag can be moved; a signature can't be made.
+  # Check it before running this script too (git verify-tag v<version>): a changed tree could bring a changed script.
+  if ! git verify-tag --raw "v$version" 2>&1 | grep -q '^\[GNUPG:\] GOODSIG '; then
+    echo "The tag v$version has no signature that checks out here (git verify-tag v$version); not deploying it"
+    exit 1
+  fi
+  echo "== v$version is signed by $(git verify-tag --raw "v$version" 2>&1 | sed -n 's/^\[GNUPG:\] GOODSIG [0-9A-F]* //p' | head -1)"
   tag="$version" gateway_tag="$version" moving=latest
 else
   tag="$(git rev-parse --short=12 HEAD)" gateway_tag="$AP_VERSION-$(git rev-parse --short=12 HEAD)" moving=edge
@@ -91,6 +101,10 @@ fi
 
 echo "== Building $tag"
 export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0 BRIDGE_VERSION="$version"
+# The bridge's checksums are signed with this machine's key, if it has one (ssh-keygen -t ed25519 -N "" -f <file>;
+# its public half is bridge/signing-key.pub)
+signing_key="${BRIDGE_SIGNING_KEY:-$HOME/.config/randogeddon/bridge-signing-key}"
+if [[ -r "$signing_key" ]]; then export BRIDGE_SIGNING_KEY="$signing_key"; else echo "No $signing_key: the bridge's checksums won't be signed"; fi
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker gateway
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"

@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
 )
 
 func testApp(t *testing.T) (*App, http.Handler) {
@@ -125,5 +131,58 @@ func TestBuildName(t *testing.T) {
 	}
 	if got := buildName("darwin", "arm64"); got != "randogeddon-bridge-macos-arm64" {
 		t.Error(got)
+	}
+}
+
+func TestTheBridgeQuitsOnceItsPageIsClosed(t *testing.T) {
+	app, _ := testApp(t)
+	app.pageGrace = 100 * time.Millisecond
+	server := httptest.NewServer(nil)
+	defer server.Close()
+	app.port = server.Listener.Addr().(*net.TCPAddr).Port
+	server.Config.Handler = app.Handler()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	open := func() *websocket.Conn {
+		header := http.Header{}
+		header.Set("Cookie", tokenCookie+"="+app.token)
+		c, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/api/alive", app.port), &websocket.DialOptions{HTTPHeader: header})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	// A reload: closed and back within the grace
+	first := open()
+	_ = first.Close(websocket.StatusNormalClosure, "")
+	time.Sleep(20 * time.Millisecond)
+	second := open()
+	time.Sleep(250 * time.Millisecond)
+	select {
+	case <-app.quit:
+		t.Fatal("quit while a page was open")
+	default:
+	}
+	// The tab closed
+	_ = second.Close(websocket.StatusNormalClosure, "")
+	select {
+	case <-app.quit:
+	case <-time.After(2 * time.Second):
+		t.Fatal("still running without a page")
+	}
+}
+
+func TestAnotherSitesPageCantKeepItAlive(t *testing.T) {
+	app, _ := testApp(t)
+	server := httptest.NewServer(nil)
+	defer server.Close()
+	app.port = server.Listener.Addr().(*net.TCPAddr).Port
+	server.Config.Handler = app.Handler()
+	header := http.Header{}
+	header.Set("Cookie", tokenCookie+"="+app.token)
+	header.Set("Origin", "http://evil.example")
+	_, _, err := websocket.Dial(context.Background(), fmt.Sprintf("ws://127.0.0.1:%d/api/alive", app.port), &websocket.DialOptions{HTTPHeader: header})
+	if err == nil {
+		t.Fatal("another site's page got in")
 	}
 }

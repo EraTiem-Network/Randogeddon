@@ -71,7 +71,7 @@ func TestRelayFillsInTheSlotAndPassesEverything(t *testing.T) {
 	seen := make(chan map[string]any, 1)
 	server := gameServer(t, "s3cret", seen)
 	defer server.Close()
-	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{"Alice-LttP", "A Link to the Past", "s3cret"}, wsURL(server), nil)
+	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{Name: "Alice-LttP", Game: "A Link to the Past", Password: "s3cret"}, wsURL(server), nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,9 +115,9 @@ func TestRelayShowsARefusalAndFetchesThePasswordAgain(t *testing.T) {
 	refreshed := make(chan bool, 1)
 	refresh := func() (Slot, string, error) {
 		refreshed <- true
-		return Slot{"Alice", "Game", "new"}, wsURL(server), nil
+		return Slot{Name: "Alice", Game: "Game", Password: "new"}, wsURL(server), nil
 	}
-	relay, _ := startRelay("1", "s", "S", Slot{"Alice", "Game", "old"}, wsURL(server), refresh)
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "old"}, wsURL(server), refresh, 0)
 	defer relay.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -147,7 +147,7 @@ func TestRelayShowsARefusalAndFetchesThePasswordAgain(t *testing.T) {
 }
 
 func TestRelayRefusesWebPages(t *testing.T) {
-	relay, _ := startRelay("1", "s", "S", Slot{"Alice", "Game", "pw"}, "ws://127.0.0.1:1", nil)
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "pw"}, "ws://127.0.0.1:1", nil, 0)
 	defer relay.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -163,7 +163,7 @@ func TestRelayRefusesWebPages(t *testing.T) {
 }
 
 func TestRelayWhenTheServerIsUnreachable(t *testing.T) {
-	relay, _ := startRelay("1", "s", "S", Slot{"Alice", "Game", "pw"}, "ws://127.0.0.1:1", nil)
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "pw"}, "ws://127.0.0.1:1", nil, 0)
 	defer relay.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

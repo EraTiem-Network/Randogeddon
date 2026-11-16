@@ -30,6 +30,14 @@ type Session struct {
 	ID      string   `json:"id"`
 	Status  string   `json:"status"`
 	MySlots []string `json:"mySlots"`
+	// MyRole is the user's part in it; empty for an Administrator without one (they reach every session).
+	MyRole string `json:"myRole"`
+}
+
+// Offered is whether the bridge offers the session: it runs, and the user plays in it or may connect its hosted slots
+// (a Session-Manager, or an Administrator).
+func (s Session) Offered() bool {
+	return s.Running() && (len(s.MySlots) > 0 || s.MyRole == "manager" || s.MyRole == "")
 }
 
 // Running is whether game clients can play the session now.
@@ -37,11 +45,33 @@ func (s Session) Running() bool {
 	return s.Status == "" || s.Status == "live" || s.Status == "finishing"
 }
 
-// Slot is one of the user's slots in a session, with its password.
+// Slot is one of the user's slots in a session, with its password. A hosted one comes with its password only for its
+// Session-Managers and Administrators (they run its game); its players only get its patch files.
 type Slot struct {
 	Name     string `json:"name"`
 	Game     string `json:"game"`
 	Password string `json:"password"`
+	Hosted   bool   `json:"hosted"`
+	// Locked: its key isn't found yet, so the gateway refuses it (no password until then).
+	Locked bool `json:"locked"`
+}
+
+// Usable is whether the bridge can open the slot: not locked, and with its password (a hosted one only for those who
+// run its game).
+func (s Slot) Usable() bool { return !s.Locked && s.Password != "" }
+
+// slotOf is [slot] of [session] with where the session's game server is, for a relay.
+func slotOf(c *Client, session, slot string) (Slot, string, error) {
+	conn, err := c.Connection(session)
+	if err != nil {
+		return Slot{}, "", err
+	}
+	for _, s := range conn.Slots {
+		if s.Name == slot && s.Usable() {
+			return s, upstreamURL(conn.Server), nil
+		}
+	}
+	return Slot{}, "", fmt.Errorf("no slot %s to open in %s", slot, session)
 }
 
 // Connection is where a session's game clients connect and the user's slots in it

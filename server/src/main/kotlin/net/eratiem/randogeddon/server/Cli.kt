@@ -55,6 +55,8 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
           }
           "admins" -> when {
             args.size == 1 -> listAdmins(UserStore(db))
+            // With single sign-on, Administrators come from the provider's group alone
+            config.oidc != null && args.size == 3 && args[1] in setOf("--create", "--grant", "--login") -> onlyThroughProvider(config)
             args.size == 3 && args[1] == "--create" -> createLogin(args[2], admin = true, UserStore(db))
             args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db))
             args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db))
@@ -80,12 +82,22 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
   exitProcess(code)
 }
 
+/** With single sign-on there is no other way to an Administrator: not made here, and no login link for one. */
+private fun onlyThroughProvider(config: TrackerConfig): Int {
+  val oidc = config.oidc ?: return usage()
+  System.err.println(
+    "Administrators come from ${oidc.name} alone: add the person to its group ${oidc.adminGroup} " +
+      "(they log in through ${oidc.name}, with their second factor there). --revoke still takes the flag here."
+  )
+  return 1
+}
+
 private fun usage(): Int {
   System.err.println(USAGE)
   return 2
 }
 
-/** A one-time login link for [person] (an Administrator when single sign-on is away): printed, valid 15 minutes. */
+/** A one-time login link for [person], printed, valid 15 minutes; not with single sign-on ([onlyThroughProvider]). */
 private suspend fun loginLink(config: TrackerConfig, person: String, users: UserStore, links: LoginLinkStore): Int {
   val user = users.findActive(person) ?: run {
     System.err.println("No login for '$person'.")

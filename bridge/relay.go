@@ -63,9 +63,9 @@ type RelayView struct {
 	Games   int    `json:"games"`
 }
 
-// startRelay opens a relay on a free port of 127.0.0.1 (only this computer reaches it).
-func startRelay(id, session, title string, slot Slot, upstream string, refresh func() (Slot, string, error)) (*Relay, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+// startRelay opens a relay on [port] of 127.0.0.1 (only this computer reaches it); 0: a free one.
+func startRelay(id, session, title string, slot Slot, upstream string, refresh func() (Slot, string, error), port int) (*Relay, error) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return nil, err
 	}

@@ -29,8 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -68,6 +66,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
@@ -75,6 +78,8 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.GenerationStage
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
@@ -89,6 +94,7 @@ import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
+import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
 
@@ -190,69 +196,34 @@ fun SessionSection(
       if (!gone) server()
     }
   }
-  if (session != null && !gone) PlayersAdmin(id, session.worlds)
 }
 
-/**
- * Who plays in a session, each with their slots; slots nobody plays at the end. Below: every slot's files from the seed
- * (patches, mods), to download, e.g. for someone who can't log in.
- */
-@OptIn(ExperimentalLayoutApi::class)
+/** Every slot's files from the seed (patches, mods), to download, e.g. for someone who can't log in. */
 @Composable
-private fun PlayersAdmin(id: String, worlds: List<WorldPlan>) {
+fun PatchFilesSection(id: String) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val players = worlds.flatMap { w -> w.users.map { it to w.name } }.groupBy({ it.first }, { it.second })
-  val ids = worlds.flatMap { w -> w.users.zip(w.userIds) }.toMap()
-  val nobody = worlds.filter { it.users.isEmpty() }.map { it.name }
-  var files by remember(id) { mutableStateOf<List<SlotFile>>(emptyList()) }
+  var files by remember(id) { mutableStateOf<List<SlotFile>?>(null) }
   LaunchedEffect(id) {
     (call("GET", "api/sessions/$id/files", null) { ApiJson.decodeFromString(SlotFiles.serializer(), it) } as? Answer.Ok)
       ?.let { files = it.value.files }
   }
-  Section(t.dashboard.players, subtitle = t.sessionAdmin.playersSubtitle(players.size, worlds.size)) {
+  val list = files.orEmpty()
+  Section(
+    t.sessionAdmin.patchFiles, subtitle = if (files == null) "…" else t.sessionAdmin.patchFilesSubtitle(list.size),
+    actions = { InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}") },
+  ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      if (players.isEmpty() && nobody.isEmpty()) Txt(t.sessionAdmin.nobodyNamed, size = 13.sp, color = p.muted)
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        players.entries.sortedBy { it.key.lowercase() }.forEach { (name, slots) -> PlayerPill(name, slots, ids[name]) }
-      }
-      if (nobody.isNotEmpty()) {
-        Txt(t.sessionAdmin.nobodyPlays, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          nobody.forEach { Pill(it, p.muted) }
-        }
-      }
-      if (files.isNotEmpty()) {
-        Divider()
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          Txt(t.sessionAdmin.filesOfSlots, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold)
-          InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}")
-        }
-        files.forEach { file ->
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
-            Mono(file.name, p.text, Modifier.weight(1f))
-            Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
-            SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
-          }
+      if (files != null && list.isEmpty()) Txt(t.sessionAdmin.noPatchFiles, size = 13.sp, color = p.muted)
+      list.forEach { file ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
+          Mono(file.name, p.text, Modifier.weight(1f))
+          Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
+          SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
         }
       }
     }
-  }
-}
-
-/** A player as a pill in their colour: avatar, name, their slots. */
-@Composable
-private fun PlayerPill(name: String, slots: List<String>, userId: String?) {
-  val hue = LocalPalette.current.hue(name)
-  Row(
-    Modifier.clip(CircleShape).background(hue.copy(alpha = 0.15f)).padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Avatar(name, 22.dp)
-    PersonName(name, userId, deleted = false, size = 12.5.sp, color = hue)
-    Txt(slots.joinToString(", "), size = 11.5.sp, color = hue.copy(alpha = 0.8f), maxLines = 1)
   }
 }
 
@@ -406,7 +377,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
           IconButton(onClose, Icon.CLOSE)
         }
         Divider()
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           ProgressBar((past.percent / 100).toFloat())
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Fact(t.dialogs.slots, "${past.slots}")
@@ -476,7 +447,7 @@ private val RUNNING = setOf(GameServerStatus.STARTING, GameServerStatus.RUNNING,
  * slot, locks, options). Its logins are shown once it is created.
  */
 @Composable
-fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult) -> Unit) {
+fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreated: (CreateSessionResult) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   var id by remember { mutableStateOf<String?>(null) }
@@ -507,6 +478,7 @@ fun NewSessionSection(overview: AdminOverview?, onCreated: (CreateSessionResult)
       if (overview != null) key(round) {
         CreateSession(
           AdminSessionView(apVersions = overview.apVersions, users = overview.users, people = overview.people), chosen,
+          administrator = administrator,
           ready = idProblem == null && chosen.isNotEmpty() && !full && !atLimit,
           onCreated = { result ->
             created = result
@@ -636,7 +608,7 @@ private fun SessionSummary(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, onCreated: (CreateSessionResult) -> Unit) {
+private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, onCreated: (CreateSessionResult) -> Unit, administrator: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val scope = rememberCoroutineScope()
@@ -645,6 +617,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var problems by remember { mutableStateOf<List<ApiError>>(emptyList()) }
   // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
   val users = remember { mutableStateMapOf<String, List<String>>() }
+  // The hosted slots: no players, their games run as servers of their own
+  val hosted = remember { mutableStateMapOf<String, Boolean>() }
   val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
   var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
@@ -657,6 +631,17 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
   var busy by remember { mutableStateOf(false) }
   var error by remember { mutableStateOf<Answer.Failed?>(null) }
+  // How far the generation is while it runs (asked about three times a second)
+  var progress by remember { mutableStateOf<GenerationProgress?>(null) }
+  LaunchedEffect(busy) {
+    progress = null
+    while (busy) {
+      delay(300)
+      (call("GET", "api/sessions/new/progress/$id", null) {
+        if (it.isBlank()) null else ApiJson.decodeFromString(GenerationProgress.serializer(), it)
+      } as? Answer.Ok)?.value?.let { progress = it }
+    }
+  }
   // The YAML to remove, asked once more; "": all of them
   var removing by remember { mutableStateOf<String?>(null) }
   // Why the files just picked that aren't player YAMLs weren't taken
@@ -680,8 +665,6 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         }
         worlds = answer.value.worlds
         problems = answer.value.problems
-        // A guess to start from: "Alice-HK" belongs to Alice, if she has a login or no one else is meant
-        worlds.forEach { w -> if (w.name !in users) users[w.name] = listOf(w.name.substringBefore('-').trim()).filter { it.isNotEmpty() } }
       }
       is Answer.Failed -> problems = listOf(ApiError(answer.message))
     }
@@ -728,22 +711,37 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   }
   removing?.takeIf { it.isNotEmpty() }?.let { ConfirmRemoval(it) }
   refused.forEach { Txt(t.sessionAdmin.notAdded(it), size = 12.5.sp, color = p.trap) }
-  problems.forEach { Txt(t.word(it), size = 12.5.sp, color = p.trap) }
-  if (problems.any { it.code == Problem.NO_APWORLD }) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt(t.sessionAdmin.uploadMissing, size = 12.5.sp, color = p.muted)
-      SmallButton(t.sessionAdmin.checkAgain, { inspect() })
+  problems.filter { it.code != Problem.NO_APWORLD }.forEach { Txt(t.word(it), size = 12.5.sp, color = p.trap) }
+  // YAMLs with a game the release has no APWorld for: no slots, one message; checked again by themselves meanwhile (an
+  // upload by anyone, anywhere, makes them slots)
+  val missingGames = problems.filter { it.code == Problem.NO_APWORLD }.mapNotNull { it.args["game"] }.toSet()
+  val waitingFiles = worlds.filter { w -> w.game.split(" / ").any { it in missingGames } }.map { it.fileName }.toSet()
+  if (waitingFiles.isNotEmpty()) {
+    val files = waitingFiles.joinToString(", ") { file ->
+      "$file (${worlds.filter { it.fileName == file }.flatMap { it.game.split(" / ") }.filter { it in missingGames }.distinct().joinToString(", ")})"
+    }
+    Txt(
+      "${t.sessionAdmin.missingApworlds(files, version.orEmpty())} " +
+        if (administrator) t.sessionAdmin.uploadThem else t.sessionAdmin.askAdministrator,
+      size = 12.5.sp, color = p.warn,
+    )
+    LaunchedEffect(Unit) {
+      while (true) {
+        delay(8_000)
+        inspect().join()
+      }
     }
   }
+  val usable = worlds.filter { it.fileName !in waitingFiles }
 
-  if (worlds.isNotEmpty()) {
+  if (usable.isNotEmpty()) {
     // A single slot can't be locked; otherwise at least one slot starts open
-    val n = worlds.size
+    val n = usable.size
     val lockable = n > 1
     val mode = if (lockable) lockMode else LockMode.CHOOSE
     // A switch left to chance whose outcome is already given by the others shows that outcome: e.g. of two slots,
     // one open, the other has to be locked
-    val chosen = worlds.associate { it.name to (choices[it.name] ?: LockChoice.RANDOM) }
+    val chosen = usable.associate { it.name to (choices[it.name] ?: LockChoice.RANDOM) }
     val settled = run {
       val chance = chosen.values.count { it == LockChoice.RANDOM }
       val sureLocked = chosen.values.count { it == LockChoice.LOCKED }
@@ -761,14 +759,14 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     fun choice(world: YamlWorld) = settled.getValue(world.name)
     // Locked for sure, and how many are left to chance
     val lockedNow = when (mode) {
-      LockMode.CHOOSE -> worlds.filter { lockable && locked[it.name] == true }
+      LockMode.CHOOSE -> usable.filter { lockable && locked[it.name] == true }
       LockMode.RANDOM -> emptyList()
-      LockMode.MIXED -> worlds.filter { choice(it) == LockChoice.LOCKED }
+      LockMode.MIXED -> usable.filter { choice(it) == LockChoice.LOCKED }
     }.map { it.name }.toSet()
     val pool = when (mode) {
       LockMode.CHOOSE -> 0
       LockMode.RANDOM -> n
-      LockMode.MIXED -> worlds.count { choice(it) == LockChoice.RANDOM }
+      LockMode.MIXED -> usable.count { choice(it) == LockChoice.RANDOM }
     }
     val sureOpen = n - lockedNow.size - pool
     // How many start open in all: at least one; with nothing locked for sure, one of the random ones is. Nothing left
@@ -814,10 +812,12 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         }
       }
     }
-    worlds.forEach { world ->
+    usable.forEach { world ->
       val isLocked = world.name in lockedNow
       WorldRow(
-        world, users[world.name].orEmpty(), people,
+        world, users[world.name].orEmpty(), people, hosted = hosted[world.name] == true,
+        onHosted = { yes -> hosted[world.name] = yes; if (yes) users[world.name] = emptyList() },
+        hostedLabel = t.sessionAdmin.hostedCheck,
         onInvite = { email ->
           when (val r = inviteForSession(email)) {
             is Answer.Ok -> r.value.also { people += it }
@@ -867,22 +867,27 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
+    // Every slot played by someone, or hosted
+    val unplayed = usable.filter { hosted[it.name] != true && users[it.name].isNullOrEmpty() }.map { it.name }
+    if (unplayed.isNotEmpty()) Txt(t.sessionAdmin.slotsWithoutPlayer(unplayed.joinToString(", ")), size = 12.5.sp, color = p.warn)
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
         if (busy) t.sessionAdmin.generating else t.sessionAdmin.generateAndStart,
-        enabled = ready && !busy && problems.isEmpty() && view.apVersions.isNotEmpty() && openOk,
+        enabled = ready && !busy && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
+          unplayed.isEmpty(),
       ) {
         busy = true
         error = null
         scope.launch {
           val request = CreateSessionRequest(
             id = id,
-            yamls = yamls.toList(),
-            worlds = worlds.map {
+            yamls = yamls.filter { it.fileName !in waitingFiles },
+            worlds = usable.map {
               WorldPlan(
-                it.name, userIds = users[it.name].orEmpty(), locked = it.name in lockedNow,
-                random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+                it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
+                locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+                hosted = hosted[it.name] == true,
               )
             },
             options = options.copy(openSlots = open),
@@ -897,6 +902,12 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
         }
       }
       if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
+    }
+    // While it generates: the stage and about how far, as a bar across the form
+    if (busy) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
+      ProgressBar(now.percent / 100f)
+      Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
     }
     error?.let { GenerationError(it.message, it.detail) }
   }
@@ -924,6 +935,10 @@ private fun WorldRow(
   world: YamlWorld,
   users: List<String>,
   known: List<UserRef>,
+  /** Hosted (its checkbox, asked once more): no players, and no picker to add them. */
+  hosted: Boolean,
+  onHosted: (Boolean) -> Unit,
+  hostedLabel: String,
   /** Invites an address from here: the new account, or `null` (the form shows why). */
   onInvite: suspend (String) -> UserRef?,
   lock: @Composable () -> Unit,
@@ -931,16 +946,7 @@ private fun WorldRow(
 ) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
-  var input by remember { mutableStateOf("") }
-  var inviting by remember { mutableStateOf(false) }
-  // Accounts that match what's typed and aren't in this slot yet
-  val suggestions = known.filter { it.id !in users }
-    .filter { input.isBlank() || it.label.contains(input.trim(), ignoreCase = true) }.take(8)
-  fun add(user: UserRef) {
-    if (user.id !in users) onUsers(users + user.id)
-    input = ""
-  }
+  var asking by remember { mutableStateOf(false) }
   Divider()
   Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
     GameChip(world.game)
@@ -951,35 +957,93 @@ private fun WorldRow(
           Txt("${world.game} · ${world.fileName}", size = 11.5.sp, color = p.muted, maxLines = 1)
         }
         lock()
+        Check(hostedLabel, hosted, t.sessionAdmin.hostedTip) { yes -> if (yes) asking = true else onHosted(false) }
       }
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      if (asking) {
+        Confirm(t.sessionAdmin.hostedQuestion, t.sessionAdmin.yesHosted, danger = false,
+          onYes = { asking = false; onHosted(true) }, onCancel = { asking = false })
+      }
+      if (hosted) Txt(t.sessionAdmin.hostedLine, size = 12.sp, color = p.muted)
+      else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { id ->
           val user = known.firstOrNull { it.id == id }
           UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
         }
-        FilterField(
-          input, { input = it }, if (users.isEmpty()) t.sessionAdmin.addPlayer else t.sessionAdmin.addAnother,
-          Modifier.width(170.dp).onPreviewKeyEvent { event ->
-            val enter = event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)
-            if (enter) suggestions.firstOrNull()?.takeIf { input.isNotBlank() }?.let(::add)
-            enter
-          },
-          minHeight = FIELD_HEIGHT,
+        PlayerPicker(
+          known.filter { it.id !in users }, if (users.isEmpty()) t.sessionAdmin.addPlayer else t.sessionAdmin.addAnother,
+          onPick = { if (it.id !in users) onUsers(users + it.id) }, onInvite = onInvite,
         )
       }
-      if (input.isNotBlank()) {
-        val address = EmailAddresses.normalize(input)
-        when {
-          suggestions.isNotEmpty() ->
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { suggestions.forEach { SmallButton(it.label, { add(it) }) } }
-          EmailAddresses.valid(address) -> SmallButton(if (inviting) t.sessionAdmin.inviting else t.sessionAdmin.inviteAddress(address), {
-            if (!inviting) scope.launch {
-              inviting = true
-              onInvite(address)?.let(::add)
-              inviting = false
-            }
-          })
-          else -> Txt(t.sessionAdmin.noAccountMatches, size = 12.sp, color = p.muted)
+    }
+  }
+}
+
+/**
+ * Adds a player: a dropdown of the accounts ([choices]) with a search field on top; a typed e-mail address that no
+ * account has offers its invitation instead ([onInvite]: the new account, or `null`).
+ */
+@Composable
+private fun PlayerPicker(
+  choices: List<UserRef>,
+  placeholder: String,
+  onPick: (UserRef) -> Unit,
+  onInvite: suspend (String) -> UserRef?,
+) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val scope = rememberCoroutineScope()
+  var open by remember { mutableStateOf(false) }
+  var closedAt by remember { mutableLongStateOf(0L) }
+  var query by remember { mutableStateOf("") }
+  var inviting by remember { mutableStateOf(false) }
+  var anchorHeight by remember { mutableStateOf(0) }
+  Box(Modifier.width(190.dp).onSizeChanged { anchorHeight = it.height }) {
+    Row(
+      Modifier.fillMaxWidth().heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+        .border(1.dp, p.border, RoundedCornerShape(10.dp))
+        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        .padding(start = 10.dp, end = 8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Txt(placeholder, size = 12.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+      DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
+    }
+    if (open) AppPopup(
+      offset = IntOffset(0, anchorHeight + 6),
+      onDismissRequest = { open = false; closedAt = Platform.now() },
+      properties = PopupProperties(focusable = true),
+    ) {
+      Column(
+        Modifier.widthIn(min = 240.dp, max = 320.dp).card(p, RoundedCornerShape(12.dp)).padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+      ) {
+        DropdownSearch(query) { query = it }
+        val matches = choices.filter { query.isBlank() || it.label.contains(query.trim(), ignoreCase = true) }.take(200)
+        val address = EmailAddresses.normalize(query)
+        Column(Modifier.heightIn(max = 260.dp).scrolling()) {
+          matches.forEach { user ->
+            Txt(
+              user.label, size = 13.sp, maxLines = 1, color = if (user.name == null) p.muted else p.text,
+              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hand()
+                .clickable { onPick(user); open = false; query = "" }.padding(horizontal = 8.dp, vertical = 7.dp),
+            )
+          }
+          when {
+            matches.isNotEmpty() -> {}
+            EmailAddresses.valid(address) -> Txt(
+              if (inviting) t.sessionAdmin.inviting else t.sessionAdmin.inviteAddress(address), size = 13.sp, color = p.accent,
+              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hand().clickable {
+                if (!inviting) scope.launch {
+                  inviting = true
+                  onInvite(address)?.let(onPick)
+                  inviting = false
+                  open = false
+                  query = ""
+                }
+              }.padding(horizontal = 8.dp, vertical = 7.dp),
+            )
+            else -> Txt(t.sessionAdmin.noAccountMatches, size = 12.sp, color = p.muted, modifier = Modifier.padding(8.dp))
+          }
         }
       }
     }

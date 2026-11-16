@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -190,12 +189,13 @@ fun AdminView(
     }
   }
   val all = overview?.sessions.orEmpty()
-  // A deleted (or finished) session's page goes to the newest running one (or to a new session, with none running)
+  // A deleted (or finished) session's page goes to the newest running one; with none running, to none (the new
+  // session's form only once it is asked for)
   val page = when {
     picked == NEW_PAGE -> NEW_PAGE
     picked != null && all.any { it.id == picked && it.status.running } -> picked!!
     overview == null -> null
-    else -> all.firstOrNull { it.status.running }?.id ?: NEW_PAGE
+    else -> all.firstOrNull { it.status.running }?.id
   }
 
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -214,8 +214,8 @@ fun AdminView(
     ) {
       AdminSwitch(overview, page, onPage = onPage)
       when (page) {
-        null -> {}
-        NEW_PAGE -> NewSessionSection(overview, onCreated = { onPage(it.id); load() })
+        null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
+        NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { onPage(it.id); load() })
         else -> key(page) {
           SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
         }
@@ -225,9 +225,10 @@ fun AdminView(
     if (administrator) Txt(LocalTexts.current.panel.general, size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
     if (administrator) {
-      UsersAdmin(onChanged = { load() })
+      UsersAdmin(onChanged = { load() }, onSession = onDashboard)
       ApworldsSection()
       AppSettingsSection()
+      VersionsSection()
     }
   }
 }
@@ -265,6 +266,7 @@ private fun SelectedSession(
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
   PeopleSection(id)
+  PatchFilesSection(id)
   CheatSection(id, server, cache)
   ConsoleSection(onSend = { line -> run { repository.command(line) } })
   LogSection(repository.log)
@@ -359,7 +361,7 @@ private fun LogSection(log: List<LogLine>) {
   Section(LocalTexts.current.panel.log, subtitle = LocalTexts.current.panel.logSubtitle) {
     Box(Modifier.fillMaxWidth().card(p).height(420.dp)) {
       SelectionContainer {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
           if (log.isEmpty()) Txt(LocalTexts.current.panel.nothingYet, size = 13.sp, color = p.muted)
           log.asReversed().forEach { line ->
             BasicText(

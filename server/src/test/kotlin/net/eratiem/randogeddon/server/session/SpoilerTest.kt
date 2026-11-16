@@ -52,4 +52,43 @@ class SpoilerTest {
     assertTrue(spoiler.spheres.isEmpty())
     assertTrue(spoiler.text.startsWith("Archipelago"))
   }
+
+  @Test
+  fun `the placements are read, with the seed's slots telling the names apart`() {
+    val text = """
+      |Locations:
+      |
+      |Crossroads (Bob-SM64): Mantis Claw (Alice-HK)
+      |Chest (1F) (Alice-HK): Power Star (Bob-SM64)
+      |Lake (Alice-HK): Geo (Alice-HK)
+      |
+      |Playthrough:
+      |""".trimMargin()
+    assertEquals(
+      listOf(
+        Placement("Crossroads", "Bob-SM64", "Mantis Claw", "Alice-HK"),
+        Placement("Chest (1F)", "Alice-HK", "Power Star", "Bob-SM64"),
+        Placement("Lake", "Alice-HK", "Geo", "Alice-HK"),
+      ),
+      placements(text, listOf("Alice-HK", "Bob-SM64")),
+    )
+    // A spoiler log without placements
+    assertEquals(emptyList(), placements("Playthrough:\n", listOf("Alice-HK")))
+  }
+
+  @Test
+  fun `the playthrough's checked steps are marked`() {
+    val spoiler = net.eratiem.randogeddon.shared.Spoiler(
+      "1",
+      listOf(
+        net.eratiem.randogeddon.shared.Sphere(0, listOf("Sword (Alice-HK)")),
+        net.eratiem.randogeddon.shared.Sphere(1, listOf("Chest (1F) (Alice-HK): Star (Bob-SM64)", "Crossroads (Bob-SM64): Claw (Alice-HK)", "Far (Eve-Celeste): Key (Bob-SM64)")),
+      ),
+      "",
+    )
+    val marked = markChecked(spoiler, mapOf("Alice-HK" to setOf("Lake"), "Bob-SM64" to setOf("Crossroads")))
+    assertEquals(listOf(false), marked.spheres[0].checked)
+    // Chest (1F) isn't open any more; Crossroads still is; Eve-Celeste isn't known
+    assertEquals(listOf(true, false, false), marked.spheres[1].checked)
+  }
 }

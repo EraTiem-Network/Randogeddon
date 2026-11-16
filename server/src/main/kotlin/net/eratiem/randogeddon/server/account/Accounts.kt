@@ -1,37 +1,53 @@
 package net.eratiem.randogeddon.server.account
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
+import java.lang.invoke.MethodHandles
+import java.time.Instant
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.toJavaDuration
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.UserNames
 import org.koin.core.annotation.Single
-import java.lang.invoke.MethodHandles
-import java.time.Instant
-import kotlin.uuid.Uuid
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /** How long a login lasts; logging in again starts a new one. */
 val LOGIN_DURATION = 30.days
+
+/**
+ * How long a login through the provider (or a CLI link) lasts: an Administrator's. Their place in the provider's
+ * group is only asked at a login, so it is asked again each day (one click while the provider's session lasts);
+ * leaving the group, or the provider, shows within a day.
+ */
+val SSO_LOGIN_DURATION = 1.days
+
+/** The most logins of one kind (password, the provider, …) an account has at once; a new one ends the oldest. */
+const val MAX_LOGINS = 20
+
+/** How long a login made by [method] lasts (a CLI link's as short as the provider's: it stands in for a password). */
+fun loginDuration(method: String): Duration =
+  if (method == LoginMethods.OIDC || method == LoginMethods.LINK) SSO_LOGIN_DURATION else LOGIN_DURATION
 
 /**
  * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
@@ -57,17 +73,20 @@ interface LoginCheck {
   }
 }
 
-/** With single sign-on through [provider]: only a login through it (or a CLI link) acts as an Administrator. */
+/**
+ * With single sign-on through [provider]: only a login through it acts as an Administrator. No password, no CLI link:
+ * who is an Administrator, and with which second factor, is the provider's to say, at every login.
+ */
 internal fun ssoAdministratorProblem(user: User, provider: String): Refusal? = when {
   !user.administrator -> Refusal(Problem.ONLY_ADMINISTRATORS)
-  user.loginMethod == LoginMethods.OIDC || user.loginMethod == LoginMethods.LINK -> null
+  user.loginMethod == LoginMethods.OIDC -> null
   else -> Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to provider)
 }
 
 /**
  * Logging in and out, and which sessions the logged-in users are part of. With single sign-on configured
- * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider (or a CLI link), and
- * not with their password.
+ * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider, and can't log in
+ * with their password.
  */
 @Single
 class LoginService(
@@ -102,10 +121,13 @@ class LoginService(
   suspend fun user(id: Uuid): User? = users.findActive(id)
 
   /** A new login of [user] (after the password, or right after signing up; [method]: how); its token for the cookie. */
-  suspend fun start(user: User, method: String = LoginMethods.PASSWORD): String {
+  /** A new login for [user]; [providerSession]: its session at the provider, for a login through it. */
+  suspend fun start(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null): String {
     logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
-    logins.create(tokenHash(token), user.id, Instant.now().plus(LOGIN_DURATION.toJavaDuration()), method = method)
+    logins.create(tokenHash(token), user.id, Instant.now().plus(loginDuration(method).toJavaDuration()), method = method, providerSession = providerSession)
+    // Only so many logins of a kind at once: the oldest give way (a browser logged in long ago and never out)
+    logins.keepNewest(user.id, method, MAX_LOGINS)
     return token
   }
 
@@ -142,14 +164,51 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     return store.ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
   }
 
-  /** The slots of [person] in [session] (a slot played together is theirs too) with game and password. */
-  suspend fun of(session: LiveSession, person: String): List<MySlot> {
+  /**
+   * The slots of [person] in [session] (a slot played together is theirs too) with game and password; then its hosted
+   * slots for everyone who plays in it or manages it ([manages]: with their passwords, to set the game's server up).
+   */
+  suspend fun of(session: LiveSession, person: String?, manages: Boolean = false): List<MySlot> {
     val room = Room.read(session.roomJson) ?: return emptyList()
     val passwords = current(session)
     val games = room.players.associate { it.name to it.game }
-    return session.people()[person].orEmpty().mapNotNull { slot ->
-      passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), it) }
+    val hosted = session.setup?.hosted.orEmpty()
+    // A locked slot has no password until its key is found
+    val locked = lockedNow(session)
+    val own = person?.takeIf { it != UserNames.HOSTED }?.let { session.people()[it] }.orEmpty().filter { it !in hosted }
+      .mapNotNull { slot ->
+        passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (slot in locked) "" else it, locked = slot in locked) }
+      }
+    if (person == null && !manages) return own
+    return own + hosted.sorted().mapNotNull { slot ->
+      passwords[slot]?.let {
+        MySlot(slot, games[slot].orEmpty(), if (manages && slot !in locked) it else "", hosted = true, locked = slot in locked)
+      }
     }
+  }
+
+  /** [session]'s slots still locked, as its summary sees them (their key not found yet). */
+  private suspend fun lockedNow(session: LiveSession): Set<String> = runCatching {
+    session.summary().players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+  }.getOrDefault(emptySet())
+
+  /** The locks as the gateway last got them, by seed: written again only when they change. */
+  private val synced = mutableMapOf<String, Set<String>>()
+
+  /**
+   * Keeps the gateway's locks in step with [session]'s summary: a slot opens once its key has turned up. Only once the
+   * summary knows the locks (the tracker has read World Locks' slot data: until then no slot has lock info, and the
+   * locks of the session's creation stay); a session without locks needs nothing, a finished one stays as it is.
+   */
+  private suspend fun syncLocks(session: LiveSession, seed: String) {
+    if (session.finished) return
+    val players = runCatching { session.summary().players }.getOrDefault(emptyList())
+    if (players.none { it.lock != null }) return
+    val locked = players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+    if (synced[seed] == locked) return
+    runCatching { store.setLocked(seed, locked) }
+      .onSuccess { synced[seed] = locked; logger.info("Locked slots of {}: {}", session.id, locked.ifEmpty { setOf("none") }.joinToString()) }
+      .onFailure { logger.warn("Could not write the locked slots of {}: {}", session.id, it.message) }
   }
 
   /** Creates the passwords as soon as a session's seed has its room.json, so the gateway knows them before a player joins. */
@@ -158,6 +217,7 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     while (true) {
       for (session in sessions.all()) {
         val seed = Room.read(session.roomJson)?.seedName ?: continue
+        syncLocks(session, seed)
         if (seed in ready) continue
         runCatching { current(session) }
           .onSuccess { ready += seed; logger.info("Slot passwords ready for {} (seed {}, {} slots)", session.id, seed, it.size) }

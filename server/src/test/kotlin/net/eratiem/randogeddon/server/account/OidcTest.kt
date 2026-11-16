@@ -88,4 +88,40 @@ class OidcTest {
   fun `the PKCE challenge is RFC 7636's`() {
     assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
   }
+
+  private val logoutEvent = """"events":{"http://schemas.openid.net/event/backchannel-logout":{}}"""
+
+  private fun logoutClaims(iat: Long = now.epochSecond - 5, extra: String = ""","sub":"abc123","sid":"s-9"""") =
+    """{"iss":"$issuer","aud":"randogeddon","iat":$iat,"jti":"j-1",$logoutEvent$extra}"""
+
+  private fun logout(token: String) = verifyLogoutToken(token, rsaKeys(jwks("k1" to key)), issuer, "randogeddon", now)
+
+  @Test
+  fun `a back-channel logout token names the person and their session`() {
+    assertEquals(OidcLogout("abc123", "s-9"), logout(token(logoutClaims())))
+    assertEquals(OidcLogout(null, "s-9"), logout(token(logoutClaims(extra = ""","sid":"s-9""""))))
+  }
+
+  @Test
+  fun `a logout token that isn't one, or not for this client, is refused`() {
+    // An ID token (a nonce, no logout event) can't pass as one
+    assertFailsWith<OidcProblem> { logout(token()) }
+    assertFailsWith<OidcProblem> { logout(token(logoutClaims(extra = ""","sub":"abc123","nonce":"n-1""""))) }
+    // Neither person nor session
+    assertFailsWith<OidcProblem> { logout(token(logoutClaims(extra = ""))) }
+    // Too old, or from the future
+    assertFailsWith<OidcProblem> { logout(token(logoutClaims(iat = now.epochSecond - 3600))) }
+    assertFailsWith<OidcProblem> { logout(token(logoutClaims(iat = now.epochSecond + 3600))) }
+    // Another key, another client
+    assertFailsWith<OidcProblem> { logout(token(logoutClaims(), signer = other)) }
+    assertFailsWith<OidcProblem> {
+      logout(token(logoutClaims().replace("\"aud\":\"randogeddon\"", "\"aud\":\"other\"")))
+    }
+  }
+
+  @Test
+  fun `the ID token's session is read`() {
+    assertEquals("s-9", verify(token(claims().replace("\"sub\":", "\"sid\":\"s-9\",\"sub\":"))).sessionId)
+    assertEquals(null, verify(token()).sessionId)
+  }
 }

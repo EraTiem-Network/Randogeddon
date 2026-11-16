@@ -35,6 +35,7 @@ class SessionPeopleService(
   private val roles: SessionRoleStore,
   private val sessions: LiveSessions,
   private val accounts: AccountService,
+  private val limit: SessionLimit,
 ) {
   /** Everyone with a part in session [id]: players with their slots, and the others with their role. */
   fun list(id: String): SessionPeople {
@@ -78,6 +79,7 @@ class SessionPeopleService(
       else -> throw AccountProblem(HttpStatusCode.BadRequest, Problem.WHOM)
     }
     if (userId in taken(live)) throw AccountProblem(HttpStatusCode.Conflict, Problem.HAS_PART, "name" to name, "id" to live.id)
+    if (request.role == SessionRole.MANAGER) mayBecomeManager(live, userId, name, by)
     if (!roles.add(live.id, userId, request.role.code, name, by.name)) {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.HAS_PART, "name" to name, "id" to live.id)
     }
@@ -86,13 +88,40 @@ class SessionPeopleService(
     return SessionPerson(userId.toString(), name, request.role)
   }
 
-  /** Takes [userId]'s part (not a player's) in session [id]; the last Session-Manager stays, unless for an Administrator. */
+  /**
+   * Gives [userId] [role] in session [id] in place of their part: a player gets it besides their slots, someone with a
+   * part has it changed. Leaving Session-Manager follows [remove]'s rules.
+   */
+  suspend fun change(id: String, userId: Uuid, role: SessionRole, by: User): SessionPerson {
+    val live = session(id)
+    if (role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, Problem.PLAYERS_WITH_SLOTS)
+    val entry = live.setup?.roles?.get(userId)
+    val name = entry?.name ?: live.setup?.members?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
+    when {
+      entry == null -> {
+        if (role == SessionRole.MANAGER) mayBecomeManager(live, userId, name, by)
+        roles.add(live.id, userId, role.code, name, by.name)
+      }
+      entry.role == role.code -> return SessionPerson(userId.toString(), name, role)
+      else -> {
+        if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
+        if (role == SessionRole.MANAGER) mayBecomeManager(live, userId, name, by)
+        roles.change(live.id, userId, role.code)
+      }
+    }
+    sessions.refresh()
+    logger.info("{} made {} {} of {} (was {})", by.name, name, role.code, live.id, entry?.role ?: "player")
+    return SessionPerson(userId.toString(), name, role)
+  }
+
+  /**
+   * Takes [userId]'s part (not a player's) in session [id]. The last Session-Manager stays (for Administrators too):
+   * someone else becomes one first. A Session-Manager doesn't take their own part (another one or an Administrator does).
+   */
   suspend fun remove(id: String, userId: Uuid, by: User) {
     val live = session(id)
     val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
-    if (entry.role == SessionRole.MANAGER.code && live.managers().size <= 1 && !by.administrator) {
-      throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
-    }
+    if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
     roles.remove(live.id, userId)
     sessions.refresh()
     logger.info("{} took {}'s part ({}) in {}", by.name, entry.name, entry.role, live.id)
@@ -116,6 +145,24 @@ class SessionPeopleService(
   suspend fun inviteNew(email: String, suggestedName: String?, by: User, language: Language): UserRef {
     val account = accounts.invite(email, suggestedName, by.name, language, existing = Refusal(Problem.ADDRESS_HAS_ACCOUNT))
     return UserRef(account.id.toString(), account.name, account.email.takeIf { account.name == null })
+  }
+
+  /** Whether [userId] may stop being a Session-Manager of [live]: not on their own, and never the last one. */
+  private fun mayLeaveManager(live: LiveSession, userId: Uuid, by: User) {
+    if (userId == by.id && !by.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.OWN_MANAGER)
+    if (live.managers().size <= 1) throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
+  }
+
+  /**
+   * Whether [userId] may become a Session-Manager of [live]: a running session counts towards their limit, so not at
+   * it (else sessions passed on to another account wouldn't count for anyone's). An Administrator decides freely; a
+   * finished session counts once it is reopened ([SessionLifecycle.reopen] asks then).
+   */
+  private suspend fun mayBecomeManager(live: LiveSession, userId: Uuid, name: String, by: User) {
+    if (by.administrator || live.finished) return
+    limit.reached(userId)?.let {
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.MANAGER_AT_LIMIT, "name" to name, "running" to it.running, "limit" to it.limit)
+    }
   }
 
   private fun taken(live: LiveSession): Set<Uuid> = live.setup?.members.orEmpty().keys + live.setup?.roles.orEmpty().keys

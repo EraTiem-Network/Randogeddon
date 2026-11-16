@@ -13,6 +13,9 @@ object UserNames {
   const val MIN_LENGTH = 3
   const val MAX_LENGTH = 32
 
+  /** A hosted slot's "player" (no account): no one may be named so, in any case. */
+  const val HOSTED = "Hosted"
+
   fun valid(name: String): Boolean = problem(name) == null
 
   /** What's wrong with [name]; `null`: nothing (except maybe being taken). */
@@ -22,6 +25,7 @@ object UserNames {
     name != name.trim() -> Problem.NAME_SPACES
     '@' in name -> Problem.NAME_AT
     name.any { it.isISOControl() } -> Problem.NAME_CONTROL
+    name.equals(HOSTED, ignoreCase = true) -> Problem.NAME_RESERVED
     else -> null
   }?.let { Refusal(it) }
 }
@@ -143,6 +147,12 @@ data class AdminUser(
   val autoDelete: AutoDelete = AutoDelete.NEVER,
   /** When the account will be deleted by itself, as of now; `null`: not planned. */
   val deletesAt: Long? = null,
+  /** How they log in: a password of their own, through the identity provider (single sign-on), a second factor. */
+  val password: Boolean = false,
+  val singleSignOn: Boolean = false,
+  val twoFactor: Boolean = false,
+  /** The language they chose (its code); `null`: their browser's. */
+  val language: String? = null,
 )
 
 /** `POST /api/admin/users`: invite someone; [suggestedName] is prefilled on their sign-up page. */
@@ -281,9 +291,19 @@ data class SessionPerson(
   val deleted: Boolean = false,
 )
 
-/** `GET /api/sessions/{id}/people`: everyone with a part in the session. */
+/**
+ * `GET /api/sessions/{id}/people`: everyone with a part in the session. [you]: the asking user's ID, and whether they
+ * may take their own part as Session-Manager ([mayLeave]: only an Administrator; another one or an Administrator can).
+ */
 @Serializable
-data class SessionPeople(val people: List<SessionPerson> = emptyList())
+data class SessionPeople(val people: List<SessionPerson> = emptyList(), val you: String? = null, val mayLeave: Boolean = false)
+
+/**
+ * `PUT /api/sessions/{id}/people/{user}` (Session-Managers): gives someone of the session another part: a player, or
+ * someone with a part, becomes [role] (not [SessionRole.PLAYER]: a player keeps their slots either way).
+ */
+@Serializable
+data class RoleRequest(val role: SessionRole)
 
 /**
  * `POST /api/sessions/{id}/people` (Session-Managers): gives someone [role] (not [SessionRole.PLAYER]: players come with

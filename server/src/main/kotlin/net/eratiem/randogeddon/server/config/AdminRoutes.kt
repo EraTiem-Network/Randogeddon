@@ -1,13 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
-import net.eratiem.randogeddon.server.account.LoginCheck
-import net.eratiem.randogeddon.shared.SessionRole
-import net.eratiem.randogeddon.shared.AppSettings
-import net.eratiem.randogeddon.server.session.SessionList
-import net.eratiem.randogeddon.database.AppSettingsStore
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -18,19 +10,28 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
 import io.ktor.sse.ServerSentEvent
+import java.lang.invoke.MethodHandles
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
+import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AppSettings
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
@@ -38,14 +39,18 @@ import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.RandogeddonVersion
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionIds
-import java.lang.invoke.MethodHandles
-import kotlin.time.Duration.Companion.milliseconds
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.Versions
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 private val LOG_POLL = 750.milliseconds
 
-/** The largest apworld upload, as base64 (the gateway takes 64 MB files). */
+/** The largest apworld upload, as base64, all its files together (the gateway takes 64 MB files; the panel sends larger
+ * selections in several). */
 private const val MAX_APWORLD_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /**
@@ -62,6 +67,12 @@ fun Route.adminRoutes(
     install(RequireAdministrator) { this.logins = logins }
     // Every session with its game server, and what a new one needs (releases, logins, a free ID)
     get("/sessions") { gatewayCall { call.respond(admin.overview(call.loggedIn.user)) } }
+    // What runs now: this tracker, the gateway (if it answers) and its releases
+    get("/versions") {
+      val gateway = runCatching { gameServer.gatewayVersion() }.getOrNull()
+      val releases = runCatching { gameServer.versions() }.getOrDefault(emptyList())
+      call.respond(Versions(RandogeddonVersion.VERSION, gateway, releases))
+    }
     route("/settings") {
       get { call.respond(AppSettings(sessionsPerUser(settings))) }
       put {
@@ -79,21 +90,22 @@ fun Route.adminRoutes(
       get { gatewayCall { call.respond(gameServer.archipelago()) } }
       post {
         val upload = call.receive<ApworldUpload>()
-        if (upload.base64.length > MAX_APWORLD_BASE64) return@post call.refuse(HttpStatusCode.PayloadTooLarge, Refusal(Problem.APWORLD_TOO_LARGE))
-        logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.fileName, upload.release)
-        gatewayCall { call.respond(gameServer.uploadApworld(upload)) }
+        if (upload.files.sumOf { it.base64.length.toLong() } > MAX_APWORLD_BASE64) {
+          return@post call.refuse(HttpStatusCode.PayloadTooLarge, Refusal(Problem.APWORLD_TOO_LARGE))
+        }
+        logger.info("{} uploads {} for Archipelago {}", call.loggedIn.user.name, upload.files.joinToString(", ") { it.fileName }, upload.release)
+        gatewayCall { call.respond(gameServer.uploadApworlds(upload)) }
       }
       post("/try") {
         val request = call.receive<ApworldTry>()
         logger.info("{} tries {} of Archipelago {} with {}", call.loggedIn.user.name, request.file, request.from, request.release)
         gatewayCall { call.respond(gameServer.tryApworld(request)) }
       }
-      delete("/{release}/{file}") {
-        val release = call.parameters["release"]!!
-        val file = call.parameters["file"]!!
-        logger.info("{} removes {} from Archipelago {}", call.loggedIn.user.name, file, release)
+      post("/remove") {
+        val removal = call.receive<ApworldRemoval>()
+        logger.info("{} removes {} from Archipelago {}", call.loggedIn.user.name, removal.files.joinToString(", "), removal.release)
         gatewayCall {
-          gameServer.removeApworld(release, file)
+          gameServer.removeApworlds(removal)
           call.respond(HttpStatusCode.NoContent)
         }
       }
@@ -132,6 +144,7 @@ fun Route.manageRoutes(
   cheats: Cheats,
   sessions: LiveSessions,
   list: SessionList,
+  logins: LoginCheck,
 ) {
   get { gatewayCall { call.respond(admin.view(id())) } }
   delete {
@@ -155,7 +168,7 @@ fun Route.manageRoutes(
   }
   post("/reopen") {
     gatewayCall {
-      lifecycle.reopen(id(), call.loggedIn.user.name)
+      lifecycle.reopen(id(), call.actor)
       call.respond(HttpStatusCode.NoContent)
     }
   }
@@ -209,30 +222,46 @@ fun Route.manageRoutes(
   // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
   sse("/stream") {
     val id = call.parameters["id"].orEmpty()
-    var since = 0L
-    var lastState: GameServerState? = null
-    var reachable = true
-    while (true) {
-      try {
-        val state = gameServer.state(id)
-        if (state != lastState || !reachable) {
-          send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
-          lastState = state
-          reachable = true
-        }
-        val lines = gameServer.log(id, since)
-        // The gateway restarted and counts from 1 again
-        if (lines.last < since) since = 0
-        if (lines.lines.isNotEmpty()) {
-          send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
-        }
-        since = lines.last
-      } catch (e: GameServerUnavailable) {
-        if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
-        reachable = false
-      }
-      delay(LOG_POLL)
+    val token = call.request.cookies[SESSION_COOKIE]
+    // Ends once the login does, or the right to manage the session (as RequireSessionRole asks it for a call)
+    val stillAllowed: suspend () -> Boolean = {
+      token?.let { logins.userOf(it) }?.let { logins.roleIn(it, id) == SessionRole.MANAGER || logins.administratorProblem(it) == null } == true
     }
+    OpenStreams.counted(call.loggedIn.user.id.toString()) { serverStream(gameServer, id, stillAllowed) }
+  }
+}
+
+/** A session's game server as the panel follows it: its state whenever it changes, and its new log lines. */
+private suspend fun ServerSSESession.serverStream(gameServer: GameServerClient, id: String, stillAllowed: suspend () -> Boolean = { true }) {
+  var since = 0L
+  var lastState: GameServerState? = null
+  var reachable = true
+  var unchecked = 0.milliseconds
+  while (true) {
+    if (unchecked >= LOGIN_CHECK) {
+      if (!stillAllowed()) return
+      unchecked = 0.milliseconds
+    }
+    try {
+      val state = gameServer.state(id)
+      if (state != lastState || !reachable) {
+        send(ServerSentEvent(ApiJson.encodeToString(GameServerState.serializer(), state), event = "state"))
+        lastState = state
+        reachable = true
+      }
+      val lines = gameServer.log(id, since)
+      // The gateway restarted and counts from 1 again
+      if (lines.last < since) since = 0
+      if (lines.lines.isNotEmpty()) {
+        send(ServerSentEvent(ApiJson.encodeToString(LogLines.serializer(), lines), event = "log"))
+      }
+      since = lines.last
+    } catch (e: GameServerUnavailable) {
+      if (reachable) send(ServerSentEvent(e.message ?: "unreachable", event = "unreachable"))
+      reachable = false
+    }
+    delay(LOG_POLL)
+    unchecked += LOG_POLL
   }
 }
 

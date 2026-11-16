@@ -1,11 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.ThemeMode
-import net.eratiem.randogeddon.shared.Theme
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
-import net.eratiem.randogeddon.server.config.apiError
+import io.ktor.http.ContentType
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -14,14 +9,18 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.util.AttributeKey
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -29,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LOGIN_DURATION
+import net.eratiem.randogeddon.server.account.LoginAttempts
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.LoginMethods
 import net.eratiem.randogeddon.server.account.LoginService
@@ -36,20 +36,26 @@ import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SsoRefused
 import net.eratiem.randogeddon.server.account.TwoFactor
+import net.eratiem.randogeddon.server.account.loginDuration
+import net.eratiem.randogeddon.server.config.apiError
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.CodeRequest
 import net.eratiem.randogeddon.shared.LinkLoginRequest
-import net.eratiem.randogeddon.shared.LoginOptions
 import net.eratiem.randogeddon.shared.LoginNext
-import net.eratiem.randogeddon.shared.LoginStep
-import net.eratiem.randogeddon.shared.PendingRequest
-import net.eratiem.randogeddon.shared.RecoveryCodeList
-import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.LoginOptions
 import net.eratiem.randogeddon.shared.LoginRequest
+import net.eratiem.randogeddon.shared.LoginStep
 import net.eratiem.randogeddon.shared.Me
+import net.eratiem.randogeddon.shared.PendingRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.RecoveryCodeList
+import net.eratiem.randogeddon.shared.Refusal
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.i18n.Language
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. Secure
@@ -66,12 +72,35 @@ private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
   extensions = mapOf("SameSite" to "Lax"),
 )
 
-/** The logged-in user of a call that passed [RequireLogin]. */
-data class LoggedIn(val user: User)
+/**
+ * Why a login through the provider didn't work, for the login form: the page reads it at `#/login-problem` and takes
+ * it away. In a cookie, because a link could carry anyone's words onto the form (only this server sets cookies here).
+ */
+const val LOGIN_PROBLEM_COOKIE = "randogeddon_login_problem"
+
+internal fun problemCookie(text: String, secure: Boolean) = Cookie(
+  LOGIN_PROBLEM_COOKIE, text, maxAge = 60, path = "/", secure = secure, httpOnly = false,
+  extensions = mapOf("SameSite" to "Lax"),
+)
+
+/**
+ * The logged-in user of a call that passed [RequireLogin]. [strong]: this login may act as an Administrator
+ * ([LoginCheck.administratorProblem]: with two-factor login, or through single sign-on); never a bridge key.
+ */
+data class LoggedIn(val user: User, val strong: Boolean = false)
 
 private val LOGGED_IN = AttributeKey<LoggedIn>("LoggedIn")
 
 val ApplicationCall.loggedIn: LoggedIn get() = attributes[LOGGED_IN]
+
+/**
+ * Who a call acts as: the logged-in user, as an Administrator only with a login that may be one. What an
+ * Administrator sees beyond their own sessions (every session, its spoiler log, hosted slots' passwords, every slot's
+ * files) goes by this, like the admin routes go by [RequireAdministrator]: an older password login of an account that
+ * became an Administrator, or a bridge key, reads no more than any user. The account's own settings go by [loggedIn].
+ */
+val ApplicationCall.actor: User
+  get() = loggedIn.let { if (it.user.administrator && !it.strong) it.user.copy(administrator = false) else it.user }
 
 /**
  * Lets a call through only with a valid login: 401 without (the web app then shows the login). A session's own routes
@@ -90,7 +119,7 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
       call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.NOT_LOGGED_IN))
       return@onCall
     }
-    call.attributes.put(LOGGED_IN, LoggedIn(user))
+    call.attributes.put(LOGGED_IN, LoggedIn(user, strong = logins.administratorProblem(user) == null))
   }
 }
 
@@ -126,9 +155,14 @@ val RequireBridgeKey = createRouteScopedPlugin("RequireBridgeKey", ::RequireBrid
 val RequireSessionMember = createRouteScopedPlugin("RequireSessionMember", ::RequireLoginConfig) {
   val logins = pluginConfig.logins
   onCall { call ->
-    val me = call.loggedIn
+    val me = call.actor
     val id = call.parameters["id"].orEmpty()
-    if (!logins.maySee(me.user, id)) call.refuse(HttpStatusCode.Forbidden, Refusal.of(Problem.NOT_PART, "name" to me.user.name, "id" to id))
+    if (logins.maySee(me, id)) return@onCall
+    // An Administrator whose login may not act as one is told why (two-factor login, or the provider), like on the
+    // admin routes; everyone else that they have no part in it
+    val account = call.loggedIn.user
+    val problem = logins.administratorProblem(account).takeIf { account.administrator }
+    call.refuse(HttpStatusCode.Forbidden, problem ?: Refusal.of(Problem.NOT_PART, "name" to me.name, "id" to id))
   }
 }
 
@@ -180,11 +214,12 @@ fun Route.loginRoutes(
   twoFactor: TwoFactor,
   pending: PendingLogins,
   sso: SingleSignOn,
+  attempts: LoginAttempts,
   publicUrl: String,
   secure: Boolean = true,
 ) {
-  suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD) {
-    call.response.cookies.append(sessionCookie(logins.start(user, method), LOGIN_DURATION.inWholeSeconds, secure))
+  suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null) {
+    call.response.cookies.append(sessionCookie(logins.start(user, method, providerSession), loginDuration(method).inWholeSeconds, secure))
   }
   // A rate limit of their own; outside it (or the login's) they would be under /api's login check
   rateLimit(SSO_RATE_LIMIT) {
@@ -194,7 +229,8 @@ fun Route.loginRoutes(
       val (state, url) = try {
         sso.start()
       } catch (e: Exception) {
-        return@get call.respondRedirect("$publicUrl/#/login-problem/${"${sso.name} can't be reached".encodeURLPathPart()}")
+        call.response.cookies.append(problemCookie(call.apiError(Refusal.of(Problem.SSO_UNREACHABLE, "provider" to sso.name)).message, secure))
+        return@get call.respondRedirect("$publicUrl/#/login-problem")
       }
       call.response.cookies.append(oidcCookie(state, 600, secure))
       call.respondRedirect(url)
@@ -206,10 +242,12 @@ fun Route.loginRoutes(
       call.response.cookies.append(oidcCookie("", 0, secure))
       // The state must be this browser's (no logins slipped in from elsewhere)
       val problem = when {
-        code == null -> Refusal(Problem.SSO_CANCELLED, detail = call.request.queryParameters["error_description"])
+        // Not the provider's own words (`error_description`): anyone can put a text into a link to here
+        code == null -> Refusal(Problem.SSO_CANCELLED)
         cookie == null || cookie != state -> Refusal(Problem.SSO_NOT_HERE)
         else -> try {
-          loggedIn(sso.finish(state, code), LoginMethods.OIDC)
+          val (user, providerSession) = sso.finish(state, code)
+          loggedIn(user, LoginMethods.OIDC, providerSession)
           null
         } catch (e: SsoRefused) {
           e.refusal
@@ -220,7 +258,17 @@ fun Route.loginRoutes(
         }
       }?.let { call.apiError(it).let { e -> e.message + (e.detail?.let { d -> " ($d)" } ?: "") } }
       // Back to the app; a problem shows on its login form
-      call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem/${problem.encodeURLPathPart()}")
+      if (problem != null) call.response.cookies.append(problemCookie(problem, secure))
+      call.respondRedirect(if (problem == null) "$publicUrl/#/" else "$publicUrl/#/login-problem")
+    }
+    // The provider's back-channel logout (its Logout URI, method Back-channel): a session there ended, its logins here
+    // end too. 200 when done, 400 for a token that doesn't pass (OpenID Connect Back-Channel Logout 1.0)
+    post("/api/login/oidc/backchannel") {
+      val token = runCatching { call.receiveParameters()["logout_token"] }.getOrNull()
+      if (token.isNullOrBlank() || !sso.backchannelLogout(token)) {
+        return@post call.respondText("""{"error":"invalid_request"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+      }
+      call.respond(HttpStatusCode.OK)
     }
     // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
     post("/api/login/oidc/deleted") {
@@ -266,8 +314,12 @@ fun Route.loginRoutes(
   rateLimit(LOGIN_RATE_LIMIT) {
     post("/api/login") {
       val request = call.receive<LoginRequest>()
+      // Wrong passwords are counted per name too (the rate limit only counts per address)
+      val key = LoginAttempts.password(request.username)
+      if (attempts.blocked(key)) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
       val user = logins.verify(request.username, request.password)
       if (user == null) {
+        attempts.failed(key)
         // Slows down guessing on top of the rate limit
         delay(1.seconds)
         return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_LOGIN))
@@ -287,7 +339,11 @@ fun Route.loginRoutes(
       val request = call.receive<CodeRequest>()
       val token = request.pending.orEmpty()
       val user = pendingUser(token) ?: return@post
+      // Wrong codes are counted per account: a new pending login (the password again) doesn't start them afresh
+      val key = LoginAttempts.code(user.id.toString())
+      if (attempts.blocked(key)) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
       if (!twoFactor.check(user, request.code)) {
+        attempts.failed(key)
         pending.wrongCode(token)
         delay(1.seconds)
         return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_CODE))

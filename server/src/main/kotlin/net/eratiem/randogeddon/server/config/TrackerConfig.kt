@@ -35,6 +35,9 @@ data class TrackerConfig(
   val mail: MailConfig = MailConfig(),
   /** Encrypts the TOTP secrets: base64 of 32 bytes; empty: a key file in [stateDir], made once. */
   val totpKey: String = "",
+  /** The gateway's own database role and its password ([net.eratiem.randogeddon.database.GatewayRole]); no password: none is made. */
+  val gatewayDbUser: String = "randogeddon_gateway",
+  val gatewayDbPassword: String = "",
   /** Administrators log in through this provider; `null`: with their password and two-factor login. */
   val oidc: OidcConfig? = null,
   /** Randogeddon Bridge's builds (`randogeddon-bridge-<os>-<arch>[.exe]` and `VERSION`), offered for download. */
@@ -62,6 +65,8 @@ data class TrackerConfig(
         publicUrl = value("tracker.publicUrl").trimEnd('/'),
         bridgeDir = Path.of(value("tracker.bridgeDir")),
         totpKey = value("tracker.totpKey"),
+        gatewayDbUser = value("database.gatewayUser").trim(),
+        gatewayDbPassword = value("database.gatewayPassword"),
         mail = MailConfig(
           host = value("mail.host").trim(),
           address = value("mail.address").trim(),

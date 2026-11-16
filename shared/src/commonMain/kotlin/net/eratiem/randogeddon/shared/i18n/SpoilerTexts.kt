@@ -10,9 +10,16 @@ interface SpoilerTexts {
   val playthrough: String
   val playthroughSubtitle: String
   fun nothingFor(slot: String): String
+  /** The playthrough's search found no step. */
+  fun nothingMatches(query: String): String
+  val searchSteps: String
   val sphereZero: String
   fun sphere(n: Int): String
   fun steps(n: Int): String
+  /** A sphere's steps whose location is checked already: `3 / 5 checked`. */
+  fun checked(done: Int, of: Int): String
+  /** A step's mark: its location is checked. */
+  val checkedTip: String
   val slot: String
   val item: String
   val check: String
@@ -31,9 +38,13 @@ internal object EnglishSpoiler : SpoilerTexts {
   override val playthrough = "Playthrough"
   override val playthroughSubtitle = "the way through the seed, sphere by sphere: what becomes reachable, and is needed, at each step"
   override fun nothingFor(slot: String) = "Nothing for $slot."
+  override fun nothingMatches(query: String) = "No step matches “$query”."
+  override val searchSteps = "Item, check or slot…"
   override val sphereZero = "Sphere 0 · what everyone starts with"
   override fun sphere(n: Int) = "Sphere $n"
   override fun steps(n: Int) = if (n == 1) "1 step" else "$n steps"
+  override fun checked(done: Int, of: Int) = "$done / $of checked"
+  override val checkedTip = "Checked already"
   override val slot = "Slot"
   override val item = "Item"
   override val check = "Check"
@@ -52,9 +63,13 @@ internal object GermanSpoiler : SpoilerTexts {
   override val playthroughSubtitle =
     "der Weg durch den Seed, Sphäre für Sphäre: was bei jedem Schritt erreichbar wird und gebraucht wird"
   override fun nothingFor(slot: String) = "Nichts für $slot."
+  override fun nothingMatches(query: String) = "Kein Schritt passt zu „$query“."
+  override val searchSteps = "Item, Check oder Slot…"
   override val sphereZero = "Sphäre 0 · womit alle anfangen"
   override fun sphere(n: Int) = "Sphäre $n"
   override fun steps(n: Int) = if (n == 1) "1 Schritt" else "$n Schritte"
+  override fun checked(done: Int, of: Int) = "$done / $of gecheckt"
+  override val checkedTip = "Schon gecheckt"
   override val slot = "Slot"
   override val item = "Item"
   override val check = "Check"

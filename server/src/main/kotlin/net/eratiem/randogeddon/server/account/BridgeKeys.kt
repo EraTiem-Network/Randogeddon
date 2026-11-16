@@ -1,17 +1,19 @@
 package net.eratiem.randogeddon.server.account
 
+import io.ktor.http.HttpStatusCode
+import java.lang.invoke.MethodHandles
+import java.security.SecureRandom
+import java.time.Instant
+import java.util.Base64
+import kotlin.time.toJavaDuration
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.BridgeKey
 import net.eratiem.randogeddon.shared.BridgeKeyView
+import net.eratiem.randogeddon.shared.Problem
 import org.koin.core.annotation.Single
-import java.lang.invoke.MethodHandles
-import java.security.SecureRandom
-import java.time.Instant
-import java.util.Base64
-import kotlin.time.toJavaDuration
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
@@ -23,6 +25,9 @@ private const val ID_LENGTH = 16
 
 private val random = SecureRandom()
 
+/** The most keys one account has at once. */
+const val MAX_KEYS = 10
+
 /**
  * Keys of Randogeddon Bridge: each a login of its own kind ([LoginMethods.BRIDGE], [LOGIN_DURATION] like the others),
  * sent by the app as a bearer token and only taken on `/bridge/…` (never as the cookie). Stored as their SHA-256, like
@@ -30,8 +35,11 @@ private val random = SecureRandom()
  */
 @Single
 class BridgeKeys(private val users: UserStore, private val logins: LoginSessionStore) {
-  /** A new key for [user], shown once. */
+  /** A new key for [user], shown once; [AccountProblem] (409) once they have [MAX_KEYS]. */
   suspend fun make(user: User, now: Instant = Instant.now()): BridgeKey {
+    if (logins.logins(user.id, LoginMethods.BRIDGE, now).size >= MAX_KEYS) {
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.TOO_MANY_KEYS, "max" to MAX_KEYS)
+    }
     val key = BRIDGE_KEY_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(48).also(random::nextBytes))
     val expires = now.plus(LOGIN_DURATION.toJavaDuration())
     logins.create(tokenHash(key), user.id, expires, now, LoginMethods.BRIDGE)

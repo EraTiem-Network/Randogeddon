@@ -32,11 +32,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -93,6 +91,34 @@ import net.eratiem.randogeddon.shared.i18n.texts
 
 private const val FEED_VISIBLE_KEY = "ap-feed-visible"
 private const val FEED_POSITION_KEY = "ap-feed-position"
+
+/** Per viewer, remembered in the browser: the live feed is visible and on the right unless changed. */
+internal object FeedSettings {
+  var visible: Boolean by mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false")
+    private set
+  var position: FeedPosition by mutableStateOf(
+    FeedPosition.entries.firstOrNull { it.name == Platform.loadSetting(FEED_POSITION_KEY) } ?: FeedPosition.RIGHT,
+  )
+    private set
+
+  fun show(visible: Boolean) {
+    this.visible = visible
+    Platform.saveSetting(FEED_VISIBLE_KEY, visible.toString())
+  }
+
+  fun place(position: FeedPosition) {
+    this.position = position
+    Platform.saveSetting(FEED_POSITION_KEY, position.name)
+  }
+
+  /** Back to the defaults (without a login). */
+  fun reset() {
+    visible = true
+    position = FeedPosition.RIGHT
+    Platform.saveSetting(FEED_VISIBLE_KEY, null)
+    Platform.saveSetting(FEED_POSITION_KEY, null)
+  }
+}
 private val FEED_WIDTH = 440.dp
 
 enum class FeedPosition { RIGHT, LEFT, BELOW }
@@ -104,7 +130,11 @@ private fun FeedPosition.label(t: Texts): String = when (this) {
 }
 private val WIDE = 1100.dp
 private val GAP = 16.dp
-private val CONNECTION_WIDTH = 420.dp
+/** *Your connection* beside the tiles: with the bridge open beside the rest, or one column (folded, or not playing). */
+private val CONNECTION_WIDE = 720.dp
+private val CONNECTION_NARROW = 420.dp
+/** The tiles' room beside *Your connection*: three of them (at least 160 dp each) in a row; with less, it goes above. */
+private val STATS_BESIDE = 160.dp * 3 + 12.dp * 2
 /** The side feed is never shorter than this, even next to a single small person card. */
 private val MIN_SIDE_HEIGHT = 420.dp
 
@@ -233,19 +263,10 @@ private fun TrackerApp() {
     }
   }
 
-  // Per viewer, remembered in the browser: the live feed is visible and on the right unless changed
-  var feedVisible by remember { mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false") }
-  var feedPosition by remember {
-    mutableStateOf(FeedPosition.entries.firstOrNull { it.name == Platform.loadSetting(FEED_POSITION_KEY) } ?: FeedPosition.RIGHT)
-  }
-  fun setFeedVisible(visible: Boolean) {
-    feedVisible = visible
-    Platform.saveSetting(FEED_VISIBLE_KEY, visible.toString())
-  }
-  fun setFeedPosition(position: FeedPosition) {
-    feedPosition = position
-    Platform.saveSetting(FEED_POSITION_KEY, position.name)
-  }
+  val feedVisible = FeedSettings.visible
+  val feedPosition = FeedSettings.position
+  fun setFeedVisible(visible: Boolean) = FeedSettings.show(visible)
+  fun setFeedPosition(position: FeedPosition) = FeedSettings.place(position)
 
   RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
@@ -260,7 +281,7 @@ private fun TrackerApp() {
       val narrow = maxWidth < NARROW
       val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
       Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().scrolling().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
       ) {
         // Text can be selected (and copied) anywhere on the page
@@ -278,12 +299,13 @@ private fun TrackerApp() {
             val r = route
             val dashboard = (r as? Route.Dashboard)?.id
             // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
-            // the admin panel keeps the dashboard's session in it, a spoiler log its own
-            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { adminOpen }
+            // the admin panel and Your account keep the dashboard's session in it, a spoiler log its own
+            val keepsSession = adminOpen || r == Route.Settings
+            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
             val switchable = sessions.filter { it.myRole != null || it.id == shown }
             Headline()
             Hero(
-              s.takeIf { dashboard != null || r is Route.Spoiler || adminOpen }, streamOpen,
+              s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
               sessions = switchable, shown = shown,
               onSession = { go(Route.Dashboard(it)) },
               onAllSessions = { go(Route.Home) },
@@ -294,7 +316,8 @@ private fun TrackerApp() {
                 scope.launch { saveTheme(Themes.theme, next) }
               },
               feedVisible = feedVisible,
-              onToggleFeed = { setFeedVisible(!feedVisible) },
+              // Only where there is a feed: a session's dashboard, once the session is there
+              onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
@@ -358,21 +381,30 @@ private fun TrackerApp() {
               onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
               onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
             )
-            if (wide) {
+            val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
+            if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
               // The tiles and the connection share a row and its height
               Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                Stats(s, now, contentWidth - CONNECTION_WIDTH - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+                Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
                 ConnectionSection(
                   user.name, connection, selected.orEmpty(), files, mine, role, s,
-                  Modifier.width(CONNECTION_WIDTH).fillMaxHeight(), fillHeight = true,
+                  Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
+                  twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
                 )
               }
             } else {
-              ConnectionSection(user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth())
+              ConnectionSection(
+                user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
+                twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
+              )
               Stats(s, now, contentWidth)
             }
             val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
-              Feed(s, modifier, feedPosition, fillHeight, onPosition = ::setFeedPosition, onHide = { setFeedVisible(false) })
+              // Its place is only offered where it can be beside the players
+              Feed(
+                s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
+                onHide = { setFeedVisible(false) },
+              )
             }
             val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
             if (side) {
@@ -446,7 +478,8 @@ private fun Hero(
   onAllSessions: () -> Unit,
   onToggleTheme: () -> Unit,
   feedVisible: Boolean,
-  onToggleFeed: () -> Unit,
+  /** `null`: no feed on this page, no button. */
+  onToggleFeed: (() -> Unit)?,
   onLogout: () -> Unit,
   /** The user's account; [settingsOpen] while it is shown. */
   onSettings: () -> Unit,
@@ -497,8 +530,8 @@ private fun Hero(
       }
     }
     val controls: @Composable () -> Unit = {
-      // As tall as the buttons next to it
-      Row(
+      // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
+      if (summary != null && summary.finishedAt == null) Row(
         Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -507,16 +540,21 @@ private fun Hero(
         Txt(
           when {
             !streamOpen -> t.frame.reconnecting
-            summary?.finishedAt != null -> t.frame.finished
-            summary?.connected == true -> t.frame.live
+            summary.connected -> t.frame.live
             else -> t.frame.serverOffline
           }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
         )
       }
       // Shows / hides the live feed; brighter while it is shown
-      IconButton(onToggleFeed, Icon.FEED, tint = onHero,
+      if (onToggleFeed != null) IconButton(onToggleFeed, Icon.FEED, tint = onHero,
         background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
-      IconButton(onToggleTheme, Icon.THEME, tint = onHero, background = onHero.copy(alpha = 0.2f))
+      // The mode it is in: light, dark, automatic
+      val modeIcon = when (Themes.mode) {
+        ThemeMode.LIGHT -> Icon.SUN
+        ThemeMode.DARK -> Icon.MOON
+        ThemeMode.AUTO -> Icon.THEME
+      }
+      IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
       if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
         background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
@@ -947,7 +985,7 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     HintRow(listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot, "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
     Divider()
   }
-  Column(Modifier.heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
+  Column(Modifier.heightIn(max = 600.dp).scrolling()) {
     hints.forEachIndexed { i, h ->
       if (i > 0) Divider()
       if (compact) CompactHint(h) else HintRow(listOf(
@@ -1080,7 +1118,7 @@ internal fun Feed(
       } else {
         Column(
           (if (fillHeight) Modifier.weight(1f) else Modifier.heightIn(max = if (position == FeedPosition.BELOW) 520.dp else 640.dp))
-            .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)
+            .scrolling().padding(vertical = 4.dp)
         ) {
           events.forEach { FeedRow(it) }
         }

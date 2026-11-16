@@ -23,6 +23,7 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.util.logger
+import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
@@ -92,9 +93,12 @@ class LiveSession(
    */
   fun people(): Map<String, List<String>> {
     val worlds = setup?.worlds
-    if (!worlds.isNullOrEmpty()) {
+    val hosted = setup?.hosted.orEmpty()
+    if (!worlds.isNullOrEmpty() || hosted.isNotEmpty()) {
       val people = LinkedHashMap<String, MutableList<String>>()
-      for ((slot, users) in worlds) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+      for ((slot, users) in worlds.orEmpty()) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+      // The hosted slots together, as if one person played them (no account can be called so)
+      if (hosted.isNotEmpty()) people[UserNames.HOSTED] = hosted.sorted().toMutableList()
       return people
     }
     val s = archives.read(id)?.summary ?: return emptyMap()

@@ -14,25 +14,21 @@ Words used here and in the dashboard: a **player** is a person (with a login); a
 the multiworld, played by one or more players (Archipelago itself says "player" for a slot, e.g. in `/send <player>`);
 the **game** is just its title, e.g. Hollow Knight.
 
-```
-              players' game clients                      browser
-                       │ wss://<session-id>.randogeddon     │ https://randogeddon
-                       │       .example.net:443             │         .example.net
-                 ┌─────▼─────────────── Traefik ────────────▼─────┐
-                 │                                                │
-        ┌────────▼──────────────────┐                 ┌───────────▼──────────┐
-        │  gateway (Ktor)           │  internal API   │  tracker (Ktor)      │
-        │  checks each Connect's    │◄────────────────┤  login, API, SSE,    │
-        │  slot password            │  :8001 (control)│  the panel,          │
-        │  ┌─────────────────────┐  │                 │  Wasm app            │
-        │  │ MultiServer per     │◄─┼─────────────────┤  Tracker-tag clients │
-        │  │ session :38300…     │  │                 │  per session         │
-        │  └─────────────────────┘  │                 └───┬──────────────────┘
-        └──────┬──────────┬─────────┘                     │
-  ./data/sessions/<id>/   │                       ┌───────▼──────────────┐
-                          └──────────────────────►│  postgres            │
-                            reads slot passwords  │  logins, slot pw     │
-                                                  └──────────────────────┘
+```mermaid
+flowchart TB
+  clients["players' game clients"] -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  browser -- "https://randogeddon.eratiem.net" --> traefik
+  traefik[Traefik] --> gateway
+  traefik --> tracker
+  subgraph gateway ["gateway (Ktor): checks each Connect's slot password"]
+    multiserver["MultiServer per session :38300…"]
+  end
+  tracker["tracker (Ktor): login, API, SSE, the panel, Wasm app"]
+  tracker -- "internal API :8001 (control)" --> gateway
+  tracker -- "Tracker-tag clients per session" --> multiserver
+  gateway --> sessions[("./data/sessions/#lt;id#gt;/")]
+  gateway -- "reads slot passwords" --> postgres[("postgres: logins, slot passwords")]
+  tracker --> postgres
 ```
 
 The gateway runs one MultiServer per running session as a child process, each on a port of `AP_PORTS` (default
@@ -62,7 +58,7 @@ restart or update doesn't drop the players.
 
 ```sh
 git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
-cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, BASE_DOMAIN, TRAEFIK_* …
+cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, TRACKER_DB_*, GATEWAY_DB_*, BASE_DOMAIN, TRAEFIK_* …
 docker compose build     # takes a few minutes (every game's requirements, the native builds)
 ```
 
@@ -127,6 +123,7 @@ http:
       rule: "HostRegexp(`^[a-z0-9-]+[.]randogeddon[.]eratiem[.]net$`)"
       entryPoints: [websecure]
       service: randogeddon-ap          # http://<vm>:38281, the gateway (websocket; no extra config)
+      middlewares: [randogeddon-ap-rate]
       tls: &randogeddon-tls
         certResolver: letsencrypt-dns
         domains:
@@ -137,11 +134,47 @@ http:
       entryPoints: [websecure]
       service: randogeddon             # http://<vm>:8000, the tracker (SSE; Traefik doesn't buffer it by default)
       tls: *randogeddon-tls
+    # Plain HTTP goes to HTTPS (a redirectScheme middleware; the tracker's answers then say HTTPS only for a year)
+    randogeddon-http:
+      rule: "HostRegexp(`^([a-z0-9-]+[.])?randogeddon[.]eratiem[.]net$`)"
+      entryPoints: [web]
+      middlewares: [web-to-websecure]
+      service: noop@internal
+  middlewares:
+    # How fast one address (an IPv6 /64 as one) opens new connections to the game servers: 100 at once, then 2 a
+    # second, 429 past it. Not how many it holds (behind a VPN's or a shared gateway's address are many households)
+    randogeddon-ap-rate:
+      rateLimit:
+        average: 2
+        burst: 100
+        sourceCriterion:
+          ipStrategy:
+            ipv6Subnet: 64
 ```
 
 Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
 (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` in `.env`): it publishes 38281 and 8000 and keeps the
 public addresses (`BASE_DOMAIN`, the login cookie only over HTTPS).
+
+**A release is deployed only from a signed tag:** `scripts/deploy.sh` checks `v<version>`'s signature against the
+keyring of the machine it runs on and stops without one that checks out (the signers' public keys are imported there:
+`gpg --import`). Anything else than a release (a commit without its version's tag) goes out as `edge`, unchecked.
+
+**The tracker's own database login:** `POSTGRES_PASSWORD` is the database's superuser, who can run programs in the
+database's container. With `TRACKER_DB_USER` and `TRACKER_DB_PASSWORD` in `.env` (`openssl rand -hex 32`), the compose
+service `database-roles` makes the tracker a role of its own before each start of the tracker (as the superuser: the
+tables become the role's, it may make the gateway's role, and it is no superuser), and the tracker's container gets
+only this login; the superuser's password then stays with that one-off service and the dumps. Without them the tracker
+logs in as the superuser. It can be switched on for a database that already runs (tried with live's tables); to go
+back, take the two lines out (the superuser may still do everything). A tracker older than 0.13.18 can't make the
+gateway's role with it: take the lines out before rolling back that far.
+
+**The gateway's own database login:** the gateway runs Archipelago's Python next to itself (Generate.py, the game
+servers, the APWorlds), which must not reach the accounts. With `GATEWAY_DB_USER` and `GATEWAY_DB_PASSWORD` in `.env`
+(`openssl rand -hex 32`), the tracker makes that role at each start with only the gateway's rights (the sessions and
+the slot passwords to read, the session time to count), and the gateway's container gets only this login; without
+them it uses the tracker's. Archipelago's processes get nothing of the gateway's environment either way, and the
+gateway's container is limited to 5 GB of memory (`GATEWAY_MEMORY`): a seed too large for it ends there.
 
 The gateway runs as uid 1000 and writes the sessions' files to `data/`; when moving from the old `archipelago`
 container (which ran as root), hand the directory over once: `sudo chown -R 1000:1000 data`. Seeds from before
@@ -149,7 +182,8 @@ several sessions (one seed in `data/` itself, finished ones in `data/sessions/<s
 `data/sessions/s-<seed>/` on the first start, and get the session ID `s-<seed>`; their players were in `session.yaml`,
 which is no longer read, so only Administrators see them.
 
-The first Administrator, who then invites the others (every user can create sessions):
+Without single sign-on (a local setup, the demo), the first Administrator, who then invites the others (every user
+can create sessions):
 
 ```sh
 docker compose exec tracker randogeddon admins --create <person>   # prints the password once
@@ -160,10 +194,20 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
 `randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
 first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
-app's two-factor login for them. They can't log in with a password any more; if Authentik can't be reached,
-`randogeddon admins --login <person>` prints a one-time link (15 minutes). In Authentik: an OAuth2/OpenID provider
-(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`) and its
-application bound to the group (`infra/auth/setup.py` makes both). Players keep their name and password.
+app's two-factor login for them. Their login lasts a day (the group is asked again at each one, so leaving it
+shows within a day), and only such a login reads as an Administrator: an older password login, or a bridge key, sees
+no more than any user. There is no other way to an Administrator then: no password login for them, and the CLI
+makes none (`admins --create`, `--grant` and `--login` are refused; `--revoke` still takes the flag). While Authentik
+can't be reached nobody administrates (the sessions run on, their Session-Managers manage them). The application in
+Authentik also asks for a second factor: someone in the group without one set up there doesn't get in. In Authentik:
+an OAuth2/OpenID provider
+(confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`, *Logout URI*
+`https://<BASE_DOMAIN>/api/login/oidc/backchannel` with the method *Back-channel*) and its application bound to the
+group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
+(they log out there, an admin ends it, the person is deactivated, it expires), Authentik's back-channel logout
+(`POST /api/login/oidc/backchannel`, a logout token signed by Authentik) ends the logins here from that session, and an
+open dashboard notices within 30 seconds and shows the login form (as does any request that finds a login ended). Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
+account*). Players keep their name and password.
 Authentik holds their account: *Your account* starts with *Your Authentik account*, a link to Authentik's user
 settings (`<issuer's host>/if/user/`, or `OIDC_ACCOUNT_URL`), where they change their name, password, e-mail address
 and second factor; the panels for those and for the deletion aren't there for them, and the server refuses those
@@ -204,7 +248,7 @@ only what runs; the images are built on a PC (WSL) and come from the registry `p
 | `.env`, `docker-compose.yml`, `docker-compose.proxy.yml` | `/srv/randogeddon/` (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml`) |
 | `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
 | the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
-| dumps (each update's, a daily one kept 14 days) | `/srv/backups/` |
+| dumps (each update's, a daily one kept 14 days; for root only) | `/srv/backups/` |
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
@@ -255,15 +299,25 @@ docker compose up -d
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
-   *Generate and start*. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   *Generate and start* (once every slot has a player or is hosted; while it generates, a bar shows the stage and about
+   how far it is). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
-   name or game, not readable) isn't taken, and the panel says why. A game the release has no APWorld for is flagged
-   before generating; if Generate.py fails, the panel names the games that may be the cause (one the error mentions,
+   name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
+   slot yet: one message names them (and tells someone who isn't an Administrator to ask one to upload it), and they
+   become slots by themselves once the APWorld is there (uploaded by anyone, anywhere). If Generate.py fails, the panel names the games that may be the cause (one the error mentions,
    or one whose APWorld comes from another release) above its output.
-3. **New players are invited** by e-mail, right in a slot's player field (only an address that has no account; someone
-   who has one is picked by name), or beforehand by an Administrator (*Users*): they get a link, valid for 7 days,
-   and choose their name and password themselves. Until they sign up, the session shows them by the suggested name.
+3. **Players are added** per slot, from a dropdown with a search (a slot starts without players). **New players are
+   invited** by e-mail right there (type their address: only one that has no account), or beforehand by an
+   Administrator (*Users*): they get a link, valid for 7 days, and choose their name and password themselves. Until
+   they sign up, the session shows them by the suggested name. When a session ends, its invitations nobody accepted
+   go (unless another running session has them).
+   **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
+   Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
+   dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
+   see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
+   server up. No account can be named *Hosted*. Randogeddon Bridge offers a hosted slot to its Session-Managers and
+   Administrators (for a hosted game that can't do TLS), not to its players.
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
@@ -272,7 +326,7 @@ docker compose up -d
    (`<session-id>.randogeddon.eratiem.net:443`; clients try `wss://` first, so TLS through Traefik just works; for a game that can't, see *Randogeddon Bridge*), their
    slot names and each slot's password, and for a ROM-based game (or one that needs a mod) the slot's file from the
    seed to download: a patch is opened with the Archipelago Launcher (*Open Patch*) and their own ROM. Session-Managers
-   and Administrators download every slot's files in the panel (*Players*). Phones can install the dashboard as an
+   and Administrators download every slot's files in the panel (*Patch files*). Phones can install the dashboard as an
    app (see below).
 
 Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
@@ -299,7 +353,9 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them).
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The
+  playthrough reads *Item @ Check*, marks the steps already checked with a ✓, and each sphere says how many of its
+  checks are done; its search keeps only the steps whose item, check or slot contains the text (and unfolds them).
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
 
@@ -308,10 +364,16 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
 The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
 and its APWorld library:
 
-- **Upload APWorld…** adds a `.apworld` to that release's library (kept in `data/apworlds/<release>/`). The gateway
-  checks that it is an APWorld (a zip with one world folder), loads the release's worlds again and says which game it
-  brought. One that doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have
-  replaced stays, and the panel says why. *Remove* takes one out again.
+- **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
+  at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
+  after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
+  inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. One that
+  doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
+  the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
+  would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
+  same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
+  uploaded ones; *Select all*), *Remove (n)*, confirm. An APWorld may import `tkinter` (for its client window): the
+  image has the Tk library it needs.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
@@ -323,9 +385,10 @@ The gateway puts exactly these files into each release's `custom_worlds/` before
 
 Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
 (an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
-who plays which slot and its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People**
-(everyone with a part, with role and slots; add a Session-Manager, support or a watcher by name, or invite a new
-address; remove them; the share link), the cheats, its game server's state (running, starting, stopped, crashed), lets
+its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
+pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
+Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
+share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
 and has the server console:
 
@@ -342,15 +405,23 @@ Archipelago's commands say `<player>` for a slot.
 Up and down in the console bring back earlier commands. Every action is logged with the name of who did it in the tracker's
 log.
 
-**Cheats** (the panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
-the slot and the item or location from searchable lists. Free hints (`/hint`, `/hint_location`) only if the session
+**Cheats** (the panel, *Cheats*): give a slot an item, check a location, release or collect for it, pick
+the slot and the item or location from searchable lists. *Check a location* goes either way: *from the slot* (one of
+its own open locations: its item goes to whoever owns it) or *to the slot* (an open location of another world that
+holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
+placements, so only for a seed whose spoiler log has them). Free hints (`/hint`, `/hint_location`) only if the session
 was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
 
-Below the finished sessions, Administrators find *General*: *Users*, *APWorlds* and *Settings* (how many running
-sessions one user may manage at once).
+Below the finished sessions, Administrators find *General*: *Users* (every account as a pill, marked if invited or an
+Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
+language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
+them, and for an invited one *Send again* and *Other address*), *APWorlds*, *Settings* (how many running sessions one
+user may manage at once) and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
+gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
+form.
 
 **On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
 spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
@@ -379,7 +450,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
   (ending that player's logins). A login lasts 30 days (HttpOnly, Secure, SameSite=Strict cookie). Failed logins and
-  sign-ups are slowed down and limited to 5 per minute per address. A player sees the sessions they play in, and no
+  sign-ups are slowed down and limited to 5 per minute per address (an IPv6 /64 as one), and after 10 wrong passwords
+  or two-factor codes within 10 minutes that account's login waits until the oldest is 10 minutes old. An account
+  sends at most 10 mails in 10 minutes and 40 a day (invitations, address confirmations). A player sees the sessions they play in, and no
   other; Administrators see every session. Each session keeps the names its players had in it: a rename shows in the running
   ones, a finished one keeps the old name, also of a deleted account.
 - **Two-factor login** (TOTP, any authenticator app): after the password, a code, or one of 10 recovery codes (each
@@ -389,10 +462,13 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   (`openssl rand -base64 32` in `.env`) or, without it, with a key file the tracker makes in its state volume; keep
   either with the backups. `randogeddon admins --reset-2fa <person>` turns it off for someone who lost both the
   device and the recovery codes (an Administrator sets it up again at the next login).
-- **Roles:** an **Administrator** (`randogeddon admins --grant`) reaches everything: every session, the APWorlds, the
-  users and the settings. **Every user can create a session** and is its **Session-Manager**: they manage it (its
+- **Roles:** an **Administrator** (Authentik's group; without single sign-on `randogeddon admins --grant`) reaches
+  everything: every session, the APWorlds, the
+  users and the settings. **Every user can create a session** (one at a time, of at most 100 YAML files and 250
+  slots) and is its **Session-Manager**: they manage it (its
   state, finishing and reopening, deleting it, its game server, console and log, the cheats, its spoiler log while it
-  runs) and give its people a part: Session-Managers (co-managers), support and watchers. How many running sessions one
+  runs) and give its people a part: Session-Managers (co-managers), support and watchers; a player can get one besides
+  their slots. A session keeps its last Session-Manager, for Administrators too: someone else becomes one first. How many running sessions one
   user may manage at once is the Administrators' setting (default 1); the game servers' number still applies. Every
   cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
 - **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session
@@ -409,7 +485,14 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
-  changes. A wrong one gets `InvalidPassword`. There is no room password (`AP_PASSWORD` is gone).
+  changes. A wrong one gets `InvalidPassword`, and a name that is no slot `InvalidSlot` from the gateway itself: only
+  the slots with a password get to MultiServer at all (it would take a client in under an item link's group name
+  without any password). There is no room password (`AP_PASSWORD` is gone).
+- **Before a client is in a slot** it gets little of the gateway: frames of at most 1 MiB (unpacked too; a client's
+  packets are small), 5 minutes and 32 frames until its `Connect` passes, and at most 1024 connections of everyone
+  wait for theirs at once. Past a limit the connection is closed. How many connections an address holds isn't
+  limited (a VPN's, a carrier's or a shared gateway's address is many households), nor are clients in a slot; Traefik
+  only limits how fast one address opens new ones (100 at once, then 2 a second; 429 past it, clients try again).
 - Slot passwords use only characters every client accepts and that don't break config files (printable ASCII without
   spaces, quotes or backslashes). Some games only have an in-game text field without paste, so the dashboard shows
   them in a monospaced font.
@@ -445,8 +528,9 @@ In the panel, tick *starts locked* per slot, choose *Random* locks with the numb
 (at least one; the others are locked), or *Mixed*: per slot open, locked or left to chance, and how many start open in
 all. The gateway adds the World Locks slot (`Locks`, nobody plays it) to the seed.
 
-The game clients don't know about the lock, so it's on the honour system: don't start a locked game before the
-dashboard says it's unlocked. Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
+A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
+too, and *Your connection* and the bridge show it as locked, without a password. The tracker opens it once the key
+has turned up (the gateway sees that within about 10 seconds). Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
 Locks slot), and as "Key to Alice-Celeste" on the dashboard, which also shows who found it or where it was hinted.
 
 ## Randogeddon Bridge
@@ -455,17 +539,43 @@ Game clients reach their session only over TLS (`wss://<session-id>.randogeddon.
 port. For a game whose client can't do TLS (older or unmaintained mods that only speak `ws://`), Randogeddon Bridge
 runs on the player's PC: the game connects to `localhost:<port>`, the bridge takes it to the session over `wss://`.
 
-- **Download:** under *Your connection*, for Windows, Linux (x86-64, ARM) and macOS (Intel, Apple); one file, nothing
-  to install. It isn't signed, so the system asks first: Windows *More info* → *Run anyway*; macOS right-click →
-  *Open* (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
-- **Login:** with a key, made under *Your connection* (*Make a key*, shown once) and pasted into the bridge's page. The
+- **Download:** under *Your connection*, for Windows and Linux (x86_64, ARM64) and macOS (Intel, Apple Silicon); one
+  file, nothing to install. It isn't signed, so the system asks first: Windows *More info* → *Run anyway*; macOS
+  right-click → *Open* (or `xattr -d com.apple.quarantine <file>`); Linux `chmod +x <file>`.
+- **Login:** with a key, made under *Your connection* (*Create key*, shown once) and pasted into the bridge's page. The
   bridge never sees a password, so Administrators who log in through Authentik use it too. A key is a login for 30
   days; *Your account* lists them (made, last used, until when) with *End*, and a new password ends them all.
 - **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
   session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
   once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
-  password don't matter: the bridge fills in the slot's. Starting it again opens the running one's page; *Quit* ends
-  it (on Windows it has no console window). A newer bridge on the dashboard shows a notice with its download.
+  password don't matter: the bridge fills in the slot's. It offers the user's own slots, and to Session-Managers and
+  Administrators the session's hosted slots too; never a locked one. Starting it again opens the running one's page;
+  *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
+  back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
+- **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
+  `randogeddon-bridge login` asks for the key (typed or pasted at a terminal it isn't shown; or from a file:
+  `randogeddon-bridge login < keyfile`; never an argument or an `echo`, which the process list and the shell's
+  history would keep), `slots` lists what it can open (session, slot, game, hosted),
+  `relay -session <id> -slot <name> [-port <port>]` runs one relay until Ctrl+C (a fixed port keeps the game's
+  setting; its state as it changes; it ends once the key is ended), `logout` ends the key. `-server <url>` goes
+  before the command; the command line logs only to the terminal.
+- **On a shared computer:** a relay takes whatever connects to its port on that computer and fills in the slot's
+  password for it (a game has nowhere to put a token), so the bridge belongs on a computer that is yours alone.
+- **Checking a download:** the systems don't know the builds (no bought certificate), so they warn as above. What
+  can be checked for free: *Checksums*, *Signature* and *Key* beside the downloads give `SHA256SUMS`, its signature
+  and the key it was made with (`bridge/signing-key.pub` in this repository, `SHA256:Y/hZRRTeTgoizXJ9CVzWCpIcr3RISfCy+STg3hp+v6w`).
+  In the folder with the download, with OpenSSH (Windows, macOS and Linux have it):
+
+  ```sh
+  ssh-keygen -Y verify -f signing-key.pub -I bridge@randogeddon -n randogeddon-bridge -s SHA256SUMS.sig < SHA256SUMS
+  sha256sum --ignore-missing -c SHA256SUMS     # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+  ```
+
+  The first says the checksums are Randogeddon's (*Good "randogeddon-bridge" signature*), the second that the file
+  is the one they name. The key itself should come from somewhere you trust, e.g. this repository, not only from
+  the same page as the download. The builds are signed where they are built (`scripts/deploy.sh`, with
+  `~/.config/randogeddon/bridge-signing-key` on that machine: keep a copy of it somewhere safe; without it the next
+  builds are unsigned, and a new key means a new `signing-key.pub`).
 - **Kept:** the dashboard's address and the key in the user's config directory, `Randogeddon/bridge.json` (readable
   only by them; removed at *Log out*), and `bridge.log` of the last run. `-server <url>` points it at another dashboard
   (the local demo: `-server http://localhost:8000`), `-no-browser` only writes the page's link to the log.
@@ -474,14 +584,15 @@ How it stays safe:
 
 - A key reaches only the bridge's routes (`/bridge/…`: who, the sessions, a session's connection, the bridge offered,
   its own logout), sent as `Authorization: Bearer`; never `/api`, not even as the cookie. It is stored as its SHA-256
-  like every login; the bridge checks it every minute and logs out once it is ended.
+  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode and language again,
+  right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
   browser can play a slot through them.
 - The page answers only on its own address (`127.0.0.1:<port>`/`localhost:<port>`, against DNS rebinding), with the
   token of the link the bridge opened (a SameSite=Strict cookie); changes need its own header too. The dashboard is
   reached only over HTTPS (plain HTTP only on the same computer).
 
-The Docker build tests it and builds the five binaries (`kotlin.Dockerfile`, the `bridge` stage: plain Go, no CGO);
+The Docker build tests it and builds the six binaries (`kotlin.Dockerfile`, the `bridge` stage: plain Go, no CGO);
 the tracker serves them at `/downloads/bridge/<file>` (`BRIDGE_DIR`, `/app/bridge` in the image), with the version
 the dashboard offers. `go test -race ./...` in `bridge/` runs its tests.
 
@@ -492,8 +603,10 @@ For every running session, the tracker connects to its room like any other Archi
 slot about its own checked locations and received items. The slot names come from `data/sessions/<id>/room.json`,
 which the gateway writes before it starts the session's game server.
 
-- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), and
-  Randogeddon Bridge (its downloads, *Make a key*).
+- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), the
+  slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
+  downloads). The bridge folds away (*Fold away*, remembered in the browser): then the card is one narrow column and
+  the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, progress, status
@@ -508,6 +621,9 @@ which the gateway writes before it starts the session's game server.
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
   choice is remembered in their browser. On narrow screens it always sits below the players.
+- **Scroll bars:** the page, the dialogs and the lists show a thin bar on the right edge while there is more than fits
+  (the page is drawn on a canvas, so the browser has none of its own); the mouse drags it, a click beside it jumps
+  there, touch scrolls the content.
 - **Other sessions:** the viewer's other sessions (all for Administrators), running or finished, below; a click shows one.
 
 Known limitations:
@@ -523,8 +639,8 @@ API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
 `.../setup` and `.../setup/confirm`),
 `POST /api/logout`; with single sign-on `GET /api/login/options`, `GET /api/login/oidc` (to the provider) and
-`.../callback`, `POST /api/login/link` (a CLI login link), and Authentik's webhooks `POST /api/login/oidc/deleted` and
-`.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
+`.../callback`, `POST /api/login/link` (a CLI login link), Authentik's back-channel logout
+`POST /api/login/oidc/backchannel`, and its webhooks `POST /api/login/oidc/deleted` and `.../updated`; `GET /api/invitations/<token>`, `POST /api/signup` (the
 sign-up page) and `POST /api/email/confirm`
 (a new address's link); with a login: `GET /api/account` and `PUT .../name`, `.../password`, `.../auto-delete`,
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
@@ -560,8 +676,9 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 
 Each user picks a theme and a mode under *Your account*, *Appearance*: Randogeddon (the default), Ocean, Forest,
 Ember, High contrast, or one inspired by Nintendo's consoles (N64, GameCube, Wii, Wii U, Switch, Switch 2), each light
-or dark; *Automatic* follows the device and switches with it. The button on the top card cycles light, dark and
-automatic. It is stored with the account, so it follows them to every device; before the login, and on a share
+or dark; *Automatic* follows the device and switches with it. The themes are cards, each a small page in its colours
+in the mode that shows now. The button on the top card cycles light, dark and automatic, and shows the mode it is in
+(a sun, a moon, a half-filled circle). A new theme or mode fades in. It is stored with the account, so it follows them to every device; before the login, and on a share
 link's page, the browser's last choice applies (the login page takes its colours too).
 
 A new theme: an entry in `Theme` and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
@@ -658,8 +775,9 @@ which the next step drops again. `CHANGELOG.md` lists every version by phase.
 
 For a release, `scripts/deploy.sh` also publishes Randogeddon Bridge (`scripts/publish-bridge.sh`, copied out of the
 tracker image, so exactly the builds it serves): to `pkg.example.org`, the generic repository `randogeddon-bridge`,
-as `<version>/<file>` with `SHA256SUMS`. From 1.0.0 on, every release is also a GitHub release `v<version>`, with the
-bridge's builds and the version's part of `CHANGELOG.md` as its notes. `--dry-run` shows what it would do.
+as `<version>/<file>` with `SHA256SUMS`. Every release is also a GitHub release `v<version>`, the version's part of
+`CHANGELOG.md` as its notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
+`--dry-run` shows what it would do.
 
 ### Texts and languages
 
@@ -703,13 +821,23 @@ and review the result:
 ./gradlew :server:metadataCopy                  # likewise :gateway:run and :gateway:metadataCopy
 ```
 
+## Known flaws in the dependencies
+
+`./scripts/audit.sh` looks the bridge's Go modules, the tracker's and the gateway's JVM libraries and the gateway
+image's Python packages up in the OSV database (osv-scanner, in Docker) and ends with 1 if it finds something. Run
+it before a release and when a dependency changes. Where Gradle and Docker aren't on the same machine, give it
+Gradle's list: `GRADLE_DEPENDENCIES=<file> ./scripts/audit.sh`, the file from `./gradlew :server:dependencies
+--configuration runtimeClasspath :gateway:dependencies --configuration runtimeClasspath`.
+
 ## Updating Archipelago
 
 A session keeps the Archipelago release it was generated with, and the gateway runs it only with that release: one
 it doesn't have can't be started (the panel and the gateway's log say so). The gateway image has one release
 (`AP_VERSION` in `.env`) under `/opt/archipelago/<version>`; the panel offers what it has.
 
-To update: set `AP_VERSION` to the new release tag, `docker compose build`, and recreate the gateway once no session
+To update: set `AP_VERSION` to the new release tag and `AP_COMMIT` to that tag's commit
+(`git ls-remote https://github.com/ArchipelagoMW/Archipelago refs/tags/<version>`; the build stops if a tag doesn't
+stand for its commit any more), `docker compose build`, and recreate the gateway once no session
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
 other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.

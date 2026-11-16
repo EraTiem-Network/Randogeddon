@@ -24,7 +24,10 @@ import kotlinx.serialization.builtins.serializer
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldResult
+import net.eratiem.randogeddon.shared.ApworldResults
+import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.ApworldTry
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.ArchipelagoInfo
@@ -81,6 +84,9 @@ class GameServerClient(private val config: TrackerConfig) {
   suspend fun versions(): List<String> = call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
     .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
 
+  /** The gateway's own version. */
+  suspend fun gatewayVersion(): String = call { http.get("${config.gameServerApi}/internal/version") { auth() } }.trim()
+
   /** Generates session [id]'s seed (served once its game server starts). Takes up to minutes. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
     http.post("${session(id)}/generate") {
@@ -91,20 +97,24 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
 
+  /** How far session [id]'s generation is; `null`: none runs. */
+  suspend fun generationProgress(id: String): GenerationProgress? = call { http.get("${session(id)}/progress") { auth() } }
+    .takeIf { it.isNotBlank() }?.let { ApiJson.decodeFromString(GenerationProgress.serializer(), it) }
+
   /** The releases with their games, and the apworld library. The first listing of a release takes seconds. */
   suspend fun archipelago(): ArchipelagoInfo = call {
     http.get("${config.gameServerApi}/internal/archipelago") { auth(); timeout { requestTimeoutMillis = 4 * 60_000 } }
   }.let { ApiJson.decodeFromString(ArchipelagoInfo.serializer(), it) }
 
-  /** Adds an apworld to a release's library; lists the release again, so it takes seconds. */
-  suspend fun uploadApworld(upload: ApworldUpload): ApworldResult = library {
+  /** Adds apworlds to a release's library; lists the release again (once for all), so it takes seconds. */
+  suspend fun uploadApworlds(upload: ApworldUpload): ApworldResults = library {
     http.post("${config.gameServerApi}/internal/apworlds") {
       auth()
       timeout { requestTimeoutMillis = 4 * 60_000 }
       contentType(ContentType.Application.Json)
       setBody(ApiJson.encodeToString(ApworldUpload.serializer(), upload))
     }
-  }.let { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
+  }.let { ApiJson.decodeFromString(ApworldResults.serializer(), it) }
 
   suspend fun tryApworld(request: ApworldTry): ApworldResult = library {
     http.post("${config.gameServerApi}/internal/apworlds/try") {
@@ -115,11 +125,13 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }.let { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
 
-  suspend fun removeApworld(release: String, file: String) {
+  suspend fun removeApworlds(removal: ApworldRemoval) {
     library {
-      http.delete("${config.gameServerApi}/internal/apworlds/${release.encodeURLPathPart()}/${file.encodeURLPathPart()}") {
+      http.post("${config.gameServerApi}/internal/apworlds/remove") {
         auth()
         timeout { requestTimeoutMillis = 4 * 60_000 }
+        contentType(ContentType.Application.Json)
+        setBody(ApiJson.encodeToString(ApworldRemoval.serializer(), removal))
       }
     }
   }

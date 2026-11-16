@@ -10,6 +10,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.UserStore
+import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -57,6 +60,8 @@ class SessionLifecycle(
   private val finishes: SessionFinishStore,
   private val archives: Archives,
   private val gameServer: GameServerClient,
+  private val users: UserStore,
+  private val limit: SessionLimit,
 ) {
   private val mutex = Mutex()
 
@@ -114,9 +119,28 @@ class SessionLifecycle(
     logger.info("{} cancelled the finishing of {}", admin, id)
   }
 
-  /** Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. */
-  suspend fun reopen(id: String, admin: String) = mutex.withLock {
+  /**
+   * Reopens a finished session: the game server starts on it again (if one is free), and so does its tracker. It runs
+   * again then, for [by] and for its Session-Managers: none of them may be at their limit (unless an Administrator
+   * reopens it).
+   */
+  suspend fun reopen(id: String, by: User) = mutex.withLock {
     val session = session(id)
+    if (!by.administrator) {
+      limit.reached(by.id)?.let {
+        throw SessionProblem(
+          HttpStatusCode.Forbidden,
+          if (it.limit == 0) Refusal(Problem.ONLY_ADMINISTRATORS_REOPEN)
+          else Refusal.of(Problem.SESSION_LIMIT, "running" to it.running, "limit" to it.limit),
+        )
+      }
+      for (manager in session.managers() - by.id) {
+        limit.reached(manager)?.let {
+          val name = session.setup?.roles?.get(manager)?.name
+          throw SessionProblem(HttpStatusCode.Conflict, Problem.MANAGER_AT_LIMIT, "name" to name, "running" to it.running, "limit" to it.limit)
+        }
+      }
+    }
     val finishedAt = finishes.of(session.seedName)?.finishedAt ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_FINISHED, "id" to id)
     val until = reopenUntil(finishedAt, completed(archives.read(id)?.summary?.totals?.percent))
       ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.COMPLETED_NO_REOPEN, "id" to id)
@@ -135,7 +159,7 @@ class SessionLifecycle(
     // Every slot may still be done: no new countdown until one isn't
     session.countdownCancelled = true
     sessions.refresh()
-    logger.info("{} reopened session {}", admin, id)
+    logger.info("{} reopened session {}", by.name, id)
   }
 
   private fun session(id: String): LiveSession =
@@ -164,6 +188,27 @@ class SessionLifecycle(
     finishes.finish(session.seedName, by, now)
     session.disconnect()
     runCatching { gameServer.control(session.id, "stop") }.onFailure { logger.warn("Could not stop the game server of {}: {}", session.id, it.message) }
+    runCatching { cancelInvitations(session) }.onFailure { logger.warn("Could not cancel the invitations of {}: {}", session.id, it.message) }
     logger.info("Session {} finished{}", session.id, by?.let { " by $it" } ?: " (every slot done)")
   }
+
+  /** The session's invitations nobody accepted go: the invited accounts (and their links) no other running session has. */
+  private suspend fun cancelInvitations(session: LiveSession) {
+    val setup = session.setup ?: return
+    val elsewhere = sessions.all().filter { it.id != session.id && !it.finished }
+      .flatMap { other -> other.setup?.let { it.members.keys + it.roles.keys }.orEmpty() }.toSet()
+    val invited = (setup.members.keys + setup.roles.keys).mapNotNull { users.account(it) }
+      .filter { it.signedUpAt == null }.associateBy { it.id }
+    for (id in invitationsToCancel(setup.members.keys + setup.roles.keys, elsewhere, invited.keys)) {
+      users.delete(id)
+      logger.info("Session {} finished: the invitation of {} is cancelled", session.id, invited.getValue(id).email)
+    }
+  }
 }
+
+/**
+ * Who of a finished session's people ([part]) loses their invitation: the [invited] ones (not signed up yet) that no
+ * running session still has ([elsewhere]).
+ */
+internal fun invitationsToCancel(part: Set<Uuid>, elsewhere: Set<Uuid>, invited: Set<Uuid>): Set<Uuid> =
+  (part - elsewhere) intersect invited

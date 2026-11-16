@@ -1,8 +1,11 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -128,7 +131,26 @@ object Themes {
   }
 }
 
+/** How long a new theme or mode takes to fade in. */
+private const val THEME_FADE_MS = 300
+
 @Composable
 fun RandogeddonTheme(palette: Palette, content: @Composable () -> Unit) {
-  CompositionLocalProvider(LocalPalette provides palette, content = content)
+  CompositionLocalProvider(LocalPalette provides palette.fading(), content = content)
+}
+
+/** [this], with every colour fading from the one before when the theme or the mode changes. */
+@Composable
+private fun Palette.fading(): Palette {
+  @Composable
+  fun Color.fade() = animateColorAsState(this, tween(THEME_FADE_MS)).value
+  return copy(
+    background = background.fade(), panel = panel.fade(), panelAlt = panelAlt.fade(), border = border.fade(),
+    text = text.fade(), muted = muted.fade(), brandStart = brandStart.fade(), brandEnd = brandEnd.fade(),
+    onBrand = onBrand.fade(), progression = progression.fade(), useful = useful.fade(), trap = trap.fade(),
+    ok = ok.fade(), warn = warn.fade(), key = key.fade(), locked = locked.fade(), barBackground = barBackground.fade(),
+    shadow = shadow.fade(), liveDot = liveDot.fade(), offlineDot = offlineDot.fade(),
+    // A theme may have more or fewer of them: each by its place
+    hues = hues.mapIndexed { i, hue -> key(i) { hue.fade() } },
+  )
 }

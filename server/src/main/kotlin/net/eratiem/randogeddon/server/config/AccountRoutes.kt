@@ -64,7 +64,7 @@ fun Route.accountRoutes(accounts: AccountService, twoFactor: TwoFactor, bridgeKe
     // Randogeddon Bridge's keys: made here (with the cookie login), listed and ended
     route("/bridge-keys") {
       get { call.respond(bridgeKeys.list(call.loggedIn.user)) }
-      post { call.respond(bridgeKeys.make(call.loggedIn.user)) }
+      post { accountCall { call.respond(bridgeKeys.make(call.loggedIn.user)) } }
       delete("/{key}") {
         if (bridgeKeys.end(call.loggedIn.user, call.parameters["key"].orEmpty())) call.respond(HttpStatusCode.NoContent)
         else call.refuse(HttpStatusCode.NotFound, Refusal(Problem.BRIDGE_KEY_GONE))

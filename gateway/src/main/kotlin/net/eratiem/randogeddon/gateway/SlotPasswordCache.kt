@@ -24,7 +24,14 @@ class SlotPasswordCache(private val store: SlotPasswordStore, private val roomJs
   private val mutex = Mutex()
   private var seed: String? = null
   private var passwords: Map<String, String> = emptyMap()
+  private var locked: Set<String> = emptySet()
   private var loadedAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+  /** The slots still locked (their key not found yet), read with the passwords. */
+  suspend fun locked(): Set<String> {
+    current()
+    return mutex.withLock { locked }
+  }
 
   suspend fun current(): Map<String, String> = mutex.withLock {
     val currentSeed = readSeedName(roomJson)
@@ -36,6 +43,7 @@ class SlotPasswordCache(private val store: SlotPasswordStore, private val roomJs
           .onFailure { logger.warn("Could not read the slot passwords: {}", it.message) }
           .getOrDefault(passwords.takeIf { currentSeed == seed }.orEmpty())
       }.orEmpty()
+      locked = currentSeed?.let { seedName -> runCatching { store.locked(seedName) }.getOrDefault(locked) }.orEmpty()
       if (currentSeed != seed) logger.info("Seed {}: {} slot passwords", currentSeed, passwords.size)
       seed = currentSeed
       loadedAt = TimeSource.Monotonic.markNow()

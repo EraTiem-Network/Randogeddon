@@ -7,8 +7,16 @@ interface ApworldTexts {
   val tip: String
   fun notAdded(file: String, error: String): String
   fun brings(file: String, games: String): String
-  fun uploading(file: String): String
-  fun removing(file: String): String
+  /** [files] (the [n]th of [of] parts of what was picked) being uploaded. */
+  fun uploading(files: String, n: Int, of: Int): String
+  /** An upload whose file is in the library already. */
+  fun replacesFile(file: String): String
+  /** An upload whose [game] comes from [other] now. */
+  fun replacesGame(file: String, game: String, other: String): String
+  val replace: String
+  val skip: String
+  fun skipped(file: String): String
+  fun removing(files: String): String
   fun removed(file: String, release: String): String
   fun trying(file: String, release: String): String
   /** After [what] ("Uploading x.apworld…"): the release lists its games again. */
@@ -28,8 +36,14 @@ interface ApworldTexts {
   val grey: String
   val greyMeaning: String
   val noneYet: String
-  fun removeQuestion(file: String, release: String): String
+  /** [files]: the picked ones, by name. */
+  fun removeQuestion(files: String, release: String): String
   val yesRemove: String
+  val removeSome: String
+  val pickToRemove: String
+  fun removeCount(n: Int): String
+  val selectAll: String
+  val selectNone: String
   fun didntLoad(name: String, reason: String): String
   val fromOtherReleases: String
   fun fromRelease(file: String, release: String): String
@@ -58,6 +72,28 @@ interface UserAdminTexts {
   fun linkWorksUntil(date: String): String
   fun deletedOn(date: String): String
   fun autoDeletion(period: String): String
+  // An account's information panel: its labels, and what the values say
+  val nameLabel: String
+  val emailLabel: String
+  val idLabel: String
+  val stateLabel: String
+  val active: String
+  val groupLabel: String
+  val userGroup: String
+  val loginLabel: String
+  val passwordLogin: String
+  val ssoLogin: String
+  val twoFactorLabel: String
+  val on: String
+  val off: String
+  val languageLabel: String
+  val browserLanguage: String
+  val madeLabel: String
+  val invitationLabel: String
+  val deletionLabel: String
+  val sessionsLabel: String
+  /** What an account doesn't have (an invited one's name, a deletion that isn't planned). */
+  val notAvailable: String
   val sendAgain: String
   fun newLinkWent(address: String): String
   val otherAddress: String
@@ -65,6 +101,14 @@ interface UserAdminTexts {
   fun linkWentTo(address: String): String
   val settings: String
   val settingsSubtitle: String
+  /** What runs now (after a deploy): the tracker, the gateway, this page, the Archipelago releases. */
+  val versions: String
+  val versionsSubtitle: String
+  val trackerVersion: String
+  val gatewayVersion: String
+  val pageVersion: String
+  val releasesLabel: String
+  val notReachable: String
   val sessionsPerUser: String
   val sessionsPerUserTip: String
   val saved: String
@@ -79,8 +123,14 @@ internal object EnglishApworlds : ApworldTexts {
     "release. An APWorld uploaded for another release can be tried with this one, it may or may not work."
   override fun notAdded(file: String, error: String) = "$file was not added, it doesn't load: $error"
   override fun brings(file: String, games: String) = "$file brings $games"
-  override fun uploading(file: String) = "Uploading $file…"
-  override fun removing(file: String) = "Removing $file…"
+  override fun uploading(files: String, n: Int, of: Int) = if (of == 1) "Uploading $files…" else "Uploading $files ($n of $of)…"
+  override fun replacesFile(file: String) = "$file is in the library already. Replace it?"
+  override fun replacesGame(file: String, game: String, other: String) =
+    "$file brings $game, which comes from $other now. Replace $other with it?"
+  override val replace = "Replace"
+  override val skip = "Skip"
+  override fun skipped(file: String) = "$file was skipped, nothing changed"
+  override fun removing(files: String) = "Removing $files…"
   override fun removed(file: String, release: String) = "$file removed from Archipelago $release"
   override fun trying(file: String, release: String) = "Trying $file with Archipelago $release…"
   override fun relisting(what: String) = "$what Archipelago lists its games again; that takes a moment."
@@ -99,9 +149,14 @@ internal object EnglishApworlds : ApworldTexts {
   override val grey = "grey"
   override val greyMeaning = "Put into the server's custom_worlds/ by hand; it can't be removed here."
   override val noneYet = "None yet: upload one for a game that isn't bundled."
-  override fun removeQuestion(file: String, release: String) =
-    "Remove $file? Its games can't be used for new sessions of Archipelago $release then."
+  override fun removeQuestion(files: String, release: String) =
+    "Remove $files? Their games can't be used for new sessions of Archipelago $release then."
   override val yesRemove = "Yes, remove"
+  override val removeSome = "Remove…"
+  override val pickToRemove = "Pick the files to remove (hand-placed ones, grey, can't be)."
+  override fun removeCount(n: Int) = "Remove ($n)"
+  override val selectAll = "Select all"
+  override val selectNone = "Select none"
   override fun didntLoad(name: String, reason: String) = "Didn't load: $name: $reason"
   override val fromOtherReleases = "From other releases"
   override fun fromRelease(file: String, release: String) = "$file (Archipelago $release)"
@@ -122,8 +177,15 @@ internal object GermanApworlds : ApworldTexts {
     "werden; das kann klappen oder nicht."
   override fun notAdded(file: String, error: String) = "$file wurde nicht hinzugefügt, sie lädt nicht: $error"
   override fun brings(file: String, games: String) = "$file bringt $games"
-  override fun uploading(file: String) = "$file wird hochgeladen…"
-  override fun removing(file: String) = "$file wird entfernt…"
+  override fun uploading(files: String, n: Int, of: Int) =
+    if (of == 1) "Lade $files hoch…" else "Lade $files hoch ($n von $of)…"
+  override fun replacesFile(file: String) = "$file ist schon in der Bibliothek. Ersetzen?"
+  override fun replacesGame(file: String, game: String, other: String) =
+    "$file bringt $game, das jetzt aus $other kommt. $other dadurch ersetzen?"
+  override val replace = "Ersetzen"
+  override val skip = "Überspringen"
+  override fun skipped(file: String) = "$file wurde übersprungen, nichts geändert"
+  override fun removing(files: String) = "Entferne $files…"
   override fun removed(file: String, release: String) = "$file aus Archipelago $release entfernt"
   override fun trying(file: String, release: String) = "$file wird mit Archipelago $release ausprobiert…"
   override fun relisting(what: String) = "$what Archipelago listet seine Spiele neu auf; das dauert einen Moment."
@@ -142,9 +204,14 @@ internal object GermanApworlds : ApworldTexts {
   override val grey = "grau"
   override val greyMeaning = "Von Hand ins custom_worlds/ des Servers gelegt; hier nicht entfernbar."
   override val noneYet = "Noch keine: Lade eine für ein Spiel hoch, das nicht mitgeliefert wird."
-  override fun removeQuestion(file: String, release: String) =
-    "$file entfernen? Ihre Spiele sind dann für neue Sessions mit Archipelago $release nicht mehr nutzbar."
+  override fun removeQuestion(files: String, release: String) =
+    "$files entfernen? Ihre Spiele sind dann für neue Sessions mit Archipelago $release nicht mehr nutzbar."
   override val yesRemove = "Ja, entfernen"
+  override val removeSome = "Entfernen…"
+  override val pickToRemove = "Wähle die Dateien zum Entfernen (von Hand gelegte, graue, gehen nicht)."
+  override fun removeCount(n: Int) = "Entfernen ($n)"
+  override val selectAll = "Alle auswählen"
+  override val selectNone = "Keine auswählen"
   override fun didntLoad(name: String, reason: String) = "Nicht geladen: $name: $reason"
   override val fromOtherReleases = "Aus anderen Releases"
   override fun fromRelease(file: String, release: String) = "$file (Archipelago $release)"
@@ -173,6 +240,26 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun linkWorksUntil(date: String) = "the link works until $date"
   override fun deletedOn(date: String) = "deleted on $date"
   override fun autoDeletion(period: String) = "auto-deletion: $period"
+  override val nameLabel = "Name"
+  override val emailLabel = "E-mail"
+  override val idLabel = "ID"
+  override val stateLabel = "State"
+  override val active = "active"
+  override val groupLabel = "Group"
+  override val userGroup = "User"
+  override val loginLabel = "Login"
+  override val passwordLogin = "password"
+  override val ssoLogin = "single sign-on"
+  override val twoFactorLabel = "Two-factor"
+  override val on = "on"
+  override val off = "off"
+  override val languageLabel = "Language"
+  override val browserLanguage = "the browser's"
+  override val madeLabel = "Made"
+  override val invitationLabel = "Invitation"
+  override val deletionLabel = "Deletion"
+  override val sessionsLabel = "Sessions"
+  override val notAvailable = "n/a"
   override val sendAgain = "Send again"
   override fun newLinkWent(address: String) = "A new link went to $address; the old one stops working."
   override val otherAddress = "Other address"
@@ -180,6 +267,13 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun linkWentTo(address: String) = "A new link went to $address."
   override val settings = "Settings"
   override val settingsSubtitle = "for everyone"
+  override val versions = "Versions"
+  override val versionsSubtitle = "what runs now"
+  override val trackerVersion = "Tracker"
+  override val gatewayVersion = "Gateway"
+  override val pageVersion = "This page"
+  override val releasesLabel = "Archipelago"
+  override val notReachable = "not reachable"
   override val sessionsPerUser = "Sessions per user"
   override val sessionsPerUserTip =
     "How many running sessions one user may create and manage at once (0 to 20; 0: only Administrators create " +
@@ -205,6 +299,26 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun linkWorksUntil(date: String) = "der Link funktioniert bis $date"
   override fun deletedOn(date: String) = "wird am $date gelöscht"
   override fun autoDeletion(period: String) = "automatisch löschen: $period"
+  override val nameLabel = "Name"
+  override val emailLabel = "E-Mail"
+  override val idLabel = "ID"
+  override val stateLabel = "Status"
+  override val active = "aktiv"
+  override val groupLabel = "Gruppe"
+  override val userGroup = "Benutzer"
+  override val loginLabel = "Anmeldung"
+  override val passwordLogin = "Passwort"
+  override val ssoLogin = "Single Sign-on"
+  override val twoFactorLabel = "Zwei-Faktor"
+  override val on = "an"
+  override val off = "aus"
+  override val languageLabel = "Sprache"
+  override val browserLanguage = "die des Browsers"
+  override val madeLabel = "Angelegt"
+  override val invitationLabel = "Einladung"
+  override val deletionLabel = "Löschung"
+  override val sessionsLabel = "Sessions"
+  override val notAvailable = "k. A."
   override val sendAgain = "Erneut senden"
   override fun newLinkWent(address: String) = "Ein neuer Link ging an $address; der alte funktioniert nicht mehr."
   override val otherAddress = "Andere Adresse"
@@ -212,6 +326,13 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun linkWentTo(address: String) = "Ein neuer Link ging an $address."
   override val settings = "Einstellungen"
   override val settingsSubtitle = "für alle"
+  override val versions = "Versionen"
+  override val versionsSubtitle = "was gerade läuft"
+  override val trackerVersion = "Tracker"
+  override val gatewayVersion = "Gateway"
+  override val pageVersion = "Diese Seite"
+  override val releasesLabel = "Archipelago"
+  override val notReachable = "nicht erreichbar"
   override val sessionsPerUser = "Sessions pro Benutzer"
   override val sessionsPerUserTip =
     "Wie viele laufende Sessions ein Benutzer gleichzeitig erstellen und verwalten darf (0 bis 20; 0: nur " +

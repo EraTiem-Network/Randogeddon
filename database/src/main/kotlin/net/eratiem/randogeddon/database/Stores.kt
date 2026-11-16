@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.lowerCase
 import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -53,6 +54,10 @@ data class Account(
   val autoDelete: String,
   /** The language's code they chose (`en`, `de`); `null`: their browser's. */
   val language: String? = null,
+  /** How they log in: with a password of their own, through the identity provider (linked to it), a second factor. */
+  val hasPassword: Boolean = false,
+  val linked: Boolean = false,
+  val twoFactor: Boolean = false,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -281,6 +286,8 @@ class UserStore(private val db: RandogeddonDatabase) {
   private fun account(row: ResultRow) = Account(
     row[UsersTable.id], row[UsersTable.name], row[UsersTable.email], row[UsersTable.isAdmin], row[UsersTable.createdAt],
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
+    hasPassword = row[UsersTable.passwordHash] != null, linked = row[UsersTable.oidcSubject] != null,
+    twoFactor = row[UsersTable.totpEnabledAt] != null,
   )
 }
 
@@ -448,18 +455,42 @@ class EmailChangeStore(private val db: RandogeddonDatabase) {
 
 /** Logged-in browsers, by the SHA-256 of their cookie token. */
 class LoginSessionStore(private val db: RandogeddonDatabase) {
-  /** [method]: how the login was made (`password`, `oidc`, `link`). */
-  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now(), method: String = "password") =
-    db.query {
-      LoginSessionsTable.insert {
-        it[LoginSessionsTable.tokenHash] = tokenHash
-        it[LoginSessionsTable.userId] = userId
-        it[createdAt] = now
-        it[LoginSessionsTable.expiresAt] = expiresAt
-        it[LoginSessionsTable.method] = method
-      }
-      Unit
+  /** [method]: how the login was made (`password`, `oidc`, `link`); [providerSession]: its session at the provider. */
+  suspend fun create(
+    tokenHash: String,
+    userId: Uuid,
+    expiresAt: Instant,
+    now: Instant = Instant.now(),
+    method: String = "password",
+    providerSession: String? = null,
+  ) = db.query {
+    LoginSessionsTable.insert {
+      it[LoginSessionsTable.tokenHash] = tokenHash
+      it[LoginSessionsTable.userId] = userId
+      it[createdAt] = now
+      it[LoginSessionsTable.expiresAt] = expiresAt
+      it[LoginSessionsTable.method] = method
+      it[LoginSessionsTable.providerSession] = providerSession
     }
+    Unit
+  }
+
+  /**
+   * Ends the logins of [method] that came from the provider's session [providerSession]; with [userId] also that
+   * user's logins of [method] without one (made before it was kept). How many ended.
+   */
+  suspend fun deleteOfProviderSession(method: String, providerSession: String, userId: Uuid?): Int = db.query {
+    LoginSessionsTable.deleteWhere {
+      val ofSession = (LoginSessionsTable.method eq method) and (LoginSessionsTable.providerSession eq providerSession)
+      if (userId == null) ofSession
+      else ofSession or ((LoginSessionsTable.method eq method) and (LoginSessionsTable.userId eq userId) and LoginSessionsTable.providerSession.isNull())
+    }
+  }
+
+  /** Ends all of [userId]'s logins made by [method]. How many ended. */
+  suspend fun deleteOf(userId: Uuid, method: String): Int = db.query {
+    LoginSessionsTable.deleteWhere { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) }
+  }
 
   /** The user of a session that hasn't expired yet. */
   suspend fun userOf(tokenHash: String, now: Instant = Instant.now()): Uuid? = loginOf(tokenHash, now)?.first
@@ -506,6 +537,15 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
   /** Ends [userId]'s login [tokenHash] (not someone else's); whether there was one. */
   suspend fun delete(userId: Uuid, tokenHash: String): Boolean = db.query {
     LoginSessionsTable.deleteWhere { (LoginSessionsTable.tokenHash eq tokenHash) and (LoginSessionsTable.userId eq userId) } > 0
+  }
+
+  /** Ends [userId]'s oldest logins made by [method] beyond the newest [keep]. How many ended. */
+  suspend fun keepNewest(userId: Uuid, method: String, keep: Int): Int = db.query {
+    val old = LoginSessionsTable.selectAll()
+      .where { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) }
+      .orderBy(LoginSessionsTable.createdAt, SortOrder.DESC)
+      .map { it[LoginSessionsTable.tokenHash] }.drop(keep)
+    if (old.isEmpty()) 0 else LoginSessionsTable.deleteWhere { LoginSessionsTable.tokenHash inList old }
   }
 }
 
@@ -593,6 +633,8 @@ data class SessionSetup(
   val members: Map<Uuid, String> = emptyMap(),
   val deleted: Set<Uuid> = emptySet(),
   val roles: Map<Uuid, SessionRoleEntry> = emptyMap(),
+  /** Its hosted slots: games that run as a server of their own, played by no account. */
+  val hosted: Set<String> = emptySet(),
 )
 
 /** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
@@ -600,7 +642,7 @@ data class SessionRoleEntry(val role: String, val name: String, val deleted: Boo
 
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
-  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it. */
+  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted slots. */
   suspend fun create(
     publicId: String,
     seedName: String,
@@ -608,6 +650,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     options: String,
     worlds: Map<String, List<Uuid>>,
     now: Instant = Instant.now(),
+    hosted: Set<String> = emptySet(),
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -627,6 +670,12 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
           }
         }
       }
+      for (slot in hosted) {
+        SessionHostedSlotsTable.insert {
+          it[sessionId] = id
+          it[slotName] = slot
+        }
+      }
     }
 
   /**
@@ -641,6 +690,15 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       val id = row[UsersTable.id]
       id to (row[UsersTable.name] ?: suggested[id] ?: row[UsersTable.email]?.substringBefore('@') ?: id.toString().take(8))
     }
+  }
+
+  /**
+   * What the gateway starts [seedName]'s game server with: its Archipelago version and its options (JSON); `null`: no
+   * such session. From `sessions` alone: the gateway's database role ([GatewayRole]) reads nothing of the accounts.
+   */
+  suspend fun launchOf(seedName: String): Pair<String?, String?>? = db.query {
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()
+      ?.let { it[SessionsTable.apVersion] to it[SessionsTable.optionsJson] }
   }
 
   suspend fun of(seedName: String): SessionSetup? = db.query {
@@ -658,9 +716,11 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
         val name = it[SessionRolesTable.userName] ?: it[UsersTable.name] ?: it[SessionRolesTable.userId].toString().take(8)
         it[SessionRolesTable.userId] to SessionRoleEntry(it[SessionRolesTable.role], name, it[UsersTable.deletedAt] != null)
       }
+    val hosted = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }
+      .map { it[SessionHostedSlotsTable.slotName] }.toSet()
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted, roles,
+      deleted, roles, hosted,
     )
   }
 
@@ -738,6 +798,27 @@ class SlotPasswordStore(private val db: RandogeddonDatabase) {
       }
     }
     passwords(sessionId)
+  }
+
+  /** The slots of [seedName] that are still locked (their key isn't found yet). */
+  suspend fun locked(seedName: String): Set<String> = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query emptySet()
+    SlotPasswordsTable.selectAll()
+      .where { (SlotPasswordsTable.sessionId eq row[SessionsTable.id]) and SlotPasswordsTable.locked }
+      .map { it[SlotPasswordsTable.slotName] }.toSet()
+  }
+
+  /** Marks exactly [locked] of [seedName]'s slots as locked, the others as open. */
+  suspend fun setLocked(seedName: String, locked: Set<String>) = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query
+    val id = row[SessionsTable.id]
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName inList locked) }) {
+      it[SlotPasswordsTable.locked] = true
+    }
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName notInList locked) }) {
+      it[SlotPasswordsTable.locked] = false
+    }
+    Unit
   }
 
   /** Slot name -> password of [seedName]; empty if the seed is unknown. */
@@ -892,6 +973,15 @@ class SessionRoleStore(private val db: RandogeddonDatabase) {
       }
       true
     }
+
+  /** Gives [userId] [role] in place of the one they have in the session of [publicId]; `false` if they had none. */
+  suspend fun change(publicId: String, userId: Uuid, role: String): Boolean = db.query {
+    val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionRolesTable.update({ (SessionRolesTable.sessionId eq session) and (SessionRolesTable.userId eq userId) }) {
+      it[SessionRolesTable.role] = role
+    } > 0
+  }
 
   /** Takes [userId]'s role in the session of [publicId] away; `false` if they had none. */
   suspend fun remove(publicId: String, userId: Uuid): Boolean = db.query {

@@ -17,9 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -87,7 +85,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         val now = Platform.now()
         val open = d.sessions.lastOrNull()?.takeIf { it.end == null }
         val played = d.sessions.sumOf { (it.end ?: now) - it.start }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
           ProgressBar((percent / 100).toFloat())
           // Time facts of this world
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

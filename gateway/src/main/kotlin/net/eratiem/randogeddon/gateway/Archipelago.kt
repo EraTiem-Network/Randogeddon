@@ -9,6 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.GenerationProgress
+import net.eratiem.randogeddon.shared.GenerationStage
+import java.util.concurrent.ConcurrentHashMap
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.SessionOptions
 import org.slf4j.LoggerFactory
@@ -61,6 +64,24 @@ internal fun compareVersions(a: String, b: String): Int {
   return 0
 }
 
+/** A word for MultiServer's console, which splits its commands like a shell: in double quotes, `\` and `"` escaped. */
+internal fun consoleWord(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+/**
+ * What Archipelago's processes keep of the gateway's environment: what Python and the release need, nothing else (the
+ * last ones are what a process needs on Windows, where the tests run).
+ */
+private val KEPT = setOf(
+  "PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONUNBUFFERED", "SKIP_REQUIREMENTS_UPDATE", "AP_HOME",
+  "SYSTEMROOT", "PATHEXT", "COMSPEC", "TEMP", "TMP",
+)
+
+/**
+ * Archipelago's Python (Generate.py, MultiServer, the worlds and apworlds) runs without the gateway's secrets: its
+ * environment (the database login, the internal token, the admin password) isn't passed on.
+ */
+internal fun ProcessBuilder.withoutSecrets(): ProcessBuilder = apply { environment().keys.removeIf { it.uppercase() !in KEPT } }
+
 /**
  * Starts MultiServer for a seed with its session's Archipelago version and options (from the database, as the admin
  * panel created it). A seed from before without them runs on the newest release with the default options.
@@ -74,7 +95,7 @@ class Launcher(
   /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]. */
   fun prepare(seed: Path, roomJson: Path) {
     val proc = ProcessBuilder(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
-      .directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
+      .withoutSecrets().directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
     val output = proc.inputStream.bufferedReader().readText()
     check(proc.waitFor() == 0) { "room_info.py failed: ${output.trim().lines().lastOrNull()}" }
   }
@@ -84,19 +105,20 @@ class Launcher(
    * seed's name comes from [roomJson].
    */
   fun launch(seed: Path, roomJson: Path, port: Int): Launch {
-    val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.of(name) } }
-    val version = setup?.apVersion ?: archipelago.newest
-    val options = setup?.options?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
+    val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.launchOf(name) } }
+    val version = setup?.first ?: archipelago.newest
+    val options = setup?.second?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
     val command = buildList {
       addAll(listOf(archipelago.python, "serve.py", seed.absolutePathString(), "--host", "0.0.0.0", "--port", port.toString()))
       addAll(listOf("--hint_cost", options.hintCost.toString(), "--location_check_points", options.locationCheckPoints.toString()))
       addAll(listOf("--release_mode", options.releaseMode, "--collect_mode", options.collectMode))
       addAll(listOf("--remaining_mode", options.remainingMode, "--countdown_mode", options.countdownMode))
       addAll(listOf("--auto_shutdown", "0", "--logtime"))
-      if (adminPassword.isNotBlank()) addAll(listOf("--server_password", adminPassword))
     }
     val environment = mapOf("AP_POINT_HINTS" to options.pointHints.toString(), "AP_AUTO_HINTS" to options.autoHints.toString())
-    return Launch(command, environment, archipelago.home(version))
+    // The password for `!admin` goes in over the console, not on the command line (every process here can read that)
+    val first = if (adminPassword.isBlank()) emptyList() else listOf("/option server_password ${consoleWord(adminPassword)}")
+    return Launch(command, environment, archipelago.home(version), first)
   }
 }
 
@@ -107,6 +129,11 @@ class Launcher(
  */
 class Generator(private val archipelago: Archipelago, private val dirs: SessionDirs, private val apworlds: Apworlds) {
   private val mutex = Mutex()
+  /** How far each running generation is, by session (from Generate.py's output as it comes). */
+  private val progress = ConcurrentHashMap<String, GenerationProgress>()
+
+  /** How far session [id]'s generation is; `null`: none runs. */
+  fun progress(id: String): GenerationProgress? = progress[id]
 
   /** Throws [IllegalStateException] if session [id] has a seed already. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = mutex.withLock {
@@ -115,12 +142,17 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
     val release = apworlds.release(request.apVersion)
-    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) } }
+    progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
+    val result = try {
+      apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
+    } finally {
+      progress.remove(id)
+    }
     if (result.seedName != null) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
-  private fun run(request: GenerateRequest, home: Path, target: Path): GenerateResult {
+  private fun run(request: GenerateRequest, home: Path, target: Path, onProgress: (GenerationProgress) -> Unit): GenerateResult {
     val work = createTempDirectory("generate")
     try {
       val players = work.resolve("players").createDirectories()
@@ -132,12 +164,20 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       val proc = ProcessBuilder(
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
         "--outputpath", output.absolutePathString(),
-      ).directory(home.toFile()).redirectErrorStream(true).start()
+      ).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
       Thread { if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
-      val lines = proc.inputStream.bufferedReader().readLines()
+      // Only its end is of use (the error, the seed's name): the rest of a long output isn't kept
+      val lines = ArrayDeque<String>()
+      proc.inputStream.bufferedReader().useLines { output ->
+        output.forEach { line ->
+          lines += line.take(MAX_LOG_LINE)
+          if (lines.size > MAX_LOG_LINES) lines.removeFirst()
+          generationProgress(line)?.let(onProgress)
+        }
+      }
       proc.waitFor()
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
         ?: return GenerateResult(
@@ -173,4 +213,42 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
     |  locked_worlds: [${locked.joinToString { JsonPrimitive(it).toString() }}]
     |  early_keys: $earlyKeys
     |""".trimMargin()
+}
+
+/** Generate.py's stages by what it logs at their start, with about how far along that is in all (filling takes longest). */
+private val STAGES = listOf(
+  "Creating MultiWorld." to GenerationProgress(GenerationStage.CREATING, 5),
+  "Creating Items." to GenerationProgress(GenerationStage.ITEMS, 10),
+  "Calculating Access Rules." to GenerationProgress(GenerationStage.RULES, 15),
+  "Running Item Plando." to GenerationProgress(GenerationStage.PLANDO, 25),
+  "Running Pre Main Fill." to GenerationProgress(GenerationStage.PREFILL, 30),
+  "Filling the multiworld" to GenerationProgress(GenerationStage.FILLING, 35),
+  "Balancing multiworld progression" to GenerationProgress(GenerationStage.BALANCING, 66),
+  "Progression balancing skipped." to GenerationProgress(GenerationStage.BALANCING, 68),
+  "Running pre-output steps." to GenerationProgress(GenerationStage.PREOUTPUT, 70),
+  "Beginning output" to GenerationProgress(GenerationStage.OUTPUT, 75),
+  "Calculating playthrough." to GenerationProgress(GenerationStage.PLAYTHROUGH, 90),
+  "Creating final archive" to GenerationProgress(GenerationStage.ARCHIVE, 97),
+  "Done." to GenerationProgress(GenerationStage.DONE, 100),
+)
+
+/** How much of Generate.py's output is kept: its last lines, each cut. */
+private const val MAX_LOG_LINES = 2000
+private const val MAX_LOG_LINE = 2000
+
+private val OUTPUT_FILES = Regex("""Generating output files \((\d+)/(\d+)\)""")
+private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items placed""")
+
+/**
+ * The stage a line of Generate.py's output starts, if it starts one. The output files count themselves up, and so
+ * does the fill (35 to 65 %; it only logs every 1000 items, so a small multiworld waits at its start).
+ */
+internal fun generationProgress(line: String): GenerationProgress? {
+  FILL_STEP.find(line)?.destructured?.let { (placed, all) ->
+    return GenerationProgress(GenerationStage.FILLING, 35 + 30 * placed.toInt() / all.toInt().coerceAtLeast(1))
+  }
+  OUTPUT_FILES.find(line)?.destructured?.let { (done, all) ->
+    return GenerationProgress(GenerationStage.OUTPUT, 75 + 15 * done.toInt() / all.toInt().coerceAtLeast(1))
+  }
+  return STAGES.firstOrNull { (marker, _) -> marker in line }?.second
 }

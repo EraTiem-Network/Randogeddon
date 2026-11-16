@@ -353,7 +353,15 @@ data class Connection(
 )
 
 @Serializable
-data class MySlot(val name: String, val game: String, val password: String)
+data class MySlot(
+  val name: String,
+  val game: String,
+  val password: String,
+  /** A hosted slot of the session: its patch files for its players (no password); all of it for its Session-Managers. */
+  val hosted: Boolean = false,
+  /** Still locked: its key isn't found yet, so no one connects it (no password until then). */
+  val locked: Boolean = false,
+)
 
 /** The game server (MultiServer, run by the gateway) as the admin panel shows it. */
 @Serializable
@@ -465,6 +473,8 @@ data class WorldPlan(
   val userIds: List<String> = emptyList(),
   val locked: Boolean = false,
   val random: Boolean = false,
+  /** A hosted slot: the game runs as a server of its own, which its players join with their games; nobody plays it. */
+  val hosted: Boolean = false,
 )
 
 @Serializable
@@ -555,7 +565,12 @@ data class KeepRequest(val keep: Boolean)
 
 /** One sphere of the spoiler's playthrough: what is reachable (and needed) at that step, "Location (Slot): Item (Slot)". */
 @Serializable
-data class Sphere(val number: Int, val entries: List<String>)
+data class Sphere(
+  val number: Int,
+  val entries: List<String>,
+  /** Per entry: its location is checked already (as the tracker sees it now); empty if not known. */
+  val checked: List<Boolean> = emptyList(),
+)
 
 /** `GET /api/sessions/{id}/spoiler`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
 @Serializable
@@ -578,9 +593,12 @@ enum class CheatAction {
   @SerialName("hint_location") HINT_LOCATION,
 }
 
-/** `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. */
+/**
+ * `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. [from]: a location checked
+ * *to* the slot: the other world it is in (one of [CheatNames.incoming]); `null`: the slot's own location.
+ */
 @Serializable
-data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null)
+data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null, val from: String? = null)
 
 /** One cheat, as logged. */
 @Serializable
@@ -622,9 +640,22 @@ data class SlotFile(
 @Serializable
 data class SlotFiles(val files: List<SlotFile> = emptyList())
 
-/** `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. */
+/**
+ * `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. [incoming]:
+ * the locations of other worlds, not checked yet, that hold one of the slot's items (from the spoiler log's
+ * placements; [placementsKnown] `false` without them).
+ */
 @Serializable
-data class CheatNames(val items: List<String> = emptyList(), val locations: List<String> = emptyList())
+data class CheatNames(
+  val items: List<String> = emptyList(),
+  val locations: List<String> = emptyList(),
+  val incoming: List<IncomingCheck> = emptyList(),
+  val placementsKnown: Boolean = false,
+)
+
+/** A location of [world], not checked yet, that holds [item] for the slot asked about. */
+@Serializable
+data class IncomingCheck(val location: String, val world: String, val item: String)
 
 /** `GET /api/admin/sessions/{id}`: one session, what a new one can use, and who has a login. */
 @Serializable
@@ -742,17 +773,64 @@ data class ReleaseInfo(
 @Serializable
 data class ArchipelagoInfo(val releases: List<ReleaseInfo> = emptyList(), val apworlds: List<ApworldFile> = emptyList())
 
-/** `POST /api/admin/apworlds`: an apworld file for a release's library, base64. */
+/**
+ * `POST /api/admin/apworlds`: apworld files for a release's library, taken in together (the release lists its games
+ * once). [replace]: what they would replace (the [ApworldConflict]s of an earlier try) goes. Answered by
+ * [ApworldResults].
+ */
 @Serializable
-data class ApworldUpload(val release: String, val fileName: String, val base64: String)
+data class ApworldUpload(val release: String, val files: List<ApworldUploadFile>, val replace: Boolean = false)
+
+/** One file of an [ApworldUpload], base64. */
+@Serializable
+data class ApworldUploadFile(val fileName: String, val base64: String)
+
+/** What an [ApworldUpload] did: one result per file, in their order. */
+@Serializable
+data class ApworldResults(val results: List<ApworldResult>)
+
+/** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
+enum class GenerationStage {
+  STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, BALANCING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE,
+}
+
+/**
+ * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all
+ * (each stage has a share; filling the items takes the longest and reports nothing on its way). No content: none runs.
+ */
+@Serializable
+data class GenerationProgress(val stage: GenerationStage, val percent: Int)
+
+/**
+ * `GET /api/admin/versions` (Administrators): what runs now, to check a deploy: the tracker's version, the gateway's
+ * (`null`: it can't be reached) and its Archipelago releases.
+ */
+@Serializable
+data class Versions(val tracker: String, val gateway: String? = null, val releases: List<String> = emptyList())
+
+/** `POST /api/admin/apworlds/remove`: uploaded files out of a release's library, together. */
+@Serializable
+data class ApworldRemoval(val release: String, val files: List<String>)
 
 /** `POST /api/admin/apworlds/try`: copies an apworld of [from]'s library to [release]'s, to try it there. */
 @Serializable
 data class ApworldTry(val release: String, val from: String, val file: String)
 
-/** What an upload (or a try) brought: the games the file adds, or why it didn't load. */
+/**
+ * What an upload (or a try) brought: the games the file adds, or why it didn't load; or, with [conflict], that it
+ * would replace something and wasn't added (sent again with `replace`, it is).
+ */
 @Serializable
-data class ApworldResult(val file: String, val games: List<String> = emptyList(), val error: String? = null)
+data class ApworldResult(
+  val file: String,
+  val games: List<String> = emptyList(),
+  val error: String? = null,
+  val conflict: ApworldConflict? = null,
+)
+
+/** What an upload would replace: a file of the same name in the library, and/or the uploaded [otherFile] of its [game]. */
+@Serializable
+data class ApworldConflict(val sameFile: Boolean = false, val game: String? = null, val otherFile: String? = null)
 
 /** Archipelago's `ItemClassification` bits, as sent in `NetworkItem.flags`. */
 object ItemFlags {

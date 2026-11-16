@@ -51,20 +51,42 @@ interface ConnectionTexts {
   val password: String
   val hide: String
   val show: String
-  val file: String
+  /** The heading of the slot's files. */
+  val patchFiles: String
+  val noPatchFiles: String
+  /** A hosted slot in *Your connection*: for its players, and for its Session-Managers (who see its connection). */
+  val hostedNote: String
+  /** A slot still locked: nothing to connect until its key is found. */
+  val lockedNote: String
+  val hostedManagerNote: String
   val download: String
   /** How to use a slot's file (the ⓘ next to it). */
   val patchHowTo: String
   // Randogeddon Bridge
   val bridge: String
-  val bridgeLine: String
-  /** What the bridge is and how it is set up (its ⓘ). */
-  val bridgeHowTo: String
+  /** The heading of the bridge's downloads, of [version]. */
+  fun downloads(version: String): String
+  /** The button for the builds' checksums (the file `SHA256SUMS`). */
+  val checksums: String
+  /** The buttons for the checksums' signature and the key it is checked with. */
+  val signature: String
+  val signingKey: String
+  /** The bridge's ⓘ, in parts: what it is, what it does, how to use it, then starting it on each system. */
+  val bridgeWhatTitle: String
+  val bridgeWhat: String
+  val bridgeDoesTitle: String
+  val bridgeDoes: String
+  val bridgeHowTitle: String
+  val bridgeHow: String
+  val bridgeWindows: String
+  val bridgeMacos: String
+  val bridgeLinux: String
   val makeKey: String
   /** Under a new key: shown once, works until [until]. */
   fun keyMade(until: String): String
-  /** How to start the unsigned bridge (the downloads' ⓘ). */
-  val bridgeUnsigned: String
+  /** Folds the bridge away, or opens it again. */
+  val foldBridge: String
+  val openBridge: String
 }
 
 internal object EnglishDialogs : DialogTexts {
@@ -146,21 +168,42 @@ internal object EnglishConnection : ConnectionTexts {
   override val password = "Password"
   override val hide = "Hide"
   override val show = "Show"
-  override val file = "File"
+  override val patchFiles = "Patch files"
+  override val noPatchFiles = "None for this slot: its game needs no patch."
+  override val hostedNote = "This slot is hosted: its game runs as a server of its own. Join that server with your " +
+    "game; its patch files are below."
+  override val lockedNote = "This slot is still locked: it can connect once its key is found (the dashboard shows " +
+    "where). Until then there is nothing to enter."
+  override val hostedManagerNote = "This slot is hosted: its game runs as a server of its own, which the players join. " +
+    "Set that server up with this connection."
   override val download = "Download"
   override val patchHowTo = "Your slot's file from the seed: a patch, or a mod for some games. A patch is opened " +
     "with the Archipelago Launcher (Open Patch) together with your own copy of the game (the ROM); the Launcher writes " +
     "the patched game next to it and can start it with its client. Mods go where the game's Archipelago guide says."
-  override val bridge = "Bridge"
-  override val bridgeLine = "for games that can't connect securely"
-  override val bridgeHowTo = "Randogeddon Bridge runs on your PC: the game connects to localhost, and the bridge takes " +
-    "it to the session securely, with your slot's name and password filled in. Download it, make a key here and paste " +
-    "it into the bridge's page."
-  override val makeKey = "Make a key"
+  override val bridge = "Randogeddon Bridge"
+  override fun downloads(version: String) = "Downloads · $version"
+  override val checksums = "Checksums"
+  override val signature = "Signature"
+  override val signingKey = "Key"
+  override val bridgeWhatTitle = "What it is"
+  override val bridgeWhat = "A small app for your PC, for games whose client can't connect securely (TLS). Randogeddon " +
+    "only lets secure connections in."
+  override val bridgeDoesTitle = "What it does"
+  override val bridgeDoes = "The game connects to localhost on your PC; the bridge takes it to the session securely and " +
+    "fills in your slot's name and password, so nothing has to be typed in the game."
+  override val bridgeHowTitle = "How to use it"
+  override val bridgeHow = "Download it for your system and start it: its page opens in your browser. Create a key " +
+    "here and paste it there. Pick the session and the slot, Open, and enter the address it shows (localhost:<port>) " +
+    "in the game."
+  override val bridgeWindows = "It isn't signed, so Windows asks first: More info, then Run anyway."
+  override val bridgeMacos = "It isn't signed: right-click it, Open, then Open again. Or in the Terminal: " +
+    "xattr -d com.apple.quarantine <file>"
+  override val bridgeLinux = "Make it executable first: chmod +x <file>"
+  override val makeKey = "Create key"
   override fun keyMade(until: String) =
     "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
-  override val bridgeUnsigned = "The bridge isn't signed, so the system asks first. Windows: More info, then Run " +
-    "anyway. macOS: right-click it, Open (or xattr -d com.apple.quarantine <file>). Linux: chmod +x <file>."
+  override val foldBridge = "Fold away"
+  override val openBridge = "Open"
 }
 
 internal object GermanConnection : ConnectionTexts {
@@ -178,21 +221,42 @@ internal object GermanConnection : ConnectionTexts {
   override val password = "Passwort"
   override val hide = "Verbergen"
   override val show = "Zeigen"
-  override val file = "Datei"
+  override val patchFiles = "Patch-Dateien"
+  override val noPatchFiles = "Keine für diesen Slot: Sein Spiel braucht keinen Patch."
+  override val hostedNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server. Tritt diesem Server mit " +
+    "deinem Spiel bei; seine Patch-Dateien stehen unten."
+  override val lockedNote = "Dieser Slot ist noch gesperrt: Er kann sich verbinden, sobald sein Schlüssel gefunden ist " +
+    "(das Dashboard zeigt, wo). Bis dahin gibt es nichts einzutragen."
+  override val hostedManagerNote = "Dieser Slot wird gehostet: Sein Spiel läuft als eigener Server, dem die Spieler " +
+    "beitreten. Richte diesen Server mit dieser Verbindung ein."
   override val download = "Herunterladen"
   override val patchHowTo = "Die Datei deines Slots aus dem Seed: ein Patch oder bei manchen Spielen eine Mod. Einen " +
     "Patch öffnest du mit dem Archipelago Launcher (Open Patch) zusammen mit deiner eigenen Kopie des Spiels (dem ROM); " +
     "der Launcher legt das gepatchte Spiel daneben und kann es mit seinem Client starten. Mods kommen dorthin, wo es " +
     "die Archipelago-Anleitung des Spiels sagt."
-  override val bridge = "Bridge"
-  override val bridgeLine = "für Spiele, die sich nicht sicher verbinden können"
-  override val bridgeHowTo = "Randogeddon Bridge läuft auf deinem PC: Das Spiel verbindet sich mit localhost, und die " +
-    "Bridge bringt es sicher zur Session, mit Name und Passwort deines Slots schon eingetragen. Lade sie herunter, mach " +
-    "hier einen Schlüssel und füge ihn auf der Seite der Bridge ein."
-  override val makeKey = "Schlüssel machen"
+  override val bridge = "Randogeddon Bridge"
+  override fun downloads(version: String) = "Downloads · $version"
+  override val checksums = "Prüfsummen"
+  override val signature = "Signatur"
+  override val signingKey = "Schlüssel"
+  override val bridgeWhatTitle = "Was sie ist"
+  override val bridgeWhat = "Eine kleine App für deinen PC, für Spiele, deren Client sich nicht sicher (TLS) verbinden " +
+    "kann. Randogeddon lässt nur sichere Verbindungen herein."
+  override val bridgeDoesTitle = "Was sie tut"
+  override val bridgeDoes = "Das Spiel verbindet sich mit localhost auf deinem PC; die Bridge bringt es sicher zur Session " +
+    "und trägt Name und Passwort deines Slots ein, im Spiel ist nichts einzugeben."
+  override val bridgeHowTitle = "So nutzt du sie"
+  override val bridgeHow = "Lade sie für dein System herunter und starte sie: Ihre Seite öffnet sich im Browser. Erstelle " +
+    "hier einen Schlüssel und füge ihn dort ein. Wähle Session und Slot, Öffnen, und gib die gezeigte Adresse " +
+    "(localhost:<Port>) im Spiel ein."
+  override val bridgeWindows = "Sie ist nicht signiert, deshalb fragt Windows erst: Weitere Informationen, dann Trotzdem " +
+    "ausführen."
+  override val bridgeMacos = "Sie ist nicht signiert: Rechtsklick, Öffnen, dann noch einmal Öffnen. Oder im Terminal: " +
+    "xattr -d com.apple.quarantine <Datei>"
+  override val bridgeLinux = "Erst ausführbar machen: chmod +x <Datei>"
+  override val makeKey = "Schlüssel erstellen"
   override fun keyMade(until: String) =
     "Füge ihn in die Bridge ein. Er wird nur jetzt gezeigt und gilt bis $until; beenden kannst du ihn unter Dein Konto."
-  override val bridgeUnsigned = "Die Bridge ist nicht signiert, deshalb fragt das System erst. Windows: Weitere " +
-    "Informationen, dann Trotzdem ausführen. macOS: Rechtsklick, Öffnen (oder xattr -d com.apple.quarantine <Datei>). " +
-    "Linux: chmod +x <Datei>."
+  override val foldBridge = "Einklappen"
+  override val openBridge = "Aufklappen"
 }

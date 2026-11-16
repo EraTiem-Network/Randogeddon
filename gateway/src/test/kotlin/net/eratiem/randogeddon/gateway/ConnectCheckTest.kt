@@ -6,18 +6,28 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ConnectCheckTest {
+  @Test
+  fun `a locked slot is refused even with its password, until its key is found`() {
+    val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "pw")
+    fun connectWith(locked: Set<String>): Verdict =
+      runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(connect("Alice-HK", "s3cr3t!"), { passwords }, { locked }) }
+    assertEquals(Verdict.Refuse("Alice-HK", Verdict.Why.LOCKED), connectWith(setOf("Alice-HK")))
+    assertEquals(Verdict.Join, connectWith(setOf("Bob-Yacht")))
+    assertEquals(Verdict.Join, connectWith(emptySet()))
+  }
+
   private val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "other")
 
   /** The check with a fixed password map. */
   private fun checkClientFrame(text: String, passwords: Map<String, String>) =
-    runBlocking { checkClientFrame(text) { passwords } }
+    runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(text, { passwords }) }
 
   private fun connect(name: String, password: String) =
     """[{"cmd":"Connect","password":"$password","game":"","name":"$name","uuid":"x","items_handling":7,"tags":[]}]"""
 
   @Test
   fun `the right password passes`() {
-    assertEquals(Verdict.Forward, checkClientFrame(connect("Alice-HK", "s3cr3t!"), passwords))
+    assertEquals(Verdict.Join, checkClientFrame(connect("Alice-HK", "s3cr3t!"), passwords))
   }
 
   @Test
@@ -46,8 +56,22 @@ class ConnectCheckTest {
   }
 
   @Test
-  fun `unknown slots go on to MultiServer, which refuses them itself`() {
-    assertEquals(Verdict.Forward, checkClientFrame(connect("Typo-HK", "whatever"), passwords))
+  fun `a name without a password is refused here, whatever MultiServer knows it as`() {
+    // A typo; but also an item link's group, which MultiServer takes in under its name without any password
+    assertEquals(Verdict.Refuse("Typo-HK", Verdict.Why.UNKNOWN), checkClientFrame(connect("Typo-HK", "whatever"), passwords))
+    assertEquals(Verdict.Refuse("Everyone", Verdict.Why.UNKNOWN), checkClientFrame(connect("Everyone", ""), passwords))
+    val tracker = """[{"cmd":"Connect","name":"Everyone","password":null,"game":"","tags":["TextOnly"]}]"""
+    assertEquals(Verdict.Refuse("Everyone", Verdict.Why.UNKNOWN), checkClientFrame(tracker, passwords))
+    // No name, or one that isn't text
+    assertEquals(Verdict.Refuse(null, Verdict.Why.UNKNOWN), checkClientFrame("""[{"cmd":"Connect","password":"x"}]""", passwords))
+    assertEquals(Verdict.Refuse(null, Verdict.Why.UNKNOWN), checkClientFrame("""[{"cmd":"Connect","name":7}]""", passwords))
+    assertEquals("""[{"cmd":"ConnectionRefused","errors":["InvalidSlot"]}]""", Verdict.Why.UNKNOWN.answer)
+  }
+
+  @Test
+  fun `one Connect that doesn't pass refuses the frame, also behind one that does`() {
+    val frame = """[{"cmd":"Connect","name":"Alice-HK","password":"s3cr3t!"},{"cmd":"Connect","name":"Everyone","password":""}]"""
+    assertEquals(Verdict.Refuse("Everyone", Verdict.Why.UNKNOWN), checkClientFrame(frame, passwords))
   }
 
   @Test
@@ -87,7 +111,7 @@ class ConnectCheckTest {
       checkClientFrame("""[{"cmd":"Connect","name":"Alice-HK","password":"s3cr3t!","password":"x"}]""", passwords),
     )
     assertEquals(
-      Verdict.Forward,
+      Verdict.Join,
       checkClientFrame("""[{"cmd":"Connect","name":"Alice-HK","password":"x","password":"s3cr3t!"}]""", passwords),
     )
   }

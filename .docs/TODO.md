@@ -298,7 +298,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Every text of the web app comes from one place per language instead of the code
     - Typed Kotlin in `:shared` (`i18n/*Texts.kt`, both languages side by side): a missing text doesn't compile, a
       test finds a dropped value or a language that borrows another's words.
-    - English stays the default; the first other language is German ("du"). Open: which ones follow.
+    - English stays the default; the first other language is German ("du"). Decided in Phase 13: English and German
+      are it for now; another one can be added later (its texts per group, the compiler and `TextsTest` find what's
+      missing).
 - [x] A language applies to every page: dashboard, person and world views, the panel, settings, login
     - Dates, times and numbers are formatted for the language (`14.11.2026, 08:17`, `1.234,5`).
     - Names from Archipelago (games, items, locations, slots) and its option values stay as they are.
@@ -371,18 +373,244 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       with their SHA-256 sums); from 1.0.0 on also as a GitHub release (with the version's changelog)
 - [x] No plain, unencrypted port for game clients: `wss://` stays the only way in
 
-## Phase 13: Polish and Bug Fixes
+## Phase 13: Polish and Bug Fixes (done)
 
 *Everything tested by hand, and what comes up fixed.*
 
-- [ ] Every page, role and flow tested in a browser (and on a phone), in English and German: logins (password,
-      two-factor, Authentik, CLI link), invitations and sign-up, sessions from creation to deletion, cheats and
-      support, watchers and share links, downloads, the mails, the bridge
-- [ ] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
+- [x] Every page, role and flow tested in a browser (and on a phone): logins (password, two-factor, Authentik, CLI
+      link), invitations and sign-up, sessions from creation to deletion, cheats and support, watchers and share links,
+      downloads, the mails, the bridge
+    - English and German side by side are checked after Phase 14 (its themes and fonts change the pages once more)
+- [x] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
       gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
       or noted with why not
-- [ ] What comes up is collected here and fixed, phase by phase as needed
-    - [ ] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
-    - [ ] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
+    - Scanned on 2026-11-16 at 0.13.14: 2 High, 9 Medium and 17 Low findings, all fixed or noted with why not
+      (0.13.15 to 0.13.17); the findings are kept outside this repository
+- [x] A second security scan with Fable 5.2, where the first was thin: the code since then, the page's own script,
+      what stays open after a right ends, the limits' ways around, logs and disks, the versions on the servers,
+      Authentik's own settings, the host's mail and firewall, the repository
+    - Scanned on 2026-11-16 at 0.13.17: 1 Medium and 12 Low findings, all fixed or noted with why not (0.13.18,
+      0.13.19); the findings are kept outside this repository
+- [x] What comes up is collected here and fixed, phase by phase as needed
+    - [x] Bug: an APWorld upload takes only one of the picked files instead of all (*APWorlds*, *Upload APWorld…*)
+    - [x] Bug: choosing a theme doesn't explain itself enough (*Your account*, *Appearance*): the dropdown names the
           themes, but doesn't show what each looks like before it is picked
-- [ ] Open points from earlier phases looked at again (e.g. which languages follow)
+    - [x] Polish: switching the theme (or the mode) fades from the old colours to the new ones instead of jumping
+    - [x] Polish: the mode button on the top card shows the mode it is in: a sun (light), a moon (dark), and for
+          *Automatic* an icon of its own (e.g. the half-filled circle with an *A*), with the mode as its tooltip; today
+          it is the same half-filled circle in every mode (`Icon.THEME`)
+    - [x] Polish: an uploaded APWorld's file name is tidied: lower case, `-` instead of spaces, every other symbol
+          removed
+        - Archipelago imports an APWorld by its file name, which must be the world folder inside it: the file is
+          named after that folder (`pokemon_emerald/` → `pokemon_emerald.apworld`, whatever it was called), which
+          is lower case with `_` as a rule; a folder Python can't import (e.g. with a `-`) is refused
+    - [x] Bug: an upload that would replace something says so and asks first (*Replace* / *Skip*): a file of the
+          same name in the release's library, or another uploaded APWorld of the same game (by its manifest)
+        - A game the release brings itself can't be replaced (Archipelago 0.6.8 loads its own world first and skips
+          the APWorld): refused, with why
+    - [x] Bug: while files are uploading, the release's list of uploaded APWorlds doesn't change; each file should
+          show up as soon as it is added
+    - [x] Polish: *Users* (Administrators) as pills (avatar, name; *invited* and *Administrator* marked on them)
+          instead of one row each, in a box that scrolls once there are enough accounts
+        - A click on a pill opens a floating panel with everything a row shows today: the address, the sessions,
+          until when an invitation works, when the account deletes itself, and an invited one's *Send again* /
+          *Other address*
+    - [x] Polish: the panel shows the new-session form only after *New session* was clicked (or at
+          `#/manage/new`); with no session running it no longer opens by itself (`Admin.kt`, the page falls back to
+          `NEW_PAGE`), but says that none is running, next to the *New session* button
+    - [x] Polish: *Your connection* wider, in two columns, so it isn't as tall (now 420 dp next to the tiles,
+          `Dashboard.kt` `CONNECTION_WIDTH`, which get less room)
+        - Left: the server, the slot (the dropdown), its name and password. Right: the slot's files, then the bridge.
+          On a narrow screen one column, as now.
+        - The slot's files get a small heading of their own (*Patch files*), always shown for a player: the
+          picked slot's files to download, or that this slot has none (its game needs no patch).
+    - [x] Polish: the bridge under *Your connection*
+        - *Create key* instead of *Make a key* (German *Schlüssel erstellen*); the button and the key it makes come
+          above the downloads
+        - The downloads under a small heading of their own (e.g. *Downloads*, with the version), one row per system
+          in this order, the architectures as buttons:
+          `Windows  x86_64  ARM64` / `macOS  Intel  Apple Silicon` / `Linux  x86_64  ARM64`
+        - One ⓘ only, next to *Randogeddon Bridge*: what it is and how it is set up, then how to start the unsigned
+          app (now the downloads' own ⓘ, which goes)
+        - Windows ARM64 is new: a sixth build (`windows/arm64`, `kotlin.Dockerfile`'s bridge stage); the downloads
+          route and `publish-bridge.sh` take it as it is
+    - [x] Polish: removing APWorlds by selecting them, instead of a × on each pill (on a long pill the × was
+          squeezed away, and on a phone the question didn't fit its line)
+        - Each release's library gets a *Remove…* button next to *Upload APWorld…*: it switches the uploaded pills
+          to selectable (a click marks one; hand-placed ones can't be picked), with *Remove (n)* and *Cancel* below
+          them, on their own line
+        - *Remove (n)* asks once more, naming the files, then removes them, with a line for each, as the uploads do
+    - [x] Polish: uploading and removing APWorlds faster. Each file makes the release list its games again
+          (`list_games.py`, every world loaded: about 5 s), twice for one that is refused.
+        - Archipelago's Python files compiled in the image (`python -m compileall` in `kotlin.Dockerfile`'s
+          archipelago stage): the gateway can't write `__pycache__` there, so every listing compiled all 1,827 files
+          again. Measured: 5 s → 2.2 s per listing; generating and starting game servers gain the same way.
+        - Several files in one request, uploads and removals alike: one listing for all of them (and once more if
+          one is refused and taken out again), instead of one per file
+    - [x] Bug: after a click inside a user's floating panel (*Users*), it can't be closed any more (neither × nor a
+          click outside)
+    - [x] Polish: the floating panel becomes a user information panel, everything about the account in one place
+        - Its fields, each with its label: name, e-mail address, ID (to copy), state (active, invited), group
+          (Administrator or not), made on, the invitation (until when its link works), auto-deletion and when the
+          account deletes itself; *n/a* for what an account doesn't have (an invited one's name, a deletion that
+          isn't planned)
+        - The sessions it plays in as pills again, a click opens that session
+        - Possibly more from the server (new fields of `AdminUser`): how they log in (password, Authentik), whether
+          two-factor login is on, the last login. To be decided when it is fixed.
+        - An invited one's *Send again* / *Other address* stay in it
+    - [x] Bug: selecting a finished session breaks the view: the session shows no content, and after it the panel
+          and *Your account* are empty too (until a reload)
+        - The cause: any session's dashboard on a wide screen crashed since 0.13.2 (the tiles' row measured *Your
+          connection*, which decided its columns by its own width), and Compose draws nothing after a crash
+    - [x] Polish: the state on the top card (the game server's: connected, stopped) only for a session that isn't
+          finished; a finished one has no game server
+    - [x] Bug: zooming is broken again: sometimes it zooms in, but it doesn't zoom out any more
+        - The app doesn't block the browser's zoom (Ctrl and the wheel, Ctrl +/−/0 reach it). On a phone, the login
+          form's 12.5 px fields made it zoom in by itself, and over the app's canvas a pinch can't zoom back out:
+          16 px now. On a computer, the page noticed a zoom by a media query on the exact pixel density, which can
+          miss one like 1.3636…: by the window's size now
+    - [x] Polish: *APWorlds*, *Remove…*: a *Select all* button next to *Remove (n)* / *Cancel* (all uploaded files of
+          that release; again: none)
+    - [x] Polish: the bridge's line in *Your connection*: `Bridge ⓘ` on the left, *Create key* on the right, without
+          the line of text between them
+        - Its ⓘ in parts, each with a small heading (the tip takes headed parts already, `InfoTip`'s `options`):
+          what it is, what it does, how to use it (download, create a key, paste it, open a relay, the address into
+          the game), then starting it per system: Windows, macOS, Linux, each its own part
+        - A new key shows like the slot's password: hidden (dots) with *Show* / *Hide* and *Copy*, plus a button
+          that closes the key's line (it is shown only this once, as now)
+        - The bridge gets a heading of its own (*Randogeddon Bridge*) and can be collapsed: it folds away to the left,
+          *Your connection* becomes one column again (as narrow as before 0.13.2), and the tiles beside it get the
+          room; a button on the heading (or on the panel's edge while folded) opens it again; remembered in the
+          browser
+    - [x] Polish: the patch files go back under the slot and its password (left column, they belong to the slot); the
+          right column is the bridge's alone
+    - [x] Bug: a Session-Manager can remove themselves as Session-Manager (*People*): refused, in the panel (no
+          *Remove* on their own entry) and by the server; another Session-Manager or an Administrator can
+    - [x] Bug: an APWorld that imports `tkinter` doesn't load (e.g. `minecraft_dig.apworld`, for its client window):
+          `ImportError: libtk8.6.so: cannot open shared object file`
+        - The image's Python (`python:3.12-slim`) has `tkinter`, but not the Tk library it needs: `libtk8.6` into the
+          archipelago stage (`kotlin.Dockerfile`). Importing it needs no screen; only opening a window would, which a
+          world doesn't do while loading.
+        - Checked what else: every bundled world of 0.6.8 loads in the image, and `kivy` (Archipelago's client
+          toolkit) imports; Tk was the only library missing. A missing one shows in the panel with Python's error.
+    - [x] Polish: the live feed's place (*Right* / *Left* / *Below*) is only offered where it can be beside the players;
+          on a narrow screen (a phone) it is always below, so the dropdown goes there (the choice stays for wider
+          screens)
+    - [x] Feature: hosted slots, for games that run as a server of their own (the players join that server with their
+          games, not Archipelago)
+        - In the panel's slot player field, *Hosted* can be entered as the slot's player: then the slot's players are
+          removed and its field to add more goes (no one plays it from Archipelago's side)
+        - *Hosted* is reserved: no account can be named so (sign-up, renaming, invitations; `UserNames`)
+        - *Your connection*: the session's players can pick a hosted slot too, but see only its patch files (no
+          name, no password); its Session-Managers see its whole connection (server, slot, password, files), to set
+          the game's server up
+        - The dashboard and the panel show the hosted slots on a card of their own, *Hosted* (its time and checks are
+          the slots' own, as for any slot); locks and hints treat it like any other slot
+    - [x] Polish: without a login (logged out, or the login ended), the settings kept in the browser go back to the
+          defaults (theme and mode, language, the live feed's place and visibility, the bridge folded or not); a login
+          sets the account's again (theme, mode and language are stored with it; the rest starts from the default)
+    - [x] Bug: *Your account* shows the user's ID (UUID) only in the name panel, which Administrators with single sign-on
+          (Authentik) don't get: they see it too, e.g. in the *Your Authentik account* panel (`Settings.kt`, `acc.id`)
+    - [x] Polish: the panel's *General* (Administrators) gets a last panel after *Settings*: the running versions of
+          the tracker and the gateway (and the gateway's Archipelago releases), so a deploy can be checked there
+    - [x] Polish: *Hosted* is a checkbox on the right of a slot's row in the new-session form (next to *starts
+          locked*), instead of typing *Hosted* into the player field; ticking it asks once more, then removes the
+          slot's players and its player field (unticking brings the field back)
+    - [x] Bug: loading the YAMLs prefills a slot's player; a slot starts without players, they are added by hand
+    - [x] Bug: ending (finishing) a session cancels its invitations that aren't accepted yet (accounts invited for it
+          that haven't signed up: their links stop working and the invited accounts go, unless another running
+          session has them; who invited them isn't recorded, so an Administrator's invitation counts the same)
+    - [x] Polish: adding a player to a slot is a searchable dropdown (type to filter the accounts, pick one; an e-mail
+          address offers the invitation as before), instead of the text field with suggestion buttons below it
+    - [x] Polish: the new-session form adds no slots for YAMLs whose game the release has no APWorld for; they are
+          summed up in one message (the files and their games), and someone who isn't an Administrator is told to ask
+          one to upload the APWorld
+        - While the form is open, an APWorld uploaded meanwhile (by anyone, in another view or another browser) takes
+          effect by itself: the release's games are looked at again and the waiting YAMLs become slots, without
+          uploading them anew
+    - [x] Polish: *Generate and start* is only active once every slot has at least one player or is hosted; until
+          then the form names the slots still without one. The server refuses such a session too (a new problem,
+          e.g. `SLOT_WITHOUT_PLAYER`).
+    - [x] Polish: *Generate and start* shows how far the generation is, as a bar with the stage's name (e.g. *Filling
+          the items… 60 %*), instead of only a text while it runs
+        - Archipelago's `Generate.py` reports no percentage, but logs its fixed stages (creating the worlds, the
+          access rules, `generate_early` / `create_items` / `set_rules` / `generate_basic`, filling the items, the
+          spoiler, writing the output files, the zip): each gets a share of the bar
+        - The gateway keeps the latest stage per session while `Generate.py` runs and answers it on a small status
+          route; the panel asks about every second while it generates
+        - Filling the items takes most of the time and has no progress of its own: the bar waits there, the stage's
+          name says why
+    - [x] Bug: generating with a locked A Link Between Worlds slot fails ("No more spots to place 1 items"): ALBW
+          places its dungeon keys in `pre_fill`, inside its own world, with a state of its own items, and World Locks had
+          locked the world before: World Locks 1.1.0 locks the worlds in `stage_pre_fill`, after every world's
+          `pre_fill`
+    - [x] Polish: no menu of Compose's own on a right click (it had only *Copy*)
+    - [x] Polish: diagrams in the Markdown files are Mermaid (```` ```mermaid ```` blocks, which GitHub draws), not
+          drawn with box characters: the README's overview of Traefik, the gateway, the tracker and Postgres first;
+          new diagrams in `.md` files only so
+    - [x] Polish: the generation's bar asks more often (about every 300 ms instead of every second) and has more steps
+        - The fill counts itself: Fill.py logs `Current fill step (<step>) at <n>/<total> items placed.` (steps *Early
+          Items*, *Priority*, *Progression*, *Accessibility Corrections*): the bar moves within *Filling the items*
+          by that count. Only every 1000 items, though, so a session of a few hundred items still waits there.
+        - *Balancing multiworld progression for N Players.* is its own stage after the fill (or *Progression
+          balancing skipped.*)
+        - The bar spans the form's whole width, left to right (now at most 480 dp)
+    - [x] Bug: *Your account* doesn't show the selected session's state on the top card: it shows the session (its
+          progress, its game server's state) as the panel does; without one, that none is chosen, as everywhere else
+    - [x] Polish: Randogeddon Bridge follows a theme (or mode, language) changed on the dashboard by itself, without
+          logging in again: it asks for its info (`/bridge/info`) again regularly, e.g. with its key check every minute
+          or when its page gets the focus back
+    - [x] Polish: a locked slot can't be connected until its key is found
+        - *Your connection* and the bridge show it as locked (no password, no relay) until it is unlocked
+        - Hosted slots too: a locked hosted slot's game server can't connect either (its Session-Managers see its
+          connection as locked until then; its players see its patch files as before)
+        - The gateway refuses a game client's `Connect` for a locked slot (`ConnectCheck`), so the lock no longer rests
+          on the honour system alone; it needs to know when a slot is unlocked (the tracker sees the key arrive and
+          tells it, or the gateway reads it from the game server's save)
+        - Built strictly: nobody's game client connects a locked slot, Session-Managers' and support's neither (the
+          tracker's own connections go to the game server directly, not through the gateway, so the dashboard keeps
+          seeing it)
+    - [x] Polish: the panel's *Players* and *People* said the same twice: one *People*
+        - Everyone of the session as a pill with their part (no slots on the pill); a click opens their panel: their
+          slots (game, how far, how it stands), how far they are in the session, played, last active
+        - In the panel: another part for them (a player becomes Session-Manager or support besides their slots), or
+          taking theirs (a playing one only plays then)
+        - The last Session-Manager stays, for Administrators too: someone else becomes Session-Manager first (the
+          panel says so; `KEEP_MANAGER` on the server)
+        - What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*
+    - [x] Polish: Randogeddon Bridge for hosted slots: offered to the session's Session-Managers and Administrators
+          (they have the password), still not to its players, never a locked one
+    - [x] Polish: Randogeddon Bridge on the command line, for the computer a hosted game runs on: `login` (the key from
+          standard input), `slots`, `relay -session -slot [-port]`, `logout`
+    - [x] Polish: Randogeddon Bridge quits once its page or the browser is closed (unless back within 10 seconds)
+    - [x] Polish: a login through Authentik ends with the Authentik session (its back-channel logout); an open
+          dashboard notices within 30 seconds
+    - [x] Polish: the cheat *Check a location* from the slot or to it (another world's location holding its item)
+    - [x] Polish: the spoiler log's playthrough marks the steps already checked, reads *Item @ Check*, and has a
+          search that filters its rows
+    - [x] Bug: the page scrolls, but shows no scroll bar (drawn on a canvas): one on everything that scrolls
+    - [x] Bug: a login ended at Authentik showed "not logged in" in a field instead of the login form
+    - [x] Bug: the playthrough's *Fold all* / *Unfold all* didn't follow the list (the filtered spheres, folding by hand)
+- [x] Open points from earlier phases looked at again: the only one was which languages follow (English and German
+      stay, see Phase 9)
+
+## Phase 14: More Themes
+
+*More themes to pick from, grouped, and clear that the console-inspired ones are only inspired.*
+
+- [ ] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
+      Xbox Series X|S
+- [ ] More of Randogeddon's own themes (not inspired by anything)
+- [ ] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
+      cards under a small heading per group)
+- [ ] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
+      consoles' colours; the names are their owners' trademarks, and Randogeddon isn't affiliated with or endorsed by
+      Nintendo, Sony or Microsoft
+- [ ] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
+      mode: *The theme's* (the default), *Randogeddon's original*, or the font of another theme; stored with the
+      account like the theme and the mode
+    - Fonts bundled with the app (free licences only, e.g. SIL OFL), loaded only when used; every font must still
+      be readable at the dashboard's small sizes (a pixel font maybe only for headings)
+- [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
+- [ ] Afterwards every page checked in English and German side by side (moved here from Phase 13: the new themes and
+      fonts change the pages once more)

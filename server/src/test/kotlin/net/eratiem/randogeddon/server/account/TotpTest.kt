@@ -103,4 +103,17 @@ class TotpTest {
     pending.finish(done)
     assertNull(pending.userOf(done, now = 1))
   }
+
+  @Test
+  fun `a keyed hash needs the key, and differs by purpose`() {
+    val box = SecretBox(ByteArray(32) { it.toByte() })
+    val hash = box.mac("recovery codes", "abcdefgh")
+    assertEquals(64, hash.length)
+    assertEquals(hash, box.mac("recovery codes", "abcdefgh"))
+    // Not the plain hash a database dump could be searched with, another under another key, purpose or text
+    assertTrue(hash != RecoveryCodes.hash("abcdefgh"))
+    assertTrue(hash != SecretBox(ByteArray(32)).mac("recovery codes", "abcdefgh"))
+    assertTrue(hash != box.mac("something else", "abcdefgh"))
+    assertTrue(hash != box.mac("recovery codes", "abcdefgj"))
+  }
 }

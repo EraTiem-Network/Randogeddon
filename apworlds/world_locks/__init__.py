@@ -8,8 +8,8 @@ access rule. So the fill places the key in a world that can be played before it,
 (including chains: a key in a world that is itself locked by another key).
 
 Nobody plays this slot. The keys are sent to it when found, which is how the tracker sees a world unlock; the mapping
-key -> world is in its slot data. The lock itself is on the honour system: the game client of a locked world doesn't
-know about it, players just don't start that game before the key arrives.
+key -> world is in its slot data. The game client of a locked world doesn't know about the lock itself; in Randogeddon
+the gateway refuses its connection until the key is found.
 """
 from dataclasses import dataclass
 from typing import Any, ClassVar, Mapping
@@ -100,16 +100,8 @@ class WorldLocksWorld(World):
 
     @classmethod
     def stage_generate_basic(cls, multiworld: MultiWorld) -> None:
-        """After every world set its rules: lock the worlds and make room in the pool for the keys."""
+        """After every world set its rules: make room in the pool for the keys."""
         lock_worlds = [w for w in multiworld.get_game_worlds(GAME)]
-        for world in lock_worlds:
-            for key, (_, player) in world.locks.items():
-                origin = multiworld.get_region(multiworld.worlds[player].origin_region_name, player)
-                rule = lambda state, item=key, owner=world.player: state.has(item, owner)
-                for location in origin.locations:
-                    add_rule(location, rule)
-                for exit_ in origin.exits:
-                    add_rule(exit_, rule)
         # Keys have no locations of their own: remove as many filler items as there are keys, spread over the worlds
         needed = sum(len(w.locks) for w in lock_worlds)
         if needed:
@@ -119,6 +111,24 @@ class WorldLocksWorld(World):
             multiworld.random.shuffle(fillers)
             for item in fillers[:needed]:
                 multiworld.itempool.remove(item)
+
+    @classmethod
+    def stage_pre_fill(cls, multiworld: MultiWorld) -> None:
+        """
+        Lock the worlds: only now, after every world's own pre_fill. Some place their items inside their own world
+        first (A Link Between Worlds its dungeon keys), checked with a state of their own items only, which never has
+        the key: with the lock already on, nothing of their world would be reachable. Before the main fill, which
+        starts with the early items (our keys among them), the lock is on. (Stage methods run sorted by class name: a
+        world whose stage_pre_fill sorts after this one still sees the lock.)
+        """
+        for world in multiworld.get_game_worlds(GAME):
+            for key, (_, player) in world.locks.items():
+                origin = multiworld.get_region(multiworld.worlds[player].origin_region_name, player)
+                rule = lambda state, item=key, owner=world.player: state.has(item, owner)
+                for location in origin.locations:
+                    add_rule(location, rule)
+                for exit_ in origin.exits:
+                    add_rule(exit_, rule)
 
     # The key rules sit on the locked world's entrances, but the generator only recomputes which regions a player can
     # reach when that player's own items change. A key belongs to this slot, so collecting it must also mark the locked

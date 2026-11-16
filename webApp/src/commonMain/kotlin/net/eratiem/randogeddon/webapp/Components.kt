@@ -27,13 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.DisableSelection
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +53,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -271,7 +271,8 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
   }
 }
 
-enum class Icon { THEME, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER }
+/** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
+enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -283,6 +284,26 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawCircle(color, radius = w / 2 - stroke, style = Stroke(stroke))
         drawArc(color, 90f, 180f, useCenter = true, topLeft = Offset(stroke, stroke), size = Size(w - 2 * stroke, w - 2 * stroke))
       }
+
+      Icon.SUN -> {
+        drawCircle(color, radius = w * .2f)
+        for (i in 0 until 8) {
+          val a = i * PI / 4
+          val (dx, dy) = cos(a).toFloat() to sin(a).toFloat()
+          drawLine(color, Offset(w * (.5f + dx * .32f), w * (.5f + dy * .32f)), Offset(w * (.5f + dx * .45f), w * (.5f + dy * .45f)),
+            stroke, StrokeCap.Round)
+        }
+      }
+
+      // A full moon with a smaller one taken out of its upper right
+      Icon.MOON -> drawPath(
+        Path.combine(
+          PathOperation.Difference,
+          Path().apply { addOval(Rect(Offset(w * .5f, w * .5f), w * .4f)) },
+          Path().apply { addOval(Rect(Offset(w * .72f, w * .32f), w * .32f)) },
+        ),
+        color,
+      )
 
       Icon.CLOSE -> {
         drawLine(color, Offset(w * .2f, w * .2f), Offset(w * .8f, w * .8f), stroke, StrokeCap.Round)
@@ -382,7 +403,13 @@ fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
  * to close). [options]: the choices of the option (name, what it means), each below a divider.
  */
 @Composable
-fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<String, String>> = emptyList()) {
+fun InfoTip(
+  text: String,
+  modifier: Modifier = Modifier,
+  options: List<Pair<String, String>> = emptyList(),
+  /** Parts of a longer explanation: each its heading, its text below it. */
+  sections: List<Pair<String, String>> = emptyList(),
+) {
   val p = LocalPalette.current
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
@@ -402,21 +429,26 @@ fun InfoTip(text: String, modifier: Modifier = Modifier, options: List<Pair<Stri
         offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }),
         onDismissRequest = { tapped = false; closedAt = Platform.now() },
       ) {
-        TipCard(text, options)
+        TipCard(text, options, sections)
       }
     }
   }
 }
 
-/** What a tip says: the text, then each choice (name, meaning) below a divider. */
+/** What a tip says: the text, then each choice (name, meaning) and each part (heading, text) below a divider. */
 @Composable
-private fun TipCard(text: String, options: List<Pair<String, String>>) {
+private fun TipCard(text: String, options: List<Pair<String, String>>, sections: List<Pair<String, String>> = emptyList()) {
   val p = LocalPalette.current
   Column(
     Modifier.widthIn(max = 340.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    Txt(text, size = 12.sp)
+    if (text.isNotBlank()) Txt(text, size = 12.sp)
+    sections.forEachIndexed { i, (heading, body) ->
+      if (i > 0 || text.isNotBlank()) Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))
+      Txt(heading, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent)
+      Txt(body, size = 12.sp)
+    }
     options.forEach { (name, meaning) ->
       Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -434,7 +466,7 @@ private const val TIP_DELAY_MS = 600L
  * A popup closed less than a moment ago: the tap on its own anchor that closed it (popups close on the press outside
  * them) mustn't open it again on release.
  */
-private fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
+internal fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
 
 /**
  * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it. A click
@@ -544,7 +576,7 @@ private const val SEARCH_FROM = 10
  * cover the list).
  */
 @Composable
-private fun DropdownSearch(query: String, onChange: (String) -> Unit) {
+internal fun DropdownSearch(query: String, onChange: (String) -> Unit) {
   val focus = remember { FocusRequester() }
   FilterField(query, onChange, LocalTexts.current.common.search, Modifier.fillMaxWidth().focusRequester(focus))
   LaunchedEffect(Unit) { if (!Platform.touchScreen()) focus.requestFocus() }
@@ -594,7 +626,7 @@ fun <T> Select(
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           if (searchable) DropdownSearch(query) { query = it }
-          Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+          Column(Modifier.heightIn(max = 320.dp).scrolling()) {
             if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label) ->
               val active = value == selected
@@ -687,7 +719,7 @@ fun <T> SearchableSelect(
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           if (searchable) DropdownSearch(query) { query = it }
-          Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+          Column(Modifier.heightIn(max = 280.dp).scrolling()) {
             if (shown.isEmpty()) Txt(LocalTexts.current.common.nothingFound, size = 13.sp, color = p.muted, modifier = Modifier.padding(10.dp))
             shown.forEach { (value, label, detail) ->
               val active = value == selected

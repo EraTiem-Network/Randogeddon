@@ -94,6 +94,14 @@ class BridgeTest {
     assertEquals("0.12.2", offered.version)
     assertEquals(listOf("linux" to "arm64", "windows" to "amd64"), offered.downloads.map { it.os to it.arch })
     assertEquals(3L, offered.downloads.last().bytes)
+    // Their checksums as sha256sum writes them (of "elf" and "exe"); nothing else of the directory
+    assertEquals(64, bridgeChecksums(dir).lines().first().substringBefore("  ").length)
+    assertEquals(
+      listOf("randogeddon-bridge-linux-arm64", "randogeddon-bridge-windows-amd64.exe"),
+      bridgeChecksums(dir).trim().lines().map { it.substringAfter("  ") },
+    )
+    val exe = java.security.MessageDigest.getInstance("SHA-256").digest("exe".toByteArray()).joinToString("") { "%02x".format(it) }
+    assertEquals("$exe  randogeddon-bridge-windows-amd64.exe", bridgeChecksums(dir).trim().lines().last())
   }
 
   @Test

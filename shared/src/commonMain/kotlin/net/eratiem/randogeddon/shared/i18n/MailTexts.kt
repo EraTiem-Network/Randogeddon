@@ -6,6 +6,9 @@ interface MailTexts {
   fun invitation(link: String, validDays: Int): String
   val confirmationSubject: String
   fun confirmation(name: String, link: String, validDays: Int): String
+  /** To the account's address so far, when another one is asked for. */
+  val addressChangeSubject: String
+  fun addressChange(name: String, newAddress: String): String
   fun deletionSubject(date: String): String
   fun deletionWarning(name: String, date: String, settingsLink: String): String
 }
@@ -33,6 +36,17 @@ internal object EnglishMails : MailTexts {
     |
     |The link works once, for $validDays days. Until then your old address stays. If you didn't ask for this, you can
     |ignore this mail.
+    |""".trimMargin()
+
+  override val addressChangeSubject = "A new address was asked for your Randogeddon account"
+  override fun addressChange(name: String, newAddress: String) = """
+    |Hi $name,
+    |
+    |someone logged in to your Randogeddon account asked to change its e-mail address to $newAddress. It changes once
+    |the link sent there is opened.
+    |
+    |If that was you, there is nothing to do. If not, change your password in your settings right away: that ends
+    |every login of your account.
     |""".trimMargin()
 
   override fun deletionSubject(date: String) = "Your Randogeddon account will be deleted on $date"
@@ -75,6 +89,17 @@ internal object GermanMails : MailTexts {
     |
     |Der Link funktioniert einmal, $validDays Tage lang. Bis dahin bleibt deine alte Adresse. Wenn du das nicht
     |angefordert hast, kannst du diese Mail ignorieren.
+    |""".trimMargin()
+
+  override val addressChangeSubject = "Für dein Randogeddon-Konto wurde eine neue Adresse angefordert"
+  override fun addressChange(name: String, newAddress: String) = """
+    |Hallo $name,
+    |
+    |jemand, der in deinem Randogeddon-Konto angemeldet ist, möchte dessen E-Mail-Adresse zu $newAddress ändern. Sie
+    |ändert sich, sobald der Link geöffnet wird, der dorthin ging.
+    |
+    |Wenn du das warst, ist nichts zu tun. Wenn nicht, ändere sofort dein Passwort in deinen Einstellungen: Das beendet
+    |jede Anmeldung deines Kontos.
     |""".trimMargin()
 
   override fun deletionSubject(date: String) = "Dein Randogeddon-Konto wird am $date gelöscht"

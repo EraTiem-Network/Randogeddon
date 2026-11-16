@@ -64,6 +64,7 @@ class AccountService(
   private val mailer: Mailer,
   private val sessions: LiveSessions,
   private val config: TrackerConfig,
+  private val mailLimits: MailLimits,
 ) {
   /**
    * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
@@ -82,6 +83,7 @@ class AccountService(
     }
     val suggested = suggestedName?.trim()?.takeIf { it.isNotEmpty() }
     suggested?.let { name -> UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
+    mailLimits.count(by)
     val account = users.invite(address)
     logger.info("{} invites {}", by, address)
     sendInvitation(account.id, address, suggested, language)
@@ -230,6 +232,7 @@ class AccountService(
       throw AccountProblem(HttpStatusCode.BadRequest, Problem.SAME_ADDRESS)
     }
     users.accountByEmail(address)?.let { throw AccountProblem(HttpStatusCode.Conflict, Problem.ADDRESS_OTHER_ACCOUNT, "address" to address) }
+    mailLimits.count(user.name)
     val token = newToken()
     emailChanges.create(tokenHash(token), user.id, address, Instant.now().plus(EMAIL_CONFIRMATION_VALID.toJavaDuration()))
     val link = "${config.publicUrl}/#/email/$token"
@@ -238,6 +241,14 @@ class AccountService(
     } catch (e: IOException) {
       logger.warn("Could not send the address confirmation to {}: {}", address, e.message)
       throw AccountProblem(HttpStatusCode.BadGateway, Problem.MAIL_FAILED, "address" to address, "reason" to e.message)
+    }
+    // The address so far is told (changing it asks for no password): whoever it wasn't can still act
+    user.email?.let { old ->
+      try {
+        mailer.send(Mails.addressChange(old, user.name, address, texts(language).mails))
+      } catch (e: IOException) {
+        logger.warn("Could not tell {} about the new address asked for: {}", old, e.message)
+      }
     }
   }
 
@@ -284,6 +295,10 @@ class AccountService(
         invitationExpiresAt = if (a.signedUpAt == null) invitations.of(a.id)?.expiresAt?.toEpochMilli() else null,
         autoDelete = AutoDelete.of(a.autoDelete),
         deletesAt = due[a.id]?.toEpochMilli(),
+        password = a.hasPassword,
+        singleSignOn = a.linked,
+        twoFactor = a.twoFactor,
+        language = a.language,
       )
     }.sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
   }

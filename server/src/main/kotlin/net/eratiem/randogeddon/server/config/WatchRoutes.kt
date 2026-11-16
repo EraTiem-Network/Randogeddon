@@ -107,8 +107,10 @@ fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
       get("/state") { shared(links) { call.respondText(it.publicJson(), ContentType.Application.Json) } }
       get("/player/{slot}") { shared(links) { playerDetail(it, archives) } }
       sse("/stream") {
-        val live = links.sessionOf(call.parameters["token"].orEmpty()) ?: return@sse
-        follow(live) { live.publicJson() }
+        val token = call.parameters["token"].orEmpty()
+        val live = links.sessionOf(token) ?: return@sse
+        // Ends once the link is switched off or replaced
+        follow(live, stillAllowed = { links.sessionOf(token)?.id == live.id }) { live.publicJson() }
       }
     }
   }

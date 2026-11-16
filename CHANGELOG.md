@@ -4,8 +4,280 @@ Versions follow [Semantic Versioning](https://semver.org/). While in development
 `.docs/TODO.md` and the step its PR, in the order they were merged; a follow-up to a step gets a fourth number
 (`0.8.2.1`), which the next step drops again. A PR's branch builds `-SNAPSHOT`, its last commit before the merge makes
 it the release, and the merge is tagged `v<version>`. Each release also publishes Randogeddon Bridge's builds to
-Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`); from 1.0.0 on, each is a GitHub release too, with
-the bridge's builds and its part of this file as the notes.
+Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
+as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
+
+## Phase 13: Polish and Bug Fixes
+Everything tested by hand and what came up fixed (the pages, the people of a session, the bridge, the logins), then
+two security scans and their findings: the gateway refuses by default and limits what a client may send, limits and
+security headers on the tracker, Administrators only through Authentik with a second factor, signed builds of the
+bridge, hardened containers and servers. Updating: the migrations up to V17 run by themselves. In `.env`:
+`GATEWAY_DB_USER`/`GATEWAY_DB_PASSWORD` and `TRACKER_DB_USER`/`TRACKER_DB_PASSWORD` for the two database roles
+(README). Run `infra/auth/setup.py` again in Authentik (the second factor, the logout, the login's limit). On each VM
+`infra/ports-firewall.sh` with its service. For signed builds: a key on the build machine (README, *Checking a
+download*), and the signers' public keys there for the deploy.
+
+### 0.13.19: The second scan's findings on the servers; Phase 13 done
+- **Logs stay small:** every container's log is limited to 5 files of 10 MB (the three compose files).
+- **A release is deployed only from a signed tag:** `scripts/deploy.sh` checks the tag's signature first.
+- **Authentik** (`infra/auth/setup.py`, the compose file): no login from an address after 10 failed ones there, a
+  second factor for Artifact Keeper too, the worker no longer runs as root.
+- **Set on the servers:** the three VMs restarted for their new kernel and restart by themselves from now on (03:00
+  UTC, only when an update asks for it); Traefik 3.7.19; on the host fail2ban for SSH, no X11 forwarding, its own
+  Postfix on loopback only.
+- TODO: Phase 13 done.
+- By the owner: CAA records (Let's Encrypt only), and the Proxmox firewall restarted, which applied its "pending
+  changes".
+
+### 0.13.18: A second security scan; its Medium and the tracker's findings
+- **A second scan** (the code since the first, what stays open after a right ends, ways around the limits, the
+  servers' logs, versions and settings): one Medium, eleven Low, in `.docs/TODO.md`. Fixed here: the Medium and the
+  tracker's four; the servers' are still open.
+- **The limit of running sessions per user holds everywhere:** it was only asked when creating a session, so
+  finishing, creating and reopening went around it, and so did passing sessions on to another account. Now also when
+  reopening (for whoever reopens and for the session's Session-Managers: `ONLY_ADMINISTRATORS_REOPEN`,
+  `SESSION_LIMIT`, `MANAGER_AT_LIMIT`) and when someone becomes Session-Manager of a running session. Administrators
+  decide freely, as before.
+- **Live streams end with the right to them** (checked every 30 seconds, like the login before): a session's stream
+  when the part in it is taken, the game server's log when its reader no longer manages the session or logs out, a
+  share link's stream when the link is switched off or replaced.
+- **The login form shows only the server's words:** why a login through the provider failed comes in a short-lived
+  cookie (`randogeddon_login_problem`) to `#/login-problem`; a text in the link is ignored (it showed anything).
+- **The tracker's own database role** (`TRACKER_DB_USER`, `TRACKER_DB_PASSWORD`; the compose service
+  `database-roles`): the tables' owner and no superuser, so a taken-over tracker runs no programs in the database's
+  container. Tried on a throwaway database with live's tables and with the released tracker. The gateway's role is
+  made without the attributes only a superuser may name.
+- `signing-key.pub`, `SHA256SUMS.sig` are served as plain text.
+
+### 0.13.17: The scan's Low findings
+- **The page runs only its own scripts:** index.html's inline scripts are `theme.js` and `page.js`, and the policy is
+  `default-src 'self'` with `script-src 'self' 'wasm-unsafe-eval'` (tried in a headless browser: nothing blocked).
+- **No passwords in a session's log:** the gateway keeps the game server's lines without them (a refused `Connect`,
+  `/option …password`, `/options`). The host's `!admin` password goes in over the console, not on the command line.
+  Console lines lose every control character.
+- **Recovery codes** are stored as a keyed hash (codes from before work until used or replaced).
+- **Per account:** at most 10 bridge keys, 20 logins of a kind (a new one ends the oldest), 20 open live streams.
+- **A new e-mail address:** the address so far is told by mail. The provider's callback shows only our own words.
+- **Randogeddon Bridge:** the key isn't shown while it is typed (`login < keyfile` instead of `echo`), and the
+  downloads have their checksums beside them (`/downloads/bridge/SHA256SUMS`).
+- **The bridge's builds are signed, the free way:** their `SHA256SUMS` is signed at the build with an SSH key
+  (`SHA256SUMS.sig`, checked with `ssh-keygen -Y verify` against `bridge/signing-key.pub`); the page offers
+  *Checksums*, *Signature* and *Key*. The systems' own warnings stay (that would take bought certificates).
+- **Containers:** `no-new-privileges` for all, no capabilities and limits for the tracker and the gateway.
+- **On the servers:** only the host reaches the VMs' published ports (`infra/ports-firewall.sh`, on the three
+  VMs); Traefik writes an access log, checks its backends' certificates (but the three with their own), and its
+  dashboard is behind Authentik's login (`infra/auth/setup.py`: the application *Traefik*).
+- **Build:** Archipelago is checked against its tag's commit (`AP_COMMIT`), the gateway image gets the newest
+  `certifi`, and `scripts/audit.sh` looks the dependencies up for known flaws (Go and JVM clean at its first run).
+
+### 0.13.16: The scan's Medium findings
+- **The gateway's Python reaches less.** Archipelago's processes (Generate.py, the game servers, the APWorlds) get only
+  what Python needs of the gateway's environment, and the gateway has a database role of its own
+  (`GATEWAY_DB_USER`, `GATEWAY_DB_PASSWORD`; made by the tracker at each start): the sessions and the slot passwords to
+  read, the session time to count, nothing of the accounts. Its container gets only that login.
+- **Requests have a size:** 256 KB by default, 8 MB for a new session's YAMLs, 96 MB for APWorlds; larger ones (or a
+  body without a length) are refused before they are read.
+- **Creating a session is limited:** one at a time per user (the ones running count against the game servers), at
+  most 100 YAML files and 250 slots, the gateway's container at 5 GB (`GATEWAY_MEMORY`).
+- **An Administrator reads as one only with a login that may act as one** (two-factor, or through Authentik): every
+  session, the spoiler logs, hosted slots' passwords and every slot's files go by that; a bridge key never does. A
+  login through Authentik lasts a day instead of 30, so leaving the group there shows within a day.
+- **Administrators only through Authentik** (with single sign-on): a CLI link no longer acts as one, and the CLI
+  makes no Administrators and no login links then (`--revoke` stays). In Authentik, Randogeddon's application also
+  asks for a second factor set up there (`infra/auth/setup.py`, already set on the server).
+- **Mails per account:** at most 10 in 10 minutes and 40 a day (invitations, address confirmations).
+- **Logins:** the rate limits count an IPv6 /64 as one address; after 10 wrong passwords or two-factor codes within 10
+  minutes that account's login waits until the oldest is 10 minutes old.
+- **Headers:** every answer carries `Strict-Transport-Security`, `nosniff`, `Referrer-Policy`, `X-Frame-Options` and a
+  policy against framing; the API's answers aren't stored. Plain HTTP is redirected to HTTPS (Traefik).
+- **Infrastructure:** the host's sshd takes keys only; the database dumps are written for root only.
+
+### 0.13.15: The security scan's findings
+- The scan (Fable 5.2) over the server's routes, the gateway, the bridge and the infrastructure: its 27 findings are in
+  the to-do list (Phase 13), most severe first. Fixed so far, both in the gateway:
+- A client no longer gets into a session without a password under an item link's group name: the gateway refuses every
+  `Connect` whose name has no slot password with `InvalidSlot` itself (MultiServer knows the groups as names to connect
+  as, and asks them for nothing). `Verdict.Join` tells a passed `Connect` from other frames.
+- The gateway gives little to a client that isn't in a slot: frames of at most 1 MiB, on the wire and unpacked (they
+  were unlimited), 5 minutes and 32 frames until its `Connect` passes, and at most 1024 connections of everyone waiting
+  for theirs (`ConnectionLimits`). How many connections an address holds isn't limited: behind a VPN's or a shared
+  gateway's address are many households. A refused name is logged without control characters.
+- In front of the gateway, Traefik limits how fast one address opens new connections to the game servers (`rateLimit`
+  on the `randogeddon-ap` router: 100 at once, then 2 a second, an IPv6 /64 as one address; 429 past it): set on the
+  host, and in the README's example and `docker-compose.traefik.yml`.
+
+### 0.13.14: Open points decided
+- The earlier phases' open points looked at again: the only one, which languages follow English and German, is
+  decided: those two for now, another one can come later.
+
+### 0.13.13: An ended login shows the login form; folding the playthrough
+- A login that ends while the page is open (logged out at Authentik, elsewhere, expired) shows the login form at the
+  first request that finds it so (`NOT_LOGGED_IN`, `LoginWatch`), not that request's own error in its field. While the
+  form is open, other requests answering the same don't open it again over what is typed.
+- The playthrough's *Fold all* / *Unfold all* follows the list: it counts only the spheres shown (with the slot and
+  the search), and folding them by hand changes it too. A filter unfolds what it finds as before, but each sphere
+  folds by hand then too; without a filter they fold back.
+- Authentik's Randogeddon provider has its *Logout URI* (*Back-channel*) now, set on the auth VM; logging out there ends
+  the login here.
+
+### 0.13.12: The bridge for hosted slots, on the command line; Authentik logouts; checks to a slot; the playthrough checked; scroll bars
+- Randogeddon Bridge offers a session's hosted slots to its Session-Managers and Administrators (who see their
+  password), for a hosted game that can't do TLS; its players still don't get them, and a locked slot never.
+- A command line for a computer without a browser: `login` (the key from standard input), `slots`, `relay -session
+  <id> -slot <name> [-port <port>]` (until Ctrl+C, on a fixed port if wanted) and `logout`.
+- The cheat *Check a location* goes either way: *from the slot* (its own location, as before) or *to the slot*: an
+  open location of another world holding one of the slot's items, listed with the item (from the spoiler log's
+  `Locations:`; `CheatNames.incoming`). Checked there (`/send_location <that world> <location>`), the slot gets it;
+  logged as that world's check.
+- The spoiler log's playthrough marks the steps already checked (a ✓, as the tracker sees it when the page loads), and
+  each sphere says how many of its checks are done (`Sphere.checked`). It reads *Item @ Check* (was an arrow), and a
+  search keeps only the steps whose item, check or slot contains the text.
+- Scroll bars: the page, the dialogs and the lists show where they are scrolled (a thumb in the theme's colours on the
+  right edge, while there is more than fits); the mouse drags it, a click beside it jumps there. The browser shows
+  none of its own, since the page is drawn on a canvas.
+- A login through Authentik lasts only as long as the Authentik session: Authentik's back-channel logout (`POST
+  /api/login/oidc/backchannel`, its signed logout token checked: issuer, client, signature, age, the logout event, no
+  nonce, not seen before) ends the logins from the ended session (logged out there, ended by an admin, the person
+  deactivated, expired). Migration V17: `login_sessions.provider_session`, the ID token's `sid`. An open dashboard's
+  stream checks its login every 30 seconds. `infra/auth/setup.py` sets the provider's *Logout URI* (*Back-channel*).
+  Bridge keys stay.
+- The bridge quits once its page is closed, or the browser is: the page keeps a WebSocket to it (`/api/alive`), and
+  without a page for 10 seconds (a reload comes back in time) it ends with its relays. Started with `-no-browser`, it
+  runs until *Quit*.
+
+### 0.13.11: One People
+- The panel's *Players* and *People* are one *People*: everyone of the session as a pill with their part. A click opens
+  their panel: their slots (game, how far, how it stands), how far they are in the session, played and last active;
+  there they get another part (`PUT /api/sessions/{id}/people/{user}`: a player becomes Session-Manager or support
+  besides their slots), or theirs is taken (a playing one only plays then).
+- A session keeps its last Session-Manager, for Administrators too (`KEEP_MANAGER`): someone else becomes
+  Session-Manager first, and the panel says so.
+- What was left of *Players* is *Patch files* (every slot's files from the seed), after *People*.
+
+### 0.13.10: Locked slots stay locked, more polish
+- A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
+  too. *Your connection* shows it as locked, without a password, and the bridge doesn't offer it. Migration V16:
+  `slot_passwords.locked`, set when the session is created and kept in step by the tracker (a slot opens once its key
+  has turned up; the gateway reads it with the passwords, every 10 seconds). No longer on the honour system.
+- The generation's bar: asked about three times a second, across the form's whole width; the fill moves it (Fill.py
+  counts every 1000 items placed), and balancing the progression is a stage of its own.
+- *Your account* shows the selected session on the top card (its progress and its game server's state), as the panel
+  does; without one, that none is chosen, as everywhere else.
+- Randogeddon Bridge follows a theme, mode or language changed on the dashboard: it asks every 15 seconds (it was every
+  minute), and right away when its page is back in view.
+- `publish-bridge.sh` names the GitHub repository (`GH_REPO`, `EraTiem-Network/Randogeddon`): the deploy's clone has
+  a local path as its remote, so gh couldn't tell where to make v0.13.9's pre-release (made by hand then).
+
+### 0.13.9: Pre-releases, locked worlds that place their own items, the generation's progress
+- Every release below 1.0.0 is a GitHub pre-release too, made by the deploy (`scripts/publish-bridge.sh`): its part of
+  this file as the notes, no files. The ones before (v0.1.1 to v0.13.8) were made by hand.
+- World Locks 1.1.0: a world that places items inside itself before the main fill (A Link Between Worlds its dungeon
+  keys, in `pre_fill`) can be locked: the locks go on after every world's `pre_fill`, not before (generating failed
+  with "No more spots to place 1 items", as nothing of the locked world was reachable without its key). Updating:
+  nothing to do, the gateway image brings it.
+- A right click no longer opens Compose's own menu (it had only *Copy*; Ctrl+C still copies a selection).
+- *Generate and start* is only active once every slot has a player or is hosted; the form names the ones still
+  without. The server refuses such a session too (`SLOT_WITHOUT_PLAYER`).
+- While it generates, a bar shows the stage and about how far it is (e.g. *Filling the items… 35 %*): the gateway
+  reads Generate.py's output as it comes (`GET /internal/sessions/<id>/progress`), the tracker passes it on
+  (`GET /api/sessions/new/progress/<id>`), the form asks every second. Filling the items takes the longest and
+  reports nothing on its way.
+- The README's overview is a Mermaid diagram (GitHub draws it), no longer drawn with box characters.
+
+### 0.13.8: The new-session form, invitations
+- *Hosted* is a checkbox on a slot's row, next to *starts locked*, asked once more; it removes the slot's players and
+  its player picker (unticked, they come back). Typing *Hosted* into the player field is gone.
+- A slot starts without players (they were guessed from its name before).
+- Players are added from a dropdown with a search; a typed e-mail address that no account has offers its invitation.
+- A YAML whose game the release has no APWorld for gets no slot: one message names the files and their games (and
+  tells someone who isn't an Administrator to ask one to upload them); the form checks again by itself every few
+  seconds, so an upload by anyone, anywhere, makes them slots. Generating leaves those files out.
+- A session that ends cancels its invitations nobody accepted: the invited accounts that no other running session has
+  go, and with them their links.
+
+### 0.13.7: Logging out starts fresh, the ID, the versions
+- Without a login (logged out, or the login ended), the settings kept in the browser go back to the defaults: theme
+  and mode, language, the live feed's place and visibility, the bridge folded. A login sets the account's theme, mode
+  and language again.
+- *Your account*: Administrators with single sign-on see their ID too, in *Your Authentik account*.
+- The panel's *General* has *Versions* last (Administrators): the tracker's, the gateway's and this page's version,
+  and the gateway's Archipelago releases, to check a deploy. The build writes the version into `shared`
+  (`RandogeddonVersion`); the gateway answers it on `GET /internal/version`, the tracker on `GET /api/admin/versions`.
+
+### 0.13.6: Hosted slots
+- For games that run as a server of their own, which their players join with their games instead of Archipelago:
+  *Hosted* typed into a slot's player field makes it a hosted slot (no players, no field to add any; × makes it an
+  ordinary slot again). Migration V15: `session_hosted_slots`.
+- The dashboard and the panel show the hosted slots on a card of their own, *Hosted*. *Your connection*: the session's
+  players can pick a hosted slot and see its patch files (no name, no password); its Session-Managers see its whole
+  connection, to set the game's server up, even if they don't play. Its files are the players' to download too.
+- *Hosted* is reserved: no account can be named so (`NAME_RESERVED`). Randogeddon Bridge leaves hosted slots out.
+
+### 0.13.5: More from the hand test
+- *Your connection*: the patch files are back under the slot and its password; the right column is the bridge's. The
+  bridge has a line of its own (`Randogeddon Bridge ⓘ`, *Create key*, *Fold away*): folded, the card is one narrow
+  column again and the tiles beside it get the room (remembered in the browser). Its ⓘ is in parts: what it is, what
+  it does, how to use it, starting it on Windows, macOS and Linux. A new key shows like a password (*Show* / *Hide*,
+  *Copy*) with a × that closes it. Someone who doesn't play in the session gets the narrow card too.
+- *APWorlds*, *Remove…*: *Select all* (and *Select none*); the buttons wrap on a phone.
+- APWorlds that import `tkinter` load: the image has `libtk8.6` (e.g. `minecraft_dig.apworld`, for its client window).
+- *People*: a Session-Manager can't take their own part (`OWN_MANAGER`); another one or an Administrator can, and
+  the panel doesn't offer it.
+- The live feed's place (*Right*, *Left*, *Below*) is only offered where it can be beside the players; the button that
+  shows and hides the feed only on a session's dashboard (not in the panel, *Your account*, a spoiler log, or without a
+  session).
+
+### 0.13.4: The hand test's open points
+- The dashboard of a session on a wide screen (from about 1270 px) showed nothing below the top card since 0.13.2, and
+  every page after it stayed empty until a reload (also after picking a finished session): the row of the tiles
+  measured *Your connection*, which then decided its columns by its own width, and Compose can't answer that. The
+  dashboard now says whether it has room for two columns.
+- *Users*: a click on a pill opens the account's information panel: name, address, ID (to copy), state, group, how it
+  logs in (password, single sign-on), two-factor, language, when it was made, the invitation, the deletion, *n/a* for
+  what it doesn't have, its sessions as pills that open them, and an invited one's *Send again* / *Other address*. A
+  click inside it no longer leaves it impossible to close (it keeps its own text selection now).
+- The top card shows the game server's state only for a session that has one: not finished, and not on the page of
+  all sessions.
+- Zoom: the login form's fields are 16 px (a phone zoomed into the smaller ones by itself, and over the app the zoom
+  couldn't be pinched back out); the page notices a browser zoom by the window's size and its pixel density (a media
+  query on the exact density could miss one like 1.3636… with the system's display scaling).
+
+### 0.13.3: APWorlds faster, removed by picking
+- Uploading and removing APWorlds is faster: the picked files go in one request (several, if they are large together)
+  and the release lists its games once for all of them, not once per file (and once more if one is refused). And
+  Archipelago is compiled in the gateway image: it can't write its `__pycache__` there, so every listing compiled it
+  all again (listing: 5 s → 2 s; generating seeds and starting game servers gain the same way; the image grows by
+  about 40 MB).
+- Removing: *Remove…* next to *Upload APWorld…*; the uploaded files are picked by a click, then *Remove (n)*, asked
+  once more, and they go out together. No × on each pill any more (on a long one it was squeezed away), and the
+  question and its buttons are on their own lines (on a phone they didn't fit one).
+- The gateway's internal API: `POST /internal/apworlds` takes several files and answers one result each;
+  `POST /internal/apworlds/remove` takes several (instead of `DELETE …/<release>/<file>`). The tracker's routes alike.
+
+### 0.13.2: From the hand test
+- *APWorlds*: an upload is named after the world folder inside it, as Archipelago imports it (`Pokemon Emerald
+  (1).apworld` with `pokemon_emerald/` becomes `pokemon_emerald.apworld`; before, such a name didn't load). One that
+  would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
+  same game (by its manifest), which goes then. A game the release brings itself is refused with why (its own world
+  always wins). An APWorld needs one world folder, named as Python can import it. The library shows each file as soon
+  as it is in.
+- *Your account*, *Appearance*: a new theme or mode fades in. The mode button on the top card shows the mode: a sun, a
+  moon, a half-filled circle for *Automatic*.
+- *Your connection*: two columns on a wide screen (the server and the slot; the slot's files and the bridge), beside
+  the tiles from about 1300 px, else above them. The slot's files have a heading, *Patch files*, and say when there are
+  none. The bridge: *Create key* (*Schlüssel erstellen*), the key above the downloads, the downloads under their own
+  heading with the version, a row per system (Windows and Linux x86_64 and ARM64, macOS Intel and Apple Silicon), one
+  ⓘ for all of it. Windows ARM64 is a new build.
+- *Users*: every account as a pill, in a box that scrolls; a click shows it floating over the panel, with everything
+  its row had.
+- The panel opens the new-session form only after *New session*: with no session running it says so.
+
+### 0.13.1: Every picked APWorld, themes to see
+- *APWorlds*, *Upload APWorld…*: every picked file is uploaded, one after the other (with how far it is), and each gets
+  its own line: the games it brings, or why it wasn't added. Before, only the first was.
+- *Your account*, *Appearance*: the themes are cards instead of a dropdown, each a small page in its colours (the
+  brand, a panel with text, the item and state colours), in the mode that shows now (with *Automatic*, the device's,
+  switching with it). A click picks one; the mode stays a dropdown above them.
 
 ## Phase 12: Randogeddon Bridge
 Games that can't do TLS connect to `localhost`: Randogeddon Bridge, a small app on the player's PC, takes them to

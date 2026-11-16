@@ -5,8 +5,8 @@
 # - Artifact Keeper: pkg.example.org, the generic repository `randogeddon-bridge`, as <version>/<file> with
 #   SHA256SUMS. The token of its account `bridge` (infra/registry/provision.py) is read from
 #   ~/.config/randogeddon/bridge-publish.token (BRIDGE_TOKEN_FILE); without it, nothing is published there.
-# - From 1.0.0 on also a GitHub release v<version> (gh, logged in) with the same files, its notes the version's
-#   section of CHANGELOG.md; left alone if it exists.
+# - A GitHub release v<version> (gh, logged in), its notes the version's section of CHANGELOG.md; left alone if it
+#   exists. From 1.0.0 on a release with the same files; before, a pre-release without files.
 # --dry-run: says what would be uploaded and created, and does neither.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,6 +15,8 @@ version="${1:?the version}" image="${2:?the tracker image}" dry="${3:-}"
 REGISTRY="${BRIDGE_REGISTRY:-https://pkg.example.org}"
 REPOSITORY="${BRIDGE_REPOSITORY:-randogeddon-bridge}"
 TOKEN_FILE="${BRIDGE_TOKEN_FILE:-$HOME/.config/randogeddon/bridge-publish.token}"
+# The GitHub repository by name: the deploy's clone (~/rg-deploy) has a local path as its remote, which gh can't place
+export GH_REPO="${GH_REPO:-EraTiem-Network/Randogeddon}"
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
@@ -25,7 +27,9 @@ docker rm "$container" >/dev/null
 built="$(cat "$out/files/VERSION" 2>/dev/null || true)"
 [[ "$built" == "$version" ]] || { echo "The image's bridge is ${built:-missing}, not $version"; exit 1; }
 rm "$out/files/VERSION"
-(cd "$out/files" && sha256sum randogeddon-bridge-* > SHA256SUMS)
+# The image brings its checksums (signed, if its build had the key) and the public key; an older one gets them here
+[[ -s "$out/files/SHA256SUMS" ]] || (cd "$out/files" && sha256sum randogeddon-bridge-* > SHA256SUMS)
+(cd "$out/files" && sha256sum --quiet -c SHA256SUMS) || { echo "The image's checksums don't match its builds"; exit 1; }
 files=("$out"/files/*)
 
 echo "== The bridge's builds to $REGISTRY ($REPOSITORY/$version/)"
@@ -54,14 +58,21 @@ awk -v heading="### $version:" '
   found { print }
 ' CHANGELOG.md > "$out/notes"
 
-if [[ "${version%%.*}" -lt 1 ]]; then
-  echo "== No GitHub release before 1.0.0 ($version)"
-  [[ -z "$dry" ]] || echo "(it would be v$version with $(wc -l < "$out/notes") lines of notes and ${#files[@]} files)"
-elif ! command -v gh >/dev/null; then
+# Before 1.0.0 a pre-release, without the files
+pre=""
+[[ "${version%%.*}" -ge 1 ]] || pre="pre-"
+if ! command -v gh >/dev/null; then
   echo "== gh isn't installed here: no GitHub release v$version (install and log in, then run this script again)"
   [[ -n "$dry" ]] || exit 1
 elif gh release view "v$version" >/dev/null 2>&1; then
-  echo "== The GitHub release v$version is there already"
+  echo "== The GitHub ${pre}release v$version is there already"
+elif [[ -n "$pre" ]]; then
+  if [[ -n "$dry" ]]; then
+    echo "== would create the GitHub pre-release v$version: $(wc -l < "$out/notes") lines of notes, no files"
+  else
+    echo "== The GitHub pre-release v$version"
+    gh release create "v$version" --verify-tag --prerelease --title "Randogeddon $version" --notes-file "$out/notes"
+  fi
 elif [[ -n "$dry" ]]; then
   echo "== would create the GitHub release v$version: $(wc -l < "$out/notes") lines of notes, ${#files[@]} files"
 else

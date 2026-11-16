@@ -1,33 +1,37 @@
 package net.eratiem.randogeddon.server.config
 
+import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
+import io.ktor.server.application.log
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.excludeContentType
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.conditionalheaders.ConditionalHeaders
-import io.ktor.http.ContentType
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
-import net.eratiem.randogeddon.database.LoginSessionStore
-import net.eratiem.randogeddon.database.RandogeddonDatabase
+import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.database.CheatLogStore
-import net.eratiem.randogeddon.database.SessionRoleStore
-import net.eratiem.randogeddon.database.ShareLinkStore
-import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.EmailChangeStore
+import net.eratiem.randogeddon.database.GatewayRole
 import net.eratiem.randogeddon.database.InvitationStore
+import net.eratiem.randogeddon.database.LoginLinkStore
+import net.eratiem.randogeddon.database.LoginSessionStore
+import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionFinishStore
+import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SessionTimeStore
+import net.eratiem.randogeddon.database.ShareLinkStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.UserStore
@@ -44,7 +48,6 @@ import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import org.koin.plugin.module.dsl.withConfiguration
-import kotlin.time.Duration.Companion.minutes
 
 fun Application.installs(trackerConfig: TrackerConfig) {
   install(Koin) {
@@ -52,7 +55,17 @@ fun Application.installs(trackerConfig: TrackerConfig) {
     modules(module {
       single { trackerConfig }
       // Migrates on start; the gateway only reads
-      single { RandogeddonDatabase.connect(trackerConfig.database, migrate = true) }
+      single {
+        RandogeddonDatabase.connect(trackerConfig.database, migrate = true).also { database ->
+          // The gateway's own role, with exactly its rights (after the migrations: the tables are there)
+          if (trackerConfig.gatewayDbPassword.isNotBlank()) {
+            runBlocking { GatewayRole.ensure(database, trackerConfig.gatewayDbUser, trackerConfig.gatewayDbPassword) }
+            log.info("The gateway's database role {} has its rights", trackerConfig.gatewayDbUser)
+          } else {
+            log.warn("No GATEWAY_DB_PASSWORD: the gateway uses the tracker's database login")
+          }
+        }
+      }
       single { UserStore(get()) }
       single { LoginSessionStore(get()) }
       single { SlotPasswordStore(get()) }
@@ -73,6 +86,8 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   }
 
   install(ContentNegotiation) { json(ApiJson) }
+  install(SecurityHeaders) { secure = trackerConfig.cookieSecure }
+  install(RequestLimits)
   // Behind Traefik: the client's address (for the login rate limit) comes from X-Forwarded-For
   install(XForwardedHeaders) {
     // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up
@@ -81,15 +96,15 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   install(RateLimit) {
     register(LOGIN_RATE_LIMIT) {
       rateLimiter(limit = 5, refillPeriod = 1.minutes)
-      requestKey { it.request.origin.remoteHost }
+      requestKey { addressKey(it.request.origin.remoteHost) }
     }
     register(WATCH_RATE_LIMIT) {
       rateLimiter(limit = 60, refillPeriod = 1.minutes)
-      requestKey { it.request.origin.remoteHost }
+      requestKey { addressKey(it.request.origin.remoteHost) }
     }
     register(SSO_RATE_LIMIT) {
       rateLimiter(limit = 30, refillPeriod = 1.minutes)
-      requestKey { it.request.origin.remoteHost }
+      requestKey { addressKey(it.request.origin.remoteHost) }
     }
   }
   install(SSE)

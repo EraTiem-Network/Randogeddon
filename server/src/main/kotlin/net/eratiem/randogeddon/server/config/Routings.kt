@@ -1,6 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.server.account.BridgeKeys
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
@@ -9,12 +8,15 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.server.account.AccountService
+import net.eratiem.randogeddon.server.account.BridgeKeys
+import net.eratiem.randogeddon.server.account.LoginAttempts
 import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
-import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.account.SlotPasswords
+import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.SessionAdmin
@@ -23,12 +25,11 @@ import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
 import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.admin.Support
-import net.eratiem.randogeddon.database.AppSettingsStore
-import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
+import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.ktor.ext.inject
 
 private val HASHED = Regex("[0-9a-f]{16,}\\.wasm")
@@ -54,9 +55,10 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val shareLinks by inject<ShareLinks>()
   val downloads by inject<SlotDownloads>()
   val bridgeKeys by inject<BridgeKeys>()
+  val attempts by inject<LoginAttempts>()
 
   routing {
-    loginRoutes(logins, twoFactor, pending, sso, trackerConfig.publicUrl, trackerConfig.cookieSecure)
+    loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
     signupRoutes(accounts, trackerConfig.cookieSecure)
     // A session by its share link, without a login
     publicWatchRoutes(shareLinks, archives)
@@ -79,7 +81,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)

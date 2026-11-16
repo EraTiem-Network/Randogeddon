@@ -74,6 +74,8 @@ object LoginSessionsTable : Table("login_sessions") {
   val method = varchar("method", 16).default("password")
   /** When a bridge key was last used (V14; updated every few minutes at most); `null`: not yet, or not a key. */
   val lastUsedAt = timestamp("last_used_at").nullable()
+  /** A login through the provider: its session there (V17, the ID token's `sid`); its back-channel logout ends it. */
+  val providerSession = varchar("provider_session", 128).nullable()
   override val primaryKey = PrimaryKey(tokenHash)
 }
 
@@ -119,10 +121,19 @@ object SessionWorldsTable : Table("session_worlds") {
   override val primaryKey = PrimaryKey(sessionId, slotName, userId)
 }
 
+/** A session's hosted slots (V15): games that run as a server of their own; no account plays them. */
+object SessionHostedSlotsTable : Table("session_hosted_slots") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val slotName = varchar("slot_name", 64)
+  override val primaryKey = PrimaryKey(sessionId, slotName)
+}
+
 object SlotPasswordsTable : Table("slot_passwords") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)
   val password = varchar("password", 64)
+  /** Still locked (V16): its key isn't found yet, so the gateway refuses its Connect. */
+  val locked = bool("locked").default(false)
   override val primaryKey = PrimaryKey(sessionId, slotName)
 }
 

@@ -32,6 +32,13 @@ object Languages {
   var current: Language by mutableStateOf(stored ?: browser ?: Language.DEFAULT)
     private set
 
+  /** Back to the browser's language, nothing kept (without a login). */
+  fun reset() {
+    current = browser ?: Language.DEFAULT
+    Platform.saveSetting(LANGUAGE_KEY, null)
+    Platform.setPageLanguage(current.code)
+  }
+
   /** Applies [language] (or, for `null`, the browser's: the account follows it). */
   fun apply(language: Language?) {
     val next = language ?: browser ?: Language.DEFAULT
