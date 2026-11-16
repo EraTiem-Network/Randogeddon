@@ -58,7 +58,7 @@ restart or update doesn't drop the players.
 
 ```sh
 git clone <this repo> /srv/randogeddon && cd /srv/randogeddon
-cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, GATEWAY_DB_*, BASE_DOMAIN, TRAEFIK_* …
+cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, TRACKER_DB_*, GATEWAY_DB_*, BASE_DOMAIN, TRAEFIK_* …
 docker compose build     # takes a few minutes (every game's requirements, the native builds)
 ```
 
@@ -155,6 +155,15 @@ http:
 Randogeddon then uses `docker-compose.proxy.yml` instead of the Traefik overlay
 (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` in `.env`): it publishes 38281 and 8000 and keeps the
 public addresses (`BASE_DOMAIN`, the login cookie only over HTTPS).
+
+**The tracker's own database login:** `POSTGRES_PASSWORD` is the database's superuser, who can run programs in the
+database's container. With `TRACKER_DB_USER` and `TRACKER_DB_PASSWORD` in `.env` (`openssl rand -hex 32`), the compose
+service `database-roles` makes the tracker a role of its own before each start of the tracker (as the superuser: the
+tables become the role's, it may make the gateway's role, and it is no superuser), and the tracker's container gets
+only this login; the superuser's password then stays with that one-off service and the dumps. Without them the tracker
+logs in as the superuser. It can be switched on for a database that already runs (tried with live's tables); to go
+back, take the two lines out (the superuser may still do everything). A tracker older than 0.13.18 can't make the
+gateway's role with it: take the lines out before rolling back that far.
 
 **The gateway's own database login:** the gateway runs Archipelago's Python next to itself (Generate.py, the game
 servers, the APWorlds), which must not reach the accounts. With `GATEWAY_DB_USER` and `GATEWAY_DB_PASSWORD` in `.env`
