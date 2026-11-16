@@ -101,6 +101,20 @@ fun Txt(
   val fonts = LocalFonts.current
   // The large lines are headings: a display font shows only there
   val heading = size.value >= HEADING_FROM_SP
+  // While the font changes, each letter is in the old or the new one
+  LocalFontChange.current?.let { change ->
+    BasicText(
+      text = AnnotatedString(text).inChange(change, heading, size),
+      modifier = modifier,
+      style = TextStyle(
+        color = color, fontSize = size, fontWeight = weight, lineHeight = size * 1.4f,
+        fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+      ).let { if (brush != null) it.merge(TextStyle(brush = brush)) else it },
+      maxLines = maxLines,
+      overflow = TextOverflow.Ellipsis,
+    )
+    return
+  }
   BasicText(
     text = text,
     modifier = modifier,
@@ -117,8 +131,9 @@ fun Txt(
 
 @Composable
 fun Txt(text: AnnotatedString, modifier: Modifier = Modifier, size: TextUnit = 14.sp) {
+  val change = LocalFontChange.current
   BasicText(
-    text = text,
+    text = if (change != null) text.inChange(change, heading = false, size) else text,
     modifier = modifier,
     style = TextStyle(
       color = LocalPalette.current.text, fontSize = size * LocalFonts.current.textScale, lineHeight = size * 1.4f,
