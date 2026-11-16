@@ -683,6 +683,15 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     }
   }
 
+  /**
+   * What the gateway starts [seedName]'s game server with: its Archipelago version and its options (JSON); `null`: no
+   * such session. From `sessions` alone: the gateway's database role ([GatewayRole]) reads nothing of the accounts.
+   */
+  suspend fun launchOf(seedName: String): Pair<String?, String?>? = db.query {
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()
+      ?.let { it[SessionsTable.apVersion] to it[SessionsTable.optionsJson] }
+  }
+
   suspend fun of(seedName: String): SessionSetup? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
     val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
