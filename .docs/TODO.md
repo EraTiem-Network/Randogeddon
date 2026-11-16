@@ -298,7 +298,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Every text of the web app comes from one place per language instead of the code
     - Typed Kotlin in `:shared` (`i18n/*Texts.kt`, both languages side by side): a missing text doesn't compile, a
       test finds a dropped value or a language that borrows another's words.
-    - English stays the default; the first other language is German ("du"). Open: which ones follow.
+    - English stays the default; the first other language is German ("du"). Decided in Phase 13: English and German
+      are it for now; another one can be added later (its texts per group, the compiler and `TextsTest` find what's
+      missing).
 - [x] A language applies to every page: dashboard, person and world views, the panel, settings, login
     - Dates, times and numbers are formatted for the language (`14.11.2026, 08:17`, `1.234,5`).
     - Names from Archipelago (games, items, locations, slots) and its option values stay as they are.
@@ -581,7 +583,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] Bug: the page scrolls, but shows no scroll bar (drawn on a canvas): one on everything that scrolls
     - [x] Bug: a login ended at Authentik showed "not logged in" in a field instead of the login form
     - [x] Bug: the playthrough's *Fold all* / *Unfold all* didn't follow the list (the filtered spheres, folding by hand)
-- [ ] Open points from earlier phases looked at again (e.g. which languages follow)
+- [x] Open points from earlier phases looked at again: the only one was which languages follow (English and German
+      stay, see Phase 9)
 
 ## Phase 14: More Themes
 
