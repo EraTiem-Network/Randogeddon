@@ -86,6 +86,14 @@ fi
 # under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
 if [[ "$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)" == "$(git rev-parse HEAD)" ]]; then
+  # A release is what its tag's signature vouches for: checked against this machine's keyring (the signers' public
+  # keys: gpg --import). The repository has no branch protection, and a tag can be moved; a signature can't be made.
+  # Check it before running this script too (git verify-tag v<version>): a changed tree could bring a changed script.
+  if ! git verify-tag --raw "v$version" 2>&1 | grep -q '^\[GNUPG:\] GOODSIG '; then
+    echo "The tag v$version has no signature that checks out here (git verify-tag v$version); not deploying it"
+    exit 1
+  fi
+  echo "== v$version is signed by $(git verify-tag --raw "v$version" 2>&1 | sed -n 's/^\[GNUPG:\] GOODSIG [0-9A-F]* //p' | head -1)"
   tag="$version" gateway_tag="$version" moving=latest
 else
   tag="$(git rev-parse --short=12 HEAD)" gateway_tag="$AP_VERSION-$(git rev-parse --short=12 HEAD)" moving=edge
