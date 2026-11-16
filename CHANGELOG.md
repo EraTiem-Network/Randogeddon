@@ -8,6 +8,16 @@ Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a Gi
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 14: More Themes
+More to pick from under *Your account*, *Appearance*: 26 themes in groups (Randogeddon's own, and the ones inspired by
+Nintendo's, the PlayStation and the Xbox consoles and by SteamOS, with a trademark notice), each light and dark, and a
+font per theme with a font choice of its own; Randogeddon Bridge follows both. Updating: migration V18 runs by itself;
+nothing to set. A new bridge (0.14.4 or newer) for the font on its page.
+
+### 0.14.5: Letters change the font one by one; Phase 14 done
+- **A font change is animated:** the page's letters take the new font one by one, in no order, within about 0.6
+  seconds (a font chosen, a theme with another font, or a font that just finished loading). Every text has its own
+  order (`letterTurn`).
+- TODO: Phase 14 done; the check of English and German side by side is Phase 16 now.
 
 ### 0.14.4: The bridge follows the font
 - **Randogeddon Bridge's page shows the account's font** as it shows its theme: for all text, or for the headings
