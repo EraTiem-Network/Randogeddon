@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.shared.i18n
 
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeGroup
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.SessionStatus
 
@@ -167,7 +168,19 @@ interface AccountTexts {
   val appearanceTitle: String
   val appearanceSubtitle: String
   fun theme(theme: Theme): String
+  /** The heading over a group's theme cards. */
+  fun themeGroup(group: ThemeGroup): String
+  /** Under the cards: the console themes are only inspired, the names are trademarks. */
+  val themesNotice: String
   fun mode(mode: ThemeMode): String
+  /** The font choice: the chosen theme's ([family]; `null`: it has none of its own), the original, another theme's. */
+  fun fontOfTheme(family: String?): String
+  val fontOriginal: String
+  fun fontOf(theme: String, family: String): String
+  /** Where the font shows: as it is made ([display]: a font for headings), in all text, in the headings only. */
+  fun fontScopeAuto(display: Boolean): String
+  val fontScopeAll: String
+  val fontScopeHeadings: String
   // Randogeddon Bridge's keys
   val bridgeKeys: String
   val bridgeKeysSubtitle: String

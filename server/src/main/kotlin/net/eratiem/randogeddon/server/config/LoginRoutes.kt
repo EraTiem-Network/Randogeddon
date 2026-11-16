@@ -53,6 +53,8 @@ import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.RecoveryCodeList
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.FontChoice
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.i18n.Language
@@ -383,6 +385,7 @@ fun Route.meRoute(list: SessionList) {
       Me(
         name = user.name, administrator = user.administrator, manages = list.managedBy(user),
         language = Language.of(user.language), theme = Theme.of(user.theme), themeMode = ThemeMode.of(user.themeMode),
+        font = user.font.takeIf(FontChoice::valid), fontScope = FontScope.of(user.fontScope),
       )
     )
   }

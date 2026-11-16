@@ -20,6 +20,19 @@ actual object Platform {
     )
   }
 
+  actual suspend fun bytes(path: String): ByteArray? = suspendCancellableCoroutine { cont ->
+    jsFetchBytes(
+      path,
+      { data -> if (cont.isActive) cont.resume(ByteArray(jsLength(data)) { jsByte(data, it) }) },
+      { if (cont.isActive) cont.resume(null) },
+    )
+  }
+
+  actual fun font(identity: String, data: ByteArray, bold: Boolean): androidx.compose.ui.text.font.Font =
+    androidx.compose.ui.text.platform.Font(
+      identity, data, if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+    )
+
   actual fun stream(path: String, onState: (String) -> Unit, onConnection: (Boolean) -> Unit): () -> Unit {
     val source = jsOpenStream(path, onState, { onConnection(true) }, { onConnection(false) })
     return { jsCloseStream(source) }
@@ -80,6 +93,13 @@ actual object Platform {
 }
 
 private fun jsNow(): Double = js("Date.now()")
+
+private fun jsFetchBytes(path: String, onDone: (JsAny) -> Unit, onFailed: () -> Unit): Unit =
+  js("{ fetch(path).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status)).then(b => onDone(new Int8Array(b)), () => onFailed()); }")
+
+private fun jsLength(bytes: JsAny): Int = js("bytes.length")
+
+private fun jsByte(bytes: JsAny, index: Int): Byte = js("bytes[index]")
 
 private fun jsDate(ms: Double, tag: String, numeric: Boolean): String = js(
   """new Date(ms).toLocaleString(tag, { day: numeric ? '2-digit' : 'numeric', month: numeric ? '2-digit' : 'short',

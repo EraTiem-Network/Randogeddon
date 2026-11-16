@@ -7,6 +7,57 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 14: More Themes
+More to pick from under *Your account*, *Appearance*: 26 themes in groups (Randogeddon's own, and the ones inspired by
+Nintendo's, the PlayStation and the Xbox consoles and by SteamOS, with a trademark notice), each light and dark, and a
+font per theme with a font choice of its own; Randogeddon Bridge follows both. Updating: migrations V18 and V19 run by themselves;
+nothing to set. A new bridge (0.14.4 or newer) for the font on its page.
+
+### 0.14.6: Where the font shows, for every font
+- **Three choices for any font** beside the font under *Appearance*: as the font is made (the default: a display
+  font in the headings only, every other in all text), all text, or the headings only. Before, only display fonts
+  had a choice, of two. `FontScope`; `PUT /api/account/font` takes `scope`; migration V19 (`users.font_scope` in
+  place of `users.font_everywhere`, which it carries over). The bridge's page follows.
+
+### 0.14.5: Letters change the font one by one; Phase 14 done
+- **A font change is animated:** the page's letters take the new font one by one, in no order, within about 0.6
+  seconds (a font chosen, a theme with another font, or a font that just finished loading). Every text has its own
+  order (`letterTurn`).
+- TODO: Phase 14 done; the check of English and German side by side is Phase 16 now.
+
+### 0.14.4: The bridge follows the font
+- **Randogeddon Bridge's page shows the account's font** as it shows its theme: for all text, or for the headings
+  only with a display font. `GET /bridge/info` names the font's files (`BridgeFont`); the bridge fetches them from the
+  dashboard itself and serves them on its own page (`/font/regular`, `/font/bold`), so the page still loads nothing
+  from elsewhere. Without a font, or if it can't be fetched, the system's font stays. Needs the new bridge (an older
+  one keeps the system's font).
+
+### 0.14.3: A font per theme
+- **Every theme but the default brings a font** (25 free fonts, SIL OFL or Apache 2.0, their licences beside them):
+  a pixel font for NES and SNES, a book serif for Sepia, a monospace for Terminal, and so on (README, *Appearance*).
+- **A font choice** beside the mode under *Appearance*: the theme's (the default), Randogeddon's original, or another
+  theme's. Display fonts (NES, SNES, PlayStation 2) show in the headings only, or in all text if chosen. Stored with
+  the account (`PUT /api/account/font`, migration V18: `users.font`, `users.font_everywhere`).
+- **Loaded only when used:** a font's files are fetched when it first shows; until then the original shows. The login
+  page keeps the system's font.
+- `scripts/fonts.py` makes the font files (cut down to Latin, a regular and a bold each).
+
+### 0.14.2: Four more of Randogeddon's own themes
+- **Midnight** (deep indigo and navy, cyan to violet), **Sakura** (soft pink and plum, rose), **Terminal** (green
+  phosphor on near-black; in the light, ink on pale green) and **Sepia** (warm paper, brown ink, amber), each light
+  and dark.
+- TODO: Phase 15 (*More Polish*) with its first two points.
+
+### 0.14.1: Console themes, in groups
+- **Eleven more themes inspired by consoles and systems**, each light and dark: NES, SNES, PlayStation, PlayStation 2
+  to 5, Xbox, Xbox 360, Xbox Series X|S and SteamOS (their colours only).
+- **The themes in groups** under *Your account*, *Appearance*: Randogeddon's own, and the ones inspired by Nintendo's,
+  the PlayStation and the Xbox consoles and by SteamOS, each under a small heading (`ThemeGroup`).
+- **A trademark notice** under the cards and in the README: these themes are only inspired by the systems'
+  colours, the names are their owners' trademarks, no affiliation with Nintendo, Sony, Microsoft or Valve.
+- **The accent is readable as text:** `ThemesTest` now also asks that a theme's accent shows on the panel (it is the
+  small buttons' text); Ember's light accent was too pale for that and is a darker orange now.
+
 ## Phase 13: Polish and Bug Fixes
 Everything tested by hand and what came up fixed (the pages, the people of a session, the bridge, the logins), then
 two security scans and their findings: the gateway refuses by default and limits what a client may send, limits and

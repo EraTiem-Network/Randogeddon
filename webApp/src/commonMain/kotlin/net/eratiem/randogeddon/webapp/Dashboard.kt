@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -239,6 +240,11 @@ private fun TrackerApp() {
     val user = me ?: return@LaunchedEffect
     if (user.theme == null && user.themeMode == null) saveTheme(Themes.theme, Themes.mode)
     else Themes.apply(user.theme, user.themeMode)
+  }
+  // The account's font choice (nothing chosen: the theme's)
+  LaunchedEffect(me?.name, me?.font, me?.fontScope) {
+    val user = me ?: return@LaunchedEffect
+    Themes.applyFont(user.font, user.fontScope)
   }
   // Another session: its own slots and people
   LaunchedEffect(selected) {
@@ -451,11 +457,14 @@ private fun TrackerApp() {
 internal fun Headline() {
   val p = LocalPalette.current
   Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+    val change = LocalFontChange.current
     BasicText(
-      "RANDOGEDDON",
+      // Its letters change with the page's when the font does
+      if (change != null) AnnotatedString("RANDOGEDDON").inChange(change, heading = true, 34.sp) else AnnotatedString("RANDOGEDDON"),
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
-        fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
+        fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
+        fontFamily = LocalFonts.current.heading,
         shadow = Shadow(p.brandEnd.copy(alpha = if (p.dark) 0.55f else 0.3f), Offset(0f, 4f), blurRadius = 18f),
       ),
     )

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -22,6 +23,42 @@ type Info struct {
 	Dark     map[string]string `json:"dark"`
 	Mode     string            `json:"mode"`
 	Language *string           `json:"language"`
+	Font     *Font             `json:"font"`
+}
+
+// Font is the font the user reads Randogeddon in: its files among the dashboard's static files, whether it is for
+// headings only, and how large it is drawn against the system's font.
+type Font struct {
+	Regular      string  `json:"regular"`
+	Bold         *string `json:"bold"`
+	HeadingsOnly bool    `json:"headingsOnly"`
+	Scale        float64 `json:"scale"`
+}
+
+// What a font's file is called there: nothing else is fetched for the page.
+var fontPath = regexp.MustCompile(`^fonts/[a-z0-9-]+-(regular|bold)\.ttf$`)
+
+// A font file is far smaller (the largest: 130 KB)
+const maxFontBytes = 2 << 20
+
+// File fetches a static file of the dashboard (a font: no key goes with it).
+func (c *Client) File(path string) ([]byte, error) {
+	resp, err := c.http.Get(c.Server + "/" + path)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: %s", path, resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFontBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxFontBytes {
+		return nil, fmt.Errorf("%s: too large", path)
+	}
+	return body, nil
 }
 
 // Session is one of the user's sessions (`GET /bridge/sessions`); the dashboard leaves out values that are the

@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.shared.i18n
 
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.Theme
+import net.eratiem.randogeddon.shared.ThemeGroup
 import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.SessionStatus
 
@@ -166,18 +167,48 @@ object German : Texts {
       Theme.FOREST -> "Wald"
       Theme.EMBER -> "Glut"
       Theme.CONTRAST -> "Hoher Kontrast"
+      Theme.MIDNIGHT -> "Mitternacht"
+      Theme.SAKURA -> "Sakura"
+      Theme.TERMINAL -> "Terminal"
+      Theme.SEPIA -> "Sepia"
+      Theme.NES -> "NES"
+      Theme.SNES -> "SNES"
       Theme.N64 -> "N64"
       Theme.GAMECUBE -> "GameCube"
       Theme.WII -> "Wii"
       Theme.WIIU -> "Wii U"
       Theme.SWITCH -> "Switch"
       Theme.SWITCH2 -> "Switch 2"
+      Theme.PS1 -> "PlayStation"
+      Theme.PS2 -> "PlayStation 2"
+      Theme.PS3 -> "PlayStation 3"
+      Theme.PS4 -> "PlayStation 4"
+      Theme.PS5 -> "PlayStation 5"
+      Theme.XBOX -> "Xbox"
+      Theme.XBOX360 -> "Xbox 360"
+      Theme.XBOX_SERIES -> "Xbox Series X|S"
+      Theme.STEAMOS -> "SteamOS"
     }
+    override fun themeGroup(group: ThemeGroup) = when (group) {
+      ThemeGroup.OWN -> "Randogeddons eigene"
+      ThemeGroup.NINTENDO -> "Angelehnt an Nintendos Konsolen"
+      ThemeGroup.PLAYSTATION -> "Angelehnt an die PlayStation-Konsolen"
+      ThemeGroup.STEAM -> "Angelehnt an SteamOS"
+      ThemeGroup.XBOX -> "Angelehnt an die Xbox-Konsolen"
+    }
+    override val themesNotice = "Die Konsolen- und SteamOS-Themes sind nur an die Farben dieser Systeme angelehnt. Deren Namen sind " +
+      "Marken ihrer Inhaber; Randogeddon steht in keiner Verbindung zu Nintendo, Sony, Microsoft oder Valve und wird von ihnen nicht unterstützt."
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Hell"
       ThemeMode.DARK -> "Dunkel"
       ThemeMode.AUTO -> "Automatisch (wie das Gerät)"
     }
+    override fun fontOfTheme(family: String?) = if (family != null) "Schrift: die des Themes ($family)" else "Schrift: die des Themes (das Original)"
+    override val fontOriginal = "Schrift: Randogeddons Original"
+    override fun fontOf(theme: String, family: String) = "Schrift: die von $theme ($family)"
+    override fun fontScopeAuto(display: Boolean) = if (display) "Wie die Schrift gedacht ist (nur Überschriften)" else "Wie die Schrift gedacht ist (alle Texte)"
+    override val fontScopeAll = "Diese Schrift für alle Texte"
+    override val fontScopeHeadings = "Diese Schrift nur für Überschriften"
     override val bridgeKeys = "Bridge-Schlüssel"
     override val bridgeKeysSubtitle = "die Anmeldungen der Randogeddon Bridge; ein neues Passwort beendet sie auch"
     override fun bridgeKey(made: String, used: String?, until: String) =

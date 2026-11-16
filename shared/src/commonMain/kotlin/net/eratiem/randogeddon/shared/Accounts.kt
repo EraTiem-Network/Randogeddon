@@ -191,6 +191,9 @@ data class AccountView(
   /** The theme and mode they chose; `null`: the default theme, automatic. */
   val theme: Theme? = null,
   val themeMode: ThemeMode? = null,
+  /** The font they chose ([FontChoice]); `null`: the theme's. And where it shows. */
+  val font: String? = null,
+  val fontScope: FontScope = FontScope.AUTO,
 )
 
 /** `PUT /api/account/name`. */
@@ -208,6 +211,10 @@ data class LanguageRequest(val language: Language? = null)
 /** `PUT /api/account/theme`: `null` for the default theme, automatic. */
 @Serializable
 data class ThemeRequest(val theme: Theme? = null, val mode: ThemeMode? = null)
+
+/** `PUT /api/account/font`: [font] as [FontChoice] has it (`null`: the theme's), and where it shows. */
+@Serializable
+data class FontRequest(val font: String? = null, val scope: FontScope = FontScope.AUTO)
 
 /** `PUT /api/account/auto-delete`. */
 @Serializable

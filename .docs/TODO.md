@@ -380,7 +380,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Every page, role and flow tested in a browser (and on a phone): logins (password, two-factor, Authentik, CLI
       link), invitations and sign-up, sessions from creation to deletion, cheats and support, watchers and share links,
       downloads, the mails, the bridge
-    - English and German side by side are checked after Phase 14 (its themes and fonts change the pages once more)
+    - English and German side by side are checked in Phase 16 (Phase 14's themes and fonts changed the pages once more)
 - [x] A security scan with Fable 5.2: the server's routes and their checks (logins, roles, keys, share links), the
       gateway, the bridge, the infrastructure (Traefik, Authentik, Artifact Keeper, the VMs); what it finds is fixed
       or noted with why not
@@ -594,23 +594,47 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Open points from earlier phases looked at again: the only one was which languages follow (English and German
       stay, see Phase 9)
 
-## Phase 14: More Themes
+## Phase 14: More Themes (done)
 
 *More themes to pick from, grouped, and clear that the console-inspired ones are only inspired.*
 
-- [ ] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
+- [x] SteamOS as a theme too (asked for later), in a group of its own, named in the trademark notice (Valve)
+- [x] Console-inspired themes, each light and dark: NES, SNES, PlayStation (PS1), PS2, PS3, PS4, PS5, Xbox, Xbox 360,
       Xbox Series X|S
-- [ ] More of Randogeddon's own themes (not inspired by anything)
-- [ ] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
+- [x] More of Randogeddon's own themes (not inspired by anything): Midnight, Sakura, Terminal, Sepia
+- [x] The themes grouped under *Your account*, *Appearance*: Randogeddon's own, Nintendo, PlayStation, Xbox (the theme
       cards under a small heading per group)
-- [ ] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
+- [x] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
       consoles' colours; the names are their owners' trademarks, and Randogeddon isn't affiliated with or endorsed by
       Nintendo, Sony or Microsoft
-- [ ] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
+- [x] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
       mode: *The theme's* (the default), *Randogeddon's original*, or the font of another theme; stored with the
       account like the theme and the mode
     - Fonts bundled with the app (free licences only, e.g. SIL OFL), loaded only when used; every font must still
       be readable at the dashboard's small sizes (a pixel font maybe only for headings)
-- [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
-- [ ] Afterwards every page checked in English and German side by side (moved here from Phase 13: the new themes and
-      fonts change the pages once more)
+    - Done in the web app (0.14.3): 25 fonts, one per theme but the default; display fonts in the headings, or
+      everywhere if chosen. The login page follows nothing
+    - [x] The bridge's page follows the font too (as it follows the theme): the bridge fetches the font's files
+          from the dashboard and serves them on its own page (0.14.4)
+- [x] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart): all 26 themes
+      do, light and dark; it also asks now that the accent is readable on the panel
+- [x] Where the font shows is a choice for every font (asked for later): as the font is made, all text, or the
+      headings only
+- [x] A font change is animated (asked for later): the page's letters take the new font one by one, in no order
+- The check of every page in English and German side by side is Phase 16 now
+
+## Phase 15: More Polish
+
+*What the Administrators still miss for the accounts.*
+
+- [ ] An Administrator can time an account out (for a while), suspend it (until taken back) or delete it, under
+      *Users*; never their own
+- [ ] *Sessions per user* moves from the settings into the user panel: the Administrator sets it per user. It counts
+      the sessions that user created (not the ones they were made Session-Manager of)
+
+## Phase 16: English and German Side by Side
+
+*Every page reads right in both languages, with the themes and fonts there are now.*
+
+- [ ] Every page checked in English and German side by side (moved here from Phase 13, then from Phase 14: the new
+      themes and fonts changed the pages once more), and what comes up fixed

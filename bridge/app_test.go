@@ -186,3 +186,53 @@ func TestAnotherSitesPageCantKeepItAlive(t *testing.T) {
 		t.Fatal("another site's page got in")
 	}
 }
+
+func TestThePageGetsTheAccountsFontFromTheBridge(t *testing.T) {
+	fetched := 0
+	dashboard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched++
+		if r.URL.Path != "/fonts/nes-regular.ttf" || r.Header.Get("Authorization") != "" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, "the font")
+	}))
+	defer dashboard.Close()
+	a := newApp(t.TempDir(), "tok123", Config{Server: dashboard.URL, Key: "rgb_secret"})
+	a.port = 4242
+	h := a.Handler()
+	get := func(path string) *httptest.ResponseRecorder {
+		return request(h, "GET", path, "127.0.0.1:4242", withCookie("tok123"))
+	}
+	// No font with the account: nothing is asked of the dashboard
+	if w := get("/font/regular"); w.Code != http.StatusNotFound || fetched != 0 {
+		t.Errorf("without a font: %d, %d fetched", w.Code, fetched)
+	}
+	a.info = &Info{Font: &Font{Regular: "fonts/nes-regular.ttf", HeadingsOnly: true, Scale: 0.75}}
+	// Fetched once (without the key: it is a public file), then from the bridge's own memory
+	for i := 0; i < 2; i++ {
+		if w := get("/font/regular?f=x"); w.Code != http.StatusOK || w.Body.String() != "the font" || w.Header().Get("Content-Type") != "font/ttf" {
+			t.Errorf("the font: %d %q", w.Code, w.Body.String())
+		}
+	}
+	if fetched != 1 {
+		t.Errorf("fetched %d times", fetched)
+	}
+	// It has no bold; and only a font's file is ever fetched, whatever the dashboard names
+	if w := get("/font/bold"); w.Code != http.StatusNotFound {
+		t.Errorf("a bold that isn't there: %d", w.Code)
+	}
+	for _, path := range []string{"../.env", "api/me", "fonts/../api/me", "fonts/licences/x.txt", "https://evil.example/fonts/a-regular.ttf"} {
+		a.info = &Info{Font: &Font{Regular: path}}
+		if w := get("/font/regular"); w.Code != http.StatusNotFound {
+			t.Errorf("%s: %d", path, w.Code)
+		}
+	}
+	if fetched != 1 {
+		t.Errorf("fetched %d times after the wrong paths", fetched)
+	}
+	// The page needs its token for it, like for everything
+	if w := request(h, "GET", "/font/regular", "127.0.0.1:4242", nil); w.Code != http.StatusForbidden {
+		t.Errorf("without the token: %d", w.Code)
+	}
+}

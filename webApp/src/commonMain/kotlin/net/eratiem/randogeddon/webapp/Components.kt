@@ -98,12 +98,31 @@ fun Txt(
   maxLines: Int = Int.MAX_VALUE,
   brush: Brush? = null,
 ) {
+  val fonts = LocalFonts.current
+  // The large lines are headings: a display font shows only there
+  val heading = size.value >= HEADING_FROM_SP
+  // While the font changes, each letter is in the old or the new one
+  LocalFontChange.current?.let { change ->
+    BasicText(
+      text = AnnotatedString(text).inChange(change, heading, size),
+      modifier = modifier,
+      style = TextStyle(
+        color = color, fontSize = size, fontWeight = weight, lineHeight = size * 1.4f,
+        fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+      ).let { if (brush != null) it.merge(TextStyle(brush = brush)) else it },
+      maxLines = maxLines,
+      overflow = TextOverflow.Ellipsis,
+    )
+    return
+  }
   BasicText(
     text = text,
     modifier = modifier,
     style = TextStyle(
-      color = color, fontSize = size, fontWeight = weight, lineHeight = size * 1.4f,
+      // A font with wide letters is drawn smaller, on the same line height
+      color = color, fontSize = size * (if (heading) fonts.headingScale else fonts.textScale), fontWeight = weight, lineHeight = size * 1.4f,
       fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+      fontFamily = if (heading) fonts.heading else fonts.text,
     ).let { if (brush != null) it.merge(TextStyle(brush = brush)) else it },
     maxLines = maxLines,
     overflow = TextOverflow.Ellipsis,
@@ -112,10 +131,14 @@ fun Txt(
 
 @Composable
 fun Txt(text: AnnotatedString, modifier: Modifier = Modifier, size: TextUnit = 14.sp) {
+  val change = LocalFontChange.current
   BasicText(
-    text = text,
+    text = if (change != null) text.inChange(change, heading = false, size) else text,
     modifier = modifier,
-    style = TextStyle(color = LocalPalette.current.text, fontSize = size, lineHeight = size * 1.4f),
+    style = TextStyle(
+      color = LocalPalette.current.text, fontSize = size * LocalFonts.current.textScale, lineHeight = size * 1.4f,
+      fontFamily = LocalFonts.current.text,
+    ),
   )
 }
 
@@ -813,7 +836,7 @@ fun FilterField(
     value = value,
     onValueChange = onChange,
     singleLine = true,
-    textStyle = TextStyle(color = p.text, fontSize = 13.sp),
+    textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
     cursorBrush = SolidColor(p.accent),
     modifier = modifier,
     decorationBox = { inner ->

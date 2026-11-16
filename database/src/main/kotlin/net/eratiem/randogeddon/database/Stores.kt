@@ -40,6 +40,10 @@ data class User(
   /** The theme's code and the mode they chose; `null`: the default theme, automatic. */
   val theme: String? = null,
   val themeMode: String? = null,
+  /** The font they chose (`original`, or a theme's code); `null`: the theme's. */
+  val font: String? = null,
+  /** Where it shows (`all`, `headings`); `null`: as the font is made. */
+  val fontScope: String? = null,
 )
 
 /** An account as the admin panel lists it, invited ones (no name, no password yet) too. */
@@ -204,6 +208,15 @@ class UserStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
+  /** The font [id] reads the app in (`original`, a theme's code; `null`: the theme's), and where it shows. */
+  suspend fun setFont(id: Uuid, font: String?, scope: String?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[UsersTable.font] = font
+      it[fontScope] = scope
+    }
+    Unit
+  }
+
   suspend fun setAutoDelete(id: Uuid, autoDelete: String) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
       it[UsersTable.autoDelete] = autoDelete
@@ -280,6 +293,7 @@ class UserStore(private val db: RandogeddonDatabase) {
       row[UsersTable.id], name, hash, row[UsersTable.isAdmin], row[UsersTable.email], row[UsersTable.autoDelete],
       twoFactor = row[UsersTable.totpEnabledAt] != null, language = row[UsersTable.language],
       theme = row[UsersTable.theme], themeMode = row[UsersTable.themeMode],
+      font = row[UsersTable.font], fontScope = row[UsersTable.fontScope],
     )
   }
 

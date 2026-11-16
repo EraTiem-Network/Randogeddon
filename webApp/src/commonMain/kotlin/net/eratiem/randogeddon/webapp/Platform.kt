@@ -95,6 +95,12 @@ expect object Platform {
   fun onHashChange(onChange: (String) -> Unit): () -> Unit
 
   /** Per-viewer settings; missing (or blocked storage) is `null`. */
+  /** A static file of the app (a font) as bytes; `null` if it can't be loaded. */
+  suspend fun bytes(path: String): ByteArray?
+
+  /** A font of a file's [data] ([identity]: a name of its own, the same for the same data). */
+  fun font(identity: String, data: ByteArray, bold: Boolean): androidx.compose.ui.text.font.Font
+
   fun loadSetting(key: String): String?
   fun saveSetting(key: String, value: String?)
 }

@@ -545,7 +545,7 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
 - **Login:** with a key, made under *Your connection* (*Create key*, shown once) and pasted into the bridge's page. The
   bridge never sees a password, so Administrators who log in through Authentik use it too. A key is a login for 30
   days; *Your account* lists them (made, last used, until when) with *End*, and a new password ends them all.
-- **Use:** the bridge opens its page in the default browser, in the account's theme, mode and language. Pick the
+- **Use:** the bridge opens its page in the default browser, in the account's theme, mode, font and language. Pick the
   session and the slot, *Open*: a relay on a free local port, `localhost:<port>` to copy into the game. Several at
   once (each with its state: waiting for the game, connecting, connected, the server's error). The game's name and
   password don't matter: the bridge fills in the slot's. It offers the user's own slots, and to Session-Managers and
@@ -584,7 +584,7 @@ How it stays safe:
 
 - A key reaches only the bridge's routes (`/bridge/…`: who, the sessions, a session's connection, the bridge offered,
   its own logout), sent as `Authorization: Bearer`; never `/api`, not even as the cookie. It is stored as its SHA-256
-  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode and language again,
+  like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode, font and language again,
   right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
   browser can play a slot through them.
@@ -674,16 +674,58 @@ message asking for an update. The first load is about 4 MB (gzip); after that th
 
 ### Appearance
 
-Each user picks a theme and a mode under *Your account*, *Appearance*: Randogeddon (the default), Ocean, Forest,
-Ember, High contrast, or one inspired by Nintendo's consoles (N64, GameCube, Wii, Wii U, Switch, Switch 2), each light
-or dark; *Automatic* follows the device and switches with it. The themes are cards, each a small page in its colours
-in the mode that shows now. The button on the top card cycles light, dark and automatic, and shows the mode it is in
+Each user picks a theme and a mode under *Your account*, *Appearance*, each theme light or dark; *Automatic* follows
+the device and switches with it. The themes are cards under a heading per group, each a small page in its colours in
+the mode that shows now:
+
+- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
+  Sepia.
+- **Inspired by Nintendo's consoles:** NES, SNES, N64, GameCube, Wii, Wii U, Switch, Switch 2.
+- **Inspired by the PlayStation consoles:** PlayStation, PlayStation 2, 3, 4 and 5.
+- **Inspired by the Xbox consoles:** Xbox, Xbox 360, Xbox Series X|S.
+- **Inspired by SteamOS:** SteamOS.
+
+The console and SteamOS themes are only inspired by those systems' colours (no logos, no artwork). Their names are
+trademarks of their owners; Randogeddon is not affiliated with or endorsed by Nintendo, Sony, Microsoft or Valve. The
+page says so under the cards.
+
+The button on the top card cycles light, dark and automatic, and shows the mode it is in
 (a sun, a moon, a half-filled circle). A new theme or mode fades in. It is stored with the account, so it follows them to every device; before the login, and on a share
 link's page, the browser's last choice applies (the login page takes its colours too).
 
-A new theme: an entry in `Theme` and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
+**Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
+*the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
+third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
+NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
+the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
+used (20 to 130 KB each); until then, and without them, the original shows. A change of the font is animated: the
+letters take the new one one by one, in no order. The login page keeps the system's font.
+
+| Theme | Font | Theme | Font |
+|---|---|---|---|
+| Ocean | Mulish | Wii U | Fredoka |
+| Forest | Roboto Slab | Switch | Rubik |
+| Ember | Alegreya Sans | Switch 2 | Figtree |
+| High contrast | Atkinson Hyperlegible | PlayStation | Chakra Petch |
+| Midnight | Space Grotesk | PlayStation 2 | Orbitron |
+| Sakura | Varela Round | PlayStation 3 | Outfit |
+| Terminal | JetBrains Mono | PlayStation 4 | Public Sans |
+| Sepia | Literata | PlayStation 5 | Montserrat |
+| NES | Press Start 2P | Xbox | Oxanium |
+| SNES | Pixelify Sans | Xbox 360 | Exo 2 |
+| N64 | Baloo 2 | Xbox Series X\|S | Selawik |
+| GameCube | Jost | SteamOS | Inter |
+| Wii | Nunito | | |
+
+None of them is a console's own font. All are free to ship: the SIL Open Font License 1.1, Roboto Slab the Apache
+License 2.0; each licence's text is served beside the files (`/fonts/licences/`). `scripts/fonts.py` fetches them and
+makes the files in `webApp/src/wasmJsMain/resources/fonts/` (a regular and a bold one per font, cut down to the Latin
+letters the app writes; a font with a reserved name is shipped as it is). A new font: a line there, one in
+`shared/…/shared/Fonts.kt`, and `FontsTest` checks that the files and the licence are there.
+
+A new theme: an entry in `Theme` (with its group) and its two palettes in `shared/…/shared/Themes.kt`, its name in the texts
 (*Texts and languages*). `ThemesTest` checks that it is at least as readable as the default (text, muted text and the
-text on the brand, the item and status colours on the panel) and that its item and status colours stay apart.
+text on the brand, the accent and the item and status colours on the panel) and that its item and status colours stay apart.
 
 ### Language
 

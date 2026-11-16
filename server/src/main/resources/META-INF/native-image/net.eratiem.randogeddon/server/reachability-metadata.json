@@ -2316,6 +2316,40 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.BridgeFont",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.BridgeFont$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.FontRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.FontRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.ThemeRequest",
       "fields": [
         {
