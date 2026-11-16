@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -362,7 +361,7 @@ private fun LogSection(log: List<LogLine>) {
   Section(LocalTexts.current.panel.log, subtitle = LocalTexts.current.panel.logSubtitle) {
     Box(Modifier.fillMaxWidth().card(p).height(420.dp)) {
       SelectionContainer {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
           if (log.isEmpty()) Txt(LocalTexts.current.panel.nothingYet, size = 13.sp, color = p.muted)
           log.asReversed().forEach { line ->
             BasicText(

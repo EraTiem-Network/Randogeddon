@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -383,7 +382,7 @@ private fun FullLog(text: String, narrow: Boolean) {
     if (narrow) search(Modifier.fillMaxWidth())
     Box(Modifier.fillMaxWidth().card(p).heightIn(max = 560.dp)) {
       SelectionContainer {
-        Column(Modifier.fillMaxWidth().verticalScroll(scroll).padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
           BasicText(
             marked, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
             onTextLayout = { layout = it },
