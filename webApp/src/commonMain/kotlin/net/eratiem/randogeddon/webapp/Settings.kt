@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.text.TextStyle
 import net.eratiem.randogeddon.shared.FontChoice
 import net.eratiem.randogeddon.shared.FontRequest
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.fontOf
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -144,16 +145,16 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
             }
           }
         }
-        fun saveFont(choice: String?, everywhere: Boolean) {
-          Themes.applyFont(choice, everywhere)
+        fun saveFont(choice: String?, where: FontScope) {
+          Themes.applyFont(choice, where)
           scope.launch {
-            appearanceState = when (val r = call("PUT", "api/account/font", body(FontRequest(choice, everywhere))) { }) {
+            appearanceState = when (val r = call("PUT", "api/account/font", body(FontRequest(choice, where))) { }) {
               is Answer.Ok -> { load(); null }
               is Answer.Failed -> r.message
             }
           }
         }
-        // The mode, the font, and for a display font where it shows
+        // The mode, the font, and where the font shows
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, minHeight = FIELD_HEIGHT)
           val own = fontOf(Themes.theme)?.family
@@ -161,13 +162,17 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
             listOf<Pair<String?, String>>(null to acc.fontOfTheme(own), FontChoice.ORIGINAL to acc.fontOriginal) +
               FontChoice.themes.map { it.code to acc.fontOf(acc.theme(it), fontOf(it)!!.family) },
             Themes.font,
-            { saveFont(it, Themes.fontEverywhere) },
+            { saveFont(it, Themes.fontScope) },
             minHeight = FIELD_HEIGHT,
           )
-          if (FontChoice.font(Themes.theme, Themes.font)?.display == true) {
+          // With a font that shows: as the font is made (a display font: the headings), all text, or the headings
+          FontChoice.font(Themes.theme, Themes.font)?.let { shown ->
             Select(
-              listOf(false to acc.fontHeadings, true to acc.fontEverywhere),
-              Themes.fontEverywhere,
+              listOf(
+                FontScope.AUTO to acc.fontScopeAuto(shown.display), FontScope.ALL to acc.fontScopeAll,
+                FontScope.HEADINGS to acc.fontScopeHeadings,
+              ),
+              Themes.fontScope,
               { saveFont(Themes.font, it) },
               minHeight = FIELD_HEIGHT,
             )

@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.FontChoice
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.ItemKind
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeColors
@@ -92,17 +93,17 @@ object Themes {
     private set
   private var systemDark by mutableStateOf(Platform.systemDarkMode())
 
-  /** The font choice ([FontChoice]; `null`: the theme's), and whether a display font shows in all text. */
+  /** The font choice ([FontChoice]; `null`: the theme's), and where it shows. */
   var font: String? by mutableStateOf(null)
     private set
-  var fontEverywhere: Boolean by mutableStateOf(false)
+  var fontScope: FontScope by mutableStateOf(FontScope.AUTO)
     private set
 
   init {
-    // `<choice>:<everywhere>`, the choice empty for the theme's
+    // `<choice>:<scope>`, the choice empty for the theme's (an older `true` or `false` for the scope: as the font is made)
     Platform.loadSetting(FONT_KEY)?.split(':')?.let { parts ->
       font = parts.getOrNull(0)?.takeIf { it.isNotEmpty() && FontChoice.valid(it) }
-      fontEverywhere = parts.getOrNull(1) == "true"
+      fontScope = FontScope.of(parts.getOrNull(1))
     }
     val stored = Platform.loadSetting(THEME_KEY)
     when (stored) {
@@ -133,15 +134,15 @@ object Themes {
     get() {
       val chosen = FontChoice.font(theme, font) ?: return PageFonts()
       val family = Fonts.of(chosen.theme) ?: return PageFonts()
-      return if (chosen.display && !fontEverywhere) PageFonts(heading = family, headingScale = chosen.scale)
+      return if (fontScope.headingsOnly(chosen)) PageFonts(heading = family, headingScale = chosen.scale)
       else PageFonts(family, family, chosen.scale, chosen.scale)
     }
 
-  /** Applies the font [choice] (`null`: the theme's) and whether a display font shows [everywhere]. */
-  fun applyFont(choice: String?, everywhere: Boolean) {
+  /** Applies the font [choice] (`null`: the theme's) and where it shows. */
+  fun applyFont(choice: String?, scope: FontScope) {
     font = choice?.takeIf(FontChoice::valid)
-    fontEverywhere = everywhere
-    Platform.saveSetting(FONT_KEY, "${font.orEmpty()}:$everywhere")
+    fontScope = scope
+    Platform.saveSetting(FONT_KEY, "${font.orEmpty()}:${scope.code}")
   }
 
   /** Applies [theme] and [mode] (`null`: the default theme, automatic). */
