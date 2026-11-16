@@ -607,11 +607,14 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] A trademark notice under the theme cards (and in the README): the console themes are only inspired by those
       consoles' colours; the names are their owners' trademarks, and Randogeddon isn't affiliated with or endorsed by
       Nintendo, Sony or Microsoft
-- [ ] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
+- [x] A theme can bring its own font (e.g. a pixel font for NES/SNES); under *Appearance* a font choice beside the
       mode: *The theme's* (the default), *Randogeddon's original*, or the font of another theme; stored with the
       account like the theme and the mode
     - Fonts bundled with the app (free licences only, e.g. SIL OFL), loaded only when used; every font must still
       be readable at the dashboard's small sizes (a pixel font maybe only for headings)
+    - Done in the web app (0.14.3): 25 fonts, one per theme but the default; display fonts in the headings, or
+      everywhere if chosen. The login page follows nothing
+    - [ ] The bridge's page follows the font too (as it follows the theme)
 - [ ] Each new theme passes `ThemesTest` (readable like the default, item and status colours apart)
 - [ ] Afterwards every page checked in English and German side by side (moved here from Phase 13: the new themes and
       fonts change the pages once more)

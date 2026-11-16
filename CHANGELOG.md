@@ -9,6 +9,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 14: More Themes
 
+### 0.14.3: A font per theme
+- **Every theme but the default brings a font** (25 free fonts, SIL OFL or Apache 2.0, their licences beside them):
+  a pixel font for NES and SNES, a book serif for Sepia, a monospace for Terminal, and so on (README, *Appearance*).
+- **A font choice** beside the mode under *Appearance*: the theme's (the default), Randogeddon's original, or another
+  theme's. Display fonts (NES, SNES, PlayStation 2) show in the headings only, or in all text if chosen. Stored with
+  the account (`PUT /api/account/font`, migration V18: `users.font`, `users.font_everywhere`).
+- **Loaded only when used:** a font's files are fetched when it first shows; until then the original shows. The login
+  page keeps the system's font.
+- `scripts/fonts.py` makes the font files (cut down to Latin, a regular and a bold each).
+
 ### 0.14.2: Four more of Randogeddon's own themes
 - **Midnight** (deep indigo and navy, cyan to violet), **Sakura** (soft pink and plum, rose), **Terminal** (green
   phosphor on near-black; in the light, ink on pale green) and **Sepia** (warm paper, brown ink, amber), each light
