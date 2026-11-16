@@ -137,7 +137,11 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable()).hashCode().toLong().shl(16)
+
+  /** A Session-Manager of it can't act for it now (kept out by an Administrator, or gone), while it runs. */
+  fun managerUnavailable(): Boolean = !finished &&
+    setup?.roles?.values?.any { it.role == SessionRole.MANAGER.code && it.unavailable() } == true
 
   /** The live summary, built now. */
   suspend fun build(): Summary {
@@ -153,6 +157,7 @@ class LiveSession(
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finish?.finishedAt?.toEpochMilli(),
+      managerUnavailable = managerUnavailable(),
     )
   }
 
@@ -165,7 +170,7 @@ class LiveSession(
     val summary = summary()
     return ApiJson.encodeToString(
       Summary.serializer(),
-      summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }),
+      summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }, managerUnavailable = false),
     )
   }
 
