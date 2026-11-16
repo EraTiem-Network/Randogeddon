@@ -310,7 +310,9 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them).
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The
+  playthrough reads *Item @ Check*, marks the steps already checked with a ✓, and each sphere says how many of its
+  checks are done; its search keeps only the steps whose item, check or slot contains the text (and unfolds them).
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
 
@@ -360,8 +362,11 @@ Archipelago's commands say `<player>` for a slot.
 Up and down in the console bring back earlier commands. Every action is logged with the name of who did it in the tracker's
 log.
 
-**Cheats** (the panel, *Cheats*): give a slot an item, check one of its locations, release or collect for it, pick
-the slot and the item or location from searchable lists. Free hints (`/hint`, `/hint_location`) only if the session
+**Cheats** (the panel, *Cheats*): give a slot an item, check a location, release or collect for it, pick
+the slot and the item or location from searchable lists. *Check a location* goes either way: *from the slot* (one of
+its own open locations: its item goes to whoever owns it) or *to the slot* (an open location of another world that
+holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
+placements, so only for a seed whose spoiler log has them). Free hints (`/hint`, `/hint_location`) only if the session
 was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
@@ -544,6 +549,9 @@ which the gateway writes before it starts the session's game server.
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
   choice is remembered in their browser. On narrow screens it always sits below the players.
+- **Scroll bars:** the page, the dialogs and the lists show a thin bar on the right edge while there is more than fits
+  (the page is drawn on a canvas, so the browser has none of its own); the mouse drags it, a click beside it jumps
+  there, touch scrolls the content.
 - **Other sessions:** the viewer's other sessions (all for Administrators), running or finished, below; a click shows one.
 
 Known limitations:
