@@ -36,7 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.AccountState
+import net.eratiem.randogeddon.shared.TimeOut
 import net.eratiem.randogeddon.shared.AdminUser
 import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApiJson
@@ -44,6 +46,8 @@ import net.eratiem.randogeddon.shared.AutoDelete
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.InviteRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.Versions
@@ -141,6 +145,7 @@ private fun UserPill(user: AdminUser, onOpen: () -> Unit) {
     Txt(name, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, color = if (user.state == AccountState.INVITED) p.muted else p.text)
     if (user.state == AccountState.INVITED) Pill(t.invitedPill, p.accent)
     if (user.administrator) Pill(t.administrator, p.ok)
+    user.block?.let { Pill(if (it.until != null) t.timedOutPill else t.suspendedPill, if (it.until != null) p.warn else p.trap) }
   }
 }
 
@@ -173,6 +178,7 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
               if (invited) Pill(u.invitedPill, p.accent)
               if (user.administrator) Pill(u.administrator, p.ok)
+              user.block?.let { Pill(if (it.until != null) u.timedOutPill else u.suspendedPill, if (it.until != null) p.warn else p.trap) }
             }
           }
           IconButton(onClose, Icon.CLOSE)
@@ -197,6 +203,19 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
             user.invitationExpiresAt?.let { if (it < Platform.now()) u.linkExpired else u.linkWorksUntil(t.date(it)) } ?: none,
           )
           InfoLine(u.deletionLabel, deletion ?: none)
+          val block = user.block
+          InfoLine(
+            u.accessLabel,
+            when {
+              invited -> none
+              block == null -> u.mayLogIn
+              else -> listOfNotNull(
+                block.until?.let { u.timedOutUntil(t.date(it)) } ?: u.suspended,
+                block.by?.let { u.keptOutBy(it) },
+              ).joinToString(" ")
+            },
+          )
+          block?.reason?.let { InfoLine("", u.keptOutFor(it)) }
           Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Txt(u.sessionsLabel, size = 12.5.sp, color = p.muted, modifier = Modifier.width(FACT_LABEL))
             if (user.sessions.isEmpty()) Txt(none, size = 13.sp)
@@ -238,9 +257,82 @@ private fun UserPanel(user: AdminUser, onChanged: () -> Unit, onSession: (String
             }
           }
           state?.let { Txt(it, size = 12.sp, color = p.muted) }
+          // Keeping it out, letting it in again, deleting it: never an Administrator's account
+          Divider()
+          if (user.administrator) Txt(u.managedElsewhere, size = 12.sp, color = p.muted)
+          else AccountActions(user, onDone = { state = it; onChanged() }, onDeleted = { onChanged(); onClose() })
         }
       }
     }
+  }
+}
+
+/**
+ * What an Administrator does to an account: a time-out or a suspension with a reason (or letting it in again), and
+ * deleting it, which asks once more. [onDone]: what happened, for the panel's line; [onDeleted]: the account is gone.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccountActions(user: AdminUser, onDone: (String) -> Unit, onDeleted: () -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val u = t.users
+  val scope = rememberCoroutineScope()
+  val name = user.name ?: user.email.orEmpty()
+  var reason by remember(user.id) { mutableStateOf("") }
+  var time by remember(user.id) { mutableStateOf(TimeOut.DAY) }
+  var deleting by remember(user.id) { mutableStateOf(false) }
+  var problem by remember(user.id) { mutableStateOf<String?>(null) }
+  fun act(method: String, path: String, request: AccountActionRequest?, done: () -> Unit) {
+    scope.launch {
+      val body = request?.let { ApiJson.encodeToString(AccountActionRequest.serializer(), it) }
+      when (val r = call(method, "api/admin/users/${user.id}/$path", body) { }) {
+        is Answer.Ok -> { problem = null; reason = ""; done() }
+        is Answer.Failed -> problem = r.message
+      }
+    }
+  }
+  val invited = user.state == AccountState.INVITED
+  val tooLong = reason.trim().length > AccountActionRequest.MAX_REASON
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (!invited) {
+      if (user.block != null) {
+        Row { SmallButton(u.letInButton, { act("DELETE", "block", null) { onDone(u.letInDone(name)) } }) }
+      } else {
+        FilterField(reason, { reason = it; problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
+        FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Select(TimeOut.entries.map { it to u.timeOut(it) }, time, { time = it }, minHeight = FIELD_HEIGHT)
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(u.timeOutButton, enabled = !tooLong) {
+              act("POST", "block", AccountActionRequest(time, reason.trim().ifEmpty { null })) { onDone(u.timedOutDone(name)) }
+            }
+            Button(u.suspendButton, enabled = !tooLong) {
+              act("POST", "block", AccountActionRequest(null, reason.trim().ifEmpty { null })) { onDone(u.suspendedDone(name)) }
+            }
+            InfoTip(u.keptOutTip)
+          }
+        }
+      }
+    }
+    // Deleting asks once more
+    if (!deleting) {
+      Row { SmallButton(u.deleteButton, { deleting = true }) }
+    } else {
+      Txt(u.reallyDelete(name), size = 12.5.sp, color = p.trap)
+      if (!invited && user.block != null) {
+        FilterField(reason, { reason = it; problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(u.deleteNow, enabled = !tooLong) {
+          act("POST", "delete", AccountActionRequest(null, reason.trim().ifEmpty { null })) { onDeleted() }
+        }
+        SmallButton(t.common.cancel, { deleting = false })
+      }
+    }
+    if (tooLong) Txt(t.problems.text(Refusal.of(Problem.REASON_TOO_LONG, "max" to AccountActionRequest.MAX_REASON)), size = 12.sp, color = p.trap)
+    problem?.let { Txt(it, size = 12.sp, color = p.trap) }
   }
 }
 

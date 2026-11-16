@@ -381,6 +381,8 @@ private fun TrackerApp() {
             val role = entry?.myRole
             val error = s.error
             if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
+            // A Session-Manager is timed out, suspended or gone: who to turn to instead
+            if (s.managerUnavailable) Banner(t.dashboard.managerUnavailable)
             FinishBanner(
               s, user.administrator || role == SessionRole.MANAGER,
               onFinishNow = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish") } },
