@@ -171,6 +171,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     val proc = synchronized(processLock) {
       if (stopping) return -1
       ProcessBuilder(launch.command)
+        .withoutSecrets()
         .apply {
           launch.workDir?.let { directory(it.toFile()) }
           environment().putAll(launch.environment)

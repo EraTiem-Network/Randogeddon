@@ -274,7 +274,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     val out = createTempFile("games", ".json")
     try {
       val proc = ProcessBuilder(archipelago.python, "list_games.py", out.absolutePathString())
-        .directory(home.toFile()).redirectErrorStream(true).start()
+        .withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
       Thread { if (!proc.waitFor(3, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
