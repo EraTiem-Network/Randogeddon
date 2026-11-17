@@ -32,9 +32,9 @@ interface SpoilerTexts {
 internal object EnglishSpoiler : SpoilerTexts {
   override val title = "Spoiler log"
   override fun spheres(n: Int) = if (n == 1) "1 sphere" else "$n spheres"
-  override val everySlot = "Every slot"
-  override val foldAll = "Fold all"
-  override val unfoldAll = "Unfold all"
+  override val everySlot = "All slots"
+  override val foldAll = "Collapse all"
+  override val unfoldAll = "Expand all"
   override val playthrough = "Playthrough"
   override val playthroughSubtitle = "the way through the seed, sphere by sphere: what becomes reachable, and is needed, at each step"
   override fun nothingFor(slot: String) = "Nothing for $slot."
@@ -57,9 +57,9 @@ internal object GermanSpoiler : SpoilerTexts {
   override val title = "Spoiler-Log"
   override fun spheres(n: Int) = if (n == 1) "1 Sphäre" else "$n Sphären"
   override val everySlot = "Alle Slots"
-  override val foldAll = "Alle zuklappen"
+  override val foldAll = "Alle einklappen"
   override val unfoldAll = "Alle aufklappen"
-  override val playthrough = "Durchspielweg"
+  override val playthrough = "Lösungsweg"
   override val playthroughSubtitle =
     "der Weg durch den Seed, Sphäre für Sphäre: was bei jedem Schritt erreichbar wird und gebraucht wird"
   override fun nothingFor(slot: String) = "Nichts für $slot."
@@ -75,5 +75,5 @@ internal object GermanSpoiler : SpoilerTexts {
   override val check = "Check"
   override val none = "keine"
   override val fullLog = "Ganzes Spoiler-Log"
-  override val fullLogSubtitle = "jeder Check jedes Slots, die Optionen und der Durchspielweg"
+  override val fullLogSubtitle = "jeder Check jedes Slots, die Optionen und der Lösungsweg"
 }

@@ -76,12 +76,12 @@ internal object EnglishPeople : PeopleTexts {
     SessionRole.PLAYER -> "Plays one or more of the session's slots."
     SessionRole.MANAGER -> "Manages the session as you do: its state, game server, console, cheats and people."
     SessionRole.SUPPORT -> "Helps the players: gives items, checks locations and free hints, and sees the spoiler log while it runs. Logged in the feed."
-    SessionRole.WATCHER -> "Follows the session: dashboard, feed and hints; no slots, the spoiler log once it is finished."
+    SessionRole.WATCHER -> "Follows the session: dashboard, feed and hints; no slots; the spoiler log once it has finished."
   }
   override val title = "People"
   override fun makeRole(role: SessionRole) = "Make ${role(role).lowercase().replace("session-manager", "Session-Manager")}"
   override val onlyPlayer = "Only player"
-  override val partLabel = "Part"
+  override val partLabel = "Role"
   override val slotsLabel = "Slots"
   override val noSlots = "plays no slot"
   override val progressLabel = "Progress"
@@ -89,7 +89,7 @@ internal object EnglishPeople : PeopleTexts {
   override val lastSeenLabel = "Last active"
   override val nowOnline = "online now"
   override val never = "not yet"
-  override val lastManager = "The session's only Session-Manager: make someone else Session-Manager before taking this part."
+  override val lastManager = "The session's only Session-Manager: make someone else Session-Manager before removing this role."
   override val watchers = "Watchers"
   override val nobodyWatches = "nobody watches yet"
   override fun watching(n: Int) = "$n watching"
@@ -104,7 +104,7 @@ internal object EnglishPeople : PeopleTexts {
   override val invite = "Invite"
   override val add = "Add"
   override val inviteTip = "Only an address that has no account gets an invitation; someone who has one is picked by name."
-  override fun takeAway(role: SessionRole) = "Take ${role(role).lowercase()} away?"
+  override fun takeAway(role: SessionRole) = "Remove the role ${role(role)}?"
   override val yes = "Yes"
   override val remove = "Remove"
   override val shareLink = "Share link"
@@ -112,12 +112,12 @@ internal object EnglishPeople : PeopleTexts {
     "For a stream, or friends without an account: whoever has the link sees the dashboard, read-only and without a " +
       "login. No slot passwords, no spoiler log. A new link replaces the old one."
   override val off = "off"
-  override fun onSince(date: String, by: String?) = "on since $date${by?.let { ", made by $it" } ?: ""}"
+  override fun onSince(date: String, by: String?) = "on since $date${by?.let { ", created by $it" } ?: ""}"
   override val newLink = "New link"
-  override val makeLink = "Make a link"
+  override val makeLink = "Create link"
   override val yesOff = "Yes, off"
   override val turnOff = "Turn off"
-  override val shownOnlyNow = "Shown only now: copy it. The old link doesn't work any more."
+  override val shownOnlyNow = "Shown only once: copy it now. The old link no longer works."
 }
 
 internal object GermanPeople : PeopleTexts {
@@ -130,13 +130,13 @@ internal object GermanPeople : PeopleTexts {
   override fun roleCount(role: SessionRole, n: Int) = "$n ${role(role)}"
   override fun roleTip(role: SessionRole) = when (role) {
     SessionRole.PLAYER -> "Spielt einen oder mehrere Slots der Session."
-    SessionRole.MANAGER -> "Verwaltet die Session wie du: ihren Zustand, Spielserver, Konsole, Cheats und Leute."
+    SessionRole.MANAGER -> "Verwaltet die Session wie du: ihren Zustand, Spielserver, Konsole, Cheats und Personen."
     SessionRole.SUPPORT -> "Hilft den Spielern: gibt Items, checkt Orte und vergibt Gratis-Hinweise, und sieht das " +
       "Spoiler-Log, während sie läuft. Im Feed protokolliert."
     SessionRole.WATCHER -> "Verfolgt die Session: Dashboard, Feed und Hinweise; keine Slots, das Spoiler-Log, sobald " +
       "sie beendet ist."
   }
-  override val title = "Leute"
+  override val title = "Personen"
   override fun makeRole(role: SessionRole) = "Zum ${role(role)} machen"
   override val onlyPlayer = "Nur Spieler"
   override val partLabel = "Rolle"
@@ -147,10 +147,10 @@ internal object GermanPeople : PeopleTexts {
   override val lastSeenLabel = "Zuletzt aktiv"
   override val nowOnline = "gerade online"
   override val never = "noch nicht"
-  override val lastManager = "Der einzige Session-Manager der Session: Mach zuerst jemand anderen zum Session-Manager, bevor diese Rolle geht."
+  override val lastManager = "Der einzige Session-Manager der Session: Mach zuerst jemand anderen zum Session-Manager, bevor du diese Rolle entziehst."
   override val watchers = "Zuschauer"
   override val nobodyWatches = "noch schaut niemand zu"
-  override fun watching(n: Int) = "$n schauen zu"
+  override fun watching(n: Int) = if (n == 1) "1 schaut zu" else "$n schauen zu"
   override fun invited(address: String, role: SessionRole) =
     "$address als ${role(role)} eingeladen: Der Link funktioniert 7 Tage."
   override fun isNow(name: String, role: SessionRole) = "$name ist jetzt ${role(role)}."
@@ -162,7 +162,7 @@ internal object GermanPeople : PeopleTexts {
   override val invite = "Einladen"
   override val add = "Hinzufügen"
   override val inviteTip =
-    "Nur eine Adresse ohne Konto bekommt eine Einladung; wer schon eins hat, wird beim Namen ausgewählt."
+    "Nur eine Adresse ohne Konto bekommt eine Einladung; wer schon eins hat, wird über den Namen ausgewählt."
   override fun takeAway(role: SessionRole) = "Rolle ${role(role)} entziehen?"
   override val yes = "Ja"
   override val remove = "Entfernen"
@@ -180,11 +180,11 @@ internal object GermanPeople : PeopleTexts {
 }
 
 internal object EnglishWatch : WatchTexts {
-  override val linkGone = "This link doesn't work (any more): it was turned off or replaced by a new one."
+  override val linkGone = "This link no longer works: it was turned off or replaced by a new one."
   override fun progress(percent: String, total: String) = "$percent % of $total checks done · watching, read-only"
 }
 
 internal object GermanWatch : WatchTexts {
-  override val linkGone = "Dieser Link funktioniert nicht (mehr): Er wurde ausgeschaltet oder durch einen neuen ersetzt."
-  override fun progress(percent: String, total: String) = "$percent % von $total Checks erledigt · zuschauend, nur lesend"
+  override val linkGone = "Dieser Link funktioniert nicht mehr: Er wurde ausgeschaltet oder durch einen neuen ersetzt."
+  override fun progress(percent: String, total: String) = "$percent % von $total Checks erledigt · Zuschauer-Ansicht, nur lesend"
 }

@@ -50,9 +50,9 @@ internal object EnglishCheats : CheatTexts {
   }
   override fun tip(action: CheatAction) = when (action) {
     CheatAction.ITEM -> "The slot gets the item from the server, as if it was found."
-    CheatAction.LOCATION -> "From the slot: its location counts as checked, its item goes to whoever it belongs to. " +
-      "To the slot: a location of another world that holds the slot's item counts as checked, the slot gets it."
-    CheatAction.RELEASE -> "The slot's remaining items are sent to their owners, as if it released."
+    CheatAction.LOCATION -> "From the slot: its location counts as checked; its item goes to whoever it belongs to. " +
+      "To the slot: a location of another world that holds the slot's item counts as checked; the slot gets it."
+    CheatAction.RELEASE -> "The slot's remaining items are sent to their owners, as if it had released them."
     CheatAction.COLLECT -> "The slot gets its items that are still in other slots."
     CheatAction.HINT -> "A free hint: where the slot's item is."
     CheatAction.HINT_LOCATION -> "A free hint: what is at the slot's location."
@@ -62,9 +62,9 @@ internal object EnglishCheats : CheatTexts {
   override fun subtitle(support: Boolean) =
     (if (support) "you help as support: " else "") + "logged with your name and shown in the live feed"
   override val supportTip =
-    "When a player is stuck: give an item, check a location or a free hint. Everyone sees in the live feed who helped how."
+    "When a player is stuck: give an item, check a location or give a free hint. Everyone sees in the live feed who helped and how."
   override val cheatsTip =
-    "For when something went wrong: a game bug, a missed item, someone has to drop out. Everyone sees in the live " +
+    "For when something went wrong: a game bug, a missed item, someone having to drop out. Everyone sees in the live " +
       "feed who cheated what. Hints are only possible if the session was created with cheat hints."
   override val everyCheckDone = "Every check is done: nothing is left to cheat."
   override val noSlots = "No session with slots yet."
