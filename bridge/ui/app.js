@@ -4,7 +4,7 @@
 const TEXTS = {
   en: {
     bridge: "Bridge", logout: "Log out", quit: "Quit", download: "Download",
-    update: (v) => `Randogeddon Bridge ${v} is out.`,
+    update: (v) => `Randogeddon Bridge ${v} is available.`,
     loginTitle: "Log in with a key",
     loginHint: "On the dashboard, under Your connection, choose Create key and paste it here. The key stays on this " +
       "computer until you log out.",
@@ -22,7 +22,7 @@ const TEXTS = {
   },
   de: {
     bridge: "Bridge", logout: "Abmelden", quit: "Beenden", download: "Herunterladen",
-    update: (v) => `Randogeddon Bridge ${v} ist da.`,
+    update: (v) => `Randogeddon Bridge ${v} ist verfügbar.`,
     loginTitle: "Mit einem Schlüssel anmelden",
     loginHint: "Wähle auf dem Dashboard unter Deine Verbindung Schlüssel erstellen und füge ihn hier ein. Der Schlüssel " +
       "bleibt auf diesem Computer, bis du dich abmeldest.",

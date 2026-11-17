@@ -128,7 +128,7 @@ object German : Texts {
     override val twoFactorSubtitleAdministrator = "Administratoren melden sich immer damit an"
     override val twoFactorSubtitle = "ein Code aus einer Authenticator-App nach deinem Passwort"
     override val twoFactorAdministratorsNeedIt =
-      "Was nur Administratoren tun, ist erst mit eingeschalteter Zwei-Faktor-Anmeldung möglich."
+      "Administrator-Funktionen gibt es erst mit eingeschalteter Zwei-Faktor-Anmeldung."
     override val twoFactorIsOff = "Die Zwei-Faktor-Anmeldung ist aus."
     override val recoveryCodes = "Deine Wiederherstellungscodes"
     override val recoveryCodesHint =
@@ -160,7 +160,7 @@ object German : Texts {
     override val languageSubtitle = "dieser App und der Mails an dich"
     override fun automatic(current: Language) = "Automatisch (die des Browsers: ${current.label})"
     override val appearanceTitle = "Aussehen"
-    override val appearanceSubtitle = "das Design, hell oder dunkel; der Knopf auf der oberen Karte wechselt den Modus auch"
+    override val appearanceSubtitle = "Theme, Modus und Schrift; der Knopf auf der oberen Karte wechselt auch den Modus"
     override fun theme(theme: Theme) = when (theme) {
       Theme.RANDOGEDDON -> "Randogeddon"
       Theme.OCEAN -> "Ozean"
@@ -206,13 +206,13 @@ object German : Texts {
     override fun fontOfTheme(family: String?) = if (family != null) "Schrift: die des Themes ($family)" else "Schrift: die des Themes (das Original)"
     override val fontOriginal = "Schrift: Randogeddons Original"
     override fun fontOf(theme: String, family: String) = "Schrift: die von $theme ($family)"
-    override fun fontScopeAuto(display: Boolean) = if (display) "Wie die Schrift gedacht ist (nur Überschriften)" else "Wie die Schrift gedacht ist (alle Texte)"
+    override fun fontScopeAuto(display: Boolean) = if (display) "Standard der Schrift (nur Überschriften)" else "Standard der Schrift (alle Texte)"
     override val fontScopeAll = "Diese Schrift für alle Texte"
     override val fontScopeHeadings = "Diese Schrift nur für Überschriften"
     override val bridgeKeys = "Bridge-Schlüssel"
     override val bridgeKeysSubtitle = "die Anmeldungen der Randogeddon Bridge; ein neues Passwort beendet sie auch"
     override fun bridgeKey(made: String, used: String?, until: String) =
-      "Gemacht am $made · ${used?.let { "zuletzt genutzt am $it" } ?: "noch nicht genutzt"} · bis $until"
+      "Erstellt am $made · ${used?.let { "zuletzt genutzt am $it" } ?: "noch nicht genutzt"} · bis $until"
     override val endKey = "Beenden"
     override val deletion = "Dein Konto löschen"
     override val deletionSubtitle = "von selbst, nach deiner letzten Session; deine Sessions behalten deinen Namen"
@@ -228,6 +228,6 @@ object German : Texts {
     override val staysUntilChanged = "Dein Konto bleibt, bis du das änderst."
     override val notWhileRunning = "Nicht, solange eine deiner Sessions läuft."
     override fun deletesOn(date: String) =
-      "Stand jetzt am $date; eine Mail erinnert dich 14 Tage vorher, und eine neue Session schiebt es nach hinten."
+      "Derzeit am $date; eine Mail erinnert dich 14 Tage vorher, und eine neue Session verschiebt es."
   }
 }

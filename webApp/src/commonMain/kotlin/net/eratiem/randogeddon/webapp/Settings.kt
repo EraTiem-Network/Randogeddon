@@ -137,6 +137,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     Section(acc.appearanceTitle, subtitle = acc.appearanceSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         fun save(theme: Theme, mode: ThemeMode) {
+          Themes.changedByHand()
           Themes.apply(theme, mode)
           scope.launch {
             appearanceState = when (val r = call("PUT", "api/account/theme", body(ThemeRequest(theme, mode))) { }) {
@@ -146,6 +147,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
           }
         }
         fun saveFont(choice: String?, where: FontScope) {
+          Themes.changedByHand()
           Themes.applyFont(choice, where)
           scope.launch {
             appearanceState = when (val r = call("PUT", "api/account/font", body(FontRequest(choice, where))) { }) {

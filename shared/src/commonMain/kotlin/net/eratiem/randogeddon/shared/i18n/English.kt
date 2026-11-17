@@ -91,7 +91,7 @@ object English : Texts {
       SessionStatus.PAUSED -> "paused"
       SessionStatus.ENDED -> "ended"
     }
-    override val noPartAdministrator = "You have no part in a session. Every session is under Manage."
+    override val noPartAdministrator = "You aren't part of a session. All sessions are under Manage."
     override val noPart = "You aren't part of a session yet."
     override val running = "Running"
     override val runningSubtitle = "pick one to see its dashboard"
@@ -109,8 +109,8 @@ object English : Texts {
     override fun providerAccount(provider: String) = "Your $provider account"
     override val providerAccountSubtitle = "name, password, e-mail address, two-factor login"
     override fun providerAccountHint(provider: String) =
-      "You log in through $provider: change these there. Your account here follows at once, at the latest with your " +
-        "next login; it is deleted with yours there."
+      "You log in through $provider, so change these there. Your account here follows right away, or at your next " +
+        "login at the latest, and is deleted when your $provider account is."
     override fun openProvider(provider: String) = "Open $provider"
     override val name = "Name"
     override val nameSubtitle = "what the others see; you log in with it or with your e-mail address"
@@ -124,7 +124,7 @@ object English : Texts {
     override val twoFactor = "Two-factor login"
     override val twoFactorSubtitleAdministrator = "Administrators always log in with it"
     override val twoFactorSubtitle = "a code from an authenticator app after your password"
-    override val twoFactorAdministratorsNeedIt = "What only Administrators do opens once two-factor login is on."
+    override val twoFactorAdministratorsNeedIt = "Administrator functions unlock once two-factor login is on."
     override val twoFactorIsOff = "Two-factor login is off."
     override val recoveryCodes = "Your recovery codes"
     override val recoveryCodesHint =
@@ -155,7 +155,7 @@ object English : Texts {
     override val languageSubtitle = "of this app and of the mails to you"
     override fun automatic(current: Language) = "Automatic (the browser's: ${current.label})"
     override val appearanceTitle = "Appearance"
-    override val appearanceSubtitle = "the theme, light or dark; the button on the top card switches the mode too"
+    override val appearanceSubtitle = "theme, mode and font; the button on the top card also switches the mode"
     override fun theme(theme: Theme) = when (theme) {
       Theme.RANDOGEDDON -> "Randogeddon"
       Theme.OCEAN -> "Ocean"
@@ -201,13 +201,13 @@ object English : Texts {
     override fun fontOfTheme(family: String?) = if (family != null) "Font: the theme's ($family)" else "Font: the theme's (the original)"
     override val fontOriginal = "Font: Randogeddon's original"
     override fun fontOf(theme: String, family: String) = "Font: $theme's ($family)"
-    override fun fontScopeAuto(display: Boolean) = if (display) "As the font is made (headings only)" else "As the font is made (all text)"
+    override fun fontScopeAuto(display: Boolean) = if (display) "Font's default (headings only)" else "Font's default (all text)"
     override val fontScopeAll = "This font for all text"
     override val fontScopeHeadings = "This font for headings only"
     override val bridgeKeys = "Bridge keys"
     override val bridgeKeysSubtitle = "Randogeddon Bridge's logins; a new password ends them too"
     override fun bridgeKey(made: String, used: String?, until: String) =
-      "Made $made · ${used?.let { "last used $it" } ?: "not used yet"} · until $until"
+      "Created $made · ${used?.let { "last used $it" } ?: "not used yet"} · until $until"
     override val endKey = "End"
     override val deletion = "Deleting your account"
     override val deletionSubtitle = "by itself, after your last session; your sessions keep your name"
@@ -223,6 +223,6 @@ object English : Texts {
     override val staysUntilChanged = "Your account stays until you change this."
     override val notWhileRunning = "Not while one of your sessions runs."
     override fun deletesOn(date: String) =
-      "As of now on $date; a mail reminds you 14 days before, and a new session moves it later."
+      "Currently on $date; a mail reminds you 14 days before, and a new session postpones it."
   }
 }

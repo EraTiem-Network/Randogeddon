@@ -443,7 +443,7 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 **Sessions per user:** how many running sessions of their own a user may have at once (0 to 20; 0: only
 Administrators create sessions). *Sessions per user (default)* in the users' card is for every account without a
 number of its own; an account's panel shows its running sessions against its limit and takes its *Own limit* (or
-*Use the default* again). It counts the sessions someone **created**, while they run: being made Session-Manager of
+*Use default* again). It counts the sessions someone **created**, while they run: being made Session-Manager of
 someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
 its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
 (`AP_PORTS`) applies to everyone.
@@ -627,7 +627,7 @@ which the gateway writes before it starts the session's game server.
 
 - **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), the
   slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
-  downloads). The bridge folds away (*Fold away*, remembered in the browser): then the card is one narrow column and
+  downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
@@ -720,8 +720,8 @@ link's page, the browser's last choice applies (the login page takes its colours
 third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
 NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
 the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
-used (20 to 130 KB each); until then, and without them, the original shows. A change of the font is animated: the
-letters take the new one one by one, in no order. The login page keeps the system's font.
+used (20 to 130 KB each); until then, and without them, the original shows. A change of the font by hand (another theme, the
+font settings) is animated: the letters take the new one one by one, in no order; on page load it is just there. The login page keeps the system's font.
 
 | Theme | Font | Theme | Font |
 |---|---|---|---|

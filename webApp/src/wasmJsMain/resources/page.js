@@ -8,7 +8,7 @@ window.randogeddonTexts = (function () {
       yourCode: "Your code", code: "Code",
       codeHint: "The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.",
       twoFactor: "Two-factor login", turnItOn: "Turn it on",
-      setupHint: "Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type " +
+      setupHint: "Administrators log in with a second factor. Scan this with an authenticator app (any TOTP app), or type " +
         "the key in, then enter the code it shows.",
       recoveryCodes: "Recovery codes", copy: "Copy", savedThem: "I have saved them",
       recoveryHint: "Each works once, in place of a code, if you lose your authenticator. Keep them somewhere " +
@@ -33,7 +33,7 @@ window.randogeddonTexts = (function () {
       codeHint: "Die 6 Ziffern, die deine Authenticator-App für Randogeddon zeigt, oder einer deiner " +
         "Wiederherstellungscodes.",
       twoFactor: "Zwei-Faktor-Anmeldung", turnItOn: "Einschalten",
-      setupHint: "Admins melden sich mit einem zweiten Faktor an. Scanne das mit einer Authenticator-App (jede " +
+      setupHint: "Administratoren melden sich mit einem zweiten Faktor an. Scanne das mit einer Authenticator-App (jede " +
         "TOTP-App) oder tippe den Schlüssel ab, und gib dann den angezeigten Code ein.",
       recoveryCodes: "Wiederherstellungscodes", copy: "Kopieren", savedThem: "Ich habe sie gespeichert",
       recoveryHint: "Jeder funktioniert einmal anstelle eines Codes, falls du deinen Authenticator verlierst. " +
