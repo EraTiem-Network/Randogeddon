@@ -9,6 +9,26 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.4: Support in the panel, and a spoiler log that stays usable
+- **Support sees its sessions in the panel:** the sessions someone supports are in the panel's switch, each with how
+  it stands, its dashboard and the *Support* section (give an item, check a location, a free hint; the spoiler
+  log). Before, the panel only had the sessions someone manages, so support found nothing there.
+- **Spoiler log:**
+  - A new session showed steps as checked that weren't: a step counted as checked when its location wasn't among
+    the open ones, and the tracker has none yet right after a session starts. Now a step is checked when its
+    location is among the checked ones.
+  - The fold arrows and the check mark are drawn: the themes' fonts don't all have those characters.
+  - Both searches have an × to empty them.
+  - The full log is no longer sent and shown whole (a big seed's froze the browser): 300 lines at a time, with
+    arrows to the lines before and after (`GET …/spoiler/log`).
+  - Its search runs on the server (`GET …/spoiler/search`): the page asks half a second after the last key, and the
+    server gives each user one search at a time, half a second apart (another one meanwhile: 429). The arrows jump
+    to the page a finding is on.
+- **`RelayTest` waits for what it checks** instead of a fixed moment: the frames reach the stand-in MultiServer
+  through two sockets, a moment after the client sent them. On a busy build machine (both native images compiling)
+  the check came first and the image build failed (seen once in a demo's build). The time a connection gets for
+  its Connect is longer in its test for the same reason.
+
 ### 0.16.3: The pages, after a look through them
 - **Main page without a session:** the top card says *No session* and nothing more; below it, for who may create
   one, a bubble *New session?* points at the panel's button. A click on *RANDOGEDDON* goes to the main page.
