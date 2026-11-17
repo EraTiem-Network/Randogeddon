@@ -7,6 +7,20 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 16: English and German Side by Side
+
+### 0.16.1: The texts, read side by side
+- **Every text read in both languages** for short, exact wording and the same words for the same things; about 150
+  changed. Among them:
+  - English: *Role* (not "part"), *Created* (not "made"), *Collapse*/*Expand* (not "fold"), "no longer works", "must
+    start with" (not "starts with") for the rules of names and IDs, "limit 3" for the session limit.
+  - German: *Sessions* everywhere (one "Sitzungen" was left), *Personen* (not "Leute"), *Lösungsweg* (not
+    "Durchspielweg"), *Limit* (not "Grenze"), *Theme* (not "Design"), *Spielserver* (one "Game-Server" was left),
+    *Gehostet*, "nur noch lesbar" (not "schreibgeschützt").
+  - Both: "Administrator" where "admin" was left; the new-session form no longer says that new names get a login
+    (people without an account are invited); an invited account's deletion date reads as coming, not as done.
+- Still to do in this phase: the pages looked through by hand in both languages.
+
 ## Phase 15: More Polish
 What the Administrators missed for the accounts: an account can be timed out, suspended or deleted, and the limit of
 running sessions is set per user, counting the sessions someone created. Updating: migrations V20 and V21 run by
