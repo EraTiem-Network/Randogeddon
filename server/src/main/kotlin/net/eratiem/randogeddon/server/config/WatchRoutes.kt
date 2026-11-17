@@ -55,7 +55,7 @@ fun Route.supportRoutes(support: Support, logins: LoginCheck) {
 }
 
 /**
- * Under the protected `/api` branch, for the session's players and Session-Managers (and Administrators): its watchers
+ * Under the protected `/api` branch, for the session's players, support and Session-Managers (and Administrators): its watchers
  * (`/sessions/{id}/watchers`: who, who can still watch, adding and taking them) and its share link
  * (`/sessions/{id}/share`: on since when, a new one, off).
  */
@@ -63,7 +63,7 @@ fun Route.watcherRoutes(people: SessionPeopleService, links: ShareLinks, logins:
   // On each branch: on `/sessions/{id}` it would also hold the dashboard's routes below
   fun Route.playersAndManagers() = install(RequireSessionRole) {
     this.logins = logins
-    roles = setOf(SessionRole.PLAYER, SessionRole.MANAGER)
+    roles = setOf(SessionRole.PLAYER, SessionRole.SUPPORT, SessionRole.MANAGER)
   }
   route("/sessions/{id}") {
     route("/watchers") {

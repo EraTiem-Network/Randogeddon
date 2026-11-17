@@ -16,7 +16,12 @@ class AccountRulesTest {
   @Test
   fun `names have 3 to 32 characters, no @ and no spaces around`() {
     assertTrue(UserNames.valid("Bob"))
-    assertTrue(UserNames.valid("Dr. Ünicode 42"))
+    assertTrue(UserNames.valid("Dark_Lord_42"))
+    // Letters without accents, digits and _ only
+    for (name in listOf("Dr. Ünicode 42", "Ada Lovelace", "ada-l", "Zoë", "a.b.c", "tab\tbed", "名前名前")) assertFalse(UserNames.valid(name), name)
+    // Names that would pass for someone with a say here
+    for (name in listOf("Admin", "ADMINISTRATOR", "moderator", "Support", "root", "Randogeddon", "system")) assertFalse(UserNames.valid(name), name)
+    assertTrue(UserNames.valid("Administrator_Ada"))
     assertFalse(UserNames.valid("Al"))
     assertFalse(UserNames.valid("x".repeat(33)))
     assertFalse(UserNames.valid("alice@example.org"))

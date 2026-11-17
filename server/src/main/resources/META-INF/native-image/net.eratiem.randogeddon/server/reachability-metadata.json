@@ -2872,6 +2872,9 @@
   ],
   "resources": [
     {
+      "glob": "unwanted-words.txt"
+    },
+    {
       "glob": "META-INF/native/libnetty_transport_native_epoll.so"
     },
     {

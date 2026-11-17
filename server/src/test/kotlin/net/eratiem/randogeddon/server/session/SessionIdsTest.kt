@@ -25,6 +25,11 @@ class SessionIdsTest {
     assertNull(SessionIds.problem("friday-chaos"))
     assertEquals(Problem.ID_LETTER_FIRST, SessionIds.problem("1abc")?.problem)
     assertEquals(Problem.ID_CHARACTERS, SessionIds.problem("friDay")?.problem)
+    // Every suggestion's words pass the unwanted words
+    repeat(300) { n ->
+      val id = net.eratiem.randogeddon.server.admin.suggestId(kotlin.random.Random(n)) { false }
+      assertEquals(false, net.eratiem.randogeddon.server.account.UnwantedWords.hit(id), id)
+    }
     assertEquals(Refusal.of(Problem.ID_RESERVED, "id" to "inspect"), SessionIds.problem("inspect"))
     // A seed from before gets an ID that passes too
     assertTrue(SessionIds.valid(legacySessionId("23018521088033805910")))
