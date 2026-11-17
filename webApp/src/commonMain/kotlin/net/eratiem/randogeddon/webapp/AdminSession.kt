@@ -1,5 +1,10 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
 import net.eratiem.randogeddon.shared.i18n.text
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.i18n.Texts
@@ -243,13 +248,21 @@ fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Uni
   val sessions = overview?.sessions.orEmpty().filter { it.status.running }
   Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
     Txt(t.dashboard.session, size = ADMIN_HEADING, weight = FontWeight.Bold)
-    SearchableSelect(
-      sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(t, it)) },
-      page?.takeIf { id -> sessions.any { it.id == id } }, { id -> id?.let(onPage) },
-      Modifier.weight(1f), chip = false, heading = ADMIN_HEADING,
-      placeholder = if (overview != null && sessions.isEmpty()) t.sessionAdmin.noneRunning else t.sessionAdmin.pickOne,
-    )
-    PageButton(t.sessionAdmin.newSession, page == NEW_PAGE) { onPage(NEW_PAGE) }
+    // None running: nothing to pick from, so no switch; the new session's button draws the eye instead
+    val none = overview != null && sessions.isEmpty()
+    if (none) {
+      Txt(
+        t.sessionAdmin.noneRunning, size = ADMIN_HEADING, weight = FontWeight.Bold, color = LocalPalette.current.muted,
+        maxLines = 1, modifier = Modifier.weight(1f).padding(start = 8.dp),
+      )
+    } else {
+      SearchableSelect(
+        sessions.map { Triple<String?, String, String>(it.id, it.id, switchDetails(t, it)) },
+        page?.takeIf { id -> sessions.any { it.id == id } }, { id -> id?.let(onPage) },
+        Modifier.weight(1f), chip = false, heading = ADMIN_HEADING, placeholder = t.sessionAdmin.pickOne,
+      )
+    }
+    PageButton(t.sessionAdmin.newSession, page == NEW_PAGE, attention = none && page != NEW_PAGE) { onPage(NEW_PAGE) }
   }
 }
 
@@ -427,13 +440,19 @@ private fun switchDetails(t: Texts, session: SessionEntry): String = listOfNotNu
 
 /** A button of the switch; the page that is shown is filled. */
 @Composable
-private fun PageButton(text: String, active: Boolean, onClick: () -> Unit) {
+private fun PageButton(text: String, active: Boolean, attention: Boolean = false, onClick: () -> Unit) {
   val p = LocalPalette.current
+  // [attention]: it breathes (a little bigger and brighter, and back), while it is the one thing to do here
+  val pulse = if (attention) {
+    val beat by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse))
+    beat
+  } else 0f
   Txt(
     text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
     color = if (active) p.onBrand else p.accent,
-    modifier = Modifier.heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp))
-      .background(if (active) p.accent else p.accent.copy(alpha = 0.1f))
+    modifier = Modifier.graphicsLayer { scaleX = 1f + 0.07f * pulse; scaleY = 1f + 0.07f * pulse }
+      .heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp))
+      .background(if (active) p.accent else p.accent.copy(alpha = 0.1f + 0.22f * pulse))
       .hand().clickable(onClick = onClick)
       .padding(horizontal = 14.dp, vertical = 8.dp),
   )

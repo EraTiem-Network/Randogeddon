@@ -192,11 +192,15 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
         Divider()
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           val none = u.notAvailable
-          val logins = listOfNotNull(u.passwordLogin.takeIf { user.password }, u.ssoLogin.takeIf { user.singleSignOn })
+          // An Administrator with single sign-on has no other way in (their password is one nobody knows)
+          val sso = u.ssoLogin(user.provider).takeIf { user.singleSignOn }
+          val logins = if (sso != null && user.administrator) listOf(sso) else listOfNotNull(u.passwordLogin.takeIf { user.password }, sso)
           val deletion = user.deletesAt?.let { u.deletedOn(t.date(it)) }
             ?: user.autoDelete.takeIf { it != AutoDelete.NEVER && !invited }?.let { u.autoDeletion(t.account.autoDelete(it)) }
           InfoLine(u.nameLabel, user.name ?: none)
-          InfoLine(u.emailLabel, user.email ?: none)
+          // An address from the provider: whether it is verified there
+          val verified = user.emailVerified?.let { v -> user.provider?.let { " (${u.emailVerifiedBy(it, v)})" } }.orEmpty()
+          InfoLine(u.emailLabel, user.email?.let { it + verified } ?: none)
           InfoLine(u.idLabel, user.id) { SmallButton(t.common.copy, { Platform.copy(user.id) }) }
           InfoLine(u.stateLabel, if (invited) u.invitedPill else u.active)
           InfoLine(u.groupLabel, if (user.administrator) u.administrator else u.userGroup)
@@ -279,7 +283,7 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
           if (user.administrator) {
             Txt(u.managedElsewhere, size = 12.sp, color = p.muted)
           } else {
-            if (!invited) OwnLimit(user, onDone = { state = it; onChanged() })
+            if (!invited) OwnLimit(user, default, onDone = { state = it; onChanged() })
             AccountActions(user, onDone = { state = it; onChanged() }, onDeleted = { onChanged(); onClose() })
           }
         }
@@ -288,9 +292,13 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
   }
 }
 
-/** An account's own limit of running sessions: a number of its own, or the default again. */
+/**
+ * An account's own limit of running sessions it created: a number of its own, or the default again ([default],
+ * shown in the empty field).
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OwnLimit(user: AdminUser, onDone: (String) -> Unit) {
+private fun OwnLimit(user: AdminUser, default: Int?, onDone: (String) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val u = t.users
@@ -307,9 +315,12 @@ private fun OwnLimit(user: AdminUser, onDone: (String) -> Unit) {
       }
     }
   }
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  FlowRow(
+    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+    itemVerticalAlignment = Alignment.CenterVertically,
+  ) {
     Txt(u.ownLimit, size = 13.sp, weight = FontWeight.SemiBold)
-    FilterField(text, { text = it; problem = null }, "", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
+    NumberField(text, { text = it; problem = null }, default?.toString().orEmpty(), 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
     Button(t.common.save, enabled = value != null && value != user.sessionLimit) { save(value) }
     if (user.sessionLimit != null) SmallButton(u.useDefault, { save(null) })
     InfoTip(u.sessionsPerUserTip)
@@ -387,7 +398,7 @@ private fun AccountActions(user: AdminUser, onDone: (String) -> Unit, onDeleted:
   }
 }
 
-private val FACT_LABEL = 96.dp
+private val FACT_LABEL = 150.dp
 
 /** One line of the panel: its label, its value, and maybe a button after it. */
 @Composable
@@ -421,7 +432,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
     InfoTip(t.users.sessionsPerUserTip)
-    FilterField(perUser, { perUser = it; state = null }, "1", Modifier.width(70.dp), minHeight = FIELD_HEIGHT)
+    NumberField(perUser, { perUser = it; state = null }, "1", 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
     Button(t.common.save, enabled = value != null && value != saved?.sessionsPerUser) {
       scope.launch {
         val settings = AppSettings(value!!)
