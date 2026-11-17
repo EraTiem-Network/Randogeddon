@@ -84,7 +84,10 @@ interface UserAdminTexts {
   val userGroup: String
   val loginLabel: String
   val passwordLogin: String
-  val ssoLogin: String
+  /** After an address that came from the provider: whether [provider] calls it verified. */
+  fun emailVerifiedBy(provider: String, verified: Boolean): String
+  /** The login through the provider ([provider]: its name, e.g. Authentik). */
+  fun ssoLogin(provider: String?): String
   val twoFactorLabel: String
   val on: String
   val off: String
@@ -281,7 +284,9 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val userGroup = "User"
   override val loginLabel = "Login"
   override val passwordLogin = "password"
-  override val ssoLogin = "single sign-on"
+  override fun emailVerifiedBy(provider: String, verified: Boolean) =
+    if (verified) "verified in $provider" else "not verified in $provider"
+  override fun ssoLogin(provider: String?) = if (provider != null) "SSO ($provider)" else "SSO"
   override val twoFactorLabel = "Two-factor"
   override val on = "on"
   override val off = "off"
@@ -298,7 +303,7 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val sendThere = "Send the link there"
   override fun linkWentTo(address: String) = "A new link went to $address."
   override val versions = "Versions"
-  override val versionsSubtitle = "what runs now"
+  override val versionsSubtitle = "currently running"
   override val trackerVersion = "Tracker"
   override val gatewayVersion = "Gateway"
   override val pageVersion = "This page"
@@ -310,11 +315,11 @@ internal object EnglishUserAdmin : UserAdminTexts {
       "sessions). Only sessions they created count, not ones they manage for others. An account can get its own " +
       "limit in its panel; this default applies to all others. Administrators have no limit; the number of game " +
       "servers applies to everyone."
-  override val ownSessionsLabel = "Own sessions"
+  override val ownSessionsLabel = "Self-created sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running running, limit $limit"
   override val theDefault = "(default)"
   override val noLimit = "no limit"
-  override val ownLimit = "Own limit"
+  override val ownLimit = "Self-created sessions limit"
   override val useDefault = "Use default"
   override fun limitSaved(name: String) = "Saved for $name."
   override val saved = "Saved."
@@ -330,8 +335,14 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val reason = "Reason (optional; shown to them)"
   override fun timeOut(time: TimeOut) = when (time) {
     TimeOut.HOUR -> "1 hour"
+    TimeOut.HOURS_3 -> "3 hours"
+    TimeOut.HOURS_6 -> "6 hours"
+    TimeOut.HOURS_12 -> "12 hours"
     TimeOut.DAY -> "1 day"
-    TimeOut.WEEK -> "7 days"
+    TimeOut.DAYS_2 -> "2 days"
+    TimeOut.DAYS_3 -> "3 days"
+    TimeOut.WEEK -> "1 week"
+    TimeOut.WEEKS_2 -> "2 weeks"
     TimeOut.MONTH -> "30 days"
   }
   override val timeOutButton = "Time out"
@@ -376,7 +387,9 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val userGroup = "Benutzer"
   override val loginLabel = "Anmeldung"
   override val passwordLogin = "Passwort"
-  override val ssoLogin = "Single Sign-on"
+  override fun emailVerifiedBy(provider: String, verified: Boolean) =
+    if (verified) "in $provider bestätigt" else "in $provider nicht bestätigt"
+  override fun ssoLogin(provider: String?) = if (provider != null) "SSO ($provider)" else "SSO"
   override val twoFactorLabel = "Zwei-Faktor"
   override val on = "an"
   override val off = "aus"
@@ -393,7 +406,7 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val sendThere = "Den Link dorthin senden"
   override fun linkWentTo(address: String) = "Ein neuer Link ging an $address."
   override val versions = "Versionen"
-  override val versionsSubtitle = "was gerade läuft"
+  override val versionsSubtitle = "aktuell laufend"
   override val trackerVersion = "Tracker"
   override val gatewayVersion = "Gateway"
   override val pageVersion = "Diese Seite"
@@ -405,11 +418,11 @@ internal object GermanUserAdmin : UserAdminTexts {
       "erstellen Sessions). Es zählen nur selbst erstellte Sessions, nicht die, die jemand für andere verwaltet. Ein " +
       "Konto kann in seinem Fenster ein eigenes Limit bekommen; dieser Standard gilt für alle anderen. " +
       "Administratoren haben kein Limit; die Zahl der Spielserver gilt für alle."
-  override val ownSessionsLabel = "Eigene Sessions"
+  override val ownSessionsLabel = "Selbst erstellte Sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running laufend, Limit $limit"
   override val theDefault = "(Standard)"
   override val noLimit = "kein Limit"
-  override val ownLimit = "Eigenes Limit"
+  override val ownLimit = "Limit selbst erstellter Sessions"
   override val useDefault = "Standard verwenden"
   override fun limitSaved(name: String) = "Für $name gespeichert."
   override val saved = "Gespeichert."
@@ -425,8 +438,14 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val reason = "Grund (optional; wird der Person mitgeteilt)"
   override fun timeOut(time: TimeOut) = when (time) {
     TimeOut.HOUR -> "1 Stunde"
+    TimeOut.HOURS_3 -> "3 Stunden"
+    TimeOut.HOURS_6 -> "6 Stunden"
+    TimeOut.HOURS_12 -> "12 Stunden"
     TimeOut.DAY -> "1 Tag"
-    TimeOut.WEEK -> "7 Tage"
+    TimeOut.DAYS_2 -> "2 Tage"
+    TimeOut.DAYS_3 -> "3 Tage"
+    TimeOut.WEEK -> "1 Woche"
+    TimeOut.WEEKS_2 -> "2 Wochen"
     TimeOut.MONTH -> "30 Tage"
   }
   override val timeOutButton = "Auszeit geben"

@@ -156,6 +156,10 @@ data class AdminUser(
   /** How they log in: a password of their own, through the identity provider (single sign-on), a second factor. */
   val password: Boolean = false,
   val singleSignOn: Boolean = false,
+  /** The provider they log in through, by its name (e.g. Authentik); `null` without [singleSignOn]. */
+  val provider: String? = null,
+  /** Whether [provider] calls their [email] verified; `null`: not its address, or it didn't say. */
+  val emailVerified: Boolean? = null,
   val twoFactor: Boolean = false,
   /** The language they chose (its code); `null`: their browser's. */
   val language: String? = null,
@@ -173,8 +177,14 @@ data class AccountBlock(val since: Long, val until: Long? = null, val reason: St
 @Serializable
 enum class TimeOut(val hours: Int) {
   @SerialName("1h") HOUR(1),
+  @SerialName("3h") HOURS_3(3),
+  @SerialName("6h") HOURS_6(6),
+  @SerialName("12h") HOURS_12(12),
   @SerialName("1d") DAY(24),
+  @SerialName("2d") DAYS_2(24 * 2),
+  @SerialName("3d") DAYS_3(24 * 3),
   @SerialName("7d") WEEK(24 * 7),
+  @SerialName("14d") WEEKS_2(24 * 14),
   @SerialName("30d") MONTH(24 * 30),
 }
 
