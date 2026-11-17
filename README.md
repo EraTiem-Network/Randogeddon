@@ -53,6 +53,7 @@ restart or update doesn't drop the players.
 | `output/` | The demo's files (gitignored) |
 | `data/` | Server side: each session's seed, `.apsave` savegame and `room.json` in `sessions/<id>/`, deleted ones in `old/`, the uploaded APWorlds in `apworlds/<release>/` (gitignored) |
 | `scripts/demo.sh` | The demo |
+| `scripts/unwanted_words.py` | Makes the list of words no name and no session ID may contain (`server/src/main/resources/unwanted-words.txt`) |
 
 ## One-time server setup
 
@@ -285,15 +286,15 @@ docker compose up -d
 
 ## Session day
 
-### In the panel (*Manage*)
+### In the Management panel
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
-2. **Create the session** (the gear button, *Manage*, then *New session*; every user can, as many running ones at
+2. **Create the session** (the gear button, the *Management panel*, then *New session*; every user can, as many running ones at
    once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
-   `brave-otter`; lowercase letters, digits and `-`, starting with a letter; it becomes the game server's host name,
-   so it can't be changed later), *Add YAMLs…*, then for every slot who
+   `brave-otter`; lowercase letters, digits and `-`, starting with a letter (capitals typed become small ones), and
+   without unwanted words, as for names; it becomes the game server's host name, so it can't be changed later), *Add YAMLs…*, then for every slot who
    plays it (one or more players, picked from the accounts, invited ones too: a slot with several players is played
    together); the locks
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
@@ -362,6 +363,18 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
 
+### Names nobody should have
+
+User names and session IDs are checked against a list of swear words and slurs (about 1,400, of 15 languages:
+`unwanted-words.txt`, made by `scripts/unwanted_words.py` from the
+[List of Dirty, Naughty, Obscene, and Otherwise Bad Words](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)
+(CC BY 4.0), with words added and taken out there). A name is read part by part (`Dark_Lord`, `darkLord`), written
+together, and with digits as the letters they stand in for (`sh1t`); a word of 7 letters or more, and a few
+marked ones, are also found inside a longer word. Short ones aren't (they are inside too many ordinary words and
+names), so the filter keeps the obvious out and can be got around by someone who tries. Who is refused isn't told
+which word it was. Names that exist already stay as they are; a name that comes from Authentik is made to fit
+(`Ada Lovelace`: `Ada_Lovelace`). To change the list: `OURS` and `ALLOWED` in the script, then run it.
+
 ### APWorlds
 
 The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
@@ -386,7 +399,7 @@ The gateway puts exactly these files into each release's `custom_worlds/` before
 
 ### The panel: the game server and its console
 
-Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
+Everyone gets a gear button in the dashboard's header: the *Management panel*. It lists the sessions the user manages
 (an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
 its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
@@ -426,10 +439,11 @@ them, for an invited one *Send again* and *Other address*, and what an Administr
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
 
-**On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
-spoiler log), logged and in the feed as "Erin (support) gave …". The same is in the panel: the sessions someone
-supports are in its switch, each with how it stands, its dashboard and the *Support* section (not what only a
-Session-Manager does). Players get *Watchers*: add someone by name or a new
+**Support** helps in the Management panel: the sessions someone supports are in its switch, each with how it
+stands, its dashboard, the *Support* section (give an item, check a location, a free hint; the spoiler log) and
+*Watchers* (adding and removing them, the share link), not what only a Session-Manager does. What support does is logged and in the feed as "Erin (support) gave …".
+
+**On the dashboard, by role:** Players get *Watchers*: add someone by name or a new
 address, remove watchers, and the share link. Watchers see a *Watching* pill in place of their slots. A **share
 link** (`#/watch/<token>`) opens the session's dashboard without a login, read-only: progress, tiles, players, hints
 and the live feed, no passwords and no spoiler; turned off or replaced, it says so.
@@ -471,8 +485,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 
 - **Accounts** belong to people, not to a session. An Administrator invites someone by e-mail (*Users*), or anyone right
   in a new session's player field); the link (single use, 7 days, a new one replaces it) leads to the sign-up page,
-  where they choose their name (3–32 characters, no `@`,
-  unique without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
+  where they choose their name (3–32 characters: letters without accents, digits and `_`; not one that passes for
+  Randogeddon or someone with a say here, like *Admin* or *Support*; without unwanted words, see below; unique
+  without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
   account deletes itself (2 or 4 weeks, 3 or 6 months, 1 year after the end of their last session, or never; a mail
   warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
@@ -500,9 +515,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
 - **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session
   without cheat hints), and sees its spoiler log while it runs; no release or collect, game server or console. **Watchers**
-  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players add watchers too
-  (by name, or invite an address that has no account), and take them away again. A **share link** (players and
-  Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
+  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players and support add watchers too
+  (by name, or invite an address that has no account), and take them away again. A **share link** (players, support
+  and Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
   passwords, no spoiler, no accounts. It is shown once; a new link replaces the old one, and it can be turned off.
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
   e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
@@ -680,7 +695,7 @@ text of 2 to 100 characters, the first 500; answers 429 while another search of 
 Administrators). The panel's are under
 `/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
-`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
+`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players, support and Session-Managers),
 the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
 Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. A login's bridge keys are under `/api/account/bridge-keys` (`GET`, `POST`, `DELETE .../<id>`);
 the bridge's own routes, with a key as `Authorization: Bearer`, are `GET /bridge/info`, `/bridge/me`,
