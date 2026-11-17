@@ -9,6 +9,12 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.2: A clean first start
+- **On a new database the gateway waits** for its login and the tables (up to 2 minutes), which the tracker makes a
+  moment after both started. Before, it failed to log in, ended and was started again until they were there: it
+  worked, with errors in the log of a fresh install.
+- TODO: Phase 17 (what doesn't belong in a public repository moves out of it and its history).
+
 ### 0.16.1: The texts, read side by side
 - **Every text read in both languages** for short, exact wording and the same words for the same things; about 150
   changed. Among them:
