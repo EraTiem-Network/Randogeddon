@@ -349,6 +349,8 @@ data class Me(
   /** The font they chose ([FontChoice]); `null`: the theme's. And where it shows. */
   val font: String? = null,
   val fontScope: FontScope = FontScope.AUTO,
+  /** They may create sessions at all: an Administrator, or someone whose limit isn't 0. */
+  val createsSessions: Boolean = false,
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */

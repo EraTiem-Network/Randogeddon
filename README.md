@@ -193,7 +193,7 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 **Administrators through Authentik** (single sign-on, `OIDC_*` in `.env`): with `OIDC_ISSUER` set, the login form
 has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
 `randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
-first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
+first login (or made then; a linked account takes over the name and the address Authentik has, verified or not), the flag follows the group at every login, and Authentik's MFA takes the place of the
 app's two-factor login for them. Their login lasts a day (the group is asked again at each one, so leaving it
 shows within a day), and only such a login reads as an Administrator: an older password login, or a bridge key, sees
 no more than any user. There is no other way to an Administrator then: no password login for them, and the CLI
@@ -442,8 +442,8 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 
 **Sessions per user:** how many running sessions of their own a user may have at once (0 to 20; 0: only
 Administrators create sessions). *Sessions per user (default)* in the users' card is for every account without a
-number of its own; an account's panel shows its running sessions against its limit and takes its *Own limit* (or
-*Use default* again). It counts the sessions someone **created**, while they run: being made Session-Manager of
+number of its own; an account's panel shows its running sessions against its limit and takes its *Self-created sessions limit* (the
+empty field shows the default; *Use default* brings it back). It counts the sessions someone **created**, while they run: being made Session-Manager of
 someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
 its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
 (`AP_PORTS`) applies to everyone.
@@ -451,7 +451,7 @@ its creator; an Administrator reopens regardless). Administrators have no limit,
 **Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
 managed where Administrators log in, so never one's own):
 
-- **Time out** for 1 hour, 1 day, 7 days or 30 days, or **Suspend** until it is taken back, with a reason if wanted
+- **Time out** for 1, 3, 6 or 12 hours, 1, 2 or 3 days, 1 or 2 weeks or 30 days, or **Suspend** until it is taken back, with a reason if wanted
   (at most 200 characters; the person reads it). Their logins end at once (Randogeddon Bridge's too) and they can't
   log in: after the right password the login form says so, until when and why, and a mail tells them. A time-out ends
   by itself; *Let in again* ends either before (a mail again). The list marks such accounts.
@@ -700,7 +700,7 @@ Each user picks a theme and a mode under *Your account*, *Appearance*, each them
 the device and switches with it. The themes are cards under a heading per group, each a small page in its colours in
 the mode that shows now:
 
-- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
+- **Randogeddon's:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
   Sepia.
 - **Inspired by Nintendo's consoles:** NES, SNES, N64, GameCube, Wii, Wii U, Switch, Switch 2.
 - **Inspired by the PlayStation consoles:** PlayStation, PlayStation 2, 3, 4 and 5.
@@ -717,7 +717,7 @@ link's page, the browser's last choice applies (the login page takes its colours
 
 **Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
 *the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
-third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
+third choice (*Font mode*) says where the font shows: *Theme's default* (as the font is made: a display font, i.e. the pixel fonts of
 NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
 the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
 used (20 to 130 KB each); until then, and without them, the original shows. A change of the font by hand (another theme, the

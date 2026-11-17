@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.text.selection.DisableSelection
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -309,7 +312,9 @@ private fun TrackerApp() {
             val keepsSession = adminOpen || r == Route.Settings
             val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
             val switchable = sessions.filter { it.myRole != null || it.id == shown }
-            Headline()
+            Headline(onHome = { go(Route.Home) })
+            // Without a session of their own: where a new one starts (for who may create one)
+            val newSessionHint = r == Route.Home && loadedSessions != null && switchable.isEmpty() && user.createsSessions
             Hero(
               s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
               sessions = switchable, shown = shown,
@@ -329,6 +334,7 @@ private fun TrackerApp() {
               settingsOpen = r == Route.Settings,
               onAdmin = { go(if (adminOpen) back(selected) else Route.Admin(selected?.takeIf { it in user.manages || user.administrator })) },
               adminOpen = adminOpen,
+              newSessionHint = newSessionHint,
               stacked = narrow,
             )
             when (r) {
@@ -365,7 +371,7 @@ private fun TrackerApp() {
               }
               Route.Home -> {
                 if (loadedSessions != null) {
-                  SessionPicker(sessions.filter { it.myRole != null }, user.administrator, onOpen = { go(Route.Dashboard(it)) })
+                  SessionPicker(sessions.filter { it.myRole != null }, onOpen = { go(Route.Dashboard(it)) })
                 }
                 return@Column
               }
@@ -454,15 +460,17 @@ private fun TrackerApp() {
   }
 }
 
-/** "Randogeddon" above the top card, centred, in the brand's gradient. */
+/** "Randogeddon" above the top card, centred, in the brand's gradient. [onHome]: a click goes to the main page. */
 @Composable
-internal fun Headline() {
+internal fun Headline(onHome: (() -> Unit)? = null) {
   val p = LocalPalette.current
   Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
     val change = LocalFontChange.current
+    val interaction = remember { MutableInteractionSource() }
     BasicText(
       // Its letters change with the page's when the font does
       if (change != null) AnnotatedString("RANDOGEDDON").inChange(change, heading = true, 34.sp) else AnnotatedString("RANDOGEDDON"),
+      modifier = if (onHome != null) Modifier.hand().clickable(interaction, indication = null, onClick = onHome) else Modifier,
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
         fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
@@ -498,6 +506,8 @@ private fun Hero(
   /** The panel: the sessions the user manages (Administrators: every session), a new session. */
   onAdmin: (() -> Unit)?,
   adminOpen: Boolean,
+  /** A bubble at the panel's button: a new session starts there. */
+  newSessionHint: Boolean,
   stacked: Boolean,
 ) {
   val p = LocalPalette.current
@@ -533,7 +543,14 @@ private fun Hero(
           summary?.seedName?.let { t.frame.seed(it) },
           summary?.serverVersion?.let { t.frame.archipelago(it) },
           summary?.let { t.frame.hintMode(it.hintSettings.pointHints, it.hintSettings.costPercent, it.hintSettings.autoHints) },
-        ).ifEmpty { listOf(if (shown == null) t.frame.pickOneOfYourSessions else t.frame.connecting) }
+        ).ifEmpty {
+          when {
+            shown != null -> listOf(t.frame.connecting)
+            // No session at all: the heading says it, nothing more
+            sessions.isEmpty() -> emptyList()
+            else -> listOf(t.frame.pickOneOfYourSessions)
+          }
+        }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
           Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
@@ -567,8 +584,15 @@ private fun Hero(
       }
       IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
-      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
-        background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+      if (onAdmin != null) Box {
+        IconButton(onAdmin, Icon.ADMIN, tint = onHero, background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+        // Below the card, pointing up at the button; a window of its own, so it lies over the page there
+        if (newSessionHint) Popup(
+          alignment = Alignment.TopCenter, offset = IntOffset(0, with(LocalDensity.current) { 56.dp.roundToPx() }),
+        ) {
+          DisableSelection { Bubble(t.frame.newSessionQuestion, onAdmin) }
+        }
+      }
       // The user's account; brighter while it is open
       IconButton(onSettings, Icon.USER, tint = onHero,
         background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
@@ -603,6 +627,24 @@ private fun Hero(
         }
       }
     }
+  }
+}
+
+/** A speech bubble pointing up at what is above it; a click does [onClick] (what the thing it points at does). */
+@Composable
+private fun Bubble(text: String, onClick: () -> Unit) {
+  val p = LocalPalette.current
+  Column(Modifier.hand().clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    Canvas(Modifier.size(16.dp, 8.dp)) {
+      drawPath(
+        Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() },
+        p.accent,
+      )
+    }
+    Txt(
+      text, size = 13.sp, weight = FontWeight.SemiBold, color = p.onBrand, maxLines = 1,
+      modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(p.accent).padding(horizontal = 12.dp, vertical = 7.dp),
+    )
   }
 }
 

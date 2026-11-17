@@ -78,6 +78,8 @@ interface FrameTexts {
   val allSessions: String
   val pickASession: String
   val noSession: String
+  /** The bubble at the panel's button while the user has no session. */
+  val newSessionQuestion: String
   fun seed(name: String): String
   fun archipelago(version: String): String
   val pickOneOfYourSessions: String
@@ -95,8 +97,6 @@ interface FrameTexts {
 /** The list of the user's sessions, and how a session stands. */
 interface SessionListTexts {
   fun status(status: SessionStatus): String
-  val noPartAdministrator: String
-  val noPart: String
   val running: String
   val runningSubtitle: String
   val finished: String
@@ -126,6 +126,8 @@ interface AccountTexts {
   val nameSaved: String
   val idTip: String
   fun id(id: String): String
+  /** The account's ID here, beside the provider's account. */
+  fun localId(id: String): String
   // The password
   val password: String
   val changePassword: String
@@ -172,13 +174,16 @@ interface AccountTexts {
   fun themeGroup(group: ThemeGroup): String
   /** Under the cards: the console themes are only inspired, the names are trademarks. */
   val themesNotice: String
+  val modeLabel: String
   fun mode(mode: ThemeMode): String
   /** The font choice: the chosen theme's ([family]; `null`: it has none of its own), the original, another theme's. */
+  val fontLabel: String
   fun fontOfTheme(family: String?): String
   val fontOriginal: String
   fun fontOf(theme: String, family: String): String
-  /** Where the font shows: as it is made ([display]: a font for headings), in all text, in the headings only. */
-  fun fontScopeAuto(display: Boolean): String
+  /** Where the font shows: as the theme's font is made (a font for headings: there only), everywhere, in the headings. */
+  val fontScopeLabel: String
+  val fontScopeAuto: String
   val fontScopeAll: String
   val fontScopeHeadings: String
   // Randogeddon Bridge's keys

@@ -55,11 +55,12 @@ object English : Texts {
   override val frame = object : FrameTexts {
     override val cantReachServer = "Can't reach the server – trying again…"
     override fun loggedInAs(name: String) =
-      "You're logged in as $name. To sign up with this invitation, log out and open its link again."
+      "You're logged in as $name. To sign up with this invitation, log out and open this link again."
     override fun noSuchSession(id: String) = "There is no session $id, or you aren't part of it."
     override val allSessions = "All sessions"
     override val pickASession = "Pick a session"
     override val noSession = "No session"
+    override val newSessionQuestion = "New session?"
     override fun seed(name: String) = "Seed $name"
     override fun archipelago(version: String) = "AP $version"
     override val pickOneOfYourSessions = "Pick one of your sessions"
@@ -91,8 +92,6 @@ object English : Texts {
       SessionStatus.PAUSED -> "paused"
       SessionStatus.ENDED -> "ended"
     }
-    override val noPartAdministrator = "You aren't part of a session. All sessions are under Manage."
-    override val noPart = "You aren't part of a session yet."
     override val running = "Running"
     override val runningSubtitle = "pick one to see its dashboard"
     override val finished = "Finished"
@@ -106,11 +105,9 @@ object English : Texts {
 
   override val account = object : AccountTexts {
     override val title = "Your account"
-    override fun providerAccount(provider: String) = "Your $provider account"
+    override fun providerAccount(provider: String) = "Managed via $provider"
     override val providerAccountSubtitle = "name, password, e-mail address, two-factor login"
-    override fun providerAccountHint(provider: String) =
-      "You log in through $provider, so change these there. Your account here follows right away, or at your next " +
-        "login at the latest, and is deleted when your $provider account is."
+    override fun providerAccountHint(provider: String) = "To manage your account, visit $provider:"
     override fun openProvider(provider: String) = "Open $provider"
     override val name = "Name"
     override val nameSubtitle = "what the others see; you log in with it or with your e-mail address"
@@ -118,6 +115,7 @@ object English : Texts {
     override val nameSaved = "Saved. The running sessions show it; finished ones keep the old name."
     override val idTip = "Your account's ID: it tells you apart from someone who had your name before"
     override fun id(id: String) = "ID $id"
+    override fun localId(id: String) = "Local ID $id"
     override val password = "Password"
     override val changePassword = "Change password"
     override val passwordChanged = "Changed. Your other logins have ended."
@@ -152,8 +150,8 @@ object English : Texts {
     override val confirmingAddress = "Confirming your new address…"
     override val yourAccount = "Your account"
     override val languageTitle = "Language"
-    override val languageSubtitle = "of this app and of the mails to you"
-    override fun automatic(current: Language) = "Automatic (the browser's: ${current.label})"
+    override val languageSubtitle = "used for this app and the mails we send to you"
+    override fun automatic(current: Language) = "Automatic (${current.label})"
     override val appearanceTitle = "Appearance"
     override val appearanceSubtitle = "theme, mode and font; the button on the top card also switches the mode"
     override fun theme(theme: Theme) = when (theme) {
@@ -185,7 +183,7 @@ object English : Texts {
       Theme.STEAMOS -> "SteamOS"
     }
     override fun themeGroup(group: ThemeGroup) = when (group) {
-      ThemeGroup.OWN -> "Randogeddon's own"
+      ThemeGroup.OWN -> "Randogeddon's"
       ThemeGroup.NINTENDO -> "Inspired by Nintendo's consoles"
       ThemeGroup.PLAYSTATION -> "Inspired by the PlayStation consoles"
       ThemeGroup.STEAM -> "Inspired by SteamOS"
@@ -193,17 +191,20 @@ object English : Texts {
     }
     override val themesNotice = "The console and SteamOS themes are only inspired by those systems' colours. Their names are " +
       "trademarks of their owners; Randogeddon is not affiliated with or endorsed by Nintendo, Sony, Microsoft or Valve."
+    override val modeLabel = "Mode"
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Light"
       ThemeMode.DARK -> "Dark"
-      ThemeMode.AUTO -> "Automatic (the device's)"
+      ThemeMode.AUTO -> "Automatic"
     }
-    override fun fontOfTheme(family: String?) = if (family != null) "Font: the theme's ($family)" else "Font: the theme's (the original)"
-    override val fontOriginal = "Font: Randogeddon's original"
-    override fun fontOf(theme: String, family: String) = "Font: $theme's ($family)"
-    override fun fontScopeAuto(display: Boolean) = if (display) "Font's default (headings only)" else "Font's default (all text)"
-    override val fontScopeAll = "This font for all text"
-    override val fontScopeHeadings = "This font for headings only"
+    override val fontLabel = "Font"
+    override fun fontOfTheme(family: String?) = if (family != null) "The theme's ($family)" else "The theme's (the original)"
+    override val fontOriginal = "Randogeddon's original"
+    override fun fontOf(theme: String, family: String) = "$theme's ($family)"
+    override val fontScopeLabel = "Font mode"
+    override val fontScopeAuto = "Theme's default"
+    override val fontScopeAll = "Everything"
+    override val fontScopeHeadings = "Headings only"
     override val bridgeKeys = "Bridge keys"
     override val bridgeKeysSubtitle = "Randogeddon Bridge's logins; a new password ends them too"
     override fun bridgeKey(made: String, used: String?, until: String) =

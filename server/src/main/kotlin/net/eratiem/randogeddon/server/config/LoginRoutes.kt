@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.server.admin.SessionLimit
 import io.ktor.http.ContentType
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
@@ -381,7 +382,7 @@ fun Route.loginRoutes(
 }
 
 /** Under the protected `/api` branch: who is logged in, an Administrator, and which sessions they manage. */
-fun Route.meRoute(list: SessionList) {
+fun Route.meRoute(list: SessionList, limit: SessionLimit? = null) {
   get("/me") {
     val user = call.loggedIn.user
     call.respond(
@@ -389,6 +390,8 @@ fun Route.meRoute(list: SessionList) {
         name = user.name, administrator = user.administrator, manages = list.managedBy(user),
         language = Language.of(user.language), theme = Theme.of(user.theme), themeMode = ThemeMode.of(user.themeMode),
         font = user.font.takeIf(FontChoice::valid), fontScope = FontScope.of(user.fontScope),
+        // [limit]: only the app asks (a bridge key creates nothing)
+        createsSessions = user.administrator || limit?.of(user.id)?.let { it.unlimited || it.limit > 0 } == true,
       )
     )
   }

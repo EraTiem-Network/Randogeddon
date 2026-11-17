@@ -46,6 +46,7 @@ object UsersTable : Table("users") {
   val blockedBy = varchar("blocked_by", 64).nullable()
   /** How many running sessions of their own they may have at once (V21); `null`: the default (a setting). */
   val sessionLimit = integer("session_limit").nullable()
+  val emailVerifiedByProvider = bool("email_verified_by_provider").nullable()
   override val primaryKey = PrimaryKey(id)
 }
 

@@ -152,8 +152,8 @@ class SingleSignOn(
       }
       is SsoAccount.New -> {
         val name = uniqueName(decision.name) { users.findActive(it) != null }
-        // No password of their own: they log in through the provider (or a CLI link). Their verified address if free
-        val email = identity.email?.takeIf { identity.emailVerified && users.accountByEmail(it) == null }
+        // No password of their own: they log in through the provider (or a CLI link). Their address there if free
+        val email = identity.email?.takeIf { users.accountByEmail(it) == null }
         val created = users.create(name, PasswordHasher.hash(PasswordGenerator.generate()), email = email)
         users.linkSubject(created.id, identity.subject)
         logger.info("{} came through {}: a new account", name, config.oidc?.name)
@@ -168,7 +168,9 @@ class SingleSignOn(
       }
     }
     if (!user.administrator) users.setAdmin(user.id, true)
-    accounts.syncFromProvider(user, wantedName(identity), identity.email?.takeIf { identity.emailVerified })
+    // The provider's address as it is: the account is the provider's person. Only finding an account that isn't
+    // linked yet by its address (above) needs a verified one; Authentik says "not verified" for every address
+    accounts.syncFromProvider(user, wantedName(identity), identity.email, identity.emailVerified)
     return (users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)) to identity.sessionId
   }
 

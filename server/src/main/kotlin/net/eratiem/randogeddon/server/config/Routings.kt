@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.server.admin.SessionLimit
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
@@ -56,6 +57,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val downloads by inject<SlotDownloads>()
   val bridgeKeys by inject<BridgeKeys>()
   val attempts by inject<LoginAttempts>()
+  val sessionLimit by inject<SessionLimit>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -68,7 +70,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
       install(RequireLogin) { this.logins = logins }
-      meRoute(list)
+      meRoute(list, sessionLimit)
       accountRoutes(accounts, twoFactor, bridgeKeys, trackerConfig.cookieSecure)
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads)
       newSessionRoutes(sessionAdmin, people)

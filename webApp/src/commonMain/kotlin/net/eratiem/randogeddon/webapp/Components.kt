@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -607,7 +610,8 @@ internal fun DropdownSearch(query: String, onChange: (String) -> Unit) {
 
 /**
  * A compact dropdown: shows the selected option's label, lists all options in a popup (with a search field when
- * there are more than [SEARCH_FROM]). [minHeight]: e.g. a form's field height.
+ * there are more than [SEARCH_FROM]). [minHeight]: e.g. a form's field height. [maxLabel]: how wide the selected
+ * option's label gets before it is cut.
  */
 @Composable
 fun <T> Select(
@@ -616,6 +620,7 @@ fun <T> Select(
   onSelect: (T) -> Unit,
   modifier: Modifier = Modifier,
   minHeight: Dp = 0.dp,
+  maxLabel: Dp = 160.dp,
 ) {
   val p = LocalPalette.current
   var open by remember { mutableStateOf(false) }
@@ -632,7 +637,7 @@ fun <T> Select(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Txt(options.firstOrNull { it.first == selected }?.second ?: "", size = 12.5.sp, maxLines = 1,
-        modifier = Modifier.widthIn(max = 160.dp))
+        modifier = Modifier.widthIn(max = maxLabel))
       Spacer(Modifier.width(4.dp))
       DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
     }
@@ -847,6 +852,83 @@ fun FilterField(
       ) {
         if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
         inner()
+      }
+    },
+  )
+}
+
+/**
+ * One of a few choices as buttons side by side (only one is chosen, filled): [options] are value, label and maybe an
+ * icon before it.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> Choice(options: List<Triple<T, String, Icon?>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    options.forEach { (value, label, icon) ->
+      val active = value == selected
+      val shape = RoundedCornerShape(10.dp)
+      Row(
+        Modifier.heightIn(min = FIELD_HEIGHT).clip(shape).background(if (active) p.accent else p.panelAlt)
+          .border(1.dp, if (active) p.accent else p.border, shape)
+          .hand().clickable { if (!active) onSelect(value) }
+          .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+      ) {
+        if (icon != null) DrawnIcon(icon, if (active) p.onBrand else p.text, 14.dp)
+        Txt(
+          label, size = 12.5.sp, maxLines = 1, color = if (active) p.onBrand else p.text,
+          weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * A field for a whole number in [range], with an arrow up and down inside it. Empty, it shows [placeholder] (the
+ * number that applies without one of its own), which is also where the arrows start from.
+ */
+@Composable
+fun NumberField(
+  value: String,
+  onChange: (String) -> Unit,
+  placeholder: String,
+  range: IntRange,
+  modifier: Modifier = Modifier,
+  minHeight: Dp = 0.dp,
+) {
+  val p = LocalPalette.current
+  fun step(by: Int) {
+    val from = value.trim().toIntOrNull() ?: placeholder.toIntOrNull()
+    onChange((if (from == null) range.first else (from + by)).coerceIn(range).toString())
+  }
+  BasicTextField(
+    value = value,
+    onValueChange = { typed -> onChange(typed.filter(Char::isDigit).take(range.last.toString().length)) },
+    singleLine = true,
+    textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
+    cursorBrush = SolidColor(p.accent),
+    modifier = modifier,
+    decorationBox = { inner ->
+      Row(
+        Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
+          if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
+          inner()
+        }
+        Column {
+          Box(Modifier.size(18.dp, 14.dp).rotate(180f).hand().clickable { step(1) }, contentAlignment = Alignment.Center) {
+            DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
+          }
+          Box(Modifier.size(18.dp, 14.dp).hand().clickable { step(-1) }, contentAlignment = Alignment.Center) {
+            DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
+          }
+        }
       }
     },
   )

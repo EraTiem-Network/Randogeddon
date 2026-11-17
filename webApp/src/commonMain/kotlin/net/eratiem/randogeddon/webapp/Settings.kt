@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.foundation.layout.heightIn
 import net.eratiem.randogeddon.shared.BridgeKeyView
 import kotlinx.serialization.builtins.ListSerializer
 import androidx.compose.foundation.text.BasicText
@@ -103,7 +104,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
           Txt(acc.providerAccountHint(sso), size = 13.sp)
           a.singleSignOnAccount?.let { url -> Row { Button(acc.openProvider(sso)) { Platform.openLink(url) } } }
           // Their ID here, as the name's panel shows it to everyone else
-          Tip(acc.idTip) { Txt(acc.id(a.id), size = 11.5.sp, color = p.muted) }
+          Tip(acc.idTip) { Txt(acc.localId(a.id), size = 11.5.sp, color = p.muted) }
         }
       }
     }
@@ -115,8 +116,9 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
     Section(acc.languageTitle, subtitle = acc.languageSubtitle) {
       Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val browser = Languages.browser ?: Language.DEFAULT
-        Select(
-          listOf<Pair<Language?, String>>(null to acc.automatic(browser)) + Language.entries.map { it to it.label },
+        Choice(
+          listOf(Triple<Language?, String, Icon?>(null, acc.automatic(browser), null)) +
+            Language.entries.map { Triple<Language?, String, Icon?>(it, it.label, null) },
           a.language,
           { choice ->
             scope.launch {
@@ -126,7 +128,6 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
               }
             }
           },
-          Modifier.width(260.dp), minHeight = FIELD_HEIGHT,
         )
         languageState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }
@@ -156,29 +157,35 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
             }
           }
         }
-        // The mode, the font, and where the font shows
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Select(ThemeMode.entries.map { it to acc.mode(it) }, Themes.mode, { save(Themes.theme, it) }, minHeight = FIELD_HEIGHT)
+        // The mode, the font, and where the font shows: each on its line, under its name
+        Labelled(acc.modeLabel) {
+          Choice(
+            listOf(
+              Triple(ThemeMode.LIGHT, acc.mode(ThemeMode.LIGHT), Icon.SUN), Triple(ThemeMode.DARK, acc.mode(ThemeMode.DARK), Icon.MOON),
+              Triple(ThemeMode.AUTO, acc.mode(ThemeMode.AUTO), Icon.THEME),
+            ),
+            Themes.mode, { save(Themes.theme, it) },
+          )
+        }
+        Labelled(acc.fontLabel) {
           val own = fontOf(Themes.theme)?.family
           Select(
             listOf<Pair<String?, String>>(null to acc.fontOfTheme(own), FontChoice.ORIGINAL to acc.fontOriginal) +
               FontChoice.themes.map { it.code to acc.fontOf(acc.theme(it), fontOf(it)!!.family) },
             Themes.font,
             { saveFont(it, Themes.fontScope) },
-            minHeight = FIELD_HEIGHT,
+            minHeight = FIELD_HEIGHT, maxLabel = 280.dp,
           )
-          // With a font that shows: as the font is made (a display font: the headings), all text, or the headings
-          FontChoice.font(Themes.theme, Themes.font)?.let { shown ->
-            Select(
-              listOf(
-                FontScope.AUTO to acc.fontScopeAuto(shown.display), FontScope.ALL to acc.fontScopeAll,
-                FontScope.HEADINGS to acc.fontScopeHeadings,
-              ),
-              Themes.fontScope,
-              { saveFont(Themes.font, it) },
-              minHeight = FIELD_HEIGHT,
-            )
-          }
+        }
+        // With a font that shows: as the theme's font is made (a display font: the headings), the headings, or all
+        if (FontChoice.font(Themes.theme, Themes.font) != null) Labelled(acc.fontScopeLabel) {
+          Choice(
+            listOf(
+              Triple(FontScope.AUTO, acc.fontScopeAuto, null), Triple(FontScope.HEADINGS, acc.fontScopeHeadings, null),
+              Triple(FontScope.ALL, acc.fontScopeAll, null),
+            ),
+            Themes.fontScope, { saveFont(Themes.font, it) },
+          )
         }
         // Every theme as it looks in the mode that shows now (automatic: the device's), a click picks it; by group
         Theme.entries.groupBy { it.group }.forEach { (group, themes) ->
@@ -229,6 +236,20 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
         deletionState?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       }
     }
+  }
+}
+
+/** A setting on its line: its [label] in a column of its own, then the control (below it on a phone). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Labelled(label: String, content: @Composable () -> Unit) {
+  FlowRow(
+    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    Box(Modifier.width(96.dp).heightIn(min = FIELD_HEIGHT), contentAlignment = Alignment.CenterStart) {
+      Txt(label, size = 12.5.sp, color = LocalPalette.current.muted)
+    }
+    content()
   }
 }
 
