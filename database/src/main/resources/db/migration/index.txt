@@ -20,3 +20,4 @@ V18__fonts.sql
 V19__font_scope.sql
 V20__kept_out.sql
 V21__session_limit.sql
+V22__email_verified_by_provider.sql
