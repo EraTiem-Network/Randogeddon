@@ -50,6 +50,10 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.Sphere
 import net.eratiem.randogeddon.shared.Spoiler
+import net.eratiem.randogeddon.shared.i18n.number
+import kotlinx.coroutines.delay
+import net.eratiem.randogeddon.shared.SpoilerLines
+import net.eratiem.randogeddon.shared.SpoilerFindings
 
 /**
  * A session's spoiler log: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
@@ -91,7 +95,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
         return@Column
       }
       if (s.spheres.isNotEmpty()) Playthrough(s.spheres, narrow)
-      FullLog(s.text, narrow)
+      FullLog(id, s.lines, narrow)
     }
   }
 }
@@ -150,7 +154,9 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
     listOfNotNull(step.item, step.location, step.itemSlot, step.locationSlot).any { needle in it.lowercase() }
   fun shown(number: Int) = steps[number].orEmpty()
     .filter { (slot == null || it.itemSlot == slot || it.locationSlot == slot) && matches(it) }
-  val search: @Composable (Modifier) -> Unit = { modifier -> FilterField(query, { query = it }, t.spoiler.searchSteps, modifier) }
+  val search: @Composable (Modifier) -> Unit = { modifier ->
+    FilterField(query, { query = it }, t.spoiler.searchSteps, modifier, clearable = true)
+  }
   // The spheres the slot and the search leave (with a step); they unfold when filtered, fold back when not, and each
   // folds by hand either way
   val visibleNumbers = spheres.filter { shown(it.number).isNotEmpty() }.map { it.number }.toSet()
@@ -195,7 +201,8 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          Txt(if (unfolded) "▾" else "▸", size = 13.sp, color = p.muted, modifier = Modifier.width(12.dp))
+          // Drawn: the themes' fonts don't all have arrows
+          Box(Modifier.size(14.dp).rotate(if (unfolded) 0f else -90f)) { DrawnIcon(Icon.CHEVRON, p.muted, 14.dp) }
           Txt(
             if (sphere.number == 0) t.spoiler.sphereZero else t.spoiler.sphere(sphere.number),
             size = 13.5.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
@@ -226,13 +233,13 @@ private fun Playthrough(spheres: List<Sphere>, narrow: Boolean) {
 private val SLOT_COLUMN = 150.dp
 private val CHECKED_COLUMN = 22.dp
 
-/** A step whose location is checked already: a ✓ in the status colour (the column stays for the others). */
+/** A step whose location is checked already: a check mark in the status colour (the column stays for the others). */
 @Composable
 private fun CheckedMark(checked: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   Box(Modifier.width(CHECKED_COLUMN), contentAlignment = Alignment.CenterEnd) {
-    if (checked) Tip(t.spoiler.checkedTip) { Txt("✓", size = 13.sp, weight = FontWeight.Bold, color = p.ok) }
+    if (checked) Tip(t.spoiler.checkedTip) { DrawnIcon(Icon.CHECK, p.ok, 14.dp) }
   }
 }
 private val ARROW_COLUMN = 28.dp
@@ -307,15 +314,27 @@ private fun SlotTag(slot: String) {
   )
 }
 
-/** At most this many findings are marked; the count says when there are more. */
-private const val MAX_FINDINGS = 2000
+/** How many lines of the log show at once. */
+private const val PAGE = 300
 
-/** Where [query] occurs in [text] (ignoring case), at most [MAX_FINDINGS]; nothing for less than 2 characters. */
+/** How long the search waits after the last key before it asks the server. */
+private const val SEARCH_DELAY_MS = 500L
+
+/** [text] for a URL's query: everything but letters, digits and `-._~` as its UTF-8 bytes, percent-encoded. */
+internal fun urlEncoded(text: String): String = buildString {
+  for (byte in text.encodeToByteArray()) {
+    val c = byte.toInt() and 0xff
+    if (c.toChar().let { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "-._~" }) append(c.toChar())
+    else append('%').append(c.toString(16).uppercase().padStart(2, '0'))
+  }
+}
+
+/** Where [query] occurs in [text] (ignoring case); nothing for less than 2 characters. */
 internal fun findings(text: String, query: String): List<Int> {
-  if (query.length < 2) return emptyList()
+  if (query.length < SpoilerFindings.MIN_QUERY) return emptyList()
   return buildList {
     var at = text.indexOf(query, 0, ignoreCase = true)
-    while (at >= 0 && size < MAX_FINDINGS) {
+    while (at >= 0) {
       add(at)
       at = text.indexOf(query, at + query.length, ignoreCase = true)
     }
@@ -323,62 +342,137 @@ internal fun findings(text: String, query: String): List<Int> {
 }
 
 /**
- * The whole log, monospace. The search marks every finding (the current one stronger) and counts them; the arrows,
- * or Enter and Shift+Enter, jump from one to the next.
+ * The whole log, monospace, [PAGE] lines at a time (a big seed's log is too long for a browser to show at once):
+ * the arrows under it go to the lines before and after. The search asks the server (a moment after the last key,
+ * and the server spaces searches out): it counts the lines found, and the arrows beside it, or Enter and
+ * Shift+Enter, jump from one to the next, to whichever page it is on. What is found is marked on the page shown.
  */
 @Composable
-private fun FullLog(text: String, narrow: Boolean) {
+private fun FullLog(id: String, total: Int, narrow: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  var query by remember { mutableStateOf("") }
+  // The page shown: its first line's number and its lines; null while the first one loads
+  var page by remember(id) { mutableStateOf<SpoilerLines?>(null) }
+  var wanted by remember(id) { mutableStateOf(0) }
+  var problem by remember(id) { mutableStateOf<String?>(null) }
+  LaunchedEffect(id, wanted) {
+    val answer = call("GET", "api/sessions/$id/spoiler/log?from=$wanted&count=$PAGE", null) {
+      ApiJson.decodeFromString(SpoilerLines.serializer(), it)
+    }
+    when (answer) {
+      is Answer.Ok -> { page = answer.value; problem = null }
+      is Answer.Failed -> problem = answer.message
+    }
+  }
+
+  var query by remember(id) { mutableStateOf("") }
   val q = query.trim()
-  val found = remember(text, q) { findings(text, q) }
-  var current by remember(text, q) { mutableStateOf(0) }
+  // The lines the server found for [q]; null: not asked (yet)
+  var found by remember(id) { mutableStateOf<SpoilerFindings?>(null) }
+  var current by remember(id) { mutableStateOf(0) }
+  var searching by remember(id) { mutableStateOf(false) }
+  var searchProblem by remember(id) { mutableStateOf<String?>(null) }
+  LaunchedEffect(id, q) {
+    found = null
+    current = 0
+    searchProblem = null
+    if (q.length < SpoilerFindings.MIN_QUERY) {
+      searching = false
+      return@LaunchedEffect
+    }
+    searching = true
+    // Typing on restarts this: only what stays for a moment is asked for
+    delay(SEARCH_DELAY_MS)
+    val answer = call("GET", "api/sessions/$id/spoiler/search?q=${urlEncoded(q.take(SpoilerFindings.MAX_QUERY))}", null) {
+      ApiJson.decodeFromString(SpoilerFindings.serializer(), it)
+    }
+    when (answer) {
+      is Answer.Ok -> {
+        found = answer.value
+        // The first finding from the page shown on, so the search doesn't jump back to the top
+        current = answer.value.lines.indexOfFirst { it >= (page?.from ?: 0) }.coerceAtLeast(0)
+      }
+      is Answer.Failed -> searchProblem = answer.message
+    }
+    searching = false
+  }
+  val lines = found?.lines.orEmpty()
+  val currentLine = lines.getOrNull(current)
+  // The page with the current finding
+  LaunchedEffect(currentLine) { currentLine?.let { wanted = it - it % PAGE } }
+  fun step(by: Int) {
+    if (lines.isNotEmpty()) current = (current + by).mod(lines.size)
+  }
+
+  val shown = page
+  val text = remember(shown) { shown?.lines?.joinToString("\n").orEmpty() }
+  // Where each of the page's lines starts in its text
+  val starts = remember(shown) {
+    val out = IntArray(shown?.lines?.size ?: 0)
+    var at = 0
+    shown?.lines?.forEachIndexed { i, line -> out[i] = at; at += line.length + 1 }
+    out
+  }
   val mark = p.warn.copy(alpha = 0.35f)
   val currentMark = p.accent.copy(alpha = 0.55f)
-  val marked = remember(text, found, current, mark, currentMark) {
+  // The current finding's line on this page, if it is on it
+  val currentOnPage = currentLine?.let { it - (shown?.from ?: 0) }?.takeIf { it in starts.indices }
+  val marked = remember(text, q, found, currentOnPage, mark, currentMark) {
     buildAnnotatedString {
       append(text)
-      found.forEachIndexed { n, start ->
-        addStyle(SpanStyle(background = if (n == current) currentMark else mark), start, start + q.length)
+      if (found != null) {
+        val from = currentOnPage?.let { starts[it] }
+        val to = currentOnPage?.let { starts.getOrNull(it + 1) ?: (text.length + 1) }
+        findings(text, q).forEach { start ->
+          val inCurrent = from != null && to != null && start >= from && start < to
+          addStyle(SpanStyle(background = if (inCurrent) currentMark else mark), start, start + q.length)
+        }
       }
     }
   }
   val scroll = rememberScrollState()
   var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
   val density = LocalDensity.current
-  // The current finding a few lines below the top of the box
-  LaunchedEffect(found, current, layout) {
+  // The current finding a few lines below the top of the box; a page turned by hand starts at its top
+  LaunchedEffect(shown, currentOnPage, layout) {
     val l = layout ?: return@LaunchedEffect
-    val at = found.getOrNull(current) ?: return@LaunchedEffect
+    val at = currentOnPage?.let { starts[it] }
+    if (at == null || at > l.layoutInput.text.length) {
+      if (currentLine == null) scroll.scrollTo(0)
+      return@LaunchedEffect
+    }
     val top = l.getLineTop(l.getLineForOffset(at)) - with(density) { 48.dp.toPx() }
     scroll.animateScrollTo(top.toInt().coerceAtLeast(0))
   }
-  fun step(by: Int) {
-    if (found.isNotEmpty()) current = (current + by).mod(found.size)
-  }
+
   val search: @Composable (Modifier) -> Unit = { modifier ->
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       FilterField(
-        query, { query = it }, t.common.search,
-        (if (narrow) Modifier.weight(1f) else Modifier.width(200.dp)).onPreviewKeyEvent { event ->
+        query, { query = it.take(SpoilerFindings.MAX_QUERY) }, t.common.search,
+        (if (narrow) Modifier.weight(1f) else Modifier.width(220.dp)).onPreviewKeyEvent { event ->
           if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
             step(if (event.isShiftPressed) -1 else 1)
             true
           } else false
         },
+        clearable = true,
       )
-      if (q.length >= 2) {
+      if (q.length >= SpoilerFindings.MIN_QUERY) {
+        val result = found
         Txt(
           when {
-            found.isEmpty() -> t.spoiler.none
-            found.size >= MAX_FINDINGS -> "${current + 1} / ${MAX_FINDINGS}+"
-            else -> "${current + 1} / ${found.size}"
+            searchProblem != null -> searchProblem.orEmpty()
+            result == null -> if (searching) "…" else ""
+            result.lines.isEmpty() -> t.spoiler.none
+            else -> "${current + 1} / ${result.lines.size}${if (result.more) "+" else ""}"
           },
-          size = 12.5.sp, color = if (found.isEmpty()) p.trap else p.muted, maxLines = 1,
+          size = 12.5.sp, maxLines = 1,
+          color = if (searchProblem != null || result?.lines?.isEmpty() == true) p.trap else p.muted,
         )
-        IconButton({ step(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f))
-        IconButton({ step(1) }, Icon.CHEVRON, Modifier.size(30.dp))
+        if (lines.isNotEmpty()) {
+          IconButton({ step(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f))
+          IconButton({ step(1) }, Icon.CHEVRON, Modifier.size(30.dp))
+        }
       }
     }
   }
@@ -386,13 +480,38 @@ private fun FullLog(text: String, narrow: Boolean) {
     if (!narrow) search(Modifier)
   }) {
     if (narrow) search(Modifier.fillMaxWidth())
-    Box(Modifier.fillMaxWidth().card(p).heightIn(max = 560.dp)) {
-      SelectionContainer {
-        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
-          BasicText(
-            marked, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-            onTextLayout = { layout = it },
+    problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+    Column(Modifier.fillMaxWidth().card(p)) {
+      Box(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
+        SelectionContainer {
+          Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
+            if (shown == null && problem == null) Txt(t.dialogs.loading, size = 12.5.sp, color = p.muted)
+            BasicText(
+              marked, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+              onTextLayout = { layout = it },
+            )
+          }
+        }
+      }
+      // Which lines these are, and the pages before and after
+      if (shown != null && total > PAGE) {
+        Divider()
+        Row(
+          Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          val first = shown.from
+          val last = shown.from + shown.lines.size
+          Txt(
+            t.spoiler.linesOf(t.number(first + 1), t.number(last), t.number(shown.total)), size = 12.5.sp, color = p.muted,
+            modifier = Modifier.weight(1f),
           )
+          if (first > 0) Tip(t.spoiler.earlierLines) {
+            IconButton({ wanted = (first - PAGE).coerceAtLeast(0) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(90f))
+          }
+          if (last < shown.total) Tip(t.spoiler.laterLines) {
+            IconButton({ wanted = last }, Icon.CHEVRON, Modifier.size(30.dp).rotate(-90f))
+          }
         }
       }
     }

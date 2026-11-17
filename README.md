@@ -353,8 +353,11 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The
-  playthrough reads *Item @ Check*, marks the steps already checked with a ✓, and each sphere says how many of its
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
+  log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a
+  browser to show at once. Its search runs on the server (a moment after the last key; per user one search at a
+  time, half a second apart) and jumps to whichever page a finding is on. Both searches have an × to empty them. The
+  playthrough reads *Item @ Check*, marks the steps already checked with a check mark, and each sphere says how many of its
   checks are done; its search keeps only the steps whose item, check or slot contains the text (and unfolds them).
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
@@ -424,7 +427,9 @@ gateway's Archipelago releases; to check a deploy). With no session running, the
 form.
 
 **On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
-spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
+spoiler log), logged and in the feed as "Erin (support) gave …". The same is in the panel: the sessions someone
+supports are in its switch, each with how it stands, its dashboard and the *Support* section (not what only a
+Session-Manager does). Players get *Watchers*: add someone by name or a new
 address, remove watchers, and the share link. Watchers see a *Watching* pill in place of their slots. A **share
 link** (`#/watch/<token>`) opens the session's dashboard without a login, read-only: progress, tiles, players, hints
 and the live feed, no passwords and no spoiler; turned off or replaced, it says so.
@@ -668,7 +673,9 @@ sign-up page) and `POST /api/email/confirm`
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`, `.../files` and
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler` (the playthrough and how many lines the log has),
+`.../spoiler/log?from=&count=` (some of its lines, at most 400), `.../spoiler/search?q=` (the lines that contain a
+text of 2 to 100 characters, the first 500; answers 429 while another search of the same user runs), `.../files` and
 `.../files/<name>` (the seed's files of the user's slots: patches, mods; every slot's for its Session-Managers and
 Administrators). The panel's are under
 `/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for

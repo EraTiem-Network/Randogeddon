@@ -472,6 +472,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   fun openLocations(): Map<String, Set<String>> = players.values.filter { it.game != WORLD_LOCKS_GAME }
     .associate { p -> p.name to p.missing.mapTo(mutableSetOf()) { locationName(it, p.slot) } }
 
+  /** Each world's checked locations, by its name (World Locks' slots left out). */
+  fun checkedLocations(): Map<String, Set<String>> = players.values.filter { it.game != WORLD_LOCKS_GAME }
+    .associate { p -> p.name to p.checked.mapTo(mutableSetOf()) { locationName(it, p.slot) } }
+
   /** Slots of the World Locks game: they hold keys, they are not worlds anyone plays. */
   fun lockSlots(): Set<Int> = players.values.filter { it.game == WORLD_LOCKS_GAME }.mapTo(mutableSetOf()) { it.slot }
 

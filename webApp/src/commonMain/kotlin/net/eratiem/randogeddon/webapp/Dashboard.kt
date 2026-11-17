@@ -332,7 +332,13 @@ private fun TrackerApp() {
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
-              onAdmin = { go(if (adminOpen) back(selected) else Route.Admin(selected?.takeIf { it in user.manages || user.administrator })) },
+              onAdmin = {
+                // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
+                val theirs = selected?.takeIf { id ->
+                  user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
+                }
+                go(if (adminOpen) back(selected) else Route.Admin(theirs))
+              },
               adminOpen = adminOpen,
               newSessionHint = newSessionHint,
               stacked = narrow,

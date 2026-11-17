@@ -17,12 +17,12 @@ import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 
@@ -72,6 +72,16 @@ class RelayTest {
     }
   }
 
+  /**
+   * The stand-in MultiServer has seen exactly [n] frames: waits for them to arrive (they come through two sockets,
+   * a moment after the client sent them or was closed), then a little longer for one too many.
+   */
+  private suspend fun assertSeen(n: Int) {
+    withTimeoutOrNull(5.seconds) { while (seen.size < n) delay(20) }
+    delay(150)
+    assertEquals(n, seen.size, "MultiServer saw $seen")
+  }
+
   private suspend fun DefaultClientWebSocketSession.next(): String = withTimeout(5.seconds) { (incoming.receive() as Frame.Text).readText() }
 
   /** Why the gateway closed the connection (waits for it). */
@@ -112,7 +122,7 @@ class RelayTest {
   }
 
   @Test
-  fun `a connection without a Connect doesn't stay`() = gateway(Limits(connectWithin = 300.milliseconds)) { url, client ->
+  fun `a connection without a Connect doesn't stay`() = gateway(Limits(connectWithin = 1.seconds)) { url, client ->
     client.webSocket(url) {
       assertEquals(CloseReason.Codes.TRY_AGAIN_LATER.code, closed()?.code)
     }
@@ -121,9 +131,10 @@ class RelayTest {
       next()
       send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
       assertEquals("""[{"cmd":"Connected"}]""", next())
-      delay(800)
+      // Well past the time a connection without a Connect gets
+      delay(1500)
       send(Frame.Text("""[{"cmd":"Sync"}]"""))
-      delay(200)
+      assertSeen(2)
       assertFalse(closeReason.isCompleted)
       assertEquals("""[{"cmd":"Sync"}]""", seen.last())
     }
@@ -135,16 +146,15 @@ class RelayTest {
       repeat(4) { send(Frame.Text("""[{"cmd":"GetDataPackage"}]""")) }
       assertEquals(CloseReason.Codes.VIOLATED_POLICY.code, closed()?.code)
     }
-    assertEquals(3, seen.size)
+    assertSeen(3)
     seen.clear()
     client.webSocket(url) {
       next()
       send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
       assertEquals("""[{"cmd":"Connected"}]""", next())
       repeat(10) { send(Frame.Text("""[{"cmd":"Sync"}]""")) }
-      delay(300)
+      assertSeen(11)
       assertFalse(closeReason.isCompleted)
-      assertEquals(11, seen.size)
     }
   }
 
