@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.7: More to see while a session is made, less for a locked slot
+- **A locked slot's patch files aren't shown** under *Your connection* (they wait for the slot's key, like its
+  password), and aren't handed out to its players until then. Session-Managers and Administrators still get every
+  slot's in the panel.
+- **The new session's progress says more:** four steps above the bar (*Check*, *Generate*, *Set up*, *Start*; done
+  ones with a check mark), and new states: checking the YAMLs, players and locks; waiting while another session
+  generates (the gateway generates one at a time); setting up the slots, players and passwords; starting the game
+  server. The seed's own stages keep the bar's middle.
+
 ### 0.16.6: A new session, out of the way while it generates
 - **While a new session generates** the form is gone: only the session's ID, the stage and the bar show. A failed
   generation brings the form back as it was, with the reason.
