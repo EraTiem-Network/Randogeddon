@@ -828,6 +828,7 @@ fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: M
 
 private val KNOB = 20.dp
 
+/** A one-line text field. [clearable] (a search): an × at its end empties it, while there is something in it. */
 @Composable
 fun FilterField(
   value: String,
@@ -835,6 +836,7 @@ fun FilterField(
   placeholder: String,
   modifier: Modifier = Modifier,
   minHeight: Dp = 0.dp,
+  clearable: Boolean = false,
 ) {
   val p = LocalPalette.current
   BasicTextField(
@@ -845,13 +847,21 @@ fun FilterField(
     cursorBrush = SolidColor(p.accent),
     modifier = modifier,
     decorationBox = { inner ->
-      Box(
+      Row(
         Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
-        contentAlignment = Alignment.CenterStart,
+          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = if (clearable) 4.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
-        inner()
+        Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
+          if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
+          inner()
+        }
+        if (clearable && value.isNotEmpty()) {
+          Box(
+            Modifier.size(22.dp).clip(CircleShape).hand().clickable { onChange("") },
+            contentAlignment = Alignment.Center,
+          ) { DrawnIcon(Icon.CLOSE, p.muted, 10.dp) }
+        }
       }
     },
   )
