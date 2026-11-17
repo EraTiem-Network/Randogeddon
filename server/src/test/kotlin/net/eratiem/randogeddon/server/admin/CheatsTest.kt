@@ -1,8 +1,11 @@
 package net.eratiem.randogeddon.server.admin
 
 import net.eratiem.randogeddon.shared.CheatAction
+import net.eratiem.randogeddon.server.session.Placement
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class CheatsTest {
   @Test
@@ -23,6 +26,30 @@ class CheatsTest {
     assertEquals("/collect Bob-Yacht", cheatCommand(CheatAction.COLLECT, "Bob-Yacht", null))
     assertEquals("/hint \"Alice-HK\" \"Mantis Claw\"", cheatCommand(CheatAction.HINT, "Alice-HK", "Mantis Claw"))
     assertEquals("/hint_location \"Alice-HK\" \"King's Pass\"", cheatCommand(CheatAction.HINT_LOCATION, "Alice-HK", "King's Pass"))
+  }
+
+  @Test
+  fun `a hint names one copy that is neither checked nor hinted`() {
+    val placed = listOf(
+      Placement("Crossroads", "Alice-HK", "Progressive Sword", "Bob-LttP"),
+      Placement("Tower", "Bob-LttP", "Progressive Sword", "Bob-LttP"),
+      Placement("Lake", "Carol-SM", "Progressive Sword", "Bob-LttP"),
+      Placement("Cave", "Carol-SM", "Progressive Sword", "Dave-OoT"),
+      Placement("Shop", "Alice-HK", "Bombs", "Bob-LttP"),
+    )
+    val checked = mapOf("Alice-HK" to setOf("Crossroads"))
+    val hinted = mapOf("Bob-LttP" to setOf("Tower"))
+    // Only Lake is left: Crossroads is checked, Tower hinted, Cave is another slot's sword
+    repeat(20) { n ->
+      assertEquals(placed[2], pickHint(placed, "Bob-LttP", "Progressive Sword", checked, hinted, Random(n)))
+    }
+    assertNull(pickHint(placed, "Bob-LttP", "Progressive Sword", checked, hinted + ("Carol-SM" to setOf("Lake")), Random(1)))
+    assertNull(pickHint(placed, "Bob-LttP", "Mantis Claw", checked, hinted, Random(1)))
+    // Both copies are picked now and then, never another one
+    val free = (0 until 50).map { pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), emptyMap(), Random(it))!!.location }.toSet()
+    assertEquals(setOf("Crossroads", "Tower", "Lake"), free)
+    // The items a hint can still name
+    assertEquals(listOf("Progressive Sword", "Bombs"), unhinted(placed, "Bob-LttP", checked, hinted).map { it.item }.distinct())
   }
 
   @Test

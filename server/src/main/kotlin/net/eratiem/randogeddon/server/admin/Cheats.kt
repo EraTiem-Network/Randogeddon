@@ -3,6 +3,10 @@ package net.eratiem.randogeddon.server.admin
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import java.time.Instant
+import kotlin.random.asKotlinRandom
+import kotlin.random.Random
+import java.security.SecureRandom
+import net.eratiem.randogeddon.server.session.Placement
 import net.eratiem.randogeddon.database.CheatEntry
 import net.eratiem.randogeddon.database.CheatLogStore
 import net.eratiem.randogeddon.server.session.LiveSession
@@ -46,6 +50,25 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
   }
 }
 
+/**
+ * One copy of [item] for the slot [slot] to hint: a placement of it whose location is neither checked ([checked]) nor
+ * hinted ([hinted]) in its world, by chance; `null` when none is left. Archipelago's `/hint` would name every copy.
+ */
+internal fun pickHint(
+  placed: List<Placement>,
+  slot: String,
+  item: String,
+  checked: Map<String, Set<String>>,
+  hinted: Map<String, Set<String>>,
+  random: Random,
+): Placement? = unhinted(placed, slot, checked, hinted).filter { it.item == item }.randomOrNull(random)
+
+/** The placements of the slot's items that are neither checked nor hinted yet. */
+internal fun unhinted(placed: List<Placement>, slot: String, checked: Map<String, Set<String>>, hinted: Map<String, Set<String>>) =
+  placed.filter {
+    it.receiver == slot && it.location !in checked[it.finder].orEmpty() && it.location !in hinted[it.finder].orEmpty()
+  }
+
 /** For the live feed: "Alice gave Mantis Claw to Alice-HK", "Bob (support) …" for anyone but an Administrator. */
 internal fun cheatText(admin: String, action: CheatAction, slot: String, value: String?, byRole: String = "administrator"): String =
   who(admin, byRole) + " " + when (action) {
@@ -59,7 +82,8 @@ internal fun cheatText(admin: String, action: CheatAction, slot: String, value: 
 
 /**
  * Cheats from the admin panel: items, checks, release and collect, and free hints if the session allows them. They
- * go to the session's server console; every one is logged with the admin's name and shown in its live feed.
+ * go to the session's server console; every one is logged with the admin's name and shown in its live feed. A hint
+ * names one place: a location not hinted yet, or one copy of an item that is neither checked nor hinted.
  */
 @Single
 class Cheats(
@@ -89,15 +113,26 @@ class Cheats(
    */
   suspend fun names(id: String, slot: String): CheatNames {
     val session = session(id)
-    val names = session.tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
-    val text = runCatching { spoilers.of(session.id, session.seedName)?.text }.getOrNull() ?: return names
-    val open = session.tracker.read { openLocations() }
-    val placed = placements(text, open.keys)
+    val found = session.tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
+    val hinted = session.tracker.read { hintedLocations() }
+    // A hinted location isn't hinted again
+    val names = found.copy(hintLocations = found.locations.filter { it !in hinted[slot].orEmpty() }, hintItems = found.items)
+    val placed = placed(session)
     if (placed.isEmpty()) return names
+    val open = session.tracker.read { openLocations() }
+    val checked = session.tracker.read { checkedLocations() }
     val incoming = placed.filter { it.receiver == slot && it.finder != slot && it.location in open[it.finder].orEmpty() }
       .map { IncomingCheck(it.location, it.finder, it.item) }
       .sortedWith(compareBy({ it.item.lowercase() }, { it.world.lowercase() }, { it.location.lowercase() }))
-    return names.copy(incoming = incoming, placementsKnown = true)
+    // An item is hinted while a copy of it is neither checked nor hinted
+    val hintItems = unhinted(placed, slot, checked, hinted).map { it.item }.distinct().sortedBy { it.lowercase() }
+    return names.copy(incoming = incoming, placementsKnown = true, hintItems = hintItems)
+  }
+
+  /** The seed's placements from its spoiler log; empty without them (or without a log). */
+  private suspend fun placed(session: LiveSession): List<Placement> {
+    val text = runCatching { spoilers.of(session.id, session.seedName)?.text }.getOrNull() ?: return emptyList()
+    return placements(text, session.tracker.read { openLocations() }.keys)
   }
 
   /**
@@ -140,13 +175,34 @@ class Cheats(
         )
       }
     }
-    val command = cheatCommand(request.action, request.slot, value)
+    if (request.action == CheatAction.HINT_LOCATION && value in tracker.read { hintedLocations() }[request.slot].orEmpty()) {
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_HINTED, "value" to value!!, "slot" to request.slot)
+    }
+    val command = if (request.action == CheatAction.HINT) itemHint(session, request.slot, value!!) else cheatCommand(request.action, request.slot, value)
     if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
     logger.info("{} cheated in {}: {}", admin, id, command)
     val shown = value.takeIf { request.action in NEEDS_VALUE }
     log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown, byRole))
     tracker.cheat(cheatText(admin, request.action, request.slot, shown, byRole), request.action, admin, byRole, request.slot, shown)
   }
+
+  /**
+   * The command of a hint for [item] of [slot]: one copy of it, neither checked nor hinted, by its location
+   * (`/hint_location` in the world that holds it); Archipelago's own `/hint`, which names every copy, only without
+   * the spoiler log's placements.
+   */
+  private suspend fun itemHint(session: LiveSession, slot: String, item: String): String {
+    val placed = placed(session)
+    if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item)
+    val checked = session.tracker.read { checkedLocations() }
+    val hinted = session.tracker.read { hintedLocations() }
+    val copy = pickHint(placed, slot, item, checked, hinted, random)
+      ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_UNHINTED_COPY, "value" to item, "slot" to slot)
+    return cheatCommand(CheatAction.HINT_LOCATION, copy.finder, copy.location)
+  }
+
+  /** Which copy a hint names. */
+  private val random: Random = SecureRandom().asKotlinRandom()
 
   private fun session(id: String): LiveSession =
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
