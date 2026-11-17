@@ -476,7 +476,18 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   val suggested = overview?.suggestedId.orEmpty()
   val chosen = id ?: suggested
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
-  val idProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen)?.let { t.problems.text(it) } ?: if (taken) t.sessionAdmin.taken else null
+  // What the server says about the ID (a word nobody wants in one), asked a moment after the last key
+  var idRefused by remember { mutableStateOf<String?>(null) }
+  val formProblem = if (chosen.isEmpty()) null else SessionIds.problem(chosen)?.let { t.problems.text(it) } ?: if (taken) t.sessionAdmin.taken else null
+  LaunchedEffect(chosen) {
+    idRefused = null
+    if (chosen.isEmpty() || formProblem != null) return@LaunchedEffect
+    delay(400)
+    idRefused = (call("GET", "api/sessions/new/id?id=$chosen", null) { } as? Answer.Failed)?.message
+  }
+  val idProblem = formProblem ?: idRefused
+  // While it generates, the form makes room for the ID and the bar
+  var generating by remember { mutableStateOf(false) }
   val full = overview != null && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
@@ -485,20 +496,23 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
       created?.let { result ->
         Created(result.locked, onDone = { created = null })
       }
-      if (full) Txt(t.sessionAdmin.everyServerInUse, size = 12.5.sp, color = p.trap)
-      if (atLimit) Txt(t.sessionAdmin.atLimit, size = 12.5.sp, color = p.trap)
-      overview?.left?.takeIf { it > 0 }?.let { Txt(t.sessionAdmin.mayCreate(it), size = 12.5.sp, color = p.muted) }
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
-        InfoTip(t.tips.sessionId)
-        FilterField(chosen, { id = it.lowercase().trim() }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
-        idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      if (!generating) {
+        if (full) Txt(t.sessionAdmin.everyServerInUse, size = 12.5.sp, color = p.trap)
+        if (atLimit) Txt(t.sessionAdmin.atLimit, size = 12.5.sp, color = p.trap)
+        overview?.left?.takeIf { it > 0 }?.let { Txt(t.sessionAdmin.mayCreate(it), size = 12.5.sp, color = p.muted) }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
+          InfoTip(t.tips.sessionId)
+          FilterField(chosen, { id = it.lowercase().trim() }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+          idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+        }
       }
       if (overview != null) key(round) {
         CreateSession(
           AdminSessionView(apVersions = overview.apVersions, users = overview.users, people = overview.people), chosen,
           administrator = administrator,
           ready = idProblem == null && chosen.isNotEmpty() && !full && !atLimit,
+          onBusy = { generating = it },
           onCreated = { result ->
             created = result
             id = null
@@ -627,7 +641,15 @@ private fun SessionSummary(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, onCreated: (CreateSessionResult) -> Unit, administrator: Boolean) {
+private fun CreateSession(
+  view: AdminSessionView,
+  id: String,
+  ready: Boolean,
+  onCreated: (CreateSessionResult) -> Unit,
+  administrator: Boolean,
+  /** It generates (or stopped): the form around this hides what it shows besides. */
+  onBusy: (Boolean) -> Unit = {},
+) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val scope = rememberCoroutineScope()
@@ -653,6 +675,7 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   // How far the generation is while it runs (asked about three times a second)
   var progress by remember { mutableStateOf<GenerationProgress?>(null) }
   LaunchedEffect(busy) {
+    onBusy(busy)
     progress = null
     while (busy) {
       delay(300)
@@ -690,6 +713,17 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
   }
   // Another release may have other games
   LaunchedEffect(version) { if (yamls.isNotEmpty()) inspect() }
+
+  // While it generates: nothing of the form (there is nothing to change now), just the session's ID, the stage
+  // and about how far. A failure brings the form back as it was
+  if (busy) {
+    val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
+    Txt(id, size = 18.sp, weight = FontWeight.Bold)
+    Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
+    ProgressBar(now.percent / 100f)
+    Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
+    return
+  }
 
   Txt(t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -892,8 +926,8 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
-        if (busy) t.sessionAdmin.generating else t.sessionAdmin.generateAndStart,
-        enabled = ready && !busy && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
+        t.sessionAdmin.generateAndStart,
+        enabled = ready && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
           unplayed.isEmpty(),
       ) {
         busy = true
@@ -920,13 +954,6 @@ private fun CreateSession(view: AdminSessionView, id: String, ready: Boolean, on
           busy = false
         }
       }
-      if (busy) Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
-    }
-    // While it generates: the stage and about how far, as a bar across the form
-    if (busy) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
-      ProgressBar(now.percent / 100f)
-      Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
     }
     error?.let { GenerationError(it.message, it.detail) }
   }
