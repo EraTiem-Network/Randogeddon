@@ -27,11 +27,20 @@ interface SpoilerTexts {
   val none: String
   val fullLog: String
   val fullLogSubtitle: String
+  /** Which lines of the log show: `Lines 301–600 of 12,345` (the numbers formatted already). */
+  fun linesOf(from: String, to: String, total: String): String
+  val earlierLines: String
+  val laterLines: String
+  val clearSearch: String
 }
 
 internal object EnglishSpoiler : SpoilerTexts {
   override val title = "Spoiler log"
   override fun spheres(n: Int) = if (n == 1) "1 sphere" else "$n spheres"
+  override fun linesOf(from: String, to: String, total: String) = "Lines $from–$to of $total"
+  override val earlierLines = "Earlier lines"
+  override val laterLines = "Later lines"
+  override val clearSearch = "Clear the search"
   override val everySlot = "All slots"
   override val foldAll = "Collapse all"
   override val unfoldAll = "Expand all"
@@ -56,6 +65,10 @@ internal object EnglishSpoiler : SpoilerTexts {
 internal object GermanSpoiler : SpoilerTexts {
   override val title = "Spoiler-Log"
   override fun spheres(n: Int) = if (n == 1) "1 Sphäre" else "$n Sphären"
+  override fun linesOf(from: String, to: String, total: String) = "Zeilen $from–$to von $total"
+  override val earlierLines = "Frühere Zeilen"
+  override val laterLines = "Spätere Zeilen"
+  override val clearSearch = "Suche leeren"
   override val everySlot = "Alle Slots"
   override val foldAll = "Alle einklappen"
   override val unfoldAll = "Alle aufklappen"
