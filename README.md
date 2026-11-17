@@ -366,15 +366,20 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
 
 ### Names nobody should have
 
-User names and session IDs are checked against a list of swear words and slurs (about 1,400, of 15 languages:
-`unwanted-words.txt`, made by `scripts/unwanted_words.py` from the
-[List of Dirty, Naughty, Obscene, and Otherwise Bad Words](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)
-(CC BY 4.0), with words added and taken out there). A name is read part by part (`Dark_Lord`, `darkLord`), written
+User names and session IDs are checked against a list of swear words and slurs (about 9,600, of the 17 languages
+written in Latin letters: `unwanted-words.txt`, made by `scripts/unwanted_words.py` from three lists:
+[LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0),
+[BadWords](https://github.com/FlacSy/badwords) (MIT) and
+[Google Profanity Words](https://github.com/coffee-and-fun/google-profanity-words) (MIT)). Ordinary words in them are
+taken out by checking against the 50,000 commonest words of each language
+([FrequencyWords](https://github.com/hermitdave/FrequencyWords)) and 4,900 first names, and by hand; words are added
+there too. The script downloads what it needs into `output/unwanted-words/` and runs in seconds. A name is read part by part (`Dark_Lord`, `darkLord`), written
 together, and with digits as the letters they stand in for (`sh1t`); a word of 7 letters or more, and a few
 marked ones, are also found inside a longer word. Short ones aren't (they are inside too many ordinary words and
 names), so the filter keeps the obvious out and can be got around by someone who tries. Who is refused isn't told
 which word it was. Names that exist already stay as they are; a name that comes from Authentik is made to fit
-(`Ada Lovelace`: `Ada_Lovelace`). To change the list: `OURS` and `ALLOWED` in the script, then run it.
+(`Ada Lovelace`: `Ada_Lovelace`). To change the list: `OURS` and `ALLOWED` in the script, then run it; to take
+in what the lists have learned since, delete `output/unwanted-words/` first.
 
 ### APWorlds
 
