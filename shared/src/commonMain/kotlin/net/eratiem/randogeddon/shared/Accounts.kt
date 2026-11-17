@@ -16,16 +16,24 @@ object UserNames {
   /** A hosted slot's "player" (no account): no one may be named so, in any case. */
   const val HOSTED = "Hosted"
 
+  /** Names that would pass for Randogeddon itself or for someone with a say here: no one may be named so (any case). */
+  private val RESERVED = setOf(
+    "hosted", "admin", "admins", "administrator", "administrators", "moderator", "moderators", "mod", "mods", "support",
+    "supporter", "system", "root", "staff", "owner", "official", "randogeddon", "archipelago", "server", "everyone",
+    "anonymous", "guest", "bot", "null", "undefined",
+  )
+
+  /** A name's characters: letters without accents, digits and the underscore. */
+  fun allowed(c: Char): Boolean = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '_'
+
   fun valid(name: String): Boolean = problem(name) == null
 
   /** What's wrong with [name]; `null`: nothing (except maybe being taken). */
   fun problem(name: String): Refusal? = when {
     name.length < MIN_LENGTH -> Problem.NAME_TOO_SHORT
     name.length > MAX_LENGTH -> Problem.NAME_TOO_LONG
-    name != name.trim() -> Problem.NAME_SPACES
-    '@' in name -> Problem.NAME_AT
-    name.any { it.isISOControl() } -> Problem.NAME_CONTROL
-    name.equals(HOSTED, ignoreCase = true) -> Problem.NAME_RESERVED
+    !name.all(::allowed) -> Problem.NAME_CHARACTERS
+    name.lowercase() in RESERVED -> Problem.NAME_RESERVED
     else -> null
   }?.let { Refusal(it) }
 }

@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server
 
+import net.eratiem.randogeddon.server.account.nameProblem
 import ch.qos.logback.classic.Level
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
@@ -110,7 +111,7 @@ private suspend fun loginLink(config: TrackerConfig, person: String, users: User
 
 /** A login for [person] without an invitation: the first Administrator, or a player of the local demo. */
 private suspend fun createLogin(person: String, admin: Boolean, users: UserStore): Int {
-  UserNames.problem(person)?.let {
+  nameProblem(person)?.let {
     System.err.println("Name: $it")
     return 2
   }

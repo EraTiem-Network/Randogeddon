@@ -91,7 +91,7 @@ class AccountService(
       )
     }
     val suggested = suggestedName?.trim()?.takeIf { it.isNotEmpty() }
-    suggested?.let { name -> UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
+    suggested?.let { name -> nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
     mailLimits.count(by)
     val account = users.invite(address)
     logger.info("{} invites {}", by, address)
@@ -137,7 +137,7 @@ class AccountService(
     val info = invitation(request.token, now = now)
     if (!info.valid) throw AccountProblem(HttpStatusCode.Gone, Refusal(info.code ?: Problem.LINK_DOESNT_WORK))
     val name = request.name.trim()
-    UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     PasswordRules.problem(request.password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (users.findActive(name) != null) throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to name)
     val hash = tokenHash(request.token)
@@ -219,7 +219,7 @@ class AccountService(
   suspend fun rename(user: User, name: String) {
     requireOwn(user)
     val clean = name.trim()
-    UserNames.problem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    nameProblem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (clean == user.name) return
     users.findActive(clean)?.takeIf { it.id != user.id }?.let {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to clean)
@@ -436,3 +436,7 @@ class AccountService(
     }
   }
 }
+
+/** What's wrong with [name] as a user's name: its form ([UserNames]), or a word nobody should be called here. */
+internal fun nameProblem(name: String): Refusal? =
+  UserNames.problem(name) ?: Refusal(Problem.NAME_UNWANTED).takeIf { UnwantedWords.hit(name) }

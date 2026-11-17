@@ -9,6 +9,22 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.5: The Management panel, and names with rules
+- **User names:** only letters without accents, digits and `_` (so far almost anything but `@`). Names that pass for
+  Randogeddon or someone with a say here are reserved (*Admin*, *Administrator*, *Moderator*, *Support*, *System*,
+  *Root*, … in any case). Existing names stay; a name from Authentik is made to fit (`Ada Lovelace`: `Ada_Lovelace`),
+  and a second account of a name gets `_2` instead of ` 2`.
+- **Unwanted words** in user names and session IDs: a list of about 1,400 swear words and slurs of 15 languages
+  (LDNOOBW, CC BY 4.0, curated by `scripts/unwanted_words.py`), read part by part, written together, behind digits
+  (`sh1t`), and for longer words inside others. Checked against the commonest English and German words and 4,900
+  first names for false hits. Session IDs keep their characters (lowercase letters, digits, `-`).
+- **The panel is the *Management panel*** (German: *Verwaltung*), for Administrators with *· Administrator* after it.
+- **Support helps there only:** the *Support* section is no longer on the dashboard as well.
+- **Support adds watchers and makes the share link** (so far only players and Session-Managers could): *Watchers*
+  is in the panel under a supported session's *Support* section.
+- **Its *Support* section flickered:** every 15 seconds the panel forgot what it had loaded for a session someone
+  only supports (it isn't among the ones loaded ahead), so the section emptied and filled again.
+
 ### 0.16.4: Support in the panel, and a spoiler log that stays usable
 - **Support sees its sessions in the panel:** the sessions someone supports are in the panel's switch, each with how
   it stands, its dashboard and the *Support* section (give an item, check a location, a free hint; the spoiler

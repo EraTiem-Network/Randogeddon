@@ -42,10 +42,12 @@ class SingleSignOnTest {
   @Test
   fun `a new account's name fits the rules and is unique`() = runBlocking {
     assertEquals("ada", wantedName(identity()))
-    assertEquals("Ada Lovelace", wantedName(identity(username = null)))
+    assertEquals("Ada_Lovelace", wantedName(identity(username = null)))
+    assertEquals("Zoe_Mueller", wantedName(identity(username = "Zoë Mueller")))
+    assertEquals("ada.l", "ada.l".also { assertEquals("ada_l", wantedName(identity(username = it))) })
     assertEquals("Administrator", wantedName(identity(username = "x@")))
-    val taken = setOf("ada", "ada 2")
-    assertEquals("ada 3", uniqueName("ada") { it in taken })
+    val taken = setOf("ada", "ada_2")
+    assertEquals("ada_3", uniqueName("ada") { it in taken })
     assertEquals("Ada", uniqueName("Ada") { false })
   }
 

@@ -120,7 +120,7 @@
       <!-- For the password manager: the account's address, entered by the admin -->
       <input name="email" type="email" autocomplete="email" hidden>
       <label><span data-t="name">Name</span><input name="username" autocomplete="username" autocapitalize="off"
-        spellcheck="false" required minlength="3" maxlength="32"></label>
+        spellcheck="false" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
       <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
       <label><span data-t="passwordAgain">Password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
       <label><span data-t="deleteByItself">Delete my account by itself</span>

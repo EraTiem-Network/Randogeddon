@@ -2,7 +2,7 @@ package net.eratiem.randogeddon.shared.i18n
 
 import net.eratiem.randogeddon.shared.CheatAction
 
-/** Cheats (in the panel) and help (support's section on the dashboard). */
+/** Cheats and help (support's section), both in the panel. */
 interface CheatTexts {
   fun action(action: CheatAction): String
   fun tip(action: CheatAction): String

@@ -34,8 +34,8 @@ interface PanelTexts {
 }
 
 internal object EnglishPanel : PanelTexts {
-  override val titleAdministrator = "Manage · Administrator"
-  override val title = "Manage your sessions"
+  override val titleAdministrator = "Management panel · Administrator"
+  override val title = "Management panel"
   override val general = "General"
   override val gameServer = "Game server"
   override val gatewayUnreachable = "gateway unreachable"
@@ -74,8 +74,8 @@ internal object EnglishPanel : PanelTexts {
 }
 
 internal object GermanPanel : PanelTexts {
-  override val titleAdministrator = "Verwalten · Administrator"
-  override val title = "Deine Sessions verwalten"
+  override val titleAdministrator = "Verwaltung · Administrator"
+  override val title = "Verwaltung"
   override val general = "Allgemein"
   override val gameServer = "Spielserver"
   override val gatewayUnreachable = "Gateway nicht erreichbar"

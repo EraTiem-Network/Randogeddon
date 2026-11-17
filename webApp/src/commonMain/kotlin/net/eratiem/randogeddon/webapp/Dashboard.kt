@@ -447,9 +447,8 @@ private fun TrackerApp() {
               if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
               if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             }
-            // By the role in it: support helps the players, players add watchers
+            // Players add watchers (support helps in the panel)
             val id = selected
-            if (role == SessionRole.SUPPORT && id != null) key(id) { SupportSection(id, onSpoiler = { go(Route.Spoiler(id, fromAdmin = false)) }) }
             if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
           }
         }

@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.server.account.UnwantedWords
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import java.security.SecureRandom
@@ -230,6 +231,7 @@ class SessionAdmin(
     }
     val id = request.id.trim()
     SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
+    if (UnwantedWords.hit(id)) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ID_UNWANTED)
     if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
     val servers = gameServer.sessions()
     // The sessions others are creating right now will take a game server each too

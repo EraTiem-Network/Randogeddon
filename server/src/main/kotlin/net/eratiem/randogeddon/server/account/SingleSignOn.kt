@@ -79,15 +79,19 @@ internal fun ssoAccount(identity: OidcIdentity, adminGroup: String, linked: User
 internal fun wantedName(identity: OidcIdentity): String {
   val raw = listOfNotNull(identity.preferredUsername, identity.name, identity.email?.substringBefore('@'))
     .firstOrNull { it.isNotBlank() } ?: "Administrator"
-  val clean = raw.replace("@", "").filter { !it.isISOControl() }.trim().take(UserNames.MAX_LENGTH)
-  return clean.takeIf(UserNames::valid) ?: "Administrator"
+  // What a name here can't have becomes one _ (Ada Lovelace: Ada_Lovelace); accents go, the letters stay
+  val plain = java.text.Normalizer.normalize(raw.substringBefore('@').trim(), java.text.Normalizer.Form.NFKD)
+    .filter { Character.getType(it) != Character.NON_SPACING_MARK.toInt() }
+  val clean = plain.map { if (UserNames.allowed(it)) it else '_' }.joinToString("")
+    .replace(Regex("_+"), "_").trim('_').take(UserNames.MAX_LENGTH)
+  return clean.takeIf { nameProblem(it) == null } ?: "Administrator"
 }
 
-/** [wanted], or with a number behind it if taken ([taken]): `Ada`, `Ada 2`, … */
+/** [wanted], or with a number behind it if taken ([taken]): `Ada`, `Ada_2`, … */
 internal suspend fun uniqueName(wanted: String, taken: suspend (String) -> Boolean): String {
   if (!taken(wanted)) return wanted
   for (n in 2..999) {
-    val candidate = "${wanted.take(UserNames.MAX_LENGTH - 4)} $n"
+    val candidate = "${wanted.take(UserNames.MAX_LENGTH - 4)}_$n"
     if (!taken(candidate)) return candidate
   }
   error("No free name for $wanted")

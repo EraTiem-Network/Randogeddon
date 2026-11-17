@@ -90,7 +90,7 @@ class RequireLoginTest {
             route("/watchers") {
               install(RequireSessionRole) {
                 logins = check
-                roles = setOf(SessionRole.PLAYER, SessionRole.MANAGER)
+                roles = setOf(SessionRole.PLAYER, SessionRole.SUPPORT, SessionRole.MANAGER)
               }
               get { call.respondText("watchers") }
             }
@@ -217,7 +217,7 @@ class RequireLoginTest {
   }
 
   @Test
-  fun `support helps, watchers only watch, players and Session-Managers add watchers`() = test {
+  fun `support helps, watchers only watch, players, support and Session-Managers add watchers`() = test {
     suspend fun status(path: String, who: String) = client.get(path) { cookie(SESSION_COOKIE, who) }.status
     // Watchers and support see the session
     assertEquals(HttpStatusCode.OK, status("/api/sessions/brave-otter/state", "w"))
@@ -227,8 +227,8 @@ class RequireLoginTest {
     assertEquals(HttpStatusCode.Forbidden, status("/api/sessions/brave-otter/manage", "stu"))
     for (who in listOf("a", "s", "w", "p")) assertEquals(HttpStatusCode.Forbidden, status("/api/sessions/brave-otter/support", who), who)
     assertEquals(HttpStatusCode.OK, status("/api/sessions/quiet-fox/support", "ada"))
-    // Watchers: added by players and Session-Managers (and Administrators), not by support or watchers
-    for (who in listOf("a", "s", "ada")) assertEquals(HttpStatusCode.OK, status("/api/sessions/brave-otter/watchers", who), who)
-    for (who in listOf("stu", "w", "p", "m")) assertEquals(HttpStatusCode.Forbidden, status("/api/sessions/brave-otter/watchers", who), who)
+    // Watchers: added by players, support and Session-Managers (and Administrators), not by watchers
+    for (who in listOf("a", "s", "ada", "stu")) assertEquals(HttpStatusCode.OK, status("/api/sessions/brave-otter/watchers", who), who)
+    for (who in listOf("w", "p", "m")) assertEquals(HttpStatusCode.Forbidden, status("/api/sessions/brave-otter/watchers", who), who)
   }
 }
