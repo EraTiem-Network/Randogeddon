@@ -205,7 +205,8 @@ fun ApworldsSection() {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       // Not while an upload waits for its answer
-      busy?.takeIf { asking == null }?.let { Txt(texts.relisting(it), size = 12.5.sp, color = p.muted) }
+      // A try or a removal says what it does; an upload has its pills
+      busy?.takeIf { asking == null && pills.isEmpty() }?.let { Txt(texts.relisting(it), size = 12.5.sp, color = p.muted) }
       if (pills.isNotEmpty()) UploadPills(pills)
       outcome.forEach { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
       // Done: what it said goes away with a click (or by itself, after an upload without trouble)

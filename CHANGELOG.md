@@ -9,6 +9,13 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.12: The ID that is generated, and an upload without its line
+- **While a new session generated, it showed another ID:** the panel loads its overview again every 15 seconds,
+  each time with a new suggested ID, and the form took it over (the session itself got the one that was sent, and the
+  bar asked about the wrong one). The form keeps its first suggestion now, and the generating view the ID it sent.
+- **An APWorld upload no longer has its "Uploading …" line** above the pills; a try or a removal still says what it
+  does.
+
 ### 0.16.11: An upload's errors in its pill
 - **Why an APWorld was refused is in its pill's tip** (on hover, a long press on a phone), like what an added one
   brought; it is no longer written out below the pills too.
