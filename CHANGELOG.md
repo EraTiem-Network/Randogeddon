@@ -19,6 +19,9 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
     *Gehostet*, "nur noch lesbar" (not "schreibgeschützt").
   - Both: "Administrator" where "admin" was left; the new-session form no longer says that new names get a login
     (people without an account are invited); an invited account's deletion date reads as coming, not as done.
+- **The font's animation only after a change by hand:** picking a theme or changing the font settings animates the
+  letters as before; when the page loads (or the account's choice arrives after the login) the font is just there.
+  While a font's files load, the page keeps the font it shows instead of falling back to the original in between.
 - Still to do in this phase: the pages looked through by hand in both languages.
 
 ## Phase 15: More Polish

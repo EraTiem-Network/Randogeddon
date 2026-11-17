@@ -720,8 +720,8 @@ link's page, the browser's last choice applies (the login page takes its colours
 third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
 NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
 the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
-used (20 to 130 KB each); until then, and without them, the original shows. A change of the font is animated: the
-letters take the new one one by one, in no order. The login page keeps the system's font.
+used (20 to 130 KB each); until then, and without them, the original shows. A change of the font by hand (another theme, the
+font settings) is animated: the letters take the new one one by one, in no order; on page load it is just there. The login page keeps the system's font.
 
 | Theme | Font | Theme | Font |
 |---|---|---|---|
