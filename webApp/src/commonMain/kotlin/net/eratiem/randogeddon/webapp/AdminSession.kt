@@ -474,7 +474,9 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   var created by remember { mutableStateOf<CreateSessionResult?>(null) }
   // A new form (and a new suggestion) after each session
   var round by remember { mutableStateOf(0) }
-  val suggested = overview?.suggestedId.orEmpty()
+  // The first suggestion stays for this form: the panel loads its overview again every 15 s, each time with a new
+  // one, and the ID shown (and generated with) mustn't change under the user's hands
+  val suggested = remember(round, overview != null) { overview?.suggestedId.orEmpty() }
   val chosen = id ?: suggested
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
   // What the server says about the ID (a word nobody wants in one), asked a moment after the last key
@@ -672,6 +674,8 @@ private fun CreateSession(
   var options by remember { mutableStateOf(SessionOptions(pointHints = false, autoHints = false)) }
   var version by remember { mutableStateOf(view.apVersions.firstOrNull()) }
   var busy by remember { mutableStateOf(false) }
+  // The ID it was sent with: what the bar asks about and shows, whatever happens to the form's meanwhile
+  var sentId by remember { mutableStateOf<String?>(null) }
   var error by remember { mutableStateOf<Answer.Failed?>(null) }
   // How far the generation is while it runs (asked about three times a second)
   var progress by remember { mutableStateOf<GenerationProgress?>(null) }
@@ -680,7 +684,7 @@ private fun CreateSession(
     progress = null
     while (busy) {
       delay(300)
-      (call("GET", "api/sessions/new/progress/$id", null) {
+      (call("GET", "api/sessions/new/progress/${sentId ?: id}", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(GenerationProgress.serializer(), it)
       } as? Answer.Ok)?.value?.let { progress = it }
     }
@@ -719,7 +723,7 @@ private fun CreateSession(
   // and about how far. A failure brings the form back as it was
   if (busy) {
     val now = progress ?: GenerationProgress(GenerationStage.CHECKING, 0)
-    Txt(id, size = 18.sp, weight = FontWeight.Bold)
+    Txt(sentId ?: id, size = 18.sp, weight = FontWeight.Bold)
     Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
     // The four steps: the ones done with a check mark, the one it is at in the accent colour
     FlowRow(
@@ -953,6 +957,7 @@ private fun CreateSession(
           unplayed.isEmpty(),
       ) {
         busy = true
+        sentId = id
         error = null
         scope.launch {
           val request = CreateSessionRequest(
