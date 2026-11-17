@@ -130,15 +130,13 @@ fun ApworldsSection() {
             is Answer.Ok -> answer.value.results
             is Answer.Failed -> {
               part.forEach { pill(it.fileName, UploadState.FAILED, answer.message) }
-              outcome = outcome + (false to answer.message)
               return@forEachIndexed
             }
           }
           results.filter { it.conflict == null }.forEach { r ->
             val (ok, text) = line(r)
+            // What it brought, or why not: its pill's tip
             pill(r.file, if (ok) UploadState.ADDED else UploadState.FAILED, text)
-            // What went wrong stays readable below the pills; what was added is in its pill's tip
-            if (!ok) outcome = outcome + (false to text)
           }
           load()
           val held = part.zip(results).filter { (_, r) -> r.conflict != null }
@@ -151,11 +149,9 @@ fun ApworldsSection() {
             is Answer.Ok -> answer.value.results.forEach { r ->
               val (ok, text) = line(r)
               pill(r.file, if (ok) UploadState.ADDED else UploadState.FAILED, text)
-              if (!ok) outcome = outcome + (false to text)
             }
             is Answer.Failed -> {
               replacing.forEach { (file, _) -> pill(file.fileName, UploadState.FAILED, answer.message) }
-              outcome = outcome + (false to answer.message)
             }
           }
           load()
@@ -163,7 +159,7 @@ fun ApworldsSection() {
         busy = null
         // Everything added: the pills go by themselves after a while (what went wrong stays until cleared)
         val finished = pills
-        if (outcome.isEmpty() && finished.all { it.state == UploadState.ADDED }) {
+        if (finished.all { it.state == UploadState.ADDED }) {
           delay(CLEAR_AFTER_MS)
           if (pills == finished) pills = emptyList()
         }
@@ -254,7 +250,7 @@ private data class UploadPill(val file: String, val state: UploadState, val deta
 /**
  * The files of an upload as pills that fill like a bar: yellow while they are checked (the bar creeps on, since the
  * server says nothing until it is done), green once added, red if not, grey if skipped. A pill's tip says what it
- * brought or why not.
+ * brought or why not (on hover; a long press on a phone).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
