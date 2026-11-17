@@ -9,6 +9,25 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.3: The pages, after a look through them
+- **Main page without a session:** the top card says *No session* and nothing more; below it, for who may create
+  one, a bubble *New session?* points at the panel's button. A click on *RANDOGEDDON* goes to the main page.
+- **Your account:** with single sign-on the first panel is *Managed via Authentik* (a line, the button, the *Local
+  ID*). The language, the mode (with icons) and the font mode are buttons side by side instead of dropdowns; the
+  font stays a dropdown; each has its label. *Randogeddon's* over the own themes.
+- **Users' panel:** the login reads *SSO (Authentik)* for Administrators with single sign-on (not "password" too:
+  theirs is one nobody knows); *Self-created sessions* and *Self-created sessions limit*, whose empty field shows
+  the default and has arrows to step it (the default's field too); a time-out for 1, 3, 6 or 12 hours, 1, 2 or 3
+  days, 1 or 2 weeks or 30 days.
+- **Admin panel without a running session:** *Session none running* without a dropdown, *No session is running
+  right now.*, and the *New session* button breathes. Past sessions and versions with clearer subtitles.
+- **The address from Authentik:** a linked account takes the address Authentik has. Before, only a verified one
+  was taken, and Authentik calls every address unverified, so an Administrator's account stayed without one.
+  Finding an account that isn't linked yet by its address still needs a verified one. Whether Authentik calls the
+  address verified is kept (V22, `users.email_verified_by_provider`) and shown in the account's window: *(not
+  verified in Authentik)*.
+- `GET /api/me` says whether the account may create sessions at all (`createsSessions`).
+
 ### 0.16.2: A clean first start
 - **On a new database the gateway waits** for its login and the tables (up to 2 minutes), which the tracker makes a
   moment after both started. Before, it failed to log in, ended and was started again until they were there: it
