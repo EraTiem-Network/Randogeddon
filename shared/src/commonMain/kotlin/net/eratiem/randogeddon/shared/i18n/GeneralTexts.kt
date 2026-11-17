@@ -18,6 +18,12 @@ interface ApworldTexts {
   val replace: String
   val skip: String
   fun skipped(file: String): String
+  /** An uploaded file's pill while it isn't done: its turn hasn't come, it is checked, it waits for an answer. */
+  val pillWaiting: String
+  val pillChecking: String
+  val pillAsking: String
+  /** Takes away what the last upload, try or removal said. */
+  val clearOutcome: String
   fun removing(files: String): String
   fun removed(file: String, release: String): String
   fun trying(file: String, release: String): String
@@ -165,6 +171,10 @@ internal object EnglishApworlds : ApworldTexts {
   override val replace = "Replace"
   override val skip = "Skip"
   override fun skipped(file: String) = "$file was skipped; nothing changed"
+  override val pillWaiting = "Waiting for its turn"
+  override val pillChecking = "Uploading, and Archipelago checks it"
+  override val pillAsking = "Waiting for your answer above"
+  override val clearOutcome = "Clear"
   override fun removing(files: String) = "Removing $files…"
   override fun removed(file: String, release: String) = "$file removed from Archipelago $release"
   override fun trying(file: String, release: String) = "Trying $file with Archipelago $release…"
@@ -220,6 +230,10 @@ internal object GermanApworlds : ApworldTexts {
   override val replace = "Ersetzen"
   override val skip = "Überspringen"
   override fun skipped(file: String) = "$file wurde übersprungen; nichts geändert"
+  override val pillWaiting = "Wartet, bis sie dran ist"
+  override val pillChecking = "Wird hochgeladen, Archipelago prüft sie"
+  override val pillAsking = "Wartet auf deine Antwort oben"
+  override val clearOutcome = "Leeren"
   override fun removing(files: String) = "Entferne $files…"
   override fun removed(file: String, release: String) = "$file aus Archipelago $release entfernt"
   override fun trying(file: String, release: String) = "$file wird mit Archipelago $release ausprobiert…"

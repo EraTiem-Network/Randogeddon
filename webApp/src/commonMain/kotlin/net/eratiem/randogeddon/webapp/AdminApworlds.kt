@@ -2,6 +2,12 @@ package net.eratiem.randogeddon.webapp
 
 import net.eratiem.randogeddon.shared.i18n.fileSize
 import androidx.compose.foundation.background
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -30,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.ApiJson
@@ -61,6 +68,11 @@ fun ApworldsSection() {
   var outcome by remember { mutableStateOf<List<Pair<Boolean, String>>>(emptyList()) }
   // An upload that would replace something, and the answer it waits for (true: replace)
   var asking by remember { mutableStateOf<Pair<ApworldResult, CompletableDeferred<Boolean>>?>(null) }
+  // The files of the last upload, each as it stands, in the order picked
+  var pills by remember { mutableStateOf<List<UploadPill>>(emptyList()) }
+  fun pill(file: String, state: UploadState, detail: String? = null) {
+    pills = pills.map { if (it.file == file) it.copy(state = state, detail = detail) else it }
+  }
 
   fun load() = scope.launch {
     when (val answer = call("GET", "api/admin/apworlds", null) { ApiJson.decodeFromString(ArchipelagoInfo.serializer(), it) }) {
@@ -102,6 +114,7 @@ fun ApworldsSection() {
       val files = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
       if (files.isEmpty()) return@pickFiles
       outcome = emptyList()
+      pills = files.map { UploadPill(it.fileName, UploadState.WAITING) }
       // As few requests as the size allows; then the ones that would replace something, once they may
       val parts = files.fold(mutableListOf<MutableList<UploadedYaml>>()) { parts, file ->
         val last = parts.lastOrNull()
@@ -112,29 +125,55 @@ fun ApworldsSection() {
       scope.launch {
         parts.forEachIndexed { i, part ->
           val label = texts.uploading(part.joinToString(", ") { it.fileName }, i + 1, parts.size)
+          part.forEach { pill(it.fileName, UploadState.CHECKING) }
           val results = when (val answer = send(release, part, replace = false, label)) {
             is Answer.Ok -> answer.value.results
-            is Answer.Failed -> { outcome = outcome + (false to answer.message); return@forEachIndexed }
+            is Answer.Failed -> {
+              part.forEach { pill(it.fileName, UploadState.FAILED, answer.message) }
+              outcome = outcome + (false to answer.message)
+              return@forEachIndexed
+            }
           }
-          outcome = outcome + results.filter { it.conflict == null }.map(::line)
+          results.filter { it.conflict == null }.forEach { r ->
+            val (ok, text) = line(r)
+            pill(r.file, if (ok) UploadState.ADDED else UploadState.FAILED, text)
+            // What went wrong stays readable below the pills; what was added is in its pill's tip
+            if (!ok) outcome = outcome + (false to text)
+          }
           load()
           val held = part.zip(results).filter { (_, r) -> r.conflict != null }
+          held.forEach { (_, r) -> pill(r.file, UploadState.ASKING) }
           val replacing = held.filter { (_, r) -> ask(r) }
-          outcome = outcome + (held - replacing.toSet()).map { (_, r) -> false to texts.skipped(r.file) }
+          (held - replacing.toSet()).forEach { (_, r) -> pill(r.file, UploadState.SKIPPED, texts.skipped(r.file)) }
           if (replacing.isEmpty()) return@forEachIndexed
+          replacing.forEach { (file, _) -> pill(file.fileName, UploadState.CHECKING) }
           when (val answer = send(release, replacing.map { it.first }, replace = true, label)) {
-            is Answer.Ok -> outcome = outcome + answer.value.results.map(::line)
-            is Answer.Failed -> outcome = outcome + (false to answer.message)
+            is Answer.Ok -> answer.value.results.forEach { r ->
+              val (ok, text) = line(r)
+              pill(r.file, if (ok) UploadState.ADDED else UploadState.FAILED, text)
+              if (!ok) outcome = outcome + (false to text)
+            }
+            is Answer.Failed -> {
+              replacing.forEach { (file, _) -> pill(file.fileName, UploadState.FAILED, answer.message) }
+              outcome = outcome + (false to answer.message)
+            }
           }
           load()
         }
         busy = null
+        // Everything added: the pills go by themselves after a while (what went wrong stays until cleared)
+        val finished = pills
+        if (outcome.isEmpty() && finished.all { it.state == UploadState.ADDED }) {
+          delay(CLEAR_AFTER_MS)
+          if (pills == finished) pills = emptyList()
+        }
       }
     }
   }
 
   fun tryWith(release: String, file: ApworldFile) {
     outcome = emptyList()
+    pills = emptyList()
     scope.launch {
       val body = ApiJson.encodeToString(ApworldTry.serializer(), ApworldTry(release, file.release, file.file))
       outcome = listOf(
@@ -153,6 +192,7 @@ fun ApworldsSection() {
     val names = files.map { it.file }
     busy = texts.removing(names.joinToString(", "))
     outcome = emptyList()
+    pills = emptyList()
     scope.launch {
       val body = ApiJson.encodeToString(ApworldRemoval.serializer(), ApworldRemoval(release, names))
       outcome = when (val answer = call("POST", "api/admin/apworlds/remove", body) { }) {
@@ -170,7 +210,12 @@ fun ApworldsSection() {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       // Not while an upload waits for its answer
       busy?.takeIf { asking == null }?.let { Txt(texts.relisting(it), size = 12.5.sp, color = p.muted) }
+      if (pills.isNotEmpty()) UploadPills(pills)
       outcome.forEach { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
+      // Done: what it said goes away with a click (or by itself, after an upload without trouble)
+      if (busy == null && asking == null && (pills.isNotEmpty() || outcome.isNotEmpty())) {
+        Row { SmallButton(texts.clearOutcome, { pills = emptyList(); outcome = emptyList() }) }
+      }
       asking?.let { (held, decision) ->
         val conflict = held.conflict!!
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -196,6 +241,77 @@ fun ApworldsSection() {
             onTry = { file -> tryWith(release.version, file) },
           )
         }
+      }
+    }
+  }
+}
+
+/** How an uploaded file stands: its turn to come, checked, waiting for the answer to replace, then how it ended. */
+private enum class UploadState { WAITING, CHECKING, ASKING, ADDED, SKIPPED, FAILED }
+
+private data class UploadPill(val file: String, val state: UploadState, val detail: String? = null)
+
+/**
+ * The files of an upload as pills that fill like a bar: yellow while they are checked (the bar creeps on, since the
+ * server says nothing until it is done), green once added, red if not, grey if skipped. A pill's tip says what it
+ * brought or why not.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UploadPills(pills: List<UploadPill>) {
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    pills.forEach { key(it.file) { UploadPillView(it) } }
+  }
+}
+
+@Composable
+private fun UploadPillView(pill: UploadPill) {
+  val p = LocalPalette.current
+  val texts = LocalTexts.current.apworlds
+  val state = pill.state
+  val target = when (state) {
+    UploadState.WAITING -> p.muted
+    UploadState.CHECKING, UploadState.ASKING -> p.warn
+    UploadState.ADDED -> p.ok
+    UploadState.FAILED -> p.trap
+    UploadState.SKIPPED -> p.muted
+  }
+  val color by animateColorAsState(target, tween(400))
+  // Checking creeps towards 90 % (an upload of several MB, then Archipelago's check); done is full. From empty, even
+  // when the pill shows up already being checked
+  val bar = remember { Animatable(0f) }
+  LaunchedEffect(state) {
+    when (state) {
+      UploadState.WAITING -> bar.snapTo(0f)
+      UploadState.CHECKING -> bar.animateTo(0.9f, tween(30_000, easing = LinearOutSlowInEasing))
+      UploadState.ASKING -> bar.animateTo(0.9f, tween(400))
+      else -> bar.animateTo(1f, tween(400))
+    }
+  }
+  val fill = bar.value
+  val tip = pill.detail ?: when (state) {
+    UploadState.WAITING -> texts.pillWaiting
+    UploadState.ASKING -> texts.pillAsking
+    else -> texts.pillChecking
+  }
+  Tip(tip) {
+    Box(
+      Modifier.clip(CircleShape).background(color.copy(alpha = 0.12f)).border(1.dp, color.copy(alpha = 0.5f), CircleShape),
+    ) {
+      // The bar: the pill's background up to how far it is
+      Box(Modifier.matchParentSize()) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(fill).background(color.copy(alpha = 0.32f)))
+      }
+      Row(
+        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+      ) {
+        when (state) {
+          UploadState.ADDED -> DrawnIcon(Icon.CHECK, color, 11.dp)
+          UploadState.FAILED -> DrawnIcon(Icon.CLOSE, color, 10.dp)
+          else -> {}
+        }
+        Txt(pill.file, size = 12.sp, weight = FontWeight.SemiBold, color = if (state == UploadState.WAITING) p.muted else p.text, maxLines = 1)
       }
     }
   }
@@ -369,4 +485,7 @@ private fun SubHeading(text: String, modifier: Modifier = Modifier) {
 }
 
 /** Several picked files go up in one request, up to this much base64 together (the tracker's limit for one). */
+/** How long the pills of an upload without trouble stay. */
+private const val CLEAR_AFTER_MS = 10_000L
+
 private const val BATCH_BASE64 = 64 * 1024 * 1024 / 3 * 4
