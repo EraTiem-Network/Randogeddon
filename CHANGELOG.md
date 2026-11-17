@@ -9,6 +9,10 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.11: An upload's errors in its pill
+- **Why an APWorld was refused is in its pill's tip** (on hover, a long press on a phone), like what an added one
+  brought; it is no longer written out below the pills too.
+
 ### 0.16.10: APWorld uploads as pills
 - **Each uploaded APWorld is a pill** that fills like a bar: grey while its turn hasn't come, yellow while it is
   uploaded and Archipelago checks it (the bar creeps on, the server says nothing until it is done) or while it waits

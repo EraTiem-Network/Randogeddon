@@ -390,7 +390,8 @@ and its APWorld library:
   at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
   after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
   inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. Each file
-  shows as a pill that fills yellow while it is checked and turns green (added), red (refused) or grey (skipped);
+  shows as a pill that fills yellow while it is checked and turns green (added), red (refused) or grey (skipped); its
+  tip says what it brought or why not;
   *Clear* takes them away, and after an upload without trouble they go by themselves. One that
   doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
