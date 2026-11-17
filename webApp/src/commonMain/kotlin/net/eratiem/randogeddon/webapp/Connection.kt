@@ -123,8 +123,8 @@ fun ConnectionSection(
           Field(c.slot, slot.name)
           PasswordField(slot)
         }
-        // The slot's files belong to it
-        if (mine || slot.hosted) {
+        // The slot's files belong to it; a locked slot's wait for its key, like its password
+        if ((mine || slot.hosted) && !slot.locked) {
           SmallHeading(c.patchFiles)
           val own = files.filter { it.slotName == slot.name }
           if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)
