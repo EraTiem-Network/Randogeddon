@@ -12,6 +12,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** Migrations and stores against a real PostgreSQL (Testcontainers; Docker must be running). */
 class StoresTest {
@@ -37,6 +38,31 @@ class StoresTest {
     RandogeddonDatabase.connect(config, migrate = true, poolSize = 1).use { small ->
       assertEquals(emptyList(), UserStore(small).active())
     }
+  }
+
+  /** As on a new database: the gateway starts before the tracker has made its role (after migrating). */
+  @Test
+  fun `a login that comes a moment later is waited for, one that never comes isn't`() {
+    val late = DatabaseConfig(postgres.jdbcUrl, "late_gateway", "late-password")
+    assertFailsWith<Exception> { RandogeddonDatabase.connect(late, migrate = false, poolSize = 1) }
+    val started = System.nanoTime()
+    val maker = kotlin.concurrent.thread {
+      Thread.sleep(3000)
+      postgres.createConnection("").use { c ->
+        c.createStatement().use {
+          it.execute("CREATE ROLE late_gateway LOGIN PASSWORD 'late-password'")
+          it.execute("GRANT SELECT ON sessions TO late_gateway")
+        }
+      }
+    }
+    RandogeddonDatabase.connect(late, migrate = false, poolSize = 1, waitFor = 30.seconds).use { waited ->
+      assertTrue((System.nanoTime() - started) / 1_000_000 >= 2500)
+      assertEquals(null, runBlocking { SessionSetupStore(waited).of("nope") })
+    }
+    maker.join()
+    // The wait has an end
+    val never = DatabaseConfig(postgres.jdbcUrl, "never_there", "x")
+    assertFailsWith<Exception> { RandogeddonDatabase.connect(never, migrate = false, poolSize = 1, waitFor = 3.seconds) }
   }
 
   @Test
