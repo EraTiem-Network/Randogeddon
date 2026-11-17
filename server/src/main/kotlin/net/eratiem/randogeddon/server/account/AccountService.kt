@@ -185,11 +185,13 @@ class AccountService(
   }
 
   /**
-   * [user]'s account as the provider has it ([wantedName], its verified [email]): at each login through it and when it
+   * [user]'s account as the provider has it ([wantedName], its [email]): at each login through it and when it
    * says a person changed. The name made unique (another account may have it), the address only if no other account
-   * has it; a two-factor login of before goes (the provider asks for the second factor).
+   * has it; a two-factor login of before goes (the provider asks for the second factor). [emailVerified]: whether
+   * the provider calls the address verified, kept for the Administrators to see (`null`: it didn't say, as its
+   * webhook doesn't).
    */
-  suspend fun syncFromProvider(user: User, wantedName: String, email: String?) {
+  suspend fun syncFromProvider(user: User, wantedName: String, email: String?, emailVerified: Boolean? = null) {
     if (wantedName != user.name) {
       val name = uniqueName(wantedName) { taken -> users.findActive(taken)?.takeIf { it.id != user.id } != null }
       if (name != user.name) {
@@ -199,10 +201,14 @@ class AccountService(
       }
     }
     val address = email?.let(EmailAddresses::normalize)?.takeIf(EmailAddresses::valid)
-    if (address != null && !address.equals(user.email, ignoreCase = true) && users.accountByEmail(address) == null) {
+    var theirs = address != null && address.equals(user.email, ignoreCase = true)
+    if (address != null && !theirs && users.accountByEmail(address) == null) {
       users.setEmail(user.id, address)
+      theirs = true
       logger.info("{}'s address is {} now ({})", user.name, address, config.oidc?.name)
     }
+    // Only about the address the account has from the provider
+    if (theirs && emailVerified != null) users.setEmailVerifiedByProvider(user.id, emailVerified)
     if (user.twoFactor) {
       twoFactor.reset(user.id)
       logger.info("{}'s two-factor login of before is off: {} asks for the second factor", user.name, config.oidc?.name)
@@ -315,6 +321,8 @@ class AccountService(
         deletesAt = due[a.id]?.toEpochMilli(),
         password = a.hasPassword,
         singleSignOn = a.linked,
+        provider = config.oidc?.name?.takeIf { a.linked },
+        emailVerified = a.emailVerifiedByProvider.takeIf { a.linked && a.email != null },
         twoFactor = a.twoFactor,
         language = a.language,
         block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
