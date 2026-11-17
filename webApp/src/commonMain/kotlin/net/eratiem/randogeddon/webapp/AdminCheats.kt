@@ -102,6 +102,8 @@ fun CheatSection(
       if (toSlot && action == CheatAction.LOCATION) {
         if (answer.value.incoming.none { it.location == value && it.world == from }) { value = null; from = null }
       } else if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
+      else if (action == CheatAction.HINT_LOCATION && value != null && value !in answer.value.hintLocations) value = null
+      else if (action == CheatAction.HINT && value != null && value !in answer.value.hintItems) value = null
     }
   }
 
@@ -126,7 +128,10 @@ fun CheatSection(
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
           val incoming = toSlot && action == CheatAction.LOCATION
+          // A hint names one place: only locations not hinted yet, and items with a copy neither checked nor hinted
           val choices = when (action) {
+            CheatAction.HINT -> names?.hintItems
+            CheatAction.HINT_LOCATION -> names?.hintLocations
             in WITH_ITEM -> names?.items
             in WITH_LOCATION -> names?.locations
             else -> null

@@ -61,6 +61,13 @@ interface DashboardTexts {
   val hintUnmarked: String
   val noHintsYet: String
   val noHintsMatch: String
+  /** The ⓘ on the hints' state: what it is, and each state (the pill's words) with what it means. */
+  val hintStateTip: String
+  val hintOpenMeaning: String
+  val hintPriorityMeaning: String
+  val hintNoPriorityMeaning: String
+  val hintAvoidMeaning: String
+  val hintFoundMeaning: String
   val columnFor: String
   val columnItem: String
   val columnCheck: String
@@ -195,6 +202,13 @@ internal object EnglishDashboard : DashboardTexts {
   override val hintUnmarked = "Unmarked"
   override val noHintsYet = "No hints yet."
   override val noHintsMatch = "No hints match the filter."
+  override val hintStateTip =
+    "How things stand with the hinted item. Its player marks it in their game client; found comes by itself."
+  override val hintOpenMeaning = "Not found yet, and its player hasn't marked it."
+  override val hintPriorityMeaning = "Its player wants it soon."
+  override val hintNoPriorityMeaning = "Its player doesn't need it soon."
+  override val hintAvoidMeaning = "Its player doesn't need it: better leave that check for later."
+  override val hintFoundMeaning = "The check is done: the item has arrived."
   override val columnFor = "For"
   override val columnItem = "Item"
   override val columnCheck = "Check"
@@ -268,6 +282,13 @@ internal object GermanDashboard : DashboardTexts {
   override val hintUnmarked = "Nicht markiert"
   override val noHintsYet = "Noch keine Hinweise."
   override val noHintsMatch = "Kein Hinweis passt zum Filter."
+  override val hintStateTip =
+    "Wie es um das Item des Hinweises steht. Sein Spieler markiert es im Spiel-Client; gefunden kommt von selbst."
+  override val hintOpenMeaning = "Noch nicht gefunden, und sein Spieler hat es nicht markiert."
+  override val hintPriorityMeaning = "Sein Spieler will es bald."
+  override val hintNoPriorityMeaning = "Sein Spieler braucht es nicht so bald."
+  override val hintAvoidMeaning = "Sein Spieler braucht es nicht: Den Check besser auf später lassen."
+  override val hintFoundMeaning = "Der Check ist erledigt: Das Item ist angekommen."
   override val columnFor = "Für"
   override val columnItem = "Item"
   override val columnCheck = "Check"

@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.8: A hint names one place
+- **A hint for an item names one copy** of it, at random, that is neither checked nor hinted yet (`/hint_location`
+  where it lies, from the spoiler log's placements). Archipelago's `/hint` named every copy at once (all
+  Progressive Swords); it is only used for a seed whose spoiler log has no placements. Once every copy is checked or
+  hinted, the hint is refused, and the item leaves the hint's list.
+- **A location that is hinted already** isn't offered for a hint (and is refused).
+- **The hints' state has an ⓘ** in the table's last column (beside the filter on a narrow screen): what *open*,
+  *priority*, *no priority*, *avoid* and *found* mean.
+
 ### 0.16.7: More to see while a session is made, less for a locked slot
 - **A locked slot's patch files aren't shown** under *Your connection* (they wait for the slot's key, like its
   password), and aren't handed out to its players until then. Session-Managers and Administrators still get every

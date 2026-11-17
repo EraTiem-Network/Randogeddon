@@ -683,7 +683,9 @@ data class SlotFiles(val files: List<SlotFile> = emptyList())
 /**
  * `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. [incoming]:
  * the locations of other worlds, not checked yet, that hold one of the slot's items (from the spoiler log's
- * placements; [placementsKnown] `false` without them).
+ * placements; [placementsKnown] `false` without them). For hints: [hintLocations], its open locations not hinted yet;
+ * [hintItems], with the placements known, the items of which a copy for the slot is neither checked nor hinted yet
+ * (a hint names one of them).
  */
 @Serializable
 data class CheatNames(
@@ -691,6 +693,8 @@ data class CheatNames(
   val locations: List<String> = emptyList(),
   val incoming: List<IncomingCheck> = emptyList(),
   val placementsKnown: Boolean = false,
+  val hintLocations: List<String> = emptyList(),
+  val hintItems: List<String> = emptyList(),
 )
 
 /** A location of [world], not checked yet, that holds [item] for the slot asked about. */
