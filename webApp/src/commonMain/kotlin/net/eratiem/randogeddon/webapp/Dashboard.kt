@@ -1026,6 +1026,8 @@ internal fun Hints(s: Summary, compact: Boolean) {
     }
     Select(listOf<Pair<String?, String>>(null to d.allSlots) + worldsOfPerson.map { it.name to it.name }, world, { world = it })
     Select(HintState.entries.map { it to it.label(d) }, state, { state = it })
+    // Narrow, there is no heading row for it: beside the filter
+    if (compact) HintStateTip()
   }) {
     Column(Modifier.fillMaxWidth().card(p)) { HintList(s, hints, compact) }
   }
@@ -1040,7 +1042,11 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     return
   }
   if (!compact) {
-    HintRow(listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot, "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+    HintRow(
+      listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot).map<String, @Composable () -> Unit> {
+        { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) }
+      } + listOf<@Composable () -> Unit>({ HintStateTip() }),
+    )
     Divider()
   }
   Column(Modifier.heightIn(max = 600.dp).scrolling()) {
@@ -1096,6 +1102,19 @@ private fun CompactHint(h: HintView) {
     }
     Txt(fill(d.hintWhere, "location" to h.locationName, "finder" to h.finderName), size = 12.sp, color = p.muted)
   }
+}
+
+/** What the hints' state is, and each one (the pill's words) with what it means. */
+@Composable
+private fun HintStateTip() {
+  val d = LocalTexts.current.dashboard
+  InfoTip(
+    d.hintStateTip,
+    options = listOf(
+      d.pillOpen to d.hintOpenMeaning, d.pillPriority to d.hintPriorityMeaning, d.pillNoPriority to d.hintNoPriorityMeaning,
+      d.pillAvoid to d.hintAvoidMeaning, d.pillFound to d.hintFoundMeaning,
+    ),
+  )
 }
 
 /** Archipelago's HintStatus: players can mark their hints as priority, avoid or no priority in their client. */
