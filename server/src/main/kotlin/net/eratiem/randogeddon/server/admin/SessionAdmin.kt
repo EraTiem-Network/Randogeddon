@@ -218,6 +218,16 @@ class SessionAdmin(
     }
   }
 
+  /**
+   * Refuses [id] as a new session's ID: its form, a word nobody wants in one, or taken. Asked while it is typed
+   * too, so the form says so before anything is generated.
+   */
+  suspend fun checkId(id: String) {
+    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
+    if (UnwantedWords.hit(id)) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ID_UNWANTED)
+    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
+  }
+
   private suspend fun createReserved(request: CreateSessionRequest, creator: User): CreateSessionResult {
     val admin = creator.name
     if (!creator.administrator) {
@@ -230,9 +240,7 @@ class SessionAdmin(
       }
     }
     val id = request.id.trim()
-    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
-    if (UnwantedWords.hit(id)) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ID_UNWANTED)
-    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
+    checkId(id)
     val servers = gameServer.sessions()
     // The sessions others are creating right now will take a game server each too
     if (servers.sessions.count { it.port != null } + creating.size - 1 >= servers.capacity) {

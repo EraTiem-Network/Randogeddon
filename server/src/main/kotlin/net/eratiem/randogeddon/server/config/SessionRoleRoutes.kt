@@ -25,7 +25,7 @@ import net.eratiem.randogeddon.shared.SessionRole
 
 /**
  * Under the protected `/api` branch, for every user: the sessions they manage (`/manage`), what a new session can use
- * (`/sessions/new`), its YAMLs checked, someone new invited for it, and creating it (`POST /sessions`); the creator
+ * (`/sessions/new`), its ID and its YAMLs checked, someone new invited for it, and creating it (`POST /sessions`); the creator
  * becomes its Session-Manager. How many running sessions a user may manage at once is the Administrators' setting.
  */
 fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
@@ -33,6 +33,13 @@ fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
   get("/manage") { gatewayCall { call.respond(admin.overview(call.actor)) } }
   route("/sessions/new") {
     get { gatewayCall { call.respond(admin.newSession(call.actor)) } }
+    // Whether an ID can be a new session's (its form, unwanted words, taken): no content, or why not
+    get("/id") {
+      gatewayCall {
+        admin.checkId(call.request.queryParameters["id"].orEmpty().trim())
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
     // The slots of the uploaded YAMLs, before the players are assigned; games the release lacks are problems
     post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
     // How far a new session's generation is, while its form waits for it (no content: none runs)
