@@ -829,10 +829,29 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 @Serializable
 data class ApworldResults(val results: List<ApworldResult>)
 
-/** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
+/**
+ * The stage a new session is in while it is made, in their order: the tracker checks what was asked ([CHECKING]),
+ * the gateway generates the seed (waiting for another generation first, [WAITING]; then as Archipelago's Generate.py
+ * logs it, [STARTING] to [DONE]), the tracker sets the session up ([SAVING]) and has its game server started
+ * ([SERVER]).
+ */
 enum class GenerationStage {
+  CHECKING, WAITING,
   STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, BALANCING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE,
+  SAVING, SERVER;
+
+  /** The step it belongs to. */
+  val step: GenerationStep
+    get() = when (this) {
+      CHECKING -> GenerationStep.CHECK
+      SAVING -> GenerationStep.SET_UP
+      SERVER -> GenerationStep.START
+      else -> GenerationStep.GENERATE
+    }
 }
+
+/** The four steps of making a session, as the form shows them above the bar. */
+enum class GenerationStep { CHECK, GENERATE, SET_UP, START }
 
 /**
  * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all

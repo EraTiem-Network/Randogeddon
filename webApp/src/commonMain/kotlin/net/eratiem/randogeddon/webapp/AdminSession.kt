@@ -84,6 +84,7 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
 import net.eratiem.randogeddon.shared.GenerationStage
+import net.eratiem.randogeddon.shared.GenerationStep
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.InspectRequest
@@ -717,9 +718,30 @@ private fun CreateSession(
   // While it generates: nothing of the form (there is nothing to change now), just the session's ID, the stage
   // and about how far. A failure brings the form back as it was
   if (busy) {
-    val now = progress ?: GenerationProgress(GenerationStage.STARTING, 0)
+    val now = progress ?: GenerationProgress(GenerationStage.CHECKING, 0)
     Txt(id, size = 18.sp, weight = FontWeight.Bold)
     Txt(t.sessionAdmin.generatesSeed, size = 12.5.sp, color = p.muted)
+    // The four steps: the ones done with a check mark, the one it is at in the accent colour
+    FlowRow(
+      horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+      GenerationStep.entries.forEach { step ->
+        val done = step < now.stage.step
+        val current = step == now.stage.step
+        val color = if (done) p.ok else if (current) p.accent else p.muted
+        Row(
+          Modifier.clip(CircleShape).background(color.copy(alpha = if (current) 0.16f else 0.1f)).padding(horizontal = 10.dp, vertical = 4.dp),
+          verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+          if (done) DrawnIcon(Icon.CHECK, color, 11.dp)
+          Txt(
+            "${step.ordinal + 1}. ${t.sessionAdmin.generationStep(step)}", size = 12.sp, color = color, maxLines = 1,
+            weight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+          )
+        }
+      }
+    }
     ProgressBar(now.percent / 100f)
     Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
     return

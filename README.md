@@ -300,8 +300,9 @@ docker compose up -d
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
-   *Generate and start* (once every slot has a player or is hosted; while it generates, a bar shows the stage and about
-   how far it is). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
+   for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
+   is; the gateway generates one seed at a time, so a second session waits and says so). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
    name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
@@ -571,7 +572,8 @@ In the panel, tick *starts locked* per slot, choose *Random* locks with the numb
 all. The gateway adds the World Locks slot (`Locks`, nobody plays it) to the seed.
 
 A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
-too, and *Your connection* and the bridge show it as locked, without a password. The tracker opens it once the key
+too, and *Your connection* and the bridge show it as locked, without a password (*Your connection*
+without its patch files too). The tracker opens it once the key
 has turned up (the gateway sees that within about 10 seconds). Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
 Locks slot), and as "Key to Alice-Celeste" on the dashboard, which also shows who found it or where it was hinted.
 

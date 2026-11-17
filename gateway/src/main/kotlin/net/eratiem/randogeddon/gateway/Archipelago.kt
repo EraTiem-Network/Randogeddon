@@ -136,19 +136,25 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
   fun progress(id: String): GenerationProgress? = progress[id]
 
   /** Throws [IllegalStateException] if session [id] has a seed already. */
-  suspend fun generate(id: String, request: GenerateRequest): GenerateResult = mutex.withLock {
+  suspend fun generate(id: String, request: GenerateRequest): GenerateResult {
+    // One at a time: until it is this one's turn, it says that it waits
+    progress[id] = GenerationProgress(GenerationStage.WAITING, 0)
+    return try {
+      mutex.withLock { generateNow(id, request) }
+    } finally {
+      progress.remove(id)
+    }
+  }
+
+  private suspend fun generateNow(id: String, request: GenerateRequest): GenerateResult {
     check(dirs.seed(id) == null) { "Session $id has a seed already" }
     val home = runCatching { archipelago.home(request.apVersion) }.getOrElse {
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
     val release = apworlds.release(request.apVersion)
     progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
-    val result = try {
-      apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
-    } finally {
-      progress.remove(id)
-    }
-    if (result.seedName != null) result
+    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
+    return if (result.seedName != null) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
