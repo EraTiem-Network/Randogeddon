@@ -642,3 +642,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [ ] Every page checked in English and German side by side (moved here from Phase 13, then from Phase 14: the new
       themes and fonts changed the pages once more), and what comes up fixed
+
+## Phase 17: A Repository That Can Be Shown
+
+*What is critical leaves the repository and its history, into a new one.*
+
+- [ ] Critical docs, data and information (the servers' setup and addresses in `.docs/INFRA.md` and `infra/`, what
+      the security scans found, anything else that tells too much) are removed from this repository and from its git
+      history, and moved to a new repository (its name is still to be decided)
