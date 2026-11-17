@@ -9,6 +9,14 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.10: APWorld uploads as pills
+- **Each uploaded APWorld is a pill** that fills like a bar: grey while its turn hasn't come, yellow while it is
+  uploaded and Archipelago checks it (the bar creeps on, the server says nothing until it is done) or while it waits
+  for the answer to *Replace*, then green once added, red if not, grey if skipped. Its tip says which games it
+  brought or why not; what went wrong is also written out below them.
+- **Cleared when done:** *Clear* takes away what the last upload, try or removal said (until now it stayed until the
+  page was loaded again); after an upload without trouble the pills go by themselves after 10 seconds.
+
 ### 0.16.9: Newer lists for the word filter
 - **The unwanted words come from three lists now**, about 9,600 words of 17 languages (was 1,400 of 15, from
   LDNOOBW alone, last changed in 2024): LDNOOBW, BadWords (FlacSy, MIT, updated November 2026; it brings Indonesian
