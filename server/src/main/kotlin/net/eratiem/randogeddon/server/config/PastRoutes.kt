@@ -26,6 +26,10 @@ import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
+import net.eratiem.randogeddon.shared.SpoilerFindings
+import net.eratiem.randogeddon.shared.SpoilerLines
+import net.eratiem.randogeddon.server.session.SpoilerSearches
+import net.eratiem.randogeddon.server.session.SpoilerLog
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
@@ -73,6 +77,7 @@ fun Route.sessionRoutes(
   slotPasswords: SlotPasswords,
   spoilers: Spoilers,
   downloads: SlotDownloads,
+  searches: SpoilerSearches = SpoilerSearches(),
 ) {
   get("/sessions") { call.respond(list.visibleTo(call.actor)) }
   route("/sessions/{id}") {
@@ -99,23 +104,33 @@ fun Route.sessionRoutes(
         call.respondBytes(bytes, ContentType.Application.OctetStream)
       }
     }
-    // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it
+    // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it.
+    // The playthrough at once; the log itself by pages, and searched here (a big seed's is too long for a browser)
     get("/spoiler") {
-      session(sessions) { live ->
-        val user = call.actor
-        val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
-        if (!helps && !live.finished) {
-          return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
+      spoiler(sessions, spoilers) { live, log ->
+        // The steps already checked, as the tracker sees them now
+        val checked = runCatching { live.tracker.read { checkedLocations() } }.getOrDefault(emptyMap())
+        call.respond(markChecked(log.spoiler, checked))
+      }
+    }
+    get("/spoiler/log") {
+      spoiler(sessions, spoilers) { _, log ->
+        val from = call.request.queryParameters["from"]?.toIntOrNull() ?: 0
+        call.respond(log.page(from, call.request.queryParameters["count"]?.toIntOrNull() ?: SpoilerLines.MAX))
+      }
+    }
+    get("/spoiler/search") {
+      spoiler(sessions, spoilers) { _, log ->
+        val query = call.request.queryParameters["q"].orEmpty().trim()
+        if (query.length !in SpoilerFindings.MIN_QUERY..SpoilerFindings.MAX_QUERY) {
+          return@spoiler call.refuse(
+            HttpStatusCode.BadRequest,
+            Refusal.of(Problem.QUERY_LENGTH, "min" to SpoilerFindings.MIN_QUERY, "max" to SpoilerFindings.MAX_QUERY),
+          )
         }
-        try {
-          val spoiler = spoilers.of(live.id, live.seedName)
-            ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
-          // The steps already checked, as the tracker sees them now
-          val open = runCatching { live.tracker.read { openLocations() } }.getOrDefault(emptyMap())
-          call.respond(markChecked(spoiler, open))
-        } catch (e: GameServerUnavailable) {
-          call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
-        }
+        val found = searches.paced(call.loggedIn.user.id.toString()) { log.search(query) }
+          ?: return@spoiler call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_SEARCHES))
+        call.respond(found)
       }
     }
     // Pushes the whole summary whenever the state changes. Polled and therefore debounced: a burst of item sends (e.g.
@@ -129,6 +144,27 @@ fun Route.sessionRoutes(
         follow(live, stillAllowed = { token != null && logins.userOf(token) != null && logins.maySee(me, live.id) }) { live.json() }
       }
     }
+  }
+}
+
+/**
+ * [block] with the path's session and its spoiler log, for who may read it: before the session is finished only
+ * Administrators, its Session-Managers and support.
+ */
+private suspend fun RoutingContext.spoiler(
+  sessions: LiveSessions,
+  spoilers: Spoilers,
+  block: suspend RoutingContext.(LiveSession, SpoilerLog) -> Unit,
+) = session(sessions) { live ->
+  val user = call.actor
+  val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
+  if (!helps && !live.finished) return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
+  try {
+    val log = spoilers.of(live.id, live.seedName)
+      ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
+    this.block(live, log)
+  } catch (e: GameServerUnavailable) {
+    call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
   }
 }
 

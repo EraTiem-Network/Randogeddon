@@ -29,6 +29,7 @@ import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.ktor.ext.inject
@@ -44,6 +45,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val list by inject<SessionList>()
   val archives by inject<Archives>()
   val spoilers by inject<Spoilers>()
+  val spoilerSearches by inject<SpoilerSearches>()
   val lifecycle by inject<SessionLifecycle>()
   val cheats by inject<Cheats>()
   val accounts by inject<AccountService>()
@@ -72,7 +74,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       install(RequireLogin) { this.logins = logins }
       meRoute(list, sessionLimit)
       accountRoutes(accounts, twoFactor, bridgeKeys, trackerConfig.cookieSecure)
-      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads)
+      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads, spoilerSearches)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
       supportRoutes(support, logins)

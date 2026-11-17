@@ -111,14 +111,15 @@ class SessionAdmin(
   private val limit: SessionLimit,
 ) {
   /**
-   * The sessions [user] manages with their game servers (an Administrator: every session), and what a new one needs.
-   * Only Administrators get the invited accounts (by address) and the users' names.
+   * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
+   * says which: support only gets what support may do), and what a new one needs. Only Administrators get the
+   * invited accounts (by address) and the users' names.
    */
   suspend fun overview(user: User): AdminOverview {
     sessions.refresh()
     val taken = takenIds()
     val all = sessions.all()
-    val managed = if (user.administrator) all else all.filter { user.id in it.managers() }
+    val managed = if (user.administrator) all else all.filter { user.id in it.managers() || it.roleOf(user) == SessionRole.SUPPORT }
     return AdminOverview(
       sessions = managed.map { list.entry(it, it.personOf(user), admin = true, role = it.roleOf(user)) },
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),

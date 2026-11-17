@@ -2,7 +2,10 @@ package net.eratiem.randogeddon.server.session
 
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.shared.Sphere
+import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.Spoiler
+import net.eratiem.randogeddon.shared.SpoilerFindings
+import net.eratiem.randogeddon.shared.SpoilerLines
 import org.koin.core.annotation.Single
 import java.util.concurrent.ConcurrentHashMap
 
@@ -16,7 +19,7 @@ private val SPHERE_START = Regex("^(\\d+): \\{$")
 internal fun parseSpoiler(seed: String, text: String): Spoiler {
   val lines = text.lines()
   val start = lines.indexOfFirst { it.trim() == "Playthrough:" }
-  if (start < 0) return Spoiler(seed, text = text)
+  if (start < 0) return Spoiler(seed, lines = lines.size)
   val spheres = mutableListOf<Sphere>()
   var number: Int? = null
   var entries = mutableListOf<String>()
@@ -40,7 +43,30 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
       entries += t
     }
   }
-  return Spoiler(seed, spheres, text)
+  return Spoiler(seed, spheres, lines.size)
+}
+
+/** A session's spoiler log as it was read: its [text], line by line ([lines]), and its playthrough ([spoiler]). */
+class SpoilerLog(seed: String, val text: String) {
+  val lines: List<String> = text.lines()
+  val spoiler: Spoiler = parseSpoiler(seed, text)
+
+  /** Up to [count] lines from line [from] (from 0). */
+  fun page(from: Int, count: Int): SpoilerLines {
+    val start = from.coerceIn(0, lines.size)
+    return SpoilerLines(start, lines.size, lines.subList(start, (start + count.coerceIn(1, SpoilerLines.MAX)).coerceAtMost(lines.size)))
+  }
+
+  /** The lines that contain [query], any case: the first [SpoilerFindings.MAX]. */
+  fun search(query: String): SpoilerFindings {
+    val found = ArrayList<Int>()
+    for ((n, line) in lines.withIndex()) {
+      if (!line.contains(query, ignoreCase = true)) continue
+      if (found.size == SpoilerFindings.MAX) return SpoilerFindings(found, more = true)
+      found += n
+    }
+    return SpoilerFindings(found)
+  }
 }
 
 private val PLAYER = Regex("^Player (\\d+): (.+)$")
@@ -85,13 +111,14 @@ internal fun stepLocation(entry: String): Pair<String, String>? {
 }
 
 /**
- * [spoiler] with each step marked that is checked: its world is known ([open]: each world's locations not checked
- * yet) and the location isn't open there any more. Sphere 0 has no locations.
+ * [spoiler] with each step marked that is checked: its location is among its world's checked ones ([checked], by the
+ * world's name). What the tracker doesn't know (yet: a new session's slots, before it has read them) isn't checked.
+ * Sphere 0 has no locations.
  */
-internal fun markChecked(spoiler: Spoiler, open: Map<String, Set<String>>): Spoiler = spoiler.copy(
+internal fun markChecked(spoiler: Spoiler, checked: Map<String, Set<String>>): Spoiler = spoiler.copy(
   spheres = spoiler.spheres.map { sphere ->
     sphere.copy(checked = sphere.entries.map { entry ->
-      stepLocation(entry)?.let { (location, world) -> open[world]?.let { location !in it } } == true
+      stepLocation(entry)?.let { (location, world) -> checked[world]?.contains(location) } == true
     })
   },
 )
@@ -126,14 +153,41 @@ internal fun placements(text: String, slots: Collection<String>): List<Placement
   return out
 }
 
+/**
+ * Searching a spoiler log costs the server a pass over all of it: per user one search at a time, and no sooner than
+ * [SPACING_MS] after their last one (it waits for that). A search asked for while one runs is refused.
+ */
+@Single
+class SpoilerSearches {
+  private val running = ConcurrentHashMap.newKeySet<String>()
+  private val last = ConcurrentHashMap<String, Long>()
+
+  /** [search] for [user], paced; `null`: one of theirs is still running. */
+  suspend fun <T> paced(user: String, search: () -> T): T? {
+    if (!running.add(user)) return null
+    try {
+      val wait = SPACING_MS - (System.currentTimeMillis() - (last[user] ?: 0))
+      if (wait > 0) delay(wait)
+      return search()
+    } finally {
+      last[user] = System.currentTimeMillis()
+      running.remove(user)
+    }
+  }
+
+  companion object {
+    const val SPACING_MS = 500L
+  }
+}
+
 /** The spoiler logs of the sessions, from the gateway (it reads them from the seeds' zips), kept once read. */
 @Single
 class Spoilers(private val gameServer: GameServerClient) {
-  private val cache = ConcurrentHashMap<String, Spoiler>()
+  private val cache = ConcurrentHashMap<String, SpoilerLog>()
 
   /** Session [id]'s spoiler log; [seed]: its seed's name. */
-  suspend fun of(id: String, seed: String): Spoiler? =
-    cache[id] ?: gameServer.spoiler(id)?.let { parseSpoiler(seed, it) }?.also { cache[id] = it }
+  suspend fun of(id: String, seed: String): SpoilerLog? =
+    cache[id] ?: gameServer.spoiler(id)?.let { SpoilerLog(seed, it) }?.also { cache[id] = it }
 
   fun forget(id: String) {
     cache.remove(id)
