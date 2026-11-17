@@ -9,6 +9,12 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.6: A new session, out of the way while it generates
+- **While a new session generates** the form is gone: only the session's ID, the stage and the bar show. A failed
+  generation brings the form back as it was, with the reason.
+- **A session ID is checked as it is typed** (`GET /api/sessions/new/id?id=`): a word nobody wants in one, or an ID
+  that is taken, shows beside the field a moment after the last key, not only when *Generate and start* is clicked.
+
 ### 0.16.5: The Management panel, and names with rules
 - **User names:** only letters without accents, digits and `_` (so far almost anything but `@`). Names that pass for
   Randogeddon or someone with a say here are reserved (*Admin*, *Administrator*, *Moderator*, *Support*, *System*,

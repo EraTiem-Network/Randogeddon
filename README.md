@@ -693,7 +693,8 @@ own slots and passwords), `.../archive` (a finished one as it ended), `.../spoil
 text of 2 to 100 characters, the first 500; answers 429 while another search of the same user runs), `.../files` and
 `.../files/<name>` (the seed's files of the user's slots: patches, mods; every slot's for its Session-Managers and
 Administrators). The panel's are under
-`/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
+`/api/manage` (the sessions the user manages or supports), `/api/sessions/new` (with `/id?id=`: whether an ID can
+be a new session's) and `POST /api/sessions` (creating one, for
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
 `.../support`, the watchers under `.../watchers` and the share link under `.../share` (players, support and Session-Managers),
 the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
