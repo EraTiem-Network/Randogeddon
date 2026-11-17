@@ -80,6 +80,9 @@ val LocalPalette = staticCompositionLocalOf { palettes(Theme.DEFAULT).first.pale
 private const val THEME_KEY = "ap-theme"
 private const val FONT_KEY = "ap-font"
 
+/** How long after a change by hand a font still counts as its result (loading its files takes a moment). */
+private const val FONT_ANIMATION_WINDOW_MS = 10_000L
+
 /**
  * Which theme and mode the app is in: the account's once someone is logged in ([apply]), else the one last used in
  * this browser (`ap-theme`, `<theme>:<mode>`; the old `light` or `dark` is the default theme in it), else the
@@ -130,13 +133,28 @@ object Themes {
     }
 
   /** The fonts that show now: the chosen one (or the theme's), once it is loaded. */
-  val fonts: PageFonts
+  val fonts: PageFonts?
     get() {
       val chosen = FontChoice.font(theme, font) ?: return PageFonts()
-      val family = Fonts.of(chosen.theme) ?: return PageFonts()
+      // Still loading: nothing new to show yet (the page keeps what it shows)
+      val family = Fonts.of(chosen.theme) ?: return null
       return if (fontScope.headingsOnly(chosen)) PageFonts(heading = family, headingScale = chosen.scale)
       else PageFonts(family, family, chosen.scale, chosen.scale)
     }
+
+  // When someone last changed the theme or the font settings by hand (epoch milliseconds)
+  private var changedByHandAt = 0L
+
+  /** Someone picks a theme or changes the font settings now: the font that comes of it is animated in. */
+  fun changedByHand() {
+    changedByHandAt = Platform.now()
+  }
+
+  /**
+   * Whether a font that shows up now is animated in: only shortly after a change by hand (its files may still have
+   * to load). Not when the page loads or the account's choice arrives after the login: the font is just there then.
+   */
+  fun animatesFont(): Boolean = Platform.now() - changedByHandAt < FONT_ANIMATION_WINDOW_MS
 
   /** Applies the font [choice] (`null`: the theme's) and where it shows. */
   fun applyFont(choice: String?, scope: FontScope) {
@@ -169,13 +187,16 @@ private const val THEME_FADE_MS = 300
 
 @Composable
 fun RandogeddonTheme(palette: Palette, content: @Composable () -> Unit) {
-  // A new font (chosen, the new theme's, or one that just finished loading) doesn't jump in: the letters take it
-  // one by one, in no order ([FontChange]). The colours fade by themselves meanwhile.
-  val fonts = Themes.fonts
-  var shown by remember { mutableStateOf(fonts) }
+  // A font that comes of a change by hand (another theme, the font settings) doesn't jump in: the letters take it one
+  // by one, in no order ([FontChange]); the colours fade by themselves meanwhile. When the page loads, or the
+  // account's choice arrives, the font is just there. While a font's files load, the page keeps what it shows.
+  val wanted = Themes.fonts
+  var shown by remember { mutableStateOf(wanted ?: PageFonts()) }
+  val fonts = wanted ?: shown
   var change by remember { mutableStateOf<FontChange?>(null) }
   LaunchedEffect(fonts) {
-    if (fonts == shown) {
+    if (fonts == shown || !Themes.animatesFont()) {
+      shown = fonts
       change = null
       return@LaunchedEffect
     }
