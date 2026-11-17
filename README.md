@@ -426,8 +426,11 @@ log.
 the slot and the item or location from searchable lists. *Check a location* goes either way: *from the slot* (one of
 its own open locations: its item goes to whoever owns it) or *to the slot* (an open location of another world that
 holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
-placements, so only for a seed whose spoiler log has them). Free hints (`/hint`, `/hint_location`) only if the session
-was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
+placements, so only for a seed whose spoiler log has them). Free hints (`/hint_location`) only if the session
+was created with *Cheat hints*. A hint names one place: a location only if it isn't hinted yet, and for an item one
+copy of it at random that is neither checked nor hinted (Archipelago's `/hint` would name every copy; it is only used
+for a seed whose spoiler log has no placements). The hints' table explains its states under the ⓘ in its last
+column. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
