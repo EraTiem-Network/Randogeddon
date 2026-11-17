@@ -9,6 +9,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.9: Newer lists for the word filter
+- **The unwanted words come from three lists now**, about 9,600 words of 17 languages (was 1,400 of 15, from
+  LDNOOBW alone, last changed in 2024): LDNOOBW, BadWords (FlacSy, MIT, updated November 2026; it brings Indonesian
+  and Romanian and many more forms) and Google Profanity Words (Coffee & Fun, MIT, updated June 2026).
+- **Ordinary words are taken out by checking**, not only by hand: against the 50,000 commonest words of each of
+  the 17 languages and 4,900 first names. A word only BadWords has goes if it is common anywhere (it has many
+  ordinary ones); the others' common words were looked through and the ordinary ones listed. A word found inside a
+  common word or a name counts only as a whole part.
+- `scripts/unwanted_words.py` downloads into `output/unwanted-words/` and keeps it for the next run.
+
 ### 0.16.8: A hint names one place
 - **A hint for an item names one copy** of it, at random, that is neither checked nor hinted yet (`/hint_location`
   where it lies, from the spoiler log's placements). Archipelago's `/hint` named every copy at once (all

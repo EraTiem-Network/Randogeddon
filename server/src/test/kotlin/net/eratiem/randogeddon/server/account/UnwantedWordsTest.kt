@@ -18,6 +18,8 @@ class UnwantedWordsTest {
       "shit", "Shit", "Big_Shit", "bigShit", "shit-show", "sh1t", "SH1T_HEAD", "s_h_i_t",
       "xXfuckerXx", "motherfucker99", "fuckyou", "Arschloch", "arschl0ch", "hurensohn_1", "Hitler", "h1tler_fan",
       "nazi", "Nazi_Hunter", "NIGGER",
+      // From the lists of other languages and the newer ones
+      "cockwomble", "Shitposter", "skurwysyn", "hijoputa", "Vaffanculo", "klootzak_7", "orospu", "perkele",
     )) assertTrue(UnwantedWords.hit(name), name)
   }
 
@@ -27,6 +29,9 @@ class UnwantedWordsTest {
       "Alice", "Bob_42", "Scunthorpe", "Cassandra", "Dickens", "Hancock", "Shitake_Fan", "Therapist", "Marsch",
       "Benazir", "Peter", "Regina", "Anita", "Mama_Bear", "Sega_Fan", "hard-mode", "brave-otter", "friday-chaos",
       "Michelle", "Assassin", "Analyst", "Grape", "Cummings", "Essex", "Matsushita",
+      // Ordinary in another language, or names
+      "Pollock", "Herrero", "Willy", "Moreno", "Guido", "Fanny", "Lovell", "Penisola", "Kummer", "Cerveja",
+      "Spagnola", "Mapache",
     )) assertFalse(UnwantedWords.hit(name), name)
   }
 
