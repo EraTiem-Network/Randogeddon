@@ -135,11 +135,15 @@ class AdminCache(private val scope: CoroutineScope) {
   /** Session [id]'s game server; its stream runs while it is shown, its state and log stay after. */
   fun repository(id: String): AdminRepository = repositories.getOrPut(id) { AdminRepository(scope, id) }
 
-  /** Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone. */
-  fun prefetch(ids: List<String>) {
-    (views.keys - ids.toSet()).forEach { views.remove(it) }
-    (cheats.keys - ids.toSet()).forEach { cheats.remove(it) }
-    (repositories.keys - ids.toSet()).forEach { repositories.remove(it)?.stop() }
+  /**
+   * Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone: the ones not in [all]
+   * (the running ones; more than [ids] for someone who supports some: their pages load their own).
+   */
+  fun prefetch(ids: List<String>, all: Collection<String> = ids) {
+    val kept = all.toSet()
+    (views.keys - kept).forEach { views.remove(it) }
+    (cheats.keys - kept).forEach { cheats.remove(it) }
+    (repositories.keys - kept).forEach { repositories.remove(it)?.stop() }
     ids.forEach { id ->
       if (id !in views) scope.launch {
         val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
@@ -180,7 +184,8 @@ fun AdminView(
         overview = answer.value
         loadProblem = null
         // What a Session-Manager sees of a session; support gets its own (the session's page loads it)
-        cache.prefetch(answer.value.sessions.filter { it.status.running && !supportOnly(it, administrator) }.map { it.id })
+        val running = answer.value.sessions.filter { it.status.running }
+        cache.prefetch(running.filter { !supportOnly(it, administrator) }.map { it.id }, all = running.map { it.id })
       }
       is Answer.Failed -> loadProblem = answer.message
     }
@@ -248,7 +253,7 @@ internal fun supportOnly(session: SessionEntry, administrator: Boolean): Boolean
 
 /**
  * A session for its support: how it stands, its dashboard, and what support may do (give an item, check a location,
- * a free hint; the spoiler log).
+ * a free hint; the spoiler log; its watchers and the share link).
  */
 @Composable
 private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler: (String) -> Unit, onDashboard: (String) -> Unit) {
@@ -269,6 +274,8 @@ private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler
     Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
   }
   CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) })
+  // Who watches, and the share link: support hands them out as the players do
+  WatchersSection(session.id)
 }
 
 /** One session's sections: its state and actions with its game server, players, people, cheats, console and log. */

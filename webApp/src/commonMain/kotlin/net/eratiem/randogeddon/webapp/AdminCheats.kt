@@ -45,7 +45,7 @@ private val SUPPORT_ACTIONS = WITH_ITEM + WITH_LOCATION
  * Cheats: give an item, check a location, release or collect for a slot, and free hints if the session allows them.
  * Every cheat is logged with the name of who did it and shown in the live feed; the latest ones are listed here. Loaded
  * again whenever the game server changes ([server]: started, stopped, another seed). Kept in [cache]. [support]: the
- * session's support helps (items, checks and hints, no release or collect), on the dashboard.
+ * session's support helps (items, checks and hints, no release or collect).
  */
 @Composable
 fun CheatSection(
@@ -234,12 +234,4 @@ fun CheatSection(
       }
     }
   }
-}
-
-/** On the dashboard, for the session's support: giving items, checking locations, free hints; the spoiler log. */
-@Composable
-fun SupportSection(id: String, onSpoiler: () -> Unit) {
-  val scope = rememberCoroutineScope()
-  val cache = remember { AdminCache(scope) }
-  CheatSection(id, server = null, cache, support = true, onSpoiler = onSpoiler)
 }
