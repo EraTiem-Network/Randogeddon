@@ -40,6 +40,11 @@ import net.eratiem.randogeddon.shared.SessionServers
 import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
 import org.koin.core.annotation.Single
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.seconds
+
+private val VERSIONS_KEPT = 30.seconds
 
 /** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
 class GameServerUnavailable(val status: HttpStatusCode, message: String) : Exception(message)
@@ -80,9 +85,19 @@ class GameServerClient(private val config: TrackerConfig) {
     http.get("${session(id)}/server/log?since=$since") { auth() }
   }.let { ApiJson.decodeFromString(LogLines.serializer(), it) }
 
-  /** The Archipelago releases the gateway has, newest first. */
-  suspend fun versions(): List<String> = call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
-    .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
+  @Volatile
+  private var versionsSeen: Pair<TimeMark, List<String>>? = null
+
+  /**
+   * The Archipelago releases the gateway has, newest first. They change only with the gateway's image, so the answer
+   * is kept for [VERSIONS_KEPT] (the panel's overview asks for it every 15 s).
+   */
+  suspend fun versions(): List<String> {
+    versionsSeen?.let { (at, versions) -> if (at.elapsedNow() < VERSIONS_KEPT) return versions }
+    return call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
+      .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
+      .also { versionsSeen = TimeSource.Monotonic.markNow() to it }
+  }
 
   /** The gateway's own version. */
   suspend fun gatewayVersion(): String = call { http.get("${config.gameServerApi}/internal/version") { auth() } }.trim()
