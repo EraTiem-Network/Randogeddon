@@ -106,7 +106,8 @@ class GameServerClient(private val config: TrackerConfig) {
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
     http.post("${session(id)}/generate") {
       auth()
-      timeout { requestTimeoutMillis = 11 * 60_000 }
+      // As long as the gateway lets it take (GENERATION_MINUTES), and then some: it answers when it stops one
+      timeout { requestTimeoutMillis = 4 * 60 * 60_000L }
       contentType(ContentType.Application.Json)
       setBody(ApiJson.encodeToString(GenerateRequest.serializer(), request))
     }

@@ -77,6 +77,10 @@ class SessionAdminTest {
     assertTrue(message.startsWith("Generation failed, possibly because of:\n• Celeste"), message)
     assertTrue(message.endsWith("Generate.py said:\nKeyError: 'Dash'"), message)
     assertEquals(Problem.GENERATION_FAILED, failure(GenerateResult(log = listOf("boom"))).problem)
+    // Stopped for its time: that is the reason, not a game
+    val stopped = failure(GenerateResult(log = listOf("Current fill step (Progression) at 4000/5086 items placed."), stoppedAfterMinutes = 60))
+    assertEquals(Problem.GENERATION_TOO_LONG, stopped.problem)
+    assertTrue(stopped.english().startsWith("Generating took longer than 60 minutes and was stopped"), stopped.english())
   }
 
   @Test

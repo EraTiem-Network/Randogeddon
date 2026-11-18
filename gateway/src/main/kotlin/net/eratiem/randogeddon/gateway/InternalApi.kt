@@ -163,14 +163,14 @@ private suspend fun RoutingContext.server(sessions: Sessions, block: suspend (Se
   block(session)
 }
 
-/** Start, stop or restart: the new state; 404 for an unknown session, 409 when no port is free. */
+/** Start, stop or restart: the new state; 404 for an unknown session, 409 when as many run as are allowed. */
 private suspend fun RoutingContext.control(action: suspend (String) -> GameServerState) {
   val id = sessionId() ?: return
   try {
     call.respond(action(id))
   } catch (e: NoSuchElementException) {
     call.respond(HttpStatusCode.NotFound, ApiError(e.message ?: "No session $id"))
-  } catch (e: NoFreePort) {
+  } catch (e: ServersBusy) {
     call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "No game server free"))
   }
 }

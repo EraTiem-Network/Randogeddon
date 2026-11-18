@@ -299,11 +299,6 @@ class LiveSessions(
   var onGateway: Set<String> = emptySet()
     private set
 
-  /** How many game servers can run at once, as the gateway said the last time. */
-  @Volatile
-  var capacity: Int = 0
-    private set
-
   fun get(id: String): LiveSession? = sessions[id]
 
   /** The newest first. */
@@ -312,10 +307,7 @@ class LiveSessions(
   suspend fun refresh() = mutex.withLock {
     val records = store.all()
     val servers = runCatching { gameServer.sessions() }.getOrNull()
-    servers?.let {
-      capacity = it.capacity
-      onGateway = it.sessions.map { s -> s.id }.toSet()
-    }
+    servers?.let { onGateway = it.sessions.map { s -> s.id }.toSet() }
     // A session is one the gateway has the files of, or a finished one with its archive; older rows (seeds from before
     // whose files are gone) aren't. Without an answer from the gateway, the sessions stay as they were.
     val onGateway = servers?.sessions?.map { it.id }?.toSet()

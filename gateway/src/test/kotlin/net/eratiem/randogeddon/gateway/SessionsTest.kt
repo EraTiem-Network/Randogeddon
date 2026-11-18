@@ -9,6 +9,7 @@ import kotlinx.coroutines.withTimeout
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.shared.GameServerStatus
 import org.junit.Assume.assumeFalse
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -18,6 +19,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -31,10 +33,12 @@ class SessionsTest {
   }
 
   @Test
-  fun `ports are given as ranges or lists`() {
-    assertEquals(listOf(38300, 38301, 38302, 38303), parsePorts("38300-38303"))
-    assertEquals(listOf(38300, 38305, 38306), parsePorts("38300, 38305-38306,38300"))
-    assertFailsWith<IllegalArgumentException> { parsePorts("38303-38300") }
+  fun `a game server gets a free port, its last one while nothing else listens there`() {
+    val port = freePort(null, emptySet())
+    assertEquals(port, freePort(port, emptySet()))
+    // Taken by another game server, or by something else listening: another one
+    assertNotEquals(port, freePort(port, setOf(port)))
+    ServerSocket(port).use { assertNotEquals(port, freePort(port, emptySet())) }
   }
 
   @Test
@@ -56,7 +60,7 @@ class SessionsTest {
    * [finished] ones are refused.
    */
   private fun sessions(
-    ids: List<String>, ports: List<Int>, finished: Set<String> = emptySet(),
+    ids: List<String>, limit: Int, finished: Set<String> = emptySet(),
   ): Pair<Sessions, SessionDirs> {
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
     val data: Path = Files.createTempDirectory("data")
@@ -65,7 +69,7 @@ class SessionsTest {
     for (id in ids) data.resolve("sessions/$id").createDirectories().resolve("AP_$id.zip").createFile()
     val dirs = SessionDirs(data)
     val sessions = Sessions(
-      dirs, ports,
+      dirs, { limit },
       create = { id, dir, port ->
         GameServer(
           GameServerConfig(
@@ -79,6 +83,8 @@ class SessionsTest {
       },
       // Never asked here: no client connects
       passwords = { SlotPasswordCache(SlotPasswordStore(error("no database")), it) },
+      // In order from 40001, so the test knows them; its last one again while no other session has it
+      port = { last, taken -> last?.takeIf { it !in taken } ?: (40001..40100).first { it !in taken } },
     )
     return sessions to dirs
   }
@@ -88,19 +94,18 @@ class SessionsTest {
   }
 
   @Test
-  fun `each running session gets a port of its own, as long as one is free`() = runBlocking {
-    val (sessions, dirs) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), listOf(40001, 40002))
+  fun `only as many run as the limit allows, each on a port of its own`() = runBlocking {
+    val (sessions, dirs) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 2)
 
-    // Two ports: the third session stays stopped
+    // A limit of two: the third session stays stopped
     sessions.startAll()
     sessions.await("brave-otter", GameServerStatus.RUNNING)
     sessions.await("friday-chaos", GameServerStatus.RUNNING)
     assertEquals(GameServerStatus.STOPPED, sessions.get("quiet-fox")?.server?.state?.status)
     assertEquals(listOf(40001, 40002, null), sessions.list().sessions.map { it.port })
-    assertEquals(2, sessions.list().capacity)
-    assertFailsWith<NoFreePort> { sessions.start("quiet-fox") }
+    assertFailsWith<ServersBusy> { sessions.start("quiet-fox") }
 
-    // Stopping one frees its port for another
+    // Stopping one makes room, and frees its port for another
     sessions.stop("brave-otter")
     sessions.start("quiet-fox")
     sessions.await("quiet-fox", GameServerStatus.RUNNING)
@@ -114,15 +119,24 @@ class SessionsTest {
   }
 
   @Test
-  fun `finished sessions take no port when the gateway starts them all`() = runBlocking {
+  fun `finished sessions don't count when the gateway starts them all`() = runBlocking {
     val (sessions, _) = sessions(
-      listOf("brave-otter", "calm-heron", "friday-chaos", "quiet-fox"), listOf(40001, 40002),
+      listOf("brave-otter", "calm-heron", "friday-chaos", "quiet-fox"), limit = 2,
       finished = setOf("brave-otter", "calm-heron"),
     )
     sessions.startAll()
     sessions.await("friday-chaos", GameServerStatus.RUNNING)
     sessions.await("quiet-fox", GameServerStatus.RUNNING)
     assertEquals(listOf(null, null, 40001, 40002), sessions.list().sessions.map { it.port })
+    sessions.stopAll()
+  }
+
+  @Test
+  fun `without a limit every session runs`() = runBlocking {
+    val (sessions, _) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 0)
+    sessions.startAll()
+    for (id in listOf("brave-otter", "friday-chaos", "quiet-fox")) sessions.await(id, GameServerStatus.RUNNING)
+    assertEquals(listOf(40001, 40002, 40003), sessions.list().sessions.map { it.port })
     sessions.stopAll()
   }
 }

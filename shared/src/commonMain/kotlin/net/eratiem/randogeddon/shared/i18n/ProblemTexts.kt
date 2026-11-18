@@ -160,6 +160,9 @@ internal object EnglishProblems : ProblemTexts {
       NO_FILE -> "No such file"
       SUPPORT_CANT -> "Support can give items, check locations and give hints, but not: ${action(EnglishCheats, a("action"))}"
       SESSIONS_PER_USER -> "Sessions per user: 0 to ${a("max")}"
+      GAME_SERVERS -> "Game servers at once: none (no limit) or 1 to ${a("max")}"
+      GENERATION_TOO_LONG -> "Generating took longer than ${a("minutes")} minutes and was stopped (a big multiworld fills " +
+        "on one core): try again with fewer slots, or ask an Administrator for more time (GENERATION_MINUTES)."
       APWORLD_TOO_LARGE -> "Larger than 64 MB"
       CREATING_ALREADY -> "You are creating a session already: wait until it is generated"
       TOO_MANY_YAMLS -> "At most ${a("max")} YAML files for one session"
@@ -318,6 +321,10 @@ internal object GermanProblems : ProblemTexts {
       NO_FILE -> "Diese Datei gibt es nicht"
       SUPPORT_CANT -> "Support kann Items geben, Orte checken und Hinweise geben, aber nicht: ${action(GermanCheats, a("action"))}"
       SESSIONS_PER_USER -> "Sessions pro Benutzer: 0 bis ${a("max")}"
+      GAME_SERVERS -> "Spielserver gleichzeitig: keine Angabe (ohne Grenze) oder 1 bis ${a("max")}"
+      GENERATION_TOO_LONG -> "Das Generieren hat länger als ${a("minutes")} Minuten gedauert und wurde abgebrochen (eine große " +
+        "Multiworld wird auf einem Kern gefüllt): Versuche es mit weniger Slots, oder bitte einen Administrator um mehr " +
+        "Zeit (GENERATION_MINUTES)."
       APWORLD_TOO_LARGE -> "Größer als 64 MB"
       CREATING_ALREADY -> "Du erstellst gerade schon eine Session: Warte, bis sie generiert ist"
       TOO_MANY_YAMLS -> "Höchstens ${a("max")} YAML-Dateien für eine Session"

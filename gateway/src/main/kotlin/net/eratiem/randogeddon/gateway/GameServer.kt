@@ -70,6 +70,12 @@ class GameServerConfig(
   /** The first pause before restarting after a crash; doubles up to [maxBackoff]. */
   val backoff: Duration = 1.seconds,
   val maxBackoff: Duration = 30.seconds,
+  /**
+   * After this many crashes in a row, each within [quickCrash] of its start, it isn't started again by itself
+   * ([GameServerStatus.FAILED]): a seed MultiServer can't serve would otherwise be started every [maxBackoff] for good.
+   */
+  val giveUpAfter: Int = 5,
+  val quickCrash: Duration = 60.seconds,
   /** After `/exit`, how long MultiServer gets to save and end before it is killed. */
   val stopTimeout: Duration = 10.seconds,
   /** MultiServer on this seed (file name) accepts clients now; for the session time. */
@@ -157,6 +163,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
 
   private suspend fun supervise() {
     var backoff = config.backoff
+    var quickCrashes = 0
     while (true) {
       val seed = newestSeed()
       if (seed == null) {
@@ -178,7 +185,15 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       // Ended because an admin stopped it: not a crash
       if (!currentCoroutineContext().isActive) return
       // A run that lasted a while was no crash loop: the next crash starts with the short pause again
-      if (System.currentTimeMillis() - started > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
+      val ran = System.currentTimeMillis() - started
+      if (ran > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
+      quickCrashes = if (ran < config.quickCrash.inWholeMilliseconds) quickCrashes + 1 else 0
+      if (quickCrashes >= config.giveUpAfter) {
+        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code, restarts = state.restarts + 1)
+        note("Game server ended with exit code $code, $quickCrashes times in a row within ${config.quickCrash} of its start; " +
+          "it stays stopped until it is started again")
+        return
+      }
       state = state.copy(status = GameServerStatus.CRASHED, since = null, lastExitCode = code, restarts = state.restarts + 1)
       note("Game server ended with exit code $code; starting again in $backoff")
       delay(backoff)

@@ -9,6 +9,24 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.9: Game servers without a port pool, and no crash loop
+- **No port pool:** a game server takes a free port of the gateway's container when it starts (its last one again if
+  free). The four ports of `AP_PORTS` (38300–38303) were the only limit of how many ran at once, but game clients come
+  through the gateway's relay (`wss://`, the bridge for the others), so the ports are the gateway's own; `AP_PORTS` is
+  gone.
+- **How many run at once is a setting:** *Game servers at once* under *Users*, beside *Sessions per user* (default 8,
+  empty: no limit; each one needs a few hundred MB of the gateway's memory). The tracker asks it before a session is
+  created, before a game server starts or restarts from the panel and when a session is reopened (until now that
+  relied on the gateway's "no free port"); the gateway keeps to it too, also at its own start (it reads the setting:
+  its database role may read `app_settings` now).
+- **A game server that keeps crashing gives up:** it was started again every 30 s without end and kept its place.
+  After 5 crashes in a row, each within a minute of its start, it stays down (*gave up*, with its last exit code and
+  its log) and doesn't count as running; *Start* tries again.
+- **A generation may take 60 minutes** (was 10), set with `GENERATION_MINUTES`; one that takes longer says so ("took
+  longer than 60 minutes and was stopped") instead of guessing at a game or a YAML. Generation stays on one core:
+  Archipelago's fill is single-threaded Python and has no option to use more, so a big multiworld (a session of 23
+  slots with 29,791 items was stopped at 10 minutes, 4,000 of 5,086 progression items placed) takes long.
+
 ### 0.18.8: The web app in packages by area
 - **The web app's 26 files of one package are 45 files in six:** `app` (the start, the app's shell and routing, the
   platform, texts, fonts), `ui` (the theme and the shared components: surfaces, icons, tips, inputs, the scrollbar),

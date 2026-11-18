@@ -45,6 +45,8 @@ class GameServerTest {
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
     dir = Files.createTempDirectory("gameserver")
     dir.resolve("fake.sh").writeText(fakeMultiServer)
+    // A MultiServer that can't serve its seed: it ends with an error right away, every time
+    dir.resolve("broken.sh").writeText("echo \"serving ${'$'}1\"\nexit 2\n")
   }
 
   @AfterTest
@@ -52,10 +54,12 @@ class GameServerTest {
     scope.cancel()
   }
 
-  private fun server(prepared: MutableList<String> = mutableListOf(), refuse: (Path) -> String? = { null }) = GameServer(
+  private fun server(
+    prepared: MutableList<String> = mutableListOf(), refuse: (Path) -> String? = { null }, script: String = "fake.sh",
+  ) = GameServer(
     GameServerConfig(
       dataDir = dir,
-      launch = { seed -> Launch(listOf("sh", dir.resolve("fake.sh").toString(), seed.fileName.toString())) },
+      launch = { seed -> Launch(listOf("sh", dir.resolve(script).toString(), seed.fileName.toString())) },
       prepare = { seed -> prepared += seed.fileName.toString() },
       seedPoll = 50.milliseconds,
       backoff = 50.milliseconds,
@@ -165,6 +169,30 @@ class GameServerTest {
     assertEquals(1, server.state.restarts)
     assertEquals(3, server.state.lastExitCode)
     server.stop()
+  }
+
+  @Test
+  fun `one that crashes again and again right after its start gives up, and a start tries again`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val server = server(script = "broken.sh")
+    server.start()
+    // 5 quick crashes in a row (the pauses between: 50, 100, 200, 200 ms)
+    server.awaitStatus(GameServerStatus.FAILED)
+    // What it did, for a failure's message (timing differs on a busy build machine)
+    fun seen() = "state ${server.state}, log: " + server.log(0).lines.joinToString(" | ") { it.text }
+    assertEquals(5, server.state.restarts, seen())
+    assertEquals(2, server.state.lastExitCode, seen())
+    assertTrue(server.log(0).lines.any { "stays stopped until it is started again" in it.text }, seen())
+    // It stays so: no more starts by itself
+    delay(500.milliseconds)
+    assertEquals(GameServerStatus.FAILED, server.state.status, seen())
+    assertEquals(5, server.state.restarts, seen())
+    // A start (an admin's) runs it again, with the count from the start
+    server.start()
+    server.awaitStatus(GameServerStatus.FAILED)
+    assertEquals(5, server.state.restarts, seen())
+    server.stop()
+    assertEquals(GameServerStatus.STOPPED, server.state.status, seen())
   }
 
   @Test

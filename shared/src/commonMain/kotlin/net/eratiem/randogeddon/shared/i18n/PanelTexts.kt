@@ -43,6 +43,7 @@ internal object EnglishPanel : PanelTexts {
     GameServerStatus.RUNNING -> "running"
     GameServerStatus.STARTING -> "starting"
     GameServerStatus.CRASHED -> "crashed"
+    GameServerStatus.FAILED -> "gave up (crashed again and again)"
     GameServerStatus.STOPPED -> "stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
@@ -83,6 +84,7 @@ internal object GermanPanel : PanelTexts {
     GameServerStatus.RUNNING -> "läuft"
     GameServerStatus.STARTING -> "startet"
     GameServerStatus.CRASHED -> "abgestürzt"
+    GameServerStatus.FAILED -> "aufgegeben (immer wieder abgestürzt)"
     GameServerStatus.STOPPED -> "gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }

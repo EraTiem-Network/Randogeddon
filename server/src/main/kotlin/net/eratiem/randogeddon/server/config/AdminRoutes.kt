@@ -17,6 +17,9 @@ import java.lang.invoke.MethodHandles
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.database.GAME_SERVERS
+import net.eratiem.randogeddon.database.MAX_GAME_SERVERS
+import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
@@ -74,14 +77,21 @@ fun Route.adminRoutes(
       call.respond(Versions(RandogeddonVersion.VERSION, gateway, releases))
     }
     route("/settings") {
-      get { call.respond(AppSettings(sessionsPerUser(settings))) }
+      get { call.respond(AppSettings(sessionsPerUser(settings), settings.gameServers())) }
       put {
         val request = call.receive<AppSettings>()
         if (request.sessionsPerUser !in 0..MAX_SESSIONS_PER_USER) {
           return@put call.refuse(HttpStatusCode.BadRequest, Refusal.of(Problem.SESSIONS_PER_USER, "max" to MAX_SESSIONS_PER_USER))
         }
+        if (request.gameServers !in 0..MAX_GAME_SERVERS) {
+          return@put call.refuse(HttpStatusCode.BadRequest, Refusal.of(Problem.GAME_SERVERS, "max" to MAX_GAME_SERVERS))
+        }
         settings.set(SESSIONS_PER_USER, request.sessionsPerUser.toString())
-        logger.info("{} set the sessions per user to {}", call.loggedIn.user.name, request.sessionsPerUser)
+        settings.set(GAME_SERVERS, request.gameServers.toString())
+        logger.info(
+          "{} set the sessions per user to {}, the game servers at once to {}", call.loggedIn.user.name,
+          request.sessionsPerUser, request.gameServers.takeIf { it > 0 } ?: "no limit",
+        )
         call.respond(HttpStatusCode.NoContent)
       }
     }
@@ -145,6 +155,7 @@ fun Route.manageRoutes(
   sessions: LiveSessions,
   list: SessionList,
   logins: LoginCheck,
+  gameServers: GameServerLimit,
 ) {
   get { gatewayCall { call.respond(admin.view(id())) } }
   delete {
@@ -203,6 +214,8 @@ fun Route.manageRoutes(
       if (action != "stop" && sessions.get(id)?.finished == true) {
         throw SessionProblem(HttpStatusCode.Conflict, Problem.REOPEN_TO_START)
       }
+      // Only so many run at once (its own may be one of them already, as at a restart)
+      if (action != "stop") gameServers.check(id)
       logger.info("{} asked to {} the game server of {}", call.loggedIn.user.name, action, id)
       val state = gameServer.control(id, action!!)
       sessions.refresh()
