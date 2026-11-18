@@ -15,6 +15,8 @@ import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.server.session.placements
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.CheatAction
+import net.eratiem.randogeddon.server.session.stepLocation
+import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.shared.CheatLogEntry
 import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.CheatRequest
@@ -52,7 +54,9 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
 
 /**
  * One copy of [item] for the slot [slot] to hint: a placement of it whose location is neither checked ([checked]) nor
- * hinted ([hinted]) in its world, by chance; `null` when none is left. Archipelago's `/hint` would name every copy.
+ * hinted ([hinted]) in its world; `null` when none is left. Archipelago's `/hint` would name every copy. [pick]: by
+ * chance, or the first in [playthrough] (its steps' locations in order, as world to location); a copy the
+ * playthrough doesn't have comes after those, in the spoiler log's order.
  */
 internal fun pickHint(
   placed: List<Placement>,
@@ -61,7 +65,14 @@ internal fun pickHint(
   checked: Map<String, Set<String>>,
   hinted: Map<String, Set<String>>,
   random: Random,
-): Placement? = unhinted(placed, slot, checked, hinted).filter { it.item == item }.randomOrNull(random)
+  pick: HintPick = HintPick.RANDOM,
+  playthrough: List<Pair<String, String>> = emptyList(),
+): Placement? {
+  val copies = unhinted(placed, slot, checked, hinted).filter { it.item == item }
+  if (pick == HintPick.RANDOM) return copies.randomOrNull(random)
+  val order = playthrough.withIndex().associate { (n, step) -> step to n }
+  return copies.minByOrNull { order[it.finder to it.location] ?: Int.MAX_VALUE }
+}
 
 /** The placements of the slot's items that are neither checked nor hinted yet. */
 internal fun unhinted(placed: List<Placement>, slot: String, checked: Map<String, Set<String>>, hinted: Map<String, Set<String>>) =
@@ -178,7 +189,7 @@ class Cheats(
     if (request.action == CheatAction.HINT_LOCATION && value in tracker.read { hintedLocations() }[request.slot].orEmpty()) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_HINTED, "value" to value!!, "slot" to request.slot)
     }
-    val command = if (request.action == CheatAction.HINT) itemHint(session, request.slot, value!!) else cheatCommand(request.action, request.slot, value)
+    val command = if (request.action == CheatAction.HINT) itemHint(session, request.slot, value!!, request.pick) else cheatCommand(request.action, request.slot, value)
     if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
     logger.info("{} cheated in {}: {}", admin, id, command)
     val shown = value.takeIf { request.action in NEEDS_VALUE }
@@ -187,16 +198,21 @@ class Cheats(
   }
 
   /**
-   * The command of a hint for [item] of [slot]: one copy of it, neither checked nor hinted, by its location
+   * The command of a hint for [item] of [slot]: one copy of it ([pick]), neither checked nor hinted, by its location
    * (`/hint_location` in the world that holds it); Archipelago's own `/hint`, which names every copy, only without
    * the spoiler log's placements.
    */
-  private suspend fun itemHint(session: LiveSession, slot: String, item: String): String {
+  private suspend fun itemHint(session: LiveSession, slot: String, item: String, pick: HintPick): String {
     val placed = placed(session)
     if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item)
     val checked = session.tracker.read { checkedLocations() }
     val hinted = session.tracker.read { hintedLocations() }
-    val copy = pickHint(placed, slot, item, checked, hinted, random)
+    // The playthrough's steps in order, sphere by sphere (world to location)
+    val playthrough = if (pick != HintPick.NEXT) emptyList() else runCatching {
+      spoilers.of(session.id, session.seedName)?.spoiler?.spheres.orEmpty()
+        .flatMap { sphere -> sphere.entries.mapNotNull { stepLocation(it)?.let { (location, world) -> world to location } } }
+    }.getOrDefault(emptyList())
+    val copy = pickHint(placed, slot, item, checked, hinted, random, pick, playthrough)
       ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_UNHINTED_COPY, "value" to item, "slot" to slot)
     return cheatCommand(CheatAction.HINT_LOCATION, copy.finder, copy.location)
   }

@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.14: Ctrl and the mouse wheel zoom, and which copy a hint names
+- **Ctrl and the mouse wheel zoom the page again** (and a trackpad's pinch): the app's canvas took the wheel and
+  scrolled with it, so the browser didn't zoom. The page keeps it from the app now; Ctrl+ and Ctrl− zoomed already.
+- **Which copy an item hint names:** a switch beside it (with the spoiler log's placements known): *Random copy*,
+  or *Next in playthrough*, the copy in the earliest sphere of the playthrough (a copy it doesn't need after those).
+  Remembered in the browser.
+- **Font mode:** its first choice is *Font's default* (German *Standard der Schrift*), not *Theme's default*: it is
+  how the chosen font is meant to be used, whichever theme it belongs to.
+
 ### 0.16.13: Zoom without a reload
 - **A browser zoom no longer reloads the page.** Compose 1.12 kept the pixel density it started with and drew
   blurry after a zoom, so the page reloaded itself, which kept the login but lost what was going on: a new session's

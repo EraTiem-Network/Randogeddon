@@ -202,7 +202,7 @@ object English : Texts {
     override val fontOriginal = "Randogeddon's original"
     override fun fontOf(theme: String, family: String) = "$theme's ($family)"
     override val fontScopeLabel = "Font mode"
-    override val fontScopeAuto = "Theme's default"
+    override val fontScopeAuto = "Font's default"
     override val fontScopeAll = "Everything"
     override val fontScopeHeadings = "Headings only"
     override val bridgeKeys = "Bridge keys"

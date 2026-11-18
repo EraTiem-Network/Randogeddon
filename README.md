@@ -436,7 +436,7 @@ its own open locations: its item goes to whoever owns it) or *to the slot* (an o
 holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
 placements, so only for a seed whose spoiler log has them). Free hints (`/hint_location`) only if the session
 was created with *Cheat hints*. A hint names one place: a location only if it isn't hinted yet, and for an item one
-copy of it at random that is neither checked nor hinted (Archipelago's `/hint` would name every copy; it is only used
+copy of it that is neither checked nor hinted, at random or the next one the playthrough needs (a switch beside it) (Archipelago's `/hint` would name every copy; it is only used
 for a seed whose spoiler log has no placements). The hints' table explains its states under the ⓘ in its last
 column. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
@@ -753,7 +753,7 @@ link's page, the browser's last choice applies (the login page takes its colours
 
 **Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
 *the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
-third choice (*Font mode*) says where the font shows: *Theme's default* (as the font is made: a display font, i.e. the pixel fonts of
+third choice (*Font mode*) says where the font shows: *Font's default* (as the font is made: a display font, i.e. the pixel fonts of
 NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
 the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
 used (20 to 130 KB each); until then, and without them, the original shows. A change of the font by hand (another theme, the

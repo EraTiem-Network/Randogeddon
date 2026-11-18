@@ -122,7 +122,12 @@ window.randogeddonLogin = (function () {
   var done = null;
   var token = null;
   // A browser zoom or another screen's scaling needs nothing here: Compose (1.13) draws at the new pixel density by
-  // itself, without a reload that would lose what is going on.
+  // itself, without a reload that would lose what is going on. But Ctrl and the mouse wheel (a trackpad's pinch sends
+  // the same) would reach Compose, which scrolls with it and keeps the browser from zooming: it stops here, before
+  // the app's canvas sees it, and the browser zooms.
+  window.addEventListener("wheel", function (event) {
+    if (event.ctrlKey) event.stopImmediatePropagation();
+  }, { capture: true, passive: true });
 
   function open(name, text) {
     Object.keys(forms).forEach(function (key) { forms[key].hidden = key !== name; });
