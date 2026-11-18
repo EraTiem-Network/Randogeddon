@@ -100,21 +100,22 @@ echo; echo "## First screen (headless Chromium, a share link's dashboard)"; echo
 docker run --rm -i --ipc=host --network randogeddon_default -e URL="http://tracker:8000/#/watch/$token" "$PLAYWRIGHT"   sh -c 'pip install -q --break-system-packages "playwright==${PLAYWRIGHT_VERSION:-1.49.1}" >/dev/null 2>&1; python3 -' <<'PY'
 import os, statistics
 from playwright.sync_api import sync_playwright
-# The page's title ("RANDOGEDDON", drawn by the app into its canvas): once it shows, the dashboard is there. The
-# loading splash goes earlier, sometimes before anything is drawn, and the canvas sits in a shadow root: so the
-# title's area is photographed until it is no longer plain
-TITLE = {"x": 440, "y": 16, "width": 400, "height": 48}
+# The dashboard is drawn once Compose has started (it removes index.html's loading splash, Main.kt) and the session's
+# state has come (the splash can go before it), two frames after both. Screenshots can't tell: taken while the page
+# starts, they hold up its start in headless Chromium
 runs = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
     for n in range(5):
         # The page's CSP has no unsafe-eval, which Playwright's waiting needs: the measuring only, not the app
         page = browser.new_context(viewport={"width": 1280, "height": 900}, bypass_csp=True).new_page()
-        page.goto(os.environ["URL"], wait_until="commit")
-        blank = len(page.screenshot(clip=TITLE))
-        while len(page.screenshot(clip=TITLE)) <= blank * 3:
-            if page.evaluate("() => performance.now()") > 60000:
-                raise SystemExit("The dashboard didn't appear within a minute")
+        state = []
+        page.on("response", lambda r: state.append(r.status) if r.url.endswith("/state") else None)
+        page.goto(os.environ["URL"], wait_until="load")
+        page.wait_for_selector("#splash", state="detached", timeout=60000)
+        while not state:
+            page.wait_for_timeout(10)
+        page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
         t = page.evaluate("() => ({load: performance.timing.loadEventEnd - performance.timing.navigationStart, drawn: performance.now()})")
         runs.append(t)
         page.context.close()
