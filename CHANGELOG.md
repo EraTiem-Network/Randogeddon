@@ -8,6 +8,17 @@ Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a Gi
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 17: A Repository That Can Be Shown
+What told too much about the servers left the repository and its history: their docs and setup, their addresses and
+names, the security scans' findings. The history was rewritten and signed again, and the GitHub repository made anew,
+so the pull requests start again at #1. Updating: a clone made before has another history; clone again (a fetch
+won't fit it). The Maven mirror, the image registry and the bridge's registry are each machine's settings now (see
+the README: `randogeddon.maven`, `~/.config/randogeddon/deploy.env`).
+
+### 0.17.2: Phase 17 done
+- **The history without the servers' details:** every commit cleaned like the tree in 0.17.1 and signed again, every
+  tag too, on the same dates. The GitHub repository was made anew with it; its pre-releases were made again (their
+  notes cleaned).
+- TODO: Phase 17 done; Phase 18 (*Code Optimization*).
 
 ### 0.17.1: The servers' details out of the tree
 - **Moved out of the repository** (into one of their own, not on GitHub): `.docs/INFRA.md`, `.docs/MAIL_MIGRATION.md`,
