@@ -15,7 +15,7 @@ plugins {
 
 group = "net.eratiem.randogeddon"
 // 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its last commit before the merge the release (see README, versions)
-version = "0.18.3"
+version = "0.18.4"
 
 // The Maven mirror if there is one, as in settings.gradle.kts
 val mirror = providers.gradleProperty("randogeddon.maven").orElse(providers.environmentVariable("RANDOGEDDON_MAVEN"))
@@ -120,6 +120,11 @@ fun Project.configureNativeImage() {
   }
 
   tasks.named("nativeCompile") {
+    // Kept in Gradle's build cache like the other tasks (the plugin doesn't mark it so): the Docker build starts with
+    // empty build directories, and without the cache a change to one app built the other's native image again. Its
+    // inputs are the classpath and the options; the GraalVM it runs on is one too, so a new one builds again
+    inputs.property("graalvm", System.getProperty("java.vm.version").orEmpty())
+    outputs.cacheIf { true }
     doFirst {
       if (!System.getProperty("os.name").startsWith("Linux")) {
         logger.warn("The native image targets Linux x86_64; build it on Linux (the Docker build, or WSL Debian).")

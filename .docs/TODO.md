@@ -724,8 +724,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       tracker at 0.8 % instead of 5.7 % CPU with 60 viewers); the options decoded once, the share link's summary
       serialized once; the panel's overview from the last reading (2.9 ms instead of 10.7 ms). The tracker's memory
       and the gateway's looked into: nothing kept, the 363 MiB were a running session
-- [ ] Images and build: the gateway image (1.2 GB) and the tracker image (327 MB) slimmed where it pays; the build
-      (435 s from nothing) faster where caches help
+- [x] Images and build (0.18.4): the gateway image 725 MB instead of 1.2 GB (Archipelago built in a stage of its own,
+      without its compilers); Gradle's build cache in the image build, so a change to the tracker builds in 149 s
+      instead of 416 s. The tracker image stays (its 46 MB of bridge builds are downloads)
 - [ ] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
       helper used everywhere (53 places), the doubled components and the page frame shared; `Api.kt`,
       `Accounts.kt`, `Stores.kt`, `SessionState.kt`, `LoginRoutes.kt` split; `GeneralTexts.kt` renamed; the compiler's

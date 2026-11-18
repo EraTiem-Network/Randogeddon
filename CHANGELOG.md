@@ -9,6 +9,19 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.4: A slimmer gateway image, a build that redoes less
+- **The gateway image is 725 MB instead of 1.2 GB:** Archipelago is installed in a stage of its own with git and the
+  compilers it needs for that, and the image takes only the result (the installed packages, Archipelago's directory,
+  `libtk8.6`).
+- **The image build keeps Gradle's task results** (`--build-cache`, in its cache mount), the native images and the web
+  app's optimisation included: a change to the tracker's code builds in 149 s instead of 416 s (the gateway and the
+  web app come from the cache), one to the web app's in 193 s.
+- **Fixed:** while a new session waited for its game server's `room.json`, its tracker connection ended with an
+  exception (Kotlin's `error()` was called instead of the tracker's own) and was only started again 10 s later; the
+  log got a stack trace each time.
+- **`scripts/measure.sh`** times the first screen by the page's own signs (the splash gone, the session's state come,
+  two frames after): screenshots, taken while the page starts, held its start up in headless Chromium.
+
 ### 0.18.3: One look per session, not per viewer
 - **The live streams share one look at their session:** every open dashboard polled its session every 750 ms by
   itself, so the work grew with the viewers; now one poller per watched session tells all its streams

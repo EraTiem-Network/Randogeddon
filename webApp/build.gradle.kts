@@ -43,3 +43,9 @@ kotlin {
     }
   }
 }
+
+// Binaryen's optimisation of the production build (about a minute) kept in Gradle's build cache like the compiling
+// before it (the plugin doesn't mark it so): an image build after a server change takes it from there
+tasks.matching { it.name == "compileProductionExecutableKotlinWasmJsOptimize" }.configureEach {
+  outputs.cacheIf { true }
+}

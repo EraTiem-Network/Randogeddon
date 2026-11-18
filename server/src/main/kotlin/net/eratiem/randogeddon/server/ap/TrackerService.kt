@@ -99,7 +99,8 @@ class TrackerService(
       val name = slotNames().firstOrNull()
       val url = serverUrl()
       if (name == null || url == null) {
-        error(if (url == null) "the game server isn't running" else "no slots known yet (waiting for $roomJson)")
+        // Its own error (noted for the dashboard), not Kotlin's, which would throw and end this connection's job
+        error(if (url == null) "the game server isn't running" else "no slots known yet (waiting for $roomJson)", refused = false)
         delay(5.seconds)
         continue
       }
