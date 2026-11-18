@@ -266,7 +266,7 @@ private fun ServerControls(
         when (status) {
           GameServerStatus.RUNNING -> p.ok
           GameServerStatus.STARTING -> p.useful
-          GameServerStatus.CRASHED -> p.trap
+          GameServerStatus.CRASHED, GameServerStatus.FAILED -> p.trap
           GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
         },
       )

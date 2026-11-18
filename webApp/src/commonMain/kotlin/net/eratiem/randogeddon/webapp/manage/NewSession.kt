@@ -114,9 +114,6 @@ private enum class LockMode { CHOOSE, RANDOM, MIXED }
 /** A slot's lock with mixed locks: the switch's three stops, left to right. */
 private enum class LockChoice { OPEN, RANDOM, LOCKED }
 
-/** The game server states that take one of the gateway's ports. */
-private val RUNNING = setOf(GameServerStatus.STARTING, GameServerStatus.RUNNING, GameServerStatus.CRASHED)
-
 /**
  * A new session: its ID (a suggestion to start with; checked as it is typed) and the form (YAMLs, who plays which
  * slot, locks, options). Its logins are shown once it is created.
@@ -146,10 +143,11 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   val idProblem = formProblem ?: idRefused
   // While it generates, the form makes room for the ID and the bar
   var generating by remember { mutableStateOf(false) }
-  val full = overview != null && overview.inUse >= overview.capacity
+  // As many game servers run as the Administrators allow (0: no limit)
+  val full = overview != null && overview.capacity > 0 && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
-  Section(t.sessionAdmin.newSession, subtitle = t.sessionAdmin.newSessionSubtitle(overview?.capacity?.toString() ?: "…")) {
+  Section(t.sessionAdmin.newSession, subtitle = overview?.capacity?.let(t.sessionAdmin::newSessionSubtitle) ?: "…") {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       created?.let { result ->
         Created(result.locked, onDone = { created = null })

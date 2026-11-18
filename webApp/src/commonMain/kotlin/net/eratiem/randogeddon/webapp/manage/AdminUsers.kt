@@ -434,8 +434,10 @@ private fun InfoLine(label: String, value: String, after: @Composable () -> Unit
 
 /**
  * How many running sessions of their own a user may have at once, unless their account has its own number (0: only
- * Administrators create sessions): a row of the users' card. [onLoaded]: the number, for the accounts' panels.
+ * Administrators create sessions), and how many game servers may run at once (empty: no limit): the settings for
+ * everyone, a row of the users' card. [onLoaded]: the sessions' number, for the accounts' panels.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   val p = LocalPalette.current
@@ -443,29 +445,49 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   val scope = rememberCoroutineScope()
   var saved by remember { mutableStateOf<AppSettings?>(null) }
   var perUser by remember { mutableStateOf("") }
+  var servers by remember { mutableStateOf("") }
   var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   LaunchedEffect(Unit) {
     when (val r = call("GET", "api/admin/settings", null) { ApiJson.decodeFromString(AppSettings.serializer(), it) }) {
-      is Answer.Ok -> { saved = r.value; perUser = r.value.sessionsPerUser.toString(); onLoaded(r.value.sessionsPerUser) }
+      is Answer.Ok -> {
+        saved = r.value
+        perUser = r.value.sessionsPerUser.toString()
+        servers = r.value.gameServers.takeIf { it > 0 }?.toString().orEmpty()
+        onLoaded(r.value.sessionsPerUser)
+      }
       is Answer.Failed -> state = false to r.message
     }
   }
   val value = perUser.trim().toIntOrNull()?.takeIf { it in 0..20 }
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
-    InfoTip(t.users.sessionsPerUserTip)
-    NumberField(perUser, { perUser = it; state = null }, "1", 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
-    Button(t.common.save, enabled = value != null && value != saved?.sessionsPerUser) {
+  // Empty: no limit (0)
+  val serversValue = if (servers.isBlank()) 0 else servers.trim().toIntOrNull()?.takeIf { it in 1..100 }
+  val settings = if (value != null && serversValue != null) AppSettings(value, serversValue) else null
+  FlowRow(
+    verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+    itemVerticalAlignment = Alignment.CenterVertically,
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt(t.users.sessionsPerUser, size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.users.sessionsPerUserTip)
+      NumberField(perUser, { perUser = it; state = null }, "1", 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt(t.users.gameServers, size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.users.gameServersTip)
+      NumberField(servers, { servers = it; state = null }, "∞", 1..100, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
+    }
+    Button(t.common.save, enabled = settings != null && settings != saved) {
       scope.launch {
-        val settings = AppSettings(value!!)
-        state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), settings)) { }) {
-          is Answer.Ok -> { saved = settings; onLoaded(settings.sessionsPerUser); true to t.users.saved }
+        val changed = settings!!
+        state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), changed)) { }) {
+          is Answer.Ok -> { saved = changed; onLoaded(changed.sessionsPerUser); true to t.users.saved }
           is Answer.Failed -> false to r.message
         }
       }
     }
   }
   if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
+  if (serversValue == null) Txt(t.users.oneToHundred, size = 12.5.sp, color = p.trap)
   state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
 }
 
