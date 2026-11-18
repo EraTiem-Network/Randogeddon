@@ -24,6 +24,9 @@ x-build: &build
     AP_COMMIT: ${AP_COMMIT:-54803be064fc7e80c4628777ed0b46a9390f255f}
     # Randogeddon Bridge's version: the project's (deploy.sh sets it)
     BRIDGE_VERSION: ${BRIDGE_VERSION:-dev}
+    # A Maven mirror for the Gradle build (see settings.gradle.kts); empty: Maven Central, the plugin portal, Google
+    RANDOGEDDON_MAVEN: ${RANDOGEDDON_MAVEN:-}
+    RANDOGEDDON_MAVEN_NAME: ${RANDOGEDDON_MAVEN_NAME:-}
 
 # The tracker's database login: its own role once TRACKER_DB_USER and TRACKER_DB_PASSWORD are set (database-roles
 # makes it); until then the database's superuser
@@ -174,7 +177,7 @@ services:
       MAIL_SECURITY: ${MAIL_SECURITY:-starttls}
       MAIL_USER: ${MAIL_USER:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-randogeddon@example.net}
+      MAIL_FROM: ${MAIL_FROM:-}
       # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
       TOTP_KEY: ${TOTP_KEY:-}
       # Administrators log in through this OpenID Connect provider (Authentik); without OIDC_ISSUER with their password
@@ -227,7 +230,7 @@ configs:
         WHERE :'gateway' <> :'tracker' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
 
 secrets:
-  # Gradle init script with the token for pkg.example.org (entry `example`); only needed when the images are built
+  # Gradle init script with the login for the Maven mirror (RANDOGEDDON_MAVEN); only read when the images are built
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}
   # The SSH key the bridge's checksums are signed with (scripts/deploy.sh names it); without one they aren't signed
