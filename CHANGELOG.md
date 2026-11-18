@@ -9,6 +9,20 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.8: The web app in packages by area
+- **The web app's 26 files of one package are 45 files in six:** `app` (the start, the app's shell and routing, the
+  platform, texts, fonts), `ui` (the theme and the shared components: surfaces, icons, tips, inputs, the scrollbar),
+  `api` (the repositories of the dashboard, the panel and the share link, the requests' answers, the login's watch),
+  `dashboard` (header, overview, players, hints, feed, the dialogs, the connection, the spoiler log, past sessions,
+  the share link's page), `manage` (the Management panel: the running session, a new session, past sessions, the
+  session switch, APWorlds, cheats, users, people) and `account` (settings, the own account, bridge keys, two-factor
+  login, appearance).
+- **The big files split by part:** `AdminSession.kt` (1,318 lines), `Dashboard.kt` (1,310), `Components.kt` (948),
+  `Settings.kt`, `Admin.kt` and `Watch.kt`. Every declaration moved as it was; 24 private ones that the parts share
+  are `internal` now.
+- The pages look as before: 16 screenshots (8 pages in English and German) before and after are the same to the pixel,
+  but for the breathing *New session* button and the suggested session ID, which is random.
+
 ### 0.18.7: The server's big files by part
 - **`SessionState.kt` (789 lines):** the model (`ClientStatus`, `SlotType`, `NetworkItem`, `Player` and their
   constants) is in `state/Model.kt`, the lenient JSON accessors of the Archipelago packets in `util/Json.kt` (the login,
