@@ -62,6 +62,7 @@ class SessionLifecycle(
   private val gameServer: GameServerClient,
   private val users: UserStore,
   private val limit: SessionLimit,
+  private val gameServers: GameServerLimit,
 ) {
   private val mutex = Mutex()
 
@@ -145,11 +146,12 @@ class SessionLifecycle(
     if (Instant.now().isAfter(until)) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.TOO_OLD_TO_REOPEN, "id" to id, "days" to REOPEN_WINDOW.inWholeDays)
     }
+    gameServers.check(id)
     finishes.reopen(session.seedName)
     try {
       gameServer.control(id, "start")
     } catch (e: Exception) {
-      // No free game server (or no gateway): it stays finished
+      // No game server free after all (or no gateway): it stays finished
       finishes.finish(session.seedName, session.finish?.finishedBy, finishedAt)
       throw e
     }

@@ -23,6 +23,7 @@ import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
@@ -64,6 +65,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val bridgeKeys by inject<BridgeKeys>()
   val attempts by inject<LoginAttempts>()
   val sessionLimit by inject<SessionLimit>()
+  val gameServerLimit by inject<GameServerLimit>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -89,7 +91,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)

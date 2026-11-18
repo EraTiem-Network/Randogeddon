@@ -115,6 +115,7 @@ class SessionAdmin(
   private val roles: SessionRoleStore,
   private val settings: AppSettingsStore,
   private val limit: SessionLimit,
+  private val gameServers: GameServerLimit,
 ) {
   /**
    * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
@@ -131,7 +132,7 @@ class SessionAdmin(
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = if (user.administrator) users.active().map { it.name }.sorted() else emptyList(),
       people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
-      capacity = sessions.capacity,
+      capacity = gameServers.limit(),
       suggestedId = suggestId(random) { it in taken },
       taken = taken.sorted(),
       inUse = all.count { it.server?.port != null },
@@ -152,7 +153,7 @@ class SessionAdmin(
       suggestedId = suggestId(random) { it in taken },
       people = users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
       left = if (user.administrator) null else limit.of(user.id)?.left,
-      capacity = servers?.capacity ?: sessions.capacity,
+      capacity = gameServers.limit(),
       running = servers?.sessions?.count { it.port != null } ?: 0,
       taken = taken.sorted(),
     )
@@ -248,11 +249,8 @@ class SessionAdmin(
     val id = request.id.trim()
     checkId(id)
     stages[id] = GenerationProgress(GenerationStage.CHECKING, 1)
-    val servers = gameServer.sessions()
     // The sessions others are creating right now will take a game server each too
-    if (servers.sessions.count { it.port != null } + creating.size - 1 >= servers.capacity) {
-      throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVERS_IN_USE, "capacity" to servers.capacity)
-    }
+    gameServers.check(null, starting = creating.size - 1)
     val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
     inspected.problems.firstOrNull()?.let { throw SessionProblem(HttpStatusCode.BadRequest, Refusal(it.code ?: Problem.NOT_POSSIBLE, it.args)) }
     if (inspected.worlds.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOTS)
@@ -425,6 +423,7 @@ internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<
 /** What to tell the admin when Generate.py made no seed: the games that may be the cause, then its output. */
 internal fun failure(result: GenerateResult): Refusal {
   val output = result.log.joinToString("\n")
+  result.stoppedAfterMinutes?.let { return Refusal.of(Problem.GENERATION_TOO_LONG, "minutes" to it, detail = output) }
   if (result.suspects.isEmpty()) return Refusal(Problem.GENERATION_FAILED, detail = output)
   val suspects = result.suspects.joinToString("\n") { s ->
     val file = listOfNotNull(s.apworld, s.from?.let { "Archipelago $it" })
