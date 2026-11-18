@@ -9,6 +9,18 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.3: One look per session, not per viewer
+- **The live streams share one look at their session:** every open dashboard polled its session every 750 ms by
+  itself, so the work grew with the viewers; now one poller per watched session tells all its streams
+  (`LiveSession.changes`). With 60 viewers the tracker uses 0.8 % CPU instead of 5.7 %. A stream still ends at its
+  next check (30 s) once its login or its right to the session does.
+- **The options are decoded once** per setup (they were on every look of every stream), and **the share link's
+  summary is serialized once** per change, not once per viewer.
+- **The panel's overview** uses the sessions as they were read last (every 10 s, and right after each change made in
+  the panel) and no longer reads them all again and asks the gateway twice per request: 2.9 ms instead of 10.7 ms
+  (every open panel asks every 15 s). The gateway's releases are kept 30 s.
+- **`scripts/measure.sh`** waits out the share link's rate limit (60 a minute) before timing the first screen.
+
 ### 0.18.2: The web app compressed once
 - **The web app's files are compressed when the image is built**, Brotli (level 11) and gzip (level 9) beside
   each file, and the tracker sends them as they are (Ktor's `preCompressed`); before, it gzipped the 12 MB for every

@@ -19,6 +19,13 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
+import kotlin.time.TimeSource
+import net.eratiem.randogeddon.server.session.NO_VERSION
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.coroutineScope
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
@@ -41,12 +48,13 @@ import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SlotFiles
 
-private val POLL_INTERVAL = 750.milliseconds
 private val KEEPALIVE = 15.seconds
+/** How often a stream looks whether its keepalive is due (and its login, every [LOGIN_CHECK]). */
+private val KEEPALIVE_CHECK = 5.seconds
 /** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
 internal val LOGIN_CHECK = 30.seconds
 
-/** The live streams open per account (each polls for as long as it is open): only so many at once. */
+/** The live streams open per account (each holds a connection for as long as it is open): only so many at once. */
 object OpenStreams {
   const val MAX = 20
   private val open = ConcurrentHashMap<String, Int>()
@@ -188,34 +196,35 @@ internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Ar
   call.respond(detail)
 }
 
-/** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
+/**
+ * Sends [live]'s summary ([json]) whenever it changes ([LiveSession.changes], one poller for all its streams), with a
+ * keepalive while nothing does, until the client goes or [stillAllowed] says no more.
+ */
 internal suspend fun ServerSSESession.follow(
   live: LiveSession,
   stillAllowed: suspend () -> Boolean = { true },
   json: suspend () -> String,
-) {
-  var sentVersion = -1L
-  var idle = 0.milliseconds
-  var unchecked = 0.milliseconds
-  while (true) {
-    if (unchecked >= LOGIN_CHECK) {
-      if (!stillAllowed()) return
-      unchecked = 0.milliseconds
-    }
-    // A finished session's summary no longer changes, but finishing (and reopening) changes the version
-    val version = live.version()
-    if (version != sentVersion) {
-      sentVersion = version
-      send(ServerSentEvent(data = json(), event = "state"))
-      idle = 0.milliseconds
-    } else if (idle >= KEEPALIVE) {
-      send(ServerSentEvent(comments = "keepalive"))
-      idle = 0.milliseconds
-    }
-    delay(POLL_INTERVAL)
-    idle += POLL_INTERVAL
-    unchecked += POLL_INTERVAL
+) = coroutineScope {
+  // The summaries and the keepalive come from two coroutines: one at a time on the stream
+  val sending = Mutex()
+  var lastSent = TimeSource.Monotonic.markNow()
+  suspend fun emit(event: ServerSentEvent) = sending.withLock {
+    send(event)
+    lastSent = TimeSource.Monotonic.markNow()
   }
+  // A finished session's summary no longer changes, but finishing (and reopening) changes the version
+  val updates = launch { live.changes.filter { it != NO_VERSION }.collect { emit(ServerSentEvent(data = json(), event = "state")) } }
+  var unchecked = 0.milliseconds
+  while (updates.isActive) {
+    delay(KEEPALIVE_CHECK)
+    unchecked += KEEPALIVE_CHECK
+    if (unchecked >= LOGIN_CHECK) {
+      unchecked = 0.milliseconds
+      if (!stillAllowed()) break
+    }
+    if (lastSent.elapsedNow() >= KEEPALIVE) emit(ServerSentEvent(comments = "keepalive"))
+  }
+  updates.cancel()
 }
 
 /** The session of the path's `{id}`, or 404. */

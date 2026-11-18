@@ -122,8 +122,8 @@ class SessionAdmin(
    * invited accounts (by address) and the users' names.
    */
   suspend fun overview(user: User): AdminOverview {
-    sessions.refresh()
-    val taken = takenIds()
+    // As the sessions were read last (every 10 s, and right after each change made here): the panel asks every 15 s
+    val taken = takenIds(fresh = false)
     val all = sessions.all()
     val managed = if (user.administrator) all else all.filter { user.id in it.managers() || it.roleOf(user) == SessionRole.SUPPORT }
     return AdminOverview(
@@ -382,8 +382,12 @@ class SessionAdmin(
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 
   /** The IDs in use: in the database, and the gateway's session directories (a deleted one's files are in old/). */
-  private suspend fun takenIds(): Set<String> =
-    store.all().map { it.id }.toSet() + runCatching { gameServer.sessions().sessions.map { it.id } }.getOrDefault(emptyList())
+  /**
+   * Every session ID in use: the database's and the gateway's. [fresh]: the gateway asked now (before an ID is
+   * taken); else as it answered last.
+   */
+  private suspend fun takenIds(fresh: Boolean = true): Set<String> = store.all().map { it.id }.toSet() +
+    if (fresh) runCatching { gameServer.sessions().sessions.map { it.id } }.getOrDefault(emptyList()) else sessions.onGateway
 }
 
 /**
