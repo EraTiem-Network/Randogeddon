@@ -731,3 +731,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       helper used everywhere (53 places), the doubled components and the page frame shared; `Api.kt`,
       `Accounts.kt`, `Stores.kt`, `SessionState.kt`, `LoginRoutes.kt` split; `GeneralTexts.kt` renamed; the compiler's
       warnings fixed, `SingleSignOn.createLink` removed
+    - [x] `shared` (0.18.5): `Api.kt` split by area (summary, connection, game server, sessions, spoiler log,
+          cheats, APWorlds), `Accounts.kt` into the account, the login, the users' administration and a session's
+          people; `GeneralTexts.kt` into `ApworldTexts.kt` and `UserAdminTexts.kt`, the session tips out of
+          `SessionAdminTexts.kt`

@@ -9,6 +9,17 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.5: `shared` in files by area
+- **`Api.kt` (928 lines, 77 types) split by area:** `Api.kt` keeps the JSON format, the session IDs, `Me`, `ApiError`
+  and `Versions`; the dashboard's summary is in `Summary.kt`, the connection in `Connection.kt`, the game server in
+  `GameServer.kt`, the panel's sessions and their generation in `Sessions.kt`, and `Spoiler.kt`, `Cheats.kt`,
+  `Apworlds.kt`.
+- **`Accounts.kt` (429 lines)** keeps the account and its settings; the login's steps are in `Login.kt`, the users'
+  administration in `Users.kt`, a session's people, watchers and share link in `SessionPeople.kt`.
+- **The texts:** `GeneralTexts.kt` held the APWorlds' and the user administration's texts: now `ApworldTexts.kt` and
+  `UserAdminTexts.kt`; the session tips have `SessionTipsTexts.kt` of their own.
+- Nothing else changed: every declaration moved as it was (the same package, so the same names everywhere).
+
 ### 0.18.4: A slimmer gateway image, a build that redoes less
 - **The gateway image is 725 MB instead of 1.2 GB:** Archipelago is installed in a stage of its own with git and the
   compilers it needs for that, and the image takes only the result (the installed packages, Archipelago's directory,

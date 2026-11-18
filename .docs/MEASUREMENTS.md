@@ -235,7 +235,7 @@ Management panel), `account`, `api` (the repositories and the request helper).
 | `Format.kt` 22, `LoginWatch.kt` 21 | | **merge**: `Format.kt` into the dashboard's formatting, `LoginWatch.kt` into `api` (it belongs with the login's requests) |
 | `page.js` 347, `theme.js` 24, `sw.js` 31 | | keep |
 
-**shared** (`shared/src/commonMain/…/shared/`)
+**shared** (`shared/src/commonMain/…/shared/`): done in 0.18.5, as below.
 
 | File | Lines | Verdict |
 |---|---|---|
