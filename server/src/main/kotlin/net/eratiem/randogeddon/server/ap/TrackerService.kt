@@ -30,10 +30,10 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.state.SessionState
-import net.eratiem.randogeddon.server.state.array
-import net.eratiem.randogeddon.server.state.int
-import net.eratiem.randogeddon.server.state.obj
-import net.eratiem.randogeddon.server.state.string
+import net.eratiem.randogeddon.server.util.array
+import net.eratiem.randogeddon.server.util.int
+import net.eratiem.randogeddon.server.util.obj
+import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import java.lang.invoke.MethodHandles

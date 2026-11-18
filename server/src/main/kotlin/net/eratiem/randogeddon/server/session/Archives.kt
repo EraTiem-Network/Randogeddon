@@ -2,7 +2,7 @@ package net.eratiem.randogeddon.server.session
 
 import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.server.config.TrackerConfig
-import net.eratiem.randogeddon.server.state.string
+import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ArchivedSession
