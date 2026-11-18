@@ -64,13 +64,13 @@ docker compose build     # takes a few minutes (every game's requirements, the n
 ```
 
 Building the tracker and gateway images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
-packages; on Arch: `pacman -S docker-buildx`) and your Gradle init script with the token for `pkg.example.org`
-(an entry `example`: any user name, an Artifact Keeper API token as password, e.g. `<service-account>`'s). Compose passes
-the init script into the build as a secret (default `~/.gradle/init.gradle.kts`, change with `GRADLE_INIT_SCRIPT` in
+packages; on Arch: `pacman -S docker-buildx`). Gradle takes its libraries from Maven Central, the Gradle plugin
+portal and Google, or from a Maven repository that mirrors them, `RANDOGEDDON_MAVEN` in `.env` (e.g. Artifact
+Keeper's virtual repository); its login comes from your Gradle init script, which can find it by its URL or its
+name (`RANDOGEDDON_MAVEN_NAME`, default `mirror`). Compose passes the init script into the build as a secret (default `~/.gradle/init.gradle.kts`, change with `GRADLE_INIT_SCRIPT` in
 `.env`); it never ends up in an image. Compose asks once to let the build read that file outside the build context
 (`additional privileges requested`); answer yes, or set `BUILDX_BAKE_ENTITLEMENTS_FS=0` as the scripts do. The native
-builds need about 8 GB of RAM (peak, tracker). If the server has no init script (or
-not the memory), build on your PC and copy the images over:
+builds need about 8 GB of RAM (peak, tracker). If the server has not the memory (or no login for the mirror), build on your PC and copy the images over:
 `docker save randogeddon-tracker:latest randogeddon-gateway:latest | ssh you@server docker load`.
 
 `.env` sets `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`, so plain `docker compose …`
@@ -101,16 +101,16 @@ and the ClouDNS API login in Traefik's environment. Use a sub-user that may only
 - a password of letters and digits only (`openssl rand -hex 20`; systemd's env files and shells trip over the
   rest), access level *Read and write*, all limits 0 except *DNS zones* 1 and *DNS records* (e.g. 500);
 - as allowed IPs, the server's outgoing IPv4 **and** IPv6 (the API is reached over either);
-- save, then delegate the zone (`example.net`) to it; its ID is in the sub-users table.
+- save, then delegate the zone (your domain's) to it; its ID is in the sub-users table.
 
 ```sh
-# <traefik-dir>/cloudns.env, chmod 600
+# /etc/traefik/cloudns.env (beside Traefik's configuration), chmod 600
 CLOUDNS_SUB_AUTH_ID=<the sub-user's ID>
 CLOUDNS_AUTH_PASSWORD=<its password>
 ```
 
 With Traefik as a systemd service, a drop-in loads it (`/etc/systemd/system/traefik.service.d/cloudns.conf`:
-`[Service]` and `EnvironmentFile=<traefik-dir>/cloudns.env`, then `systemctl daemon-reload` and a restart). Traefik
+`[Service]` and `EnvironmentFile=/etc/traefik/cloudns.env`, then `systemctl daemon-reload` and a restart). Traefik
 asks for the certificate when it first sees a router that uses the resolver, and renews it by itself.
 
 With the file provider instead of the labels (e.g. Traefik on the host, Randogeddon in a VM), one router for both,
@@ -204,7 +204,7 @@ Authentik also asks for a second factor: someone in the group without one set up
 an OAuth2/OpenID provider
 (confidential, redirect `https://<BASE_DOMAIN>/api/login/oidc/callback`, scopes `openid email profile`, *Logout URI*
 `https://<BASE_DOMAIN>/api/login/oidc/backchannel` with the method *Back-channel*) and its application bound to the
-group (`infra/auth/setup.py` makes both). Their login here lasts only as long as their Authentik session: when it ends
+group. Their login here lasts only as long as their Authentik session: when it ends
 (they log out there, an admin ends it, the person is deactivated, it expires), Authentik's back-channel logout
 (`POST /api/login/oidc/backchannel`, a logout token signed by Authentik) ends the logins here from that session, and an
 open dashboard notices within 30 seconds and shows the login form (as does any request that finds a login ended). Their Randogeddon Bridge keys stay (a login of their own, ended under *Your
@@ -216,17 +216,16 @@ changes (language and appearance stay). Their name and address follow Authentik'
 through its webhook `POST /api/login/oidc/updated` (when Authentik changes the person); a two-factor login from before
 goes at their next login through it. Their accounts here don't delete themselves after a while: they go when
 Authentik deletes the person, whose webhook calls `POST /api/login/oidc/deleted`. Both webhooks carry
-`OIDC_DELETION_TOKEN` (the same token in Authentik; `setup.py` makes the rules and prints it). More on the machines
-around it: `.docs/INFRA.md`.
+`OIDC_DELETION_TOKEN` (the same token in Authentik, in the webhook transport's header).
 
 **Mail:** invitations, address confirmations and deletion warnings go out through the SMTP server in `.env`
-(`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; sender `randogeddon@example.net`, a mailbox on the mail server). The
+(`MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`; the sender is `MAIL_FROM`, else the login's address). The
 certificate is checked against `MAIL_HOST`; if the server's public address leads back to this host (a VM behind the
 same host as the mail server), `MAIL_ADDRESS` names its internal one. Without `MAIL_HOST` the mails, links included,
 only go to the tracker's log.
 
 **Updating to the accounts of Phase 5** (migrations V7 and V8 run by themselves): set `MAIL_*` (and `MAIL_ADDRESS`
-if needed) and `TOTP_KEY` in `.env`, and create the `randogeddon@example.net` mailbox. Existing logins stay, without
+if needed) and `TOTP_KEY` in `.env`, and create the mailbox it sends from. Existing logins stay, without
 an e-mail address: each person adds theirs under *Your account*. Administrators set up two-factor login at their next
 login; until then what only they do is closed to them.
 
@@ -240,9 +239,9 @@ sessions that exist already, finished ones too.
 
 ## The live server
 
-The live Randogeddon runs on the live VM (`<internal-ip>`, behind the Proxmox host example.org and its Traefik). It holds
-only what runs; the images are built on a PC (WSL) and come from the registry `pkg.example.org` (Artifact Keeper, VM
-1020):
+The live Randogeddon runs in a VM behind a host with Traefik (`docker-compose.proxy.yml`: Traefik's file provider
+on the host reaches the VM's published ports). It holds only what runs; the images are built on a PC (WSL) and come
+from a registry (Artifact Keeper). Its machines, addresses and accounts are written down outside this repository.
 
 | What | Where |
 |---|---|
@@ -250,10 +249,10 @@ only what runs; the images are built on a PC (WSL) and come from the registry `p
 | `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
 | the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
 | dumps (each update's, a daily one kept 14 days; for root only) | `/srv/backups/` |
-| the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the Proxmox backup) |
+| the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the VM's own backup) |
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
-`TRACKER_IMAGE=pkg.example.org/eratiem-network/randogeddon/tracker` and `GATEWAY_IMAGE=…/gateway`, `IMAGE_TAG` and
+`TRACKER_IMAGE=<IMAGES>/tracker` and `GATEWAY_IMAGE=<IMAGES>/gateway`, `IMAGE_TAG` and
 `GATEWAY_TAG` (the running version, e.g. `0.8.3`; for a commit that isn't a release the commit, the gateway's with the
 Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
 `PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,
@@ -269,11 +268,12 @@ but the compose file names the build's secret).
 Old images are removed as it goes: the server keeps the running and the previous ones, WSL only what was just
 pushed. The dumps (each update's and the daily ones) are kept 14 days.
 
-It needs once: `docker login pkg.example.org` with the `<service-account>` token as password (`AK_TOKEN_DEPLOY` in
-`<registry-dir>/.secrets` on the registry VM), and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see
-the script's head). The server itself is logged in to the registry with the read-only `<service-account>` token.
-For publishing the bridge (*Versions*): the `<service-account>` token (`AK_TOKEN_BRIDGE` in `.secrets`) in
-`~/.config/randogeddon/bridge-publish.token` (mode 0600), and for 1.0.0 on `gh` logged in.
+It needs once, on the PC: `~/.config/randogeddon/deploy.env` with `IMAGES` (the registry and path of the images,
+e.g. `registry.example.org/randogeddon`), `RANDOGEDDON_MAVEN` (the Maven mirror, if any) and `BRIDGE_REGISTRY` (where
+the bridge's builds go, e.g. `https://registry.example.org`); `docker login` to the registry with a token that may
+push; and an SSH alias for the server (`DEPLOY_SSH`, default `randogeddon-live`; see the script's head). The server
+itself is logged in to the registry with a read-only token. For publishing the bridge (*Versions*): a token that may
+write its repository in `~/.config/randogeddon/bridge-publish.token` (mode 0600), and for 1.0.0 on `gh` logged in.
 
 **Restoring a dump** (the stack's database replaced by the dump; the tracker and gateway stopped meanwhile):
 
@@ -553,7 +553,7 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - `docker compose exec tracker randogeddon slots <session-id>` prints a session's slot passwords for the host, e.g.
   for the Locks slot (`!hint World Key 2`) or slots nobody plays; `randogeddon sessions` lists the sessions.
 
-The data lives in the `postgres-data` volume (and in the Proxmox backup of the whole VM).
+The data lives in the `postgres-data` volume (and in the backup of the whole VM, if it has one).
 
 ## Hints
 
@@ -841,9 +841,9 @@ For a test seed that needs no ROM or installed game, use a few YAMLs like
 
 ## Developing the tracker and the gateway
 
-Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from `https://pkg.example.org/maven/public/`
-(Artifact Keeper's mirror of Maven Central, the plugin portal, Google and the others) with the token from your init
-script. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
+Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25 toolchain; dependencies come from Maven Central, the plugin portal and Google, or from
+a mirror of them: its URL as `randogeddon.maven` in `~/.gradle/gradle.properties` (or `RANDOGEDDON_MAVEN`), its login
+from your init script. Run Gradle on JDK 25 (e.g. `JAVA_HOME=/usr/lib/jvm/java-25-temurin`).
 
 ```sh
 ./gradlew :server:test :gateway:test :database:test  # unit tests (also run in the Docker build)
@@ -874,7 +874,7 @@ with the next step's `-SNAPSHOT`. A follow-up to a step that was merged already 
 which the next step drops again. `CHANGELOG.md` lists every version by phase.
 
 For a release, `scripts/deploy.sh` also publishes Randogeddon Bridge (`scripts/publish-bridge.sh`, copied out of the
-tracker image, so exactly the builds it serves): to `pkg.example.org`, the generic repository `randogeddon-bridge`,
+tracker image, so exactly the builds it serves): to Artifact Keeper at `BRIDGE_REGISTRY`, the generic repository `randogeddon-bridge`,
 as `<version>/<file>` with `SHA256SUMS`. Every release is also a GitHub release `v<version>`, the version's part of
 `CHANGELOG.md` as its notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 `--dry-run` shows what it would do.
@@ -908,7 +908,7 @@ The images contain native executables (GraalVM CE 25), built in `kotlin.Dockerfi
   runtime image (Debian 12, glibc 2.36); glibc is backwards compatible.
 
 Native images can't be cross-compiled, so the build runs on Linux: in the Docker build, or directly in WSL Debian with
-GraalVM 25 (`sdk install java 25-graal`) and the init script (with `example`) in `~/.gradle/init.gradle.kts`:
+GraalVM 25 (`sdk install java 25-graal`) and, with a mirror, its login in `~/.gradle/init.gradle.kts`:
 `./gradlew :server:nativeCompile :gateway:nativeCompile`. Docker on Windows may run only Windows containers; then use
 the Docker of WSL (also for `:database:integrationTest`).
 
