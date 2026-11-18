@@ -247,7 +247,8 @@ Management panel), `account`, `api` (the repositories and the request helper).
 | `i18n/GeneralTexts.kt` | 479 | **rename and split**: it holds the APWorld and the user administration texts (`ApworldTexts.kt`, `UserAdminTexts.kt`) |
 | the other `i18n/` files (Cheat, Dashboard, Dialog, Mail, Panel, People, Problem, Spoiler texts; `English`, `German`, `Texts`, `Language`, `Formatting`) | 33–397 | keep (one area each) |
 
-**database** (`database/src/main/…/database/`)
+**database** (`database/src/main/…/database/`): done in 0.18.6 (`AccountStores.kt` 664, `SessionStores.kt` 501,
+`AppSettingsStore.kt` 24 lines); `StoresTest.kt` stays one file, as most of its tests cover accounts and sessions together.
 
 | File | Lines | Verdict |
 |---|---|---|

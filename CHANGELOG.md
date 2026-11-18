@@ -9,6 +9,12 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.6: The stores in files by area
+- **`Stores.kt` (1,166 lines, 33 types) split:** the accounts' stores (users, two-factor login, invitations, address
+  changes, logins and login links) in `AccountStores.kt`, the sessions' (session time, setup, the sessions, slot
+  passwords, finishing, the cheat log, roles, share links) in `SessionStores.kt`, the settings in `AppSettingsStore.kt`.
+  Every declaration moved as it was; `StoresTest.kt` stays one file (most of its tests cover both).
+
 ### 0.18.5: `shared` in files by area
 - **`Api.kt` (928 lines, 77 types) split by area:** `Api.kt` keeps the JSON format, the session IDs, `Me`, `ApiError`
   and `Versions`; the dashboard's summary is in `Summary.kt`, the connection in `Connection.kt`, the game server in
