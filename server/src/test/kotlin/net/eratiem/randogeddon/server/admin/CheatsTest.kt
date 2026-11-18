@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.server.admin
 
 import net.eratiem.randogeddon.shared.CheatAction
+import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.server.session.Placement
 import kotlin.random.Random
 import kotlin.test.Test
@@ -50,6 +51,25 @@ class CheatsTest {
     assertEquals(setOf("Crossroads", "Tower", "Lake"), free)
     // The items a hint can still name
     assertEquals(listOf("Progressive Sword", "Bombs"), unhinted(placed, "Bob-LttP", checked, hinted).map { it.item }.distinct())
+  }
+
+  @Test
+  fun `the next copy is the one the playthrough needs first`() {
+    val placed = listOf(
+      Placement("Crossroads", "Alice-HK", "Progressive Sword", "Bob-LttP"),
+      Placement("Tower", "Bob-LttP", "Progressive Sword", "Bob-LttP"),
+      Placement("Lake", "Carol-SM", "Progressive Sword", "Bob-LttP"),
+    )
+    // Lake in sphere 1, Tower in sphere 3, Crossroads not in the playthrough
+    val playthrough = listOf("Alice-HK" to "Shop", "Carol-SM" to "Lake", "Dave-OoT" to "Cave", "Bob-LttP" to "Tower")
+    fun next(hinted: Map<String, Set<String>>) =
+      pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), hinted, Random(1), HintPick.NEXT, playthrough)?.location
+    assertEquals("Lake", next(emptyMap()))
+    assertEquals("Tower", next(mapOf("Carol-SM" to setOf("Lake"))))
+    // Then one the playthrough doesn't need
+    assertEquals("Crossroads", next(mapOf("Carol-SM" to setOf("Lake"), "Bob-LttP" to setOf("Tower"))))
+    // Without a playthrough: the spoiler log's order
+    assertEquals("Crossroads", pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), emptyMap(), Random(1), HintPick.NEXT)?.location)
   }
 
   @Test
