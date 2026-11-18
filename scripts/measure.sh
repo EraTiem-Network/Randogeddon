@@ -94,6 +94,8 @@ token="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("shareTo
 rm -f "$out"
 
 echo; echo "## First screen (headless Chromium, a share link's dashboard)"; echo
+# The share link allows 60 requests a minute per address (WATCH_RATE_LIMIT): after the viewers' ones, a minute's pause
+(( viewers > 15 )) && sleep 61
 # The image has the browsers; the Python package comes with pip (once per run)
 docker run --rm -i --ipc=host --network randogeddon_default -e URL="http://tracker:8000/#/watch/$token" "$PLAYWRIGHT"   sh -c 'pip install -q --break-system-packages "playwright==${PLAYWRIGHT_VERSION:-1.49.1}" >/dev/null 2>&1; python3 -' <<'PY'
 import os, statistics
