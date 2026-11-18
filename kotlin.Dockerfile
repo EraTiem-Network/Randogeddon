@@ -68,11 +68,21 @@ FROM debian:bookworm-slim AS runtime
 RUN useradd --uid 1000 --home /app --no-create-home randogeddon && mkdir -p /app && chown randogeddon /app
 WORKDIR /app
 
+# The web app's files compressed once, at their best (Brotli 11, gzip 9), next to each file as .br and .gz: the
+# tracker sends those as they are (Routings.kt, preCompressed) instead of compressing every request. Only what is
+# worth it: text and wasm of 1 KB and more; images and woff2 are compressed already.
+FROM debian:bookworm-slim AS web
+RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /web
+RUN find /web -type f -size +1k \( -name '*.wasm' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' \
+      -o -name '*.json' -o -name '*.webmanifest' -o -name '*.svg' -o -name '*.map' -o -name '*.ttf' -o -name '*.otf' \
+      -o -name '*.txt' \) -exec brotli -q 11 -k {} \; -exec gzip -9 -k -n {} \;
+
 FROM runtime AS tracker
 # The named volume behind /state takes this directory's owner, so the tracker can write its history there
 RUN mkdir -p /state && chown randogeddon /state
 COPY --from=build /src/server/build/native/nativeCompile/randogeddon /src/server/build/native/nativeCompile/*.so /app/
-COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /app/web
+COPY --from=web /web /app/web
 # Randogeddon Bridge's builds, offered under Your connection (/downloads/bridge/<file>)
 COPY --from=bridge /out /app/bridge
 # `docker compose exec tracker randogeddon admins` finds the binary on the PATH

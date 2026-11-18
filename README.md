@@ -728,7 +728,8 @@ The dashboard is a web app (PWA), so no app store or Apple account is needed:
 - **iPhone / iPad (Safari):** open the page → Share → *Add to Home Screen*. It opens full screen with its own icon.
 
 It needs a browser with WebAssembly GC: iOS/Safari 18.2+, Chrome/Edge 119+, Firefox 120+. Older browsers get a
-message asking for an update. The first load is about 4 MB (gzip); after that the browser has it cached.
+message asking for an update. The first load is about 3.4 MB (Brotli, compressed when the image is built); after
+that the browser has it cached.
 
 ### Appearance
 

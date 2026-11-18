@@ -718,7 +718,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       merged where that helps), each step with its numbers before and after
 - [x] The baseline and the audit (0.18.1): `scripts/measure.sh`, its numbers and the findings in
       `.docs/MEASUREMENTS.md`, with a verdict for every code file
-- [ ] Page load: the web files compressed once when built (Brotli and gzip), not per request
+- [x] Page load: the web files compressed once when built (Brotli and gzip), not per request (0.18.2): 3.4 MB
+      instead of 4.5 MB with Brotli, the tracker's work per page load 10 ms instead of 207 ms
 - [ ] Server resources: a change told once to every stream instead of each polling every 750 ms; the share link's
       summary serialized once; the panel's overview (8 ms, asked every 15 s); the tracker's growing memory and the
       gateway's 363 MiB without a session looked into

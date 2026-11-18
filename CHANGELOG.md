@@ -9,6 +9,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.2: The web app compressed once
+- **The web app's files are compressed when the image is built**, Brotli (level 11) and gzip (level 9) beside
+  each file, and the tracker sends them as they are (Ktor's `preCompressed`); before, it gzipped the 12 MB for every
+  visitor. A browser over HTTPS takes Brotli: **3.4 MB instead of 4.5 MB to load**. The tracker's work per page load
+  is about 10 ms instead of 207 ms. A local build without those files is compressed per request as before.
+- **`scripts/measure.sh`** times the dashboard until it is drawn (the page's title showing), not until the loading
+  splash goes: that can be before anything is drawn, so 0.18.1's 243 ms were wrong (it is about 1.2 s locally). The
+  files' table also shows how long the tracker takes for each.
+
 ### 0.18.1: The baseline and the audit
 - **`scripts/measure.sh`** measures a local stack with the demo's sessions running: the page's files as sent (plain,
   gzip, Brotli), the images and what is in them, the containers' memory and CPU idle and with viewers' live streams

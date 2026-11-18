@@ -32,17 +32,23 @@ if [[ -n "$build" ]]; then
   echo "| again, nothing changed | $(( $(date +%s) - start )) s |"
 fi
 
-echo; echo "## The page's files"; echo; echo "| File | Plain | gzip | Brotli |"; echo "|---|---|---|---|"
+echo; echo "## The page's files"; echo
+echo "| File | Plain | gzip | Brotli | Served with gzip (median of 5) |"; echo "|---|---|---|---|---|"
 size() { curl -s -o /dev/null -H "Accept-Encoding: $2" -w '%{size_download}' "$BASE/$1"; }
 kb() { awk -v b="$1" 'BEGIN { printf "%.0f KB", b / 1024 }'; }
+# How long the tracker takes for the whole file, locally: what compressing it per request costs shows here
+served() {
+  for _ in 1 2 3 4 5; do curl -s -o /dev/null -H 'Accept-Encoding: gzip' -w '%{time_total}\n' "$BASE/$1"; done \
+    | sort -n | awk 'NR == 3 { printf "%.1f ms", $1 * 1000 }'
+}
 files="index.html page.js theme.js webApp.js $(curl -s "$BASE/webApp.js" | grep -o -E '[0-9a-f]{20}\.wasm' | sort -u | tr '\n' ' ')"
 total_plain=0 total_gzip=0 total_br=0
 for f in $files; do
   plain=$(size "$f" identity) gz=$(size "$f" gzip) br=$(size "$f" br)
   total_plain=$((total_plain + plain)) total_gzip=$((total_gzip + gz)) total_br=$((total_br + br))
-  echo "| $f | $(kb "$plain") | $(kb "$gz") | $(kb "$br") |"
+  echo "| $f | $(kb "$plain") | $(kb "$gz") | $(kb "$br") | $(served "$f") |"
 done
-echo "| **all** | **$(kb $total_plain)** | **$(kb $total_gzip)** | **$(kb $total_br)** |"
+echo "| **all** | **$(kb $total_plain)** | **$(kb $total_gzip)** | **$(kb $total_br)** | |"
 
 echo; echo "## Images"; echo; echo "| Image | Size | Inside |"; echo "|---|---|---|"
 mb() { awk -v b="$1" 'BEGIN { printf "%.0f MB", b / 1048576 }'; }
@@ -92,21 +98,26 @@ echo; echo "## First screen (headless Chromium, a share link's dashboard)"; echo
 docker run --rm -i --ipc=host --network randogeddon_default -e URL="http://tracker:8000/#/watch/$token" "$PLAYWRIGHT"   sh -c 'pip install -q --break-system-packages "playwright==${PLAYWRIGHT_VERSION:-1.49.1}" >/dev/null 2>&1; python3 -' <<'PY'
 import os, statistics
 from playwright.sync_api import sync_playwright
+# The page's title ("RANDOGEDDON", drawn by the app into its canvas): once it shows, the dashboard is there. The
+# loading splash goes earlier, sometimes before anything is drawn, and the canvas sits in a shadow root: so the
+# title's area is photographed until it is no longer plain
+TITLE = {"x": 440, "y": 16, "width": 400, "height": 48}
 runs = []
 with sync_playwright() as p:
     browser = p.chromium.launch(args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
-    for n in range(4):
+    for n in range(5):
         # The page's CSP has no unsafe-eval, which Playwright's waiting needs: the measuring only, not the app
         page = browser.new_context(viewport={"width": 1280, "height": 900}, bypass_csp=True).new_page()
-        page.goto(os.environ["URL"], wait_until="load")
-        # The app removes index.html's loading splash once Compose draws (Main.kt): then the frame after it
-        page.wait_for_selector("#splash", state="detached", timeout=120000)
-        page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        page.goto(os.environ["URL"], wait_until="commit")
+        blank = len(page.screenshot(clip=TITLE))
+        while len(page.screenshot(clip=TITLE)) <= blank * 3:
+            if page.evaluate("() => performance.now()") > 60000:
+                raise SystemExit("The dashboard didn't appear within a minute")
         t = page.evaluate("() => ({load: performance.timing.loadEventEnd - performance.timing.navigationStart, drawn: performance.now()})")
         runs.append(t)
         page.context.close()
     browser.close()
-print(f"| Of {len(runs)} loads | Files loaded | First screen drawn |")
+print(f"| Of {len(runs)} loads | Files loaded | Dashboard drawn |")
 print("|---|---|---|")
 print(f"| median | {statistics.median(r['load'] for r in runs):.0f} ms | {statistics.median(r['drawn'] for r in runs):.0f} ms |")
 print(f"| fastest | {min(r['load'] for r in runs)} ms | {min(r['drawn'] for r in runs):.0f} ms |")

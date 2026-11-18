@@ -34,9 +34,12 @@ year. The fonts (2.3 MB in all) load only when chosen.
 
 | | Files loaded | First screen drawn |
 |---|---|---|
-| median of 4 | 108 ms | 243 ms |
+| median of 4 | 108 ms | ~~243 ms~~ 1,220 ms (corrected, see 0.18.2) |
 
 Locally the download costs nothing: on a real connection the 4.5 MB above decide it (about 4 s at 10 Mbit/s).
+The 243 ms first written here were wrong: the loading splash goes once Compose has started, sometimes before it has
+drawn anything, and that was what was timed. Measured again (0.18.2) until the page's title shows: 1,216–1,235 ms
+with the files compressed per request.
 
 ### Images
 
@@ -67,6 +70,29 @@ On live, idle without a session: tracker 102 MiB, gateway 363 MiB, PostgreSQL 61
 
 20 viewers for 60 s got 60 updates, none was left without. One login holds at most 20 streams (`OpenStreams.MAX`, on
 purpose): more viewers of one account get nothing (measured: 30 streams of one login, 12 without an update).
+
+## 0.18.2: the web files compressed once
+
+The image's build compresses the web app's files once (Brotli 11 and gzip 9, `.br` and `.gz` beside each), and the
+tracker sends those as they are; a local build without them is compressed per request as before.
+
+| File | Plain | gzip before → after | Brotli (new) | The tracker's time for it, before → after |
+|---|---|---|---|---|
+| `index.html` | 11 KB | 3 → 3 KB | 3 KB | 1.1 → 1.9 ms |
+| `page.js` | 17 KB | 5 → 5 KB | 5 KB | 1.2 → 1.6 ms |
+| `webApp.js` | 715 KB | 106 → 103 KB | 80 KB | 8.0 → 1.1 ms |
+| Compose's Skia wasm | 7,241 KB | 2,993 → 2,967 KB | 2,348 KB | 137.4 → 3.9 ms |
+| the app's wasm | 4,236 KB | 1,349 → 1,328 KB | 986 KB | 59.6 → 2.3 ms |
+| **all** | **12,221 KB** | **4,457 → 4,408 KB** | **3,422 KB** | **207 → 10 ms** |
+
+- **Download:** browsers take Brotli over HTTPS (all of them on live): **3.4 MB instead of 4.5 MB, 23 % less**.
+  Locally (plain HTTP) Chromium asks for gzip only.
+- **The tracker's work per page load:** about **10 ms instead of 207 ms** (it compressed 12 MB for every visitor); a
+  fast connection gets the files that much sooner.
+- **Dashboard drawn** (local, the page's title showing): 1,195 ms median with the compressed files, 1,226 ms
+  compressing per request (two rounds each, alternating); 1,207 ms in the full run. The rest is the wasm's compiling
+  and start.
+- **The tracker image:** 347 MB (was 327); its web app 26 MB (was 16) with the `.br` and `.gz` files.
 
 ## What the audit found
 
