@@ -78,7 +78,7 @@ internal object EnglishMails : MailTexts {
   override fun keptOut(name: String, until: String?, reason: String?) = """
     |Hi $name,
     |
-    |${if (until != null) "an Administrator has timed your Randogeddon account out until $until. Until then" else "an Administrator has suspended your Randogeddon account. Until that is taken back"}
+    |${if (until != null) "an Administrator has timed your Randogeddon account out until $until. Until then" else "an Administrator has suspended your Randogeddon account. Until that is lifted"}
     |you can't log in, and your logins (Randogeddon Bridge's too) have ended.${if (reason.isNullOrBlank()) "" else "\n|\n|The reason given: $reason"}
     |
     |Your sessions go on, and your games stay connected.
@@ -156,7 +156,7 @@ internal object GermanMails : MailTexts {
   override fun keptOut(name: String, until: String?, reason: String?) = """
     |Hallo $name,
     |
-    |${if (until != null) "ein Administrator hat dein Randogeddon-Konto bis $until gesperrt. Bis dahin" else "ein Administrator hat dein Randogeddon-Konto gesperrt. Bis das zurückgenommen wird,"}
+    |${if (until != null) "ein Administrator hat dein Randogeddon-Konto bis $until gesperrt. Bis dahin" else "ein Administrator hat dein Randogeddon-Konto gesperrt. Bis die Sperre aufgehoben wird,"}
     |kannst du dich nicht anmelden, und deine Anmeldungen (auch die von Randogeddon Bridge) sind beendet.${if (reason.isNullOrBlank()) "" else "\n|\n|Der angegebene Grund: $reason"}
     |
     |Deine Sessions laufen weiter, und deine Spiele bleiben verbunden.

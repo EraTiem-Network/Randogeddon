@@ -34,8 +34,8 @@ interface PanelTexts {
 }
 
 internal object EnglishPanel : PanelTexts {
-  override val titleAdministrator = "Manage · Administrator"
-  override val title = "Manage your sessions"
+  override val titleAdministrator = "Management panel · Administrator"
+  override val title = "Management panel"
   override val general = "General"
   override val gameServer = "Game server"
   override val gatewayUnreachable = "gateway unreachable"
@@ -52,7 +52,7 @@ internal object EnglishPanel : PanelTexts {
   override fun lastExitCode(code: Int) = "last exit code $code"
   override fun restarts(n: Int) = "$n ${if (n == 1) "restart" else "restarts"} after crashes"
   override val startTip =
-    "It serves the session's seed (not a paused or ended one: reopen that first). A crashed one is started again by the gateway by itself."
+    "It serves the session's seed (not a paused or ended one: reopen that first). The gateway restarts a crashed one by itself."
   override val start = "Start"
   override val stopTip =
     "It saves and ends; every player is disconnected. It stays stopped, and the session time doesn't count, until started again."
@@ -74,8 +74,8 @@ internal object EnglishPanel : PanelTexts {
 }
 
 internal object GermanPanel : PanelTexts {
-  override val titleAdministrator = "Verwalten · Administrator"
-  override val title = "Deine Sessions verwalten"
+  override val titleAdministrator = "Verwaltung · Administrator"
+  override val title = "Verwaltung"
   override val general = "Allgemein"
   override val gameServer = "Spielserver"
   override val gatewayUnreachable = "Gateway nicht erreichbar"
@@ -92,7 +92,7 @@ internal object GermanPanel : PanelTexts {
   override fun lastExitCode(code: Int) = "letzter Exit-Code $code"
   override fun restarts(n: Int) = "$n ${if (n == 1) "Neustart" else "Neustarts"} nach Abstürzen"
   override val startTip =
-    "Er stellt den Seed der Session bereit (keiner pausierten oder beendeten: öffne die zuerst wieder). Einen " +
+    "Er stellt den Seed der Session bereit (nicht den einer pausierten oder beendeten: Öffne diese zuerst wieder). Einen " +
       "abgestürzten startet das Gateway von selbst neu."
   override val start = "Starten"
   override val stopTip =

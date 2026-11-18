@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.i18n.texts
 import net.eratiem.randogeddon.shared.i18n.duration
 import androidx.compose.foundation.background
@@ -132,11 +135,15 @@ class AdminCache(private val scope: CoroutineScope) {
   /** Session [id]'s game server; its stream runs while it is shown, its state and log stay after. */
   fun repository(id: String): AdminRepository = repositories.getOrPut(id) { AdminRepository(scope, id) }
 
-  /** Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone. */
-  fun prefetch(ids: List<String>) {
-    (views.keys - ids.toSet()).forEach { views.remove(it) }
-    (cheats.keys - ids.toSet()).forEach { cheats.remove(it) }
-    (repositories.keys - ids.toSet()).forEach { repositories.remove(it)?.stop() }
+  /**
+   * Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone: the ones not in [all]
+   * (the running ones; more than [ids] for someone who supports some: their pages load their own).
+   */
+  fun prefetch(ids: List<String>, all: Collection<String> = ids) {
+    val kept = all.toSet()
+    (views.keys - kept).forEach { views.remove(it) }
+    (cheats.keys - kept).forEach { cheats.remove(it) }
+    (repositories.keys - kept).forEach { repositories.remove(it)?.stop() }
     ids.forEach { id ->
       if (id !in views) scope.launch {
         val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
@@ -176,7 +183,9 @@ fun AdminView(
       is Answer.Ok -> {
         overview = answer.value
         loadProblem = null
-        cache.prefetch(answer.value.sessions.filter { it.status.running }.map { it.id })
+        // What a Session-Manager sees of a session; support gets its own (the session's page loads it)
+        val running = answer.value.sessions.filter { it.status.running }
+        cache.prefetch(running.filter { !supportOnly(it, administrator) }.map { it.id }, all = running.map { it.id })
       }
       is Answer.Failed -> loadProblem = answer.message
     }
@@ -217,19 +226,56 @@ fun AdminView(
         null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
         NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { onPage(it.id); load() })
         else -> key(page) {
-          SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
+          val entry = all.firstOrNull { it.id == page }
+          if (entry != null && supportOnly(entry, administrator)) {
+            SupportedSession(entry, cache, onSpoiler = onSpoiler, onDashboard = onDashboard)
+          } else {
+            SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
+          }
         }
       }
     }
     // What concerns every session: Administrators'
     if (administrator) Txt(LocalTexts.current.panel.general, size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
-    PastSessionsAdmin(all.filter { !it.status.running }, onChanged = { load() }, onSpoiler = onSpoiler)
+    // Finished ones to reopen or delete: not the ones the user only supports
+    PastSessionsAdmin(all.filter { !it.status.running && !supportOnly(it, administrator) }, onChanged = { load() }, onSpoiler = onSpoiler)
     if (administrator) {
       UsersAdmin(onChanged = { load() }, onSession = onDashboard)
       ApworldsSection()
       VersionsSection()
     }
   }
+}
+
+/** The user is [session]'s support and nothing more: they help its players, they don't manage it. */
+internal fun supportOnly(session: SessionEntry, administrator: Boolean): Boolean =
+  !administrator && session.myRole == SessionRole.SUPPORT
+
+/**
+ * A session for its support: how it stands, its dashboard, and what support may do (give an item, check a location,
+ * a free hint; the spoiler log; its watchers and the share link).
+ */
+@Composable
+private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler: (String) -> Unit, onDashboard: (String) -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  Row(
+    Modifier.fillMaxWidth().card(p).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+        StatusPill(session.status)
+        Pill(t.people.role(SessionRole.SUPPORT), p.accent)
+      }
+      Txt("${session.id} · ${t.decimal(session.percent)}% · ${t.sessions.slots(session.slots)}", size = 12.sp, color = p.muted, maxLines = 1)
+    }
+    Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
+  }
+  CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) })
+  // Who watches, and the share link: support hands them out as the players do
+  WatchersSection(session.id)
 }
 
 /** One session's sections: its state and actions with its game server, players, people, cheats, console and log. */

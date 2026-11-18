@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.admin
 
+import net.eratiem.randogeddon.server.account.UnwantedWords
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import java.security.SecureRandom
@@ -43,6 +44,7 @@ import net.eratiem.randogeddon.shared.CreateSessionResult
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.GenerationProgress
+import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.NewSessionView
@@ -78,6 +80,10 @@ private val ID_WORDS = listOf(
   ),
 )
 
+/** The part of a new session's bar that is the seed's generation, in percent. */
+private const val GENERATING_FROM = 3
+private const val GENERATING_TO = 92
+
 /** A session ID from [ID_WORDS] that [taken] says is free; with a number after it if the pairs run out. */
 internal fun suggestId(random: Random, taken: (String) -> Boolean): String {
   repeat(50) {
@@ -111,14 +117,15 @@ class SessionAdmin(
   private val limit: SessionLimit,
 ) {
   /**
-   * The sessions [user] manages with their game servers (an Administrator: every session), and what a new one needs.
-   * Only Administrators get the invited accounts (by address) and the users' names.
+   * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
+   * says which: support only gets what support may do), and what a new one needs. Only Administrators get the
+   * invited accounts (by address) and the users' names.
    */
   suspend fun overview(user: User): AdminOverview {
     sessions.refresh()
     val taken = takenIds()
     val all = sessions.all()
-    val managed = if (user.administrator) all else all.filter { user.id in it.managers() }
+    val managed = if (user.administrator) all else all.filter { user.id in it.managers() || it.roleOf(user) == SessionRole.SUPPORT }
     return AdminOverview(
       sessions = managed.map { list.entry(it, it.personOf(user), admin = true, role = it.roleOf(user)) },
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
@@ -213,7 +220,18 @@ class SessionAdmin(
       return createReserved(request, creator)
     } finally {
       creating.remove(creator.id)
+      stages.remove(request.id.trim())
     }
+  }
+
+  /**
+   * Refuses [id] as a new session's ID: its form, a word nobody wants in one, or taken. Asked while it is typed
+   * too, so the form says so before anything is generated.
+   */
+  suspend fun checkId(id: String) {
+    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
+    if (UnwantedWords.hit(id)) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ID_UNWANTED)
+    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
   }
 
   private suspend fun createReserved(request: CreateSessionRequest, creator: User): CreateSessionResult {
@@ -228,8 +246,8 @@ class SessionAdmin(
       }
     }
     val id = request.id.trim()
-    SessionIds.problem(id)?.let { throw SessionProblem(HttpStatusCode.BadRequest, it) }
-    if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
+    checkId(id)
+    stages[id] = GenerationProgress(GenerationStage.CHECKING, 1)
     val servers = gameServer.sessions()
     // The sessions others are creating right now will take a game server each too
     if (servers.sessions.count { it.port != null } + creating.size - 1 >= servers.capacity) {
@@ -272,6 +290,7 @@ class SessionAdmin(
     val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
     val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
     val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
+    stages[id] = GenerationProgress(GenerationStage.SAVING, 93)
 
     setups.create(
       id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
@@ -283,6 +302,7 @@ class SessionAdmin(
     slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
     // No one connects a locked slot until its key is found (the tracker opens it then)
     slotPasswords.setLocked(seed, locked.toSet())
+    stages[id] = GenerationProgress(GenerationStage.SERVER, 97)
     gameServer.control(id, "start")
     sessions.refresh()
     roles.add(id, creator.id, SessionRole.MANAGER.code, creator.name, creator.name)
@@ -291,8 +311,19 @@ class SessionAdmin(
     return CreateSessionResult(id, seed, locked)
   }
 
-  /** How far the generation of new session [id]'s seed is; `null`: none runs. */
-  suspend fun generationProgress(id: String): GenerationProgress? = gameServer.generationProgress(id)
+  /** The tracker's own stages of the sessions being created (checking before the gateway generates, setting up after). */
+  private val stages = ConcurrentHashMap<String, GenerationProgress>()
+
+  /**
+   * How far new session [id] is; `null`: none is being created. The gateway's part (the seed) takes the bar's
+   * middle, the tracker's checks before and its setting up after the ends.
+   */
+  suspend fun generationProgress(id: String): GenerationProgress? {
+    val own = stages[id]
+    if (own != null && own.stage != GenerationStage.CHECKING) return own
+    val seed = runCatching { gameServer.generationProgress(id) }.getOrNull()
+    return seed?.let { it.copy(percent = GENERATING_FROM + it.percent * (GENERATING_TO - GENERATING_FROM) / 100) } ?: own
+  }
 
   /** The accounts a new session can be played by, invited ones too. */
   private suspend fun people(): List<UserRef> = users.accounts()

@@ -91,7 +91,7 @@ class AccountService(
       )
     }
     val suggested = suggestedName?.trim()?.takeIf { it.isNotEmpty() }
-    suggested?.let { name -> UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
+    suggested?.let { name -> nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
     mailLimits.count(by)
     val account = users.invite(address)
     logger.info("{} invites {}", by, address)
@@ -137,7 +137,7 @@ class AccountService(
     val info = invitation(request.token, now = now)
     if (!info.valid) throw AccountProblem(HttpStatusCode.Gone, Refusal(info.code ?: Problem.LINK_DOESNT_WORK))
     val name = request.name.trim()
-    UserNames.problem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     PasswordRules.problem(request.password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (users.findActive(name) != null) throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to name)
     val hash = tokenHash(request.token)
@@ -185,11 +185,13 @@ class AccountService(
   }
 
   /**
-   * [user]'s account as the provider has it ([wantedName], its verified [email]): at each login through it and when it
+   * [user]'s account as the provider has it ([wantedName], its [email]): at each login through it and when it
    * says a person changed. The name made unique (another account may have it), the address only if no other account
-   * has it; a two-factor login of before goes (the provider asks for the second factor).
+   * has it; a two-factor login of before goes (the provider asks for the second factor). [emailVerified]: whether
+   * the provider calls the address verified, kept for the Administrators to see (`null`: it didn't say, as its
+   * webhook doesn't).
    */
-  suspend fun syncFromProvider(user: User, wantedName: String, email: String?) {
+  suspend fun syncFromProvider(user: User, wantedName: String, email: String?, emailVerified: Boolean? = null) {
     if (wantedName != user.name) {
       val name = uniqueName(wantedName) { taken -> users.findActive(taken)?.takeIf { it.id != user.id } != null }
       if (name != user.name) {
@@ -199,10 +201,14 @@ class AccountService(
       }
     }
     val address = email?.let(EmailAddresses::normalize)?.takeIf(EmailAddresses::valid)
-    if (address != null && !address.equals(user.email, ignoreCase = true) && users.accountByEmail(address) == null) {
+    var theirs = address != null && address.equals(user.email, ignoreCase = true)
+    if (address != null && !theirs && users.accountByEmail(address) == null) {
       users.setEmail(user.id, address)
+      theirs = true
       logger.info("{}'s address is {} now ({})", user.name, address, config.oidc?.name)
     }
+    // Only about the address the account has from the provider
+    if (theirs && emailVerified != null) users.setEmailVerifiedByProvider(user.id, emailVerified)
     if (user.twoFactor) {
       twoFactor.reset(user.id)
       logger.info("{}'s two-factor login of before is off: {} asks for the second factor", user.name, config.oidc?.name)
@@ -213,7 +219,7 @@ class AccountService(
   suspend fun rename(user: User, name: String) {
     requireOwn(user)
     val clean = name.trim()
-    UserNames.problem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    nameProblem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (clean == user.name) return
     users.findActive(clean)?.takeIf { it.id != user.id }?.let {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to clean)
@@ -315,6 +321,8 @@ class AccountService(
         deletesAt = due[a.id]?.toEpochMilli(),
         password = a.hasPassword,
         singleSignOn = a.linked,
+        provider = config.oidc?.name?.takeIf { a.linked },
+        emailVerified = a.emailVerifiedByProvider.takeIf { a.linked && a.email != null },
         twoFactor = a.twoFactor,
         language = a.language,
         block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
@@ -428,3 +436,7 @@ class AccountService(
     }
   }
 }
+
+/** What's wrong with [name] as a user's name: its form ([UserNames]), or a word nobody should be called here. */
+internal fun nameProblem(name: String): Refusal? =
+  UserNames.problem(name) ?: Refusal(Problem.NAME_UNWANTED).takeIf { UnwantedWords.hit(name) }

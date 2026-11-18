@@ -28,11 +28,15 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.CheatRequest
+import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.GameServerState
 
 /** The pickers are as tall as the button next to them. */
 private val CONTROL_HEIGHT = 34.dp
+
+/** Which copy an item hint names, remembered in this browser. */
+private const val HINT_PICK_KEY = "ap-hint-pick"
 
 private val WITH_ITEM = setOf(CheatAction.ITEM, CheatAction.HINT)
 private val HINTS = setOf(CheatAction.HINT, CheatAction.HINT_LOCATION)
@@ -45,7 +49,7 @@ private val SUPPORT_ACTIONS = WITH_ITEM + WITH_LOCATION
  * Cheats: give an item, check a location, release or collect for a slot, and free hints if the session allows them.
  * Every cheat is logged with the name of who did it and shown in the live feed; the latest ones are listed here. Loaded
  * again whenever the game server changes ([server]: started, stopped, another seed). Kept in [cache]. [support]: the
- * session's support helps (items, checks and hints, no release or collect), on the dashboard.
+ * session's support helps (items, checks and hints, no release or collect).
  */
 @Composable
 fun CheatSection(
@@ -70,6 +74,7 @@ fun CheatSection(
   var toSlot by remember { mutableStateOf(false) }
   var from by remember { mutableStateOf<String?>(null) }
   var outcome by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+  var hintPick by remember { mutableStateOf(HintPick.entries.firstOrNull { it.name == Platform.loadSetting(HINT_PICK_KEY) } ?: HintPick.RANDOM) }
   var busy by remember { mutableStateOf(false) }
 
   fun load() = scope.launch {
@@ -102,6 +107,8 @@ fun CheatSection(
       if (toSlot && action == CheatAction.LOCATION) {
         if (answer.value.incoming.none { it.location == value && it.world == from }) { value = null; from = null }
       } else if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
+      else if (action == CheatAction.HINT_LOCATION && value != null && value !in answer.value.hintLocations) value = null
+      else if (action == CheatAction.HINT && value != null && value !in answer.value.hintItems) value = null
     }
   }
 
@@ -126,7 +133,10 @@ fun CheatSection(
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
           val incoming = toSlot && action == CheatAction.LOCATION
+          // A hint names one place: only locations not hinted yet, and items with a copy neither checked nor hinted
           val choices = when (action) {
+            CheatAction.HINT -> names?.hintItems
+            CheatAction.HINT_LOCATION -> names?.hintLocations
             in WITH_ITEM -> names?.items
             in WITH_LOCATION -> names?.locations
             else -> null
@@ -152,6 +162,16 @@ fun CheatSection(
               { toSlot = it; value = null; from = null }, modifier, minHeight = CONTROL_HEIGHT,
             )
           }
+          // An item hint: which of its copies (with the placements known), remembered in this browser
+          val copy: @Composable (Modifier) -> Unit = { modifier ->
+            Tip(t.cheats.copyTip) {
+              Select(
+                listOf(HintPick.RANDOM to t.cheats.randomCopy, HintPick.NEXT to t.cheats.nextCopy), hintPick,
+                { hintPick = it; Platform.saveSetting(HINT_PICK_KEY, it.name) }, modifier, minHeight = CONTROL_HEIGHT,
+              )
+            }
+          }
+          val picksCopy = action == CheatAction.HINT && names?.placementsKnown == true
           val needsValue = action in WITH_ITEM || action in WITH_LOCATION
           val which: @Composable (Modifier) -> Unit = { modifier ->
             if (incoming) {
@@ -188,7 +208,7 @@ fun CheatSection(
               outcome = null
               scope.launch {
                 val world = from.takeIf { incoming }
-                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world))
+                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world, hintPick))
                 outcome = when (val answer = call("POST", path, body) { }) {
                   is Answer.Ok -> true to t.cheats.done(action, world ?: slot.orEmpty(), value)
                   is Answer.Failed -> false to answer.message
@@ -204,6 +224,7 @@ fun CheatSection(
               Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.fillMaxWidth())
                 if (action == CheatAction.LOCATION) direction(Modifier.fillMaxWidth())
+                if (picksCopy) copy(Modifier.fillMaxWidth())
                 forSlot(Modifier.fillMaxWidth())
                 if (needsValue) which(Modifier.fillMaxWidth())
                 send()
@@ -213,6 +234,7 @@ fun CheatSection(
               Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.width(170.dp))
                 if (action == CheatAction.LOCATION) direction(Modifier.width(140.dp))
+                if (picksCopy) copy(Modifier)
                 forSlot(Modifier.width(200.dp))
                 if (needsValue) which(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
                 send()
@@ -234,12 +256,4 @@ fun CheatSection(
       }
     }
   }
-}
-
-/** On the dashboard, for the session's support: giving items, checking locations, free hints; the spoiler log. */
-@Composable
-fun SupportSection(id: String, onSpoiler: () -> Unit) {
-  val scope = rememberCoroutineScope()
-  val cache = remember { AdminCache(scope) }
-  CheatSection(id, server = null, cache, support = true, onSpoiler = onSpoiler)
 }

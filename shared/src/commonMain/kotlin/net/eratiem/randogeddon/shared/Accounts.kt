@@ -16,16 +16,24 @@ object UserNames {
   /** A hosted slot's "player" (no account): no one may be named so, in any case. */
   const val HOSTED = "Hosted"
 
+  /** Names that would pass for Randogeddon itself or for someone with a say here: no one may be named so (any case). */
+  private val RESERVED = setOf(
+    "hosted", "admin", "admins", "administrator", "administrators", "moderator", "moderators", "mod", "mods", "support",
+    "supporter", "system", "root", "staff", "owner", "official", "randogeddon", "archipelago", "server", "everyone",
+    "anonymous", "guest", "bot", "null", "undefined",
+  )
+
+  /** A name's characters: letters without accents, digits and the underscore. */
+  fun allowed(c: Char): Boolean = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '_'
+
   fun valid(name: String): Boolean = problem(name) == null
 
   /** What's wrong with [name]; `null`: nothing (except maybe being taken). */
   fun problem(name: String): Refusal? = when {
     name.length < MIN_LENGTH -> Problem.NAME_TOO_SHORT
     name.length > MAX_LENGTH -> Problem.NAME_TOO_LONG
-    name != name.trim() -> Problem.NAME_SPACES
-    '@' in name -> Problem.NAME_AT
-    name.any { it.isISOControl() } -> Problem.NAME_CONTROL
-    name.equals(HOSTED, ignoreCase = true) -> Problem.NAME_RESERVED
+    !name.all(::allowed) -> Problem.NAME_CHARACTERS
+    name.lowercase() in RESERVED -> Problem.NAME_RESERVED
     else -> null
   }?.let { Refusal(it) }
 }
@@ -156,6 +164,10 @@ data class AdminUser(
   /** How they log in: a password of their own, through the identity provider (single sign-on), a second factor. */
   val password: Boolean = false,
   val singleSignOn: Boolean = false,
+  /** The provider they log in through, by its name (e.g. Authentik); `null` without [singleSignOn]. */
+  val provider: String? = null,
+  /** Whether [provider] calls their [email] verified; `null`: not its address, or it didn't say. */
+  val emailVerified: Boolean? = null,
   val twoFactor: Boolean = false,
   /** The language they chose (its code); `null`: their browser's. */
   val language: String? = null,
@@ -173,8 +185,14 @@ data class AccountBlock(val since: Long, val until: Long? = null, val reason: St
 @Serializable
 enum class TimeOut(val hours: Int) {
   @SerialName("1h") HOUR(1),
+  @SerialName("3h") HOURS_3(3),
+  @SerialName("6h") HOURS_6(6),
+  @SerialName("12h") HOURS_12(12),
   @SerialName("1d") DAY(24),
+  @SerialName("2d") DAYS_2(24 * 2),
+  @SerialName("3d") DAYS_3(24 * 3),
   @SerialName("7d") WEEK(24 * 7),
+  @SerialName("14d") WEEKS_2(24 * 14),
   @SerialName("30d") MONTH(24 * 30),
 }
 

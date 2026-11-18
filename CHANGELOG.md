@@ -7,6 +7,163 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 16: English and German Side by Side
+Every page read and looked through in English and German, and what came up with it: support and the Management
+panel, names with rules and a filter for unwanted words, a new session's progress, single hints, APWorld uploads as
+pills, a spoiler log that stays usable, and a zoom that keeps what is going on. Updating: migration V22 runs by itself
+(whether Authentik calls an address verified; known from the next login); the web app is built with Compose
+Multiplatform 1.13.0-beta02 until 1.13.0 is stable.
+
+### 0.16.15: Phase 16 done
+- TODO: Phase 16's points as they were done, step by step, and the open one (Compose Multiplatform 1.13.0 once it
+  is stable); Phase 16 done. Phase 17's new repository is `infra`.
+
+### 0.16.14: Ctrl and the mouse wheel zoom, and which copy a hint names
+- **Ctrl and the mouse wheel zoom the page again** (and a trackpad's pinch): the app's canvas took the wheel and
+  scrolled with it, so the browser didn't zoom. The page keeps it from the app now; Ctrl+ and Ctrl− zoomed already.
+- **Which copy an item hint names:** a switch beside it (with the spoiler log's placements known): *Random copy*,
+  or *Next in playthrough*, the copy in the earliest sphere of the playthrough (a copy it doesn't need after those).
+  Remembered in the browser.
+- **Font mode:** its first choice is *Font's default* (German *Standard der Schrift*), not *Theme's default*: it is
+  how the chosen font is meant to be used, whichever theme it belongs to.
+
+### 0.16.13: Zoom without a reload
+- **A browser zoom no longer reloads the page.** Compose 1.12 kept the pixel density it started with and drew
+  blurry after a zoom, so the page reloaded itself, which kept the login but lost what was going on: a new session's
+  YAMLs and form, a running generation's bar, an upload. It reloaded also when the window went to a screen with
+  other scaling, which can come with resizing it. Compose 1.13 draws at the new density by itself
+  ([CMP-7230](https://youtrack.jetbrains.com/issue/CMP-7230)), so the page's own handling is gone.
+- **Compose Multiplatform 1.13.0-beta02** (was 1.12.2), a beta until 1.13.0 is stable.
+
+### 0.16.12: The ID that is generated, and an upload without its line
+- **While a new session generated, it showed another ID:** the panel loads its overview again every 15 seconds,
+  each time with a new suggested ID, and the form took it over (the session itself got the one that was sent, and the
+  bar asked about the wrong one). The form keeps its first suggestion now, and the generating view the ID it sent.
+- **An APWorld upload no longer has its "Uploading …" line** above the pills; a try or a removal still says what it
+  does.
+
+### 0.16.11: An upload's errors in its pill
+- **Why an APWorld was refused is in its pill's tip** (on hover, a long press on a phone), like what an added one
+  brought; it is no longer written out below the pills too.
+
+### 0.16.10: APWorld uploads as pills
+- **Each uploaded APWorld is a pill** that fills like a bar: grey while its turn hasn't come, yellow while it is
+  uploaded and Archipelago checks it (the bar creeps on, the server says nothing until it is done) or while it waits
+  for the answer to *Replace*, then green once added, red if not, grey if skipped. Its tip says which games it
+  brought or why not; what went wrong is also written out below them.
+- **Cleared when done:** *Clear* takes away what the last upload, try or removal said (until now it stayed until the
+  page was loaded again); after an upload without trouble the pills go by themselves after 10 seconds.
+
+### 0.16.9: Newer lists for the word filter
+- **The unwanted words come from three lists now**, about 9,600 words of 17 languages (was 1,400 of 15, from
+  LDNOOBW alone, last changed in 2024): LDNOOBW, BadWords (FlacSy, MIT, updated November 2026; it brings Indonesian
+  and Romanian and many more forms) and Google Profanity Words (Coffee & Fun, MIT, updated June 2026).
+- **Ordinary words are taken out by checking**, not only by hand: against the 50,000 commonest words of each of
+  the 17 languages and 4,900 first names. A word only BadWords has goes if it is common anywhere (it has many
+  ordinary ones); the others' common words were looked through and the ordinary ones listed. A word found inside a
+  common word or a name counts only as a whole part.
+- `scripts/unwanted_words.py` downloads into `output/unwanted-words/` and keeps it for the next run.
+
+### 0.16.8: A hint names one place
+- **A hint for an item names one copy** of it, at random, that is neither checked nor hinted yet (`/hint_location`
+  where it lies, from the spoiler log's placements). Archipelago's `/hint` named every copy at once (all
+  Progressive Swords); it is only used for a seed whose spoiler log has no placements. Once every copy is checked or
+  hinted, the hint is refused, and the item leaves the hint's list.
+- **A location that is hinted already** isn't offered for a hint (and is refused).
+- **The hints' state has an ⓘ** in the table's last column (beside the filter on a narrow screen): what *open*,
+  *priority*, *no priority*, *avoid* and *found* mean.
+
+### 0.16.7: More to see while a session is made, less for a locked slot
+- **A locked slot's patch files aren't shown** under *Your connection* (they wait for the slot's key, like its
+  password), and aren't handed out to its players until then. Session-Managers and Administrators still get every
+  slot's in the panel.
+- **The new session's progress says more:** four steps above the bar (*Check*, *Generate*, *Set up*, *Start*; done
+  ones with a check mark), and new states: checking the YAMLs, players and locks; waiting while another session
+  generates (the gateway generates one at a time); setting up the slots, players and passwords; starting the game
+  server. The seed's own stages keep the bar's middle.
+
+### 0.16.6: A new session, out of the way while it generates
+- **While a new session generates** the form is gone: only the session's ID, the stage and the bar show. A failed
+  generation brings the form back as it was, with the reason.
+- **A session ID is checked as it is typed** (`GET /api/sessions/new/id?id=`): a word nobody wants in one, or an ID
+  that is taken, shows beside the field a moment after the last key, not only when *Generate and start* is clicked.
+
+### 0.16.5: The Management panel, and names with rules
+- **User names:** only letters without accents, digits and `_` (so far almost anything but `@`). Names that pass for
+  Randogeddon or someone with a say here are reserved (*Admin*, *Administrator*, *Moderator*, *Support*, *System*,
+  *Root*, … in any case). Existing names stay; a name from Authentik is made to fit (`Ada Lovelace`: `Ada_Lovelace`),
+  and a second account of a name gets `_2` instead of ` 2`.
+- **Unwanted words** in user names and session IDs: a list of about 1,400 swear words and slurs of 15 languages
+  (LDNOOBW, CC BY 4.0, curated by `scripts/unwanted_words.py`), read part by part, written together, behind digits
+  (`sh1t`), and for longer words inside others. Checked against the commonest English and German words and 4,900
+  first names for false hits. Session IDs keep their characters (lowercase letters, digits, `-`).
+- **The panel is the *Management panel*** (German: *Verwaltung*), for Administrators with *· Administrator* after it.
+- **Support helps there only:** the *Support* section is no longer on the dashboard as well.
+- **Support adds watchers and makes the share link** (so far only players and Session-Managers could): *Watchers*
+  is in the panel under a supported session's *Support* section.
+- **Its *Support* section flickered:** every 15 seconds the panel forgot what it had loaded for a session someone
+  only supports (it isn't among the ones loaded ahead), so the section emptied and filled again.
+
+### 0.16.4: Support in the panel, and a spoiler log that stays usable
+- **Support sees its sessions in the panel:** the sessions someone supports are in the panel's switch, each with how
+  it stands, its dashboard and the *Support* section (give an item, check a location, a free hint; the spoiler
+  log). Before, the panel only had the sessions someone manages, so support found nothing there.
+- **Spoiler log:**
+  - A new session showed steps as checked that weren't: a step counted as checked when its location wasn't among
+    the open ones, and the tracker has none yet right after a session starts. Now a step is checked when its
+    location is among the checked ones.
+  - The fold arrows and the check mark are drawn: the themes' fonts don't all have those characters.
+  - Both searches have an × to empty them.
+  - The full log is no longer sent and shown whole (a big seed's froze the browser): 300 lines at a time, with
+    arrows to the lines before and after (`GET …/spoiler/log`).
+  - Its search runs on the server (`GET …/spoiler/search`): the page asks half a second after the last key, and the
+    server gives each user one search at a time, half a second apart (another one meanwhile: 429). The arrows jump
+    to the page a finding is on.
+- **`RelayTest` waits for what it checks** instead of a fixed moment: the frames reach the stand-in MultiServer
+  through two sockets, a moment after the client sent them. On a busy build machine (both native images compiling)
+  the check came first and the image build failed (seen once in a demo's build). The time a connection gets for
+  its Connect is longer in its test for the same reason.
+
+### 0.16.3: The pages, after a look through them
+- **Main page without a session:** the top card says *No session* and nothing more; below it, for who may create
+  one, a bubble *New session?* points at the panel's button. A click on *RANDOGEDDON* goes to the main page.
+- **Your account:** with single sign-on the first panel is *Managed via Authentik* (a line, the button, the *Local
+  ID*). The language, the mode (with icons) and the font mode are buttons side by side instead of dropdowns; the
+  font stays a dropdown; each has its label. *Randogeddon's* over the own themes.
+- **Users' panel:** the login reads *SSO (Authentik)* for Administrators with single sign-on (not "password" too:
+  theirs is one nobody knows); *Self-created sessions* and *Self-created sessions limit*, whose empty field shows
+  the default and has arrows to step it (the default's field too); a time-out for 1, 3, 6 or 12 hours, 1, 2 or 3
+  days, 1 or 2 weeks or 30 days.
+- **Admin panel without a running session:** *Session none running* without a dropdown, *No session is running
+  right now.*, and the *New session* button breathes. Past sessions and versions with clearer subtitles.
+- **The address from Authentik:** a linked account takes the address Authentik has. Before, only a verified one
+  was taken, and Authentik calls every address unverified, so an Administrator's account stayed without one.
+  Finding an account that isn't linked yet by its address still needs a verified one. Whether Authentik calls the
+  address verified is kept (V22, `users.email_verified_by_provider`) and shown in the account's window: *(not
+  verified in Authentik)*.
+- `GET /api/me` says whether the account may create sessions at all (`createsSessions`).
+
+### 0.16.2: A clean first start
+- **On a new database the gateway waits** for its login and the tables (up to 2 minutes), which the tracker makes a
+  moment after both started. Before, it failed to log in, ended and was started again until they were there: it
+  worked, with errors in the log of a fresh install.
+- TODO: Phase 17 (what doesn't belong in a public repository moves out of it and its history).
+
+### 0.16.1: The texts, read side by side
+- **Every text read in both languages** for short, exact wording and the same words for the same things; about 150
+  changed. Among them:
+  - English: *Role* (not "part"), *Created* (not "made"), *Collapse*/*Expand* (not "fold"), "no longer works", "must
+    start with" (not "starts with") for the rules of names and IDs, "limit 3" for the session limit.
+  - German: *Sessions* everywhere (one "Sitzungen" was left), *Personen* (not "Leute"), *Lösungsweg* (not
+    "Durchspielweg"), *Limit* (not "Grenze"), *Theme* (not "Design"), *Spielserver* (one "Game-Server" was left),
+    *Gehostet*, "nur noch lesbar" (not "schreibgeschützt").
+  - Both: "Administrator" where "admin" was left; the new-session form no longer says that new names get a login
+    (people without an account are invited); an invited account's deletion date reads as coming, not as done.
+- **The font's animation only after a change by hand:** picking a theme or changing the font settings animates the
+  letters as before; when the page loads (or the account's choice arrives after the login) the font is just there.
+  While a font's files load, the page keeps the font it shows instead of falling back to the original in between.
+- Still to do in this phase: the pages looked through by hand in both languages.
+
 ## Phase 15: More Polish
 What the Administrators missed for the accounts: an account can be timed out, suspended or deleted, and the limit of
 running sessions is set per user, counting the sessions someone created. Updating: migrations V20 and V21 run by

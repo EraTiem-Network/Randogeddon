@@ -636,9 +636,59 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       the sessions that user created (not the ones they were made Session-Manager of)
     - Decided: a default (the setting so far, in the users' card) plus an account's own number in its panel
 
-## Phase 16: English and German Side by Side
+## Phase 16: English and German Side by Side (done)
 
 *Every page reads right in both languages, with the themes and fonts there are now.*
 
-- [ ] Every page checked in English and German side by side (moved here from Phase 13, then from Phase 14: the new
+- [x] Every page checked in English and German side by side (moved here from Phase 13, then from Phase 14: the new
       themes and fonts changed the pages once more), and what comes up fixed
+    - [x] The texts read in both languages, about 150 changed; the font's animation only after a change by hand
+          (0.16.1)
+    - [x] The pages looked through (0.16.3): *No session* with a bubble to the panel's button, *Managed via
+          Authentik*, choice buttons for language, mode and font mode, *SSO (Authentik)*, the self-created sessions'
+          limit with arrows, more time-out steps, the title goes to the main page
+    - [x] The font mode's first choice is *Font's default* (0.16.14)
+- [x] A fresh install starts without errors: the gateway waits for its login and the tables (0.16.2)
+- [x] The address from Authentik is taken over, and whether Authentik calls it verified is kept and shown (0.16.3,
+      V22)
+- [x] Support (asked for later)
+    - [x] Support sees its sessions in the panel (0.16.4)
+    - [x] Support helps in the panel only, and adds watchers and makes the share link there (0.16.5)
+    - [x] The panel's *Support* section no longer flickers (0.16.5)
+- [x] The panel is the *Management panel* (German *Verwaltung*) (0.16.5)
+- [x] The spoiler log stays usable (asked for later, 0.16.4): steps checked from the checked locations, drawn
+      icons, an × to empty a search, the full log 300 lines at a time, its search on the server (one per user at a
+      time, half a second apart)
+- [x] Names with rules (asked for later)
+    - [x] User names only `[A-Za-z0-9_]`, names that pass for Randogeddon or its staff reserved (0.16.5)
+    - [x] Unwanted words in user names and session IDs (0.16.5), from three newer lists, about 9,600 words of 17
+          languages, ordinary words taken out against frequency lists (0.16.9)
+    - [x] A session ID checked as it is typed (0.16.6)
+- [x] A new session while it generates (asked for later)
+    - [x] Only the ID, the stage and the bar show; a failed generation brings the form back (0.16.6)
+    - [x] Four steps above the bar and more states (0.16.7)
+    - [x] The ID shown is the one that was sent, not a new suggestion (0.16.12)
+- [x] A locked slot's patch files aren't shown or handed out until its key (asked for later, 0.16.7)
+- [x] Hints (asked for later)
+    - [x] An item hint names one copy that is neither checked nor hinted; a hinted location isn't offered (0.16.8)
+    - [x] An ⓘ explains the hints' states (0.16.8)
+    - [x] A switch for which copy: *Random copy* or *Next in playthrough* (0.16.14)
+- [x] APWorld uploads (asked for later)
+    - [x] Each upload a pill that fills yellow, then green or red; *Clear*, and gone by itself 10 seconds after an
+          upload without trouble (0.16.10)
+    - [x] Why one was refused is in its pill's tip only (0.16.11); no *Uploading …* line (0.16.12)
+- [x] Zoom (asked for later)
+    - [x] A browser zoom no longer reloads the page and loses what is going on: Compose Multiplatform
+          1.13.0-beta02 draws at the new density (0.16.13)
+    - [x] Ctrl and the mouse wheel zoom the page instead of scrolling it (0.16.14)
+    - [ ] Compose Multiplatform 1.13.0 once it is stable (the beta until then)
+- [x] `RelayTest` waits for what it checks instead of a fixed moment (0.16.4)
+
+## Phase 17: A Repository That Can Be Shown
+
+*What is critical leaves the repository and its history, into a new one.*
+
+- [ ] Critical docs, data and information (the servers' setup and addresses in `.docs/INFRA.md` and `infra/`, what
+      the security scans found, anything else that tells too much) are removed from this repository and from its git
+      history, and moved to a new repository: `infra` (example.org's network and servers, not on GitHub; it has
+      `INFRA.md`, `MAIL_MIGRATION.md` and the README's infrastructure parts already)

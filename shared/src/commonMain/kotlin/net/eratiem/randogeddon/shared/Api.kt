@@ -349,6 +349,8 @@ data class Me(
   /** The font they chose ([FontChoice]); `null`: the theme's. And where it shows. */
   val font: String? = null,
   val fontScope: FontScope = FontScope.AUTO,
+  /** They may create sessions at all: an Administrator, or someone whose limit isn't 0. */
+  val createsSessions: Boolean = false,
 )
 
 /** `GET /api/sessions/{id}/connection`: where game clients connect to the session, and the person's slots in it. */
@@ -580,9 +582,39 @@ data class Sphere(
   val checked: List<Boolean> = emptyList(),
 )
 
+/**
+ * `GET /api/sessions/{id}/spoiler/log?from=&count=`: some lines of the spoiler log ([from]: the first one's number,
+ * from 0), of [total]. The log is read page by page: a big seed's is too long for a browser to show at once.
+ */
+@Serializable
+data class SpoilerLines(val from: Int, val total: Int, val lines: List<String>) {
+  companion object {
+    /** The most lines one answer has. */
+    const val MAX = 400
+  }
+}
+
+/**
+ * `GET /api/sessions/{id}/spoiler/search?q=`: the numbers of the lines that contain the text (any case), the first
+ * [MAX] of them; [more]: there are more.
+ */
+@Serializable
+data class SpoilerFindings(val lines: List<Int>, val more: Boolean = false) {
+  companion object {
+    const val MAX = 500
+    const val MIN_QUERY = 2
+    const val MAX_QUERY = 100
+  }
+}
+
 /** `GET /api/sessions/{id}/spoiler`: the seed's spoiler log, and its playthrough sphere by sphere (empty if not found in it). */
 @Serializable
-data class Spoiler(val seedName: String, val spheres: List<Sphere> = emptyList(), val text: String)
+data class Spoiler(
+  val seedName: String,
+  val spheres: List<Sphere> = emptyList(),
+  /** How many lines the whole log has ([SpoilerLines] reads them). */
+  val lines: Int = 0,
+)
 
 /** What an admin can cheat. */
 @Serializable
@@ -606,7 +638,22 @@ enum class CheatAction {
  * *to* the slot: the other world it is in (one of [CheatNames.incoming]); `null`: the slot's own location.
  */
 @Serializable
-data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null, val from: String? = null)
+data class CheatRequest(
+  val action: CheatAction,
+  val slot: String,
+  val value: String? = null,
+  val from: String? = null,
+  /** An item hint: which of its copies it names. */
+  val pick: HintPick = HintPick.RANDOM,
+)
+
+/** Which copy of an item a hint names: one by chance, or the one the playthrough needs first. */
+@Serializable
+enum class HintPick {
+  @SerialName("random") RANDOM,
+  /** The copy in the earliest sphere of the playthrough; a copy the playthrough doesn't need comes after those. */
+  @SerialName("next") NEXT,
+}
 
 /** One cheat, as logged. */
 @Serializable
@@ -651,7 +698,9 @@ data class SlotFiles(val files: List<SlotFile> = emptyList())
 /**
  * `GET /api/admin/cheat/names?slot=`: the items of the slot's game, and its locations not checked yet. [incoming]:
  * the locations of other worlds, not checked yet, that hold one of the slot's items (from the spoiler log's
- * placements; [placementsKnown] `false` without them).
+ * placements; [placementsKnown] `false` without them). For hints: [hintLocations], its open locations not hinted yet;
+ * [hintItems], with the placements known, the items of which a copy for the slot is neither checked nor hinted yet
+ * (a hint names one of them).
  */
 @Serializable
 data class CheatNames(
@@ -659,6 +708,8 @@ data class CheatNames(
   val locations: List<String> = emptyList(),
   val incoming: List<IncomingCheck> = emptyList(),
   val placementsKnown: Boolean = false,
+  val hintLocations: List<String> = emptyList(),
+  val hintItems: List<String> = emptyList(),
 )
 
 /** A location of [world], not checked yet, that holds [item] for the slot asked about. */
@@ -797,10 +848,29 @@ data class ApworldUploadFile(val fileName: String, val base64: String)
 @Serializable
 data class ApworldResults(val results: List<ApworldResult>)
 
-/** The stage a seed's generation is in, as Archipelago's Generate.py logs them, in their order. */
+/**
+ * The stage a new session is in while it is made, in their order: the tracker checks what was asked ([CHECKING]),
+ * the gateway generates the seed (waiting for another generation first, [WAITING]; then as Archipelago's Generate.py
+ * logs it, [STARTING] to [DONE]), the tracker sets the session up ([SAVING]) and has its game server started
+ * ([SERVER]).
+ */
 enum class GenerationStage {
+  CHECKING, WAITING,
   STARTING, CREATING, ITEMS, RULES, PLANDO, PREFILL, FILLING, BALANCING, PREOUTPUT, OUTPUT, PLAYTHROUGH, ARCHIVE, DONE,
+  SAVING, SERVER;
+
+  /** The step it belongs to. */
+  val step: GenerationStep
+    get() = when (this) {
+      CHECKING -> GenerationStep.CHECK
+      SAVING -> GenerationStep.SET_UP
+      SERVER -> GenerationStep.START
+      else -> GenerationStep.GENERATE
+    }
 }
+
+/** The four steps of making a session, as the form shows them above the bar. */
+enum class GenerationStep { CHECK, GENERATE, SET_UP, START }
 
 /**
  * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all

@@ -8,7 +8,7 @@ window.randogeddonTexts = (function () {
       yourCode: "Your code", code: "Code",
       codeHint: "The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.",
       twoFactor: "Two-factor login", turnItOn: "Turn it on",
-      setupHint: "Admins log in with a second factor. Scan this with an authenticator app (any TOTP app), or type " +
+      setupHint: "Administrators log in with a second factor. Scan this with an authenticator app (any TOTP app), or type " +
         "the key in, then enter the code it shows.",
       recoveryCodes: "Recovery codes", copy: "Copy", savedThem: "I have saved them",
       recoveryHint: "Each works once, in place of a code, if you lose your authenticator. Keep them somewhere " +
@@ -33,7 +33,7 @@ window.randogeddonTexts = (function () {
       codeHint: "Die 6 Ziffern, die deine Authenticator-App für Randogeddon zeigt, oder einer deiner " +
         "Wiederherstellungscodes.",
       twoFactor: "Zwei-Faktor-Anmeldung", turnItOn: "Einschalten",
-      setupHint: "Admins melden sich mit einem zweiten Faktor an. Scanne das mit einer Authenticator-App (jede " +
+      setupHint: "Administratoren melden sich mit einem zweiten Faktor an. Scanne das mit einer Authenticator-App (jede " +
         "TOTP-App) oder tippe den Schlüssel ab, und gib dann den angezeigten Code ein.",
       recoveryCodes: "Wiederherstellungscodes", copy: "Kopieren", savedThem: "Ich habe sie gespeichert",
       recoveryHint: "Jeder funktioniert einmal anstelle eines Codes, falls du deinen Authenticator verlierst. " +
@@ -121,20 +121,13 @@ window.randogeddonLogin = (function () {
   var pending = null;
   var done = null;
   var token = null;
-  // Compose keeps the pixel density it started with: after a browser zoom it would draw everything blurry. So the
-  // page reloads once the zoom has settled (the login and the settings stay); behind the login form nothing of
-  // Compose is visible, so there it waits for the login. A zoom resizes the window: the density is compared then
-  // (a media query on the exact density can miss one like 1.3636… with the system's display scaling).
-  var stale = false;
-  var zoomTimer = null;
-  var startRatio = window.devicePixelRatio;
-  window.addEventListener("resize", function () {
-    if (window.devicePixelRatio === startRatio) { clearTimeout(zoomTimer); return; }
-    if (!root.hidden) { stale = true; return; }
-    // Several zoom steps in a row reload once, after the last one
-    clearTimeout(zoomTimer);
-    zoomTimer = setTimeout(function () { location.reload(); }, 400);
-  });
+  // A browser zoom or another screen's scaling needs nothing here: Compose (1.13) draws at the new pixel density by
+  // itself, without a reload that would lose what is going on. But Ctrl and the mouse wheel (a trackpad's pinch sends
+  // the same) would reach Compose, which scrolls with it and keeps the browser from zooming: it stops here, before
+  // the app's canvas sees it, and the browser zooms.
+  window.addEventListener("wheel", function (event) {
+    if (event.ctrlKey) event.stopImmediatePropagation();
+  }, { capture: true, passive: true });
 
   function open(name, text) {
     Object.keys(forms).forEach(function (key) { forms[key].hidden = key !== name; });
@@ -143,7 +136,6 @@ window.randogeddonLogin = (function () {
   }
   function close(ok) {
     root.hidden = true;
-    if (stale && ok) { location.reload(); return; }
     var callback = done;
     done = null;
     if (callback) callback(ok);

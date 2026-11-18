@@ -1925,6 +1925,40 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.SpoilerFindings",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SpoilerFindings$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SpoilerLines",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SpoilerLines$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.Spoiler",
       "fields": [
         {
@@ -2837,6 +2871,9 @@
     }
   ],
   "resources": [
+    {
+      "glob": "unwanted-words.txt"
+    },
     {
       "glob": "META-INF/native/libnetty_transport_native_epoll.so"
     },

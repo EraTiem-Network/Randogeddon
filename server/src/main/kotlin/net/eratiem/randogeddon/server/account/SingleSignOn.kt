@@ -79,15 +79,19 @@ internal fun ssoAccount(identity: OidcIdentity, adminGroup: String, linked: User
 internal fun wantedName(identity: OidcIdentity): String {
   val raw = listOfNotNull(identity.preferredUsername, identity.name, identity.email?.substringBefore('@'))
     .firstOrNull { it.isNotBlank() } ?: "Administrator"
-  val clean = raw.replace("@", "").filter { !it.isISOControl() }.trim().take(UserNames.MAX_LENGTH)
-  return clean.takeIf(UserNames::valid) ?: "Administrator"
+  // What a name here can't have becomes one _ (Ada Lovelace: Ada_Lovelace); accents go, the letters stay
+  val plain = java.text.Normalizer.normalize(raw.substringBefore('@').trim(), java.text.Normalizer.Form.NFKD)
+    .filter { Character.getType(it) != Character.NON_SPACING_MARK.toInt() }
+  val clean = plain.map { if (UserNames.allowed(it)) it else '_' }.joinToString("")
+    .replace(Regex("_+"), "_").trim('_').take(UserNames.MAX_LENGTH)
+  return clean.takeIf { nameProblem(it) == null } ?: "Administrator"
 }
 
-/** [wanted], or with a number behind it if taken ([taken]): `Ada`, `Ada 2`, … */
+/** [wanted], or with a number behind it if taken ([taken]): `Ada`, `Ada_2`, … */
 internal suspend fun uniqueName(wanted: String, taken: suspend (String) -> Boolean): String {
   if (!taken(wanted)) return wanted
   for (n in 2..999) {
-    val candidate = "${wanted.take(UserNames.MAX_LENGTH - 4)} $n"
+    val candidate = "${wanted.take(UserNames.MAX_LENGTH - 4)}_$n"
     if (!taken(candidate)) return candidate
   }
   error("No free name for $wanted")
@@ -152,8 +156,8 @@ class SingleSignOn(
       }
       is SsoAccount.New -> {
         val name = uniqueName(decision.name) { users.findActive(it) != null }
-        // No password of their own: they log in through the provider (or a CLI link). Their verified address if free
-        val email = identity.email?.takeIf { identity.emailVerified && users.accountByEmail(it) == null }
+        // No password of their own: they log in through the provider (or a CLI link). Their address there if free
+        val email = identity.email?.takeIf { users.accountByEmail(it) == null }
         val created = users.create(name, PasswordHasher.hash(PasswordGenerator.generate()), email = email)
         users.linkSubject(created.id, identity.subject)
         logger.info("{} came through {}: a new account", name, config.oidc?.name)
@@ -168,7 +172,9 @@ class SingleSignOn(
       }
     }
     if (!user.administrator) users.setAdmin(user.id, true)
-    accounts.syncFromProvider(user, wantedName(identity), identity.email?.takeIf { identity.emailVerified })
+    // The provider's address as it is: the account is the provider's person. Only finding an account that isn't
+    // linked yet by its address (above) needs a verified one; Authentik says "not verified" for every address
+    accounts.syncFromProvider(user, wantedName(identity), identity.email, identity.emailVerified)
     return (users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)) to identity.sessionId
   }
 

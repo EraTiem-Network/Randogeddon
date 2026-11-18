@@ -1,5 +1,8 @@
 package net.eratiem.randogeddon.webapp
 
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.text.selection.DisableSelection
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -309,7 +312,9 @@ private fun TrackerApp() {
             val keepsSession = adminOpen || r == Route.Settings
             val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
             val switchable = sessions.filter { it.myRole != null || it.id == shown }
-            Headline()
+            Headline(onHome = { go(Route.Home) })
+            // Without a session of their own: where a new one starts (for who may create one)
+            val newSessionHint = r == Route.Home && loadedSessions != null && switchable.isEmpty() && user.createsSessions
             Hero(
               s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
               sessions = switchable, shown = shown,
@@ -327,8 +332,15 @@ private fun TrackerApp() {
               onLogout = { scope.launch { repository.logout() } },
               onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
               settingsOpen = r == Route.Settings,
-              onAdmin = { go(if (adminOpen) back(selected) else Route.Admin(selected?.takeIf { it in user.manages || user.administrator })) },
+              onAdmin = {
+                // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
+                val theirs = selected?.takeIf { id ->
+                  user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
+                }
+                go(if (adminOpen) back(selected) else Route.Admin(theirs))
+              },
               adminOpen = adminOpen,
+              newSessionHint = newSessionHint,
               stacked = narrow,
             )
             when (r) {
@@ -365,7 +377,7 @@ private fun TrackerApp() {
               }
               Route.Home -> {
                 if (loadedSessions != null) {
-                  SessionPicker(sessions.filter { it.myRole != null }, user.administrator, onOpen = { go(Route.Dashboard(it)) })
+                  SessionPicker(sessions.filter { it.myRole != null }, onOpen = { go(Route.Dashboard(it)) })
                 }
                 return@Column
               }
@@ -435,9 +447,8 @@ private fun TrackerApp() {
               if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
               if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
             }
-            // By the role in it: support helps the players, players add watchers
+            // Players add watchers (support helps in the panel)
             val id = selected
-            if (role == SessionRole.SUPPORT && id != null) key(id) { SupportSection(id, onSpoiler = { go(Route.Spoiler(id, fromAdmin = false)) }) }
             if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
           }
         }
@@ -454,15 +465,17 @@ private fun TrackerApp() {
   }
 }
 
-/** "Randogeddon" above the top card, centred, in the brand's gradient. */
+/** "Randogeddon" above the top card, centred, in the brand's gradient. [onHome]: a click goes to the main page. */
 @Composable
-internal fun Headline() {
+internal fun Headline(onHome: (() -> Unit)? = null) {
   val p = LocalPalette.current
   Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
     val change = LocalFontChange.current
+    val interaction = remember { MutableInteractionSource() }
     BasicText(
       // Its letters change with the page's when the font does
       if (change != null) AnnotatedString("RANDOGEDDON").inChange(change, heading = true, 34.sp) else AnnotatedString("RANDOGEDDON"),
+      modifier = if (onHome != null) Modifier.hand().clickable(interaction, indication = null, onClick = onHome) else Modifier,
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
         fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
@@ -498,6 +511,8 @@ private fun Hero(
   /** The panel: the sessions the user manages (Administrators: every session), a new session. */
   onAdmin: (() -> Unit)?,
   adminOpen: Boolean,
+  /** A bubble at the panel's button: a new session starts there. */
+  newSessionHint: Boolean,
   stacked: Boolean,
 ) {
   val p = LocalPalette.current
@@ -533,7 +548,14 @@ private fun Hero(
           summary?.seedName?.let { t.frame.seed(it) },
           summary?.serverVersion?.let { t.frame.archipelago(it) },
           summary?.let { t.frame.hintMode(it.hintSettings.pointHints, it.hintSettings.costPercent, it.hintSettings.autoHints) },
-        ).ifEmpty { listOf(if (shown == null) t.frame.pickOneOfYourSessions else t.frame.connecting) }
+        ).ifEmpty {
+          when {
+            shown != null -> listOf(t.frame.connecting)
+            // No session at all: the heading says it, nothing more
+            sessions.isEmpty() -> emptyList()
+            else -> listOf(t.frame.pickOneOfYourSessions)
+          }
+        }
         // A phone: one line each
         (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
           Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
@@ -567,8 +589,15 @@ private fun Hero(
       }
       IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f))
       // Brighter while the admin panel is open
-      if (onAdmin != null) IconButton(onAdmin, Icon.ADMIN, tint = onHero,
-        background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+      if (onAdmin != null) Box {
+        IconButton(onAdmin, Icon.ADMIN, tint = onHero, background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
+        // Below the card, pointing up at the button; a window of its own, so it lies over the page there
+        if (newSessionHint) Popup(
+          alignment = Alignment.TopCenter, offset = IntOffset(0, with(LocalDensity.current) { 56.dp.roundToPx() }),
+        ) {
+          DisableSelection { Bubble(t.frame.newSessionQuestion, onAdmin) }
+        }
+      }
       // The user's account; brighter while it is open
       IconButton(onSettings, Icon.USER, tint = onHero,
         background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
@@ -603,6 +632,24 @@ private fun Hero(
         }
       }
     }
+  }
+}
+
+/** A speech bubble pointing up at what is above it; a click does [onClick] (what the thing it points at does). */
+@Composable
+private fun Bubble(text: String, onClick: () -> Unit) {
+  val p = LocalPalette.current
+  Column(Modifier.hand().clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    Canvas(Modifier.size(16.dp, 8.dp)) {
+      drawPath(
+        Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() },
+        p.accent,
+      )
+    }
+    Txt(
+      text, size = 13.sp, weight = FontWeight.SemiBold, color = p.onBrand, maxLines = 1,
+      modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(p.accent).padding(horizontal = 12.dp, vertical = 7.dp),
+    )
   }
 }
 
@@ -979,6 +1026,8 @@ internal fun Hints(s: Summary, compact: Boolean) {
     }
     Select(listOf<Pair<String?, String>>(null to d.allSlots) + worldsOfPerson.map { it.name to it.name }, world, { world = it })
     Select(HintState.entries.map { it to it.label(d) }, state, { state = it })
+    // Narrow, there is no heading row for it: beside the filter
+    if (compact) HintStateTip()
   }) {
     Column(Modifier.fillMaxWidth().card(p)) { HintList(s, hints, compact) }
   }
@@ -993,7 +1042,11 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
     return
   }
   if (!compact) {
-    HintRow(listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot, "").map { { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) } })
+    HintRow(
+      listOf(d.columnFor, d.columnItem, d.columnCheck, d.columnInSlot).map<String, @Composable () -> Unit> {
+        { Txt(it, size = 12.sp, color = p.muted, weight = FontWeight.SemiBold) }
+      } + listOf<@Composable () -> Unit>({ HintStateTip() }),
+    )
     Divider()
   }
   Column(Modifier.heightIn(max = 600.dp).scrolling()) {
@@ -1049,6 +1102,19 @@ private fun CompactHint(h: HintView) {
     }
     Txt(fill(d.hintWhere, "location" to h.locationName, "finder" to h.finderName), size = 12.sp, color = p.muted)
   }
+}
+
+/** What the hints' state is, and each one (the pill's words) with what it means. */
+@Composable
+private fun HintStateTip() {
+  val d = LocalTexts.current.dashboard
+  InfoTip(
+    d.hintStateTip,
+    options = listOf(
+      d.pillOpen to d.hintOpenMeaning, d.pillPriority to d.hintPriorityMeaning, d.pillNoPriority to d.hintNoPriorityMeaning,
+      d.pillAvoid to d.hintAvoidMeaning, d.pillFound to d.hintFoundMeaning,
+    ),
+  )
 }
 
 /** Archipelago's HintStatus: players can mark their hints as priority, avoid or no priority in their client. */

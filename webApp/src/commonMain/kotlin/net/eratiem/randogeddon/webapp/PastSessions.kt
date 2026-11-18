@@ -32,21 +32,15 @@ import net.eratiem.randogeddon.shared.Summary
 /**
  * The page after the login, unless exactly one running session is the user's (it opens then): the user's sessions as
  * cards, running ones first, each with its title, ID, how it stands, how far it got, the user's slots and who is
- * online. [onOpen] shows one. [admin]: a hint where the other sessions are.
+ * online. [onOpen] shows one. Without a session there is nothing to show (the top card says so).
  */
 @Composable
-fun SessionPicker(sessions: List<SessionEntry>, admin: Boolean, onOpen: (String) -> Unit) {
+fun SessionPicker(sessions: List<SessionEntry>, onOpen: (String) -> Unit) {
   val p = LocalPalette.current
   val texts = LocalTexts.current.sessions
   val running = sessions.filter { it.status.running }
   val finished = sessions.filter { !it.status.running }
-  if (sessions.isEmpty()) {
-    Txt(
-      if (admin) texts.noPartAdministrator else texts.noPart,
-      color = p.muted, modifier = Modifier.padding(vertical = 8.dp),
-    )
-    return
-  }
+  if (sessions.isEmpty()) return
   listOf(
     Triple(texts.running, texts.runningSubtitle, running),
     Triple(texts.finished, texts.finishedSubtitle, finished),

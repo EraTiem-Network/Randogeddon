@@ -18,6 +18,12 @@ interface ApworldTexts {
   val replace: String
   val skip: String
   fun skipped(file: String): String
+  /** An uploaded file's pill while it isn't done: its turn hasn't come, it is checked, it waits for an answer. */
+  val pillWaiting: String
+  val pillChecking: String
+  val pillAsking: String
+  /** Takes away what the last upload, try or removal said. */
+  val clearOutcome: String
   fun removing(files: String): String
   fun removed(file: String, release: String): String
   fun trying(file: String, release: String): String
@@ -84,7 +90,10 @@ interface UserAdminTexts {
   val userGroup: String
   val loginLabel: String
   val passwordLogin: String
-  val ssoLogin: String
+  /** After an address that came from the provider: whether [provider] calls it verified. */
+  fun emailVerifiedBy(provider: String, verified: Boolean): String
+  /** The login through the provider ([provider]: its name, e.g. Authentik). */
+  fun ssoLogin(provider: String?): String
   val twoFactorLabel: String
   val on: String
   val off: String
@@ -152,8 +161,8 @@ internal object EnglishApworlds : ApworldTexts {
   override val subtitle = "the games of each Archipelago release"
   override val tip = "The games each Archipelago release of the gateway can generate and serve: the bundled ones, plus " +
     "APWorlds. APWorlds uploaded here are kept per release; ones put into the server's custom_worlds/ count for every " +
-    "release. An APWorld uploaded for another release can be tried with this one, it may or may not work."
-  override fun notAdded(file: String, error: String) = "$file was not added, it doesn't load: $error"
+    "release. An APWorld uploaded for another release can be tried with this one; it may or may not work."
+  override fun notAdded(file: String, error: String) = "$file wasn't added because it doesn't load: $error"
   override fun brings(file: String, games: String) = "$file brings $games"
   override fun uploading(files: String, n: Int, of: Int) = if (of == 1) "Uploading $files…" else "Uploading $files ($n of $of)…"
   override fun replacesFile(file: String) = "$file is in the library already. Replace it?"
@@ -161,7 +170,11 @@ internal object EnglishApworlds : ApworldTexts {
     "$file brings $game, which comes from $other now. Replace $other with it?"
   override val replace = "Replace"
   override val skip = "Skip"
-  override fun skipped(file: String) = "$file was skipped, nothing changed"
+  override fun skipped(file: String) = "$file was skipped; nothing changed"
+  override val pillWaiting = "Waiting for its turn"
+  override val pillChecking = "Uploading, and Archipelago checks it"
+  override val pillAsking = "Waiting for your answer above"
+  override val clearOutcome = "Clear"
   override fun removing(files: String) = "Removing $files…"
   override fun removed(file: String, release: String) = "$file removed from Archipelago $release"
   override fun trying(file: String, release: String) = "Trying $file with Archipelago $release…"
@@ -185,7 +198,7 @@ internal object EnglishApworlds : ApworldTexts {
     "Remove $files? Their games can't be used for new sessions of Archipelago $release then."
   override val yesRemove = "Yes, remove"
   override val removeSome = "Remove…"
-  override val pickToRemove = "Pick the files to remove (hand-placed ones, grey, can't be)."
+  override val pickToRemove = "Pick the files to remove (grey ones were placed by hand and can't be removed here)."
   override fun removeCount(n: Int) = "Remove ($n)"
   override val selectAll = "Select all"
   override val selectNone = "Select none"
@@ -204,10 +217,10 @@ internal object GermanApworlds : ApworldTexts {
   override val title = "APWorlds"
   override val subtitle = "die Spiele jedes Archipelago-Release"
   override val tip = "Die Spiele, die jedes Archipelago-Release des Gateways generieren und bereitstellen kann: die " +
-    "mitgelieferten, dazu APWorlds. Hier hochgeladene APWorlds gelten je Release; welche im custom_worlds/ des " +
+    "mitgelieferten, dazu APWorlds. Hier hochgeladene APWorlds gelten je Release; die im Ordner custom_worlds/ des " +
     "Servers gelten für jedes Release. Eine für ein anderes Release hochgeladene APWorld kann mit diesem ausprobiert " +
     "werden; das kann klappen oder nicht."
-  override fun notAdded(file: String, error: String) = "$file wurde nicht hinzugefügt, sie lädt nicht: $error"
+  override fun notAdded(file: String, error: String) = "$file wurde nicht hinzugefügt, weil sie sich nicht laden lässt: $error"
   override fun brings(file: String, games: String) = "$file bringt $games"
   override fun uploading(files: String, n: Int, of: Int) =
     if (of == 1) "Lade $files hoch…" else "Lade $files hoch ($n von $of)…"
@@ -216,7 +229,11 @@ internal object GermanApworlds : ApworldTexts {
     "$file bringt $game, das jetzt aus $other kommt. $other dadurch ersetzen?"
   override val replace = "Ersetzen"
   override val skip = "Überspringen"
-  override fun skipped(file: String) = "$file wurde übersprungen, nichts geändert"
+  override fun skipped(file: String) = "$file wurde übersprungen; nichts geändert"
+  override val pillWaiting = "Wartet, bis sie dran ist"
+  override val pillChecking = "Wird hochgeladen, Archipelago prüft sie"
+  override val pillAsking = "Wartet auf deine Antwort oben"
+  override val clearOutcome = "Leeren"
   override fun removing(files: String) = "Entferne $files…"
   override fun removed(file: String, release: String) = "$file aus Archipelago $release entfernt"
   override fun trying(file: String, release: String) = "$file wird mit Archipelago $release ausprobiert…"
@@ -240,7 +257,7 @@ internal object GermanApworlds : ApworldTexts {
     "$files entfernen? Ihre Spiele sind dann für neue Sessions mit Archipelago $release nicht mehr nutzbar."
   override val yesRemove = "Ja, entfernen"
   override val removeSome = "Entfernen…"
-  override val pickToRemove = "Wähle die Dateien zum Entfernen (von Hand gelegte, graue, gehen nicht)."
+  override val pickToRemove = "Wähle die Dateien zum Entfernen (graue wurden von Hand abgelegt und lassen sich hier nicht entfernen)."
   override fun removeCount(n: Int) = "Entfernen ($n)"
   override val selectAll = "Alle auswählen"
   override val selectNone = "Keine auswählen"
@@ -260,7 +277,7 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun subtitle(accounts: Int, invited: Int) =
     "$accounts ${if (accounts == 1) "account" else "accounts"}${if (invited > 0) ", $invited invited" else ""}"
   override val email = "E-mail address"
-  override val suggestedName = "Their name (a suggestion)"
+  override val suggestedName = "Suggested name"
   override val invite = "Invite"
   override fun invited(address: String) = "Invited $address: the link works for 7 days."
   override val invitedPill = "invited"
@@ -270,7 +287,7 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun inSessions(n: Int) = "in $n sessions"
   override val linkExpired = "the link has expired"
   override fun linkWorksUntil(date: String) = "the link works until $date"
-  override fun deletedOn(date: String) = "deleted on $date"
+  override fun deletedOn(date: String) = "will be deleted on $date"
   override fun autoDeletion(period: String) = "auto-deletion: $period"
   override val nameLabel = "Name"
   override val emailLabel = "E-mail"
@@ -281,13 +298,15 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val userGroup = "User"
   override val loginLabel = "Login"
   override val passwordLogin = "password"
-  override val ssoLogin = "single sign-on"
+  override fun emailVerifiedBy(provider: String, verified: Boolean) =
+    if (verified) "verified in $provider" else "not verified in $provider"
+  override fun ssoLogin(provider: String?) = if (provider != null) "SSO ($provider)" else "SSO"
   override val twoFactorLabel = "Two-factor"
   override val on = "on"
   override val off = "off"
   override val languageLabel = "Language"
   override val browserLanguage = "the browser's"
-  override val madeLabel = "Made"
+  override val madeLabel = "Created"
   override val invitationLabel = "Invitation"
   override val deletionLabel = "Deletion"
   override val sessionsLabel = "Sessions"
@@ -298,7 +317,7 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val sendThere = "Send the link there"
   override fun linkWentTo(address: String) = "A new link went to $address."
   override val versions = "Versions"
-  override val versionsSubtitle = "what runs now"
+  override val versionsSubtitle = "currently running"
   override val trackerVersion = "Tracker"
   override val gatewayVersion = "Gateway"
   override val pageVersion = "This page"
@@ -307,15 +326,15 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val sessionsPerUser = "Sessions per user (default)"
   override val sessionsPerUserTip =
     "How many running sessions of their own a user may have at once (0 to 20; 0: only Administrators create " +
-      "sessions). It counts the sessions someone created, not the ones they were made Session-Manager of. An account " +
-      "can get its own number in its panel; this is for all others. Administrators have no limit; the game " +
-      "servers' number applies to everyone."
-  override val ownSessionsLabel = "Own sessions"
-  override fun sessionsOf(running: Int, limit: Int) = "$running running, $limit at once"
-  override val theDefault = "(the default)"
+      "sessions). Only sessions they created count, not ones they manage for others. An account can get its own " +
+      "limit in its panel; this default applies to all others. Administrators have no limit; the number of game " +
+      "servers applies to everyone."
+  override val ownSessionsLabel = "Self-created sessions"
+  override fun sessionsOf(running: Int, limit: Int) = "$running running, limit $limit"
+  override val theDefault = "(default)"
   override val noLimit = "no limit"
-  override val ownLimit = "Own limit"
-  override val useDefault = "Use the default"
+  override val ownLimit = "Self-created sessions limit"
+  override val useDefault = "Use default"
   override fun limitSaved(name: String) = "Saved for $name."
   override val saved = "Saved."
   override val zeroToTwenty = "0 to 20"
@@ -324,21 +343,27 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val accessLabel = "Access"
   override val mayLogIn = "can log in"
   override fun timedOutUntil(date: String) = "timed out until $date"
-  override val suspended = "suspended until taken back"
+  override val suspended = "suspended until lifted"
   override fun keptOutBy(name: String) = "by $name"
   override fun keptOutFor(reason: String) = "Reason: $reason"
-  override val reason = "Reason (they are told; optional)"
+  override val reason = "Reason (optional; shown to them)"
   override fun timeOut(time: TimeOut) = when (time) {
     TimeOut.HOUR -> "1 hour"
+    TimeOut.HOURS_3 -> "3 hours"
+    TimeOut.HOURS_6 -> "6 hours"
+    TimeOut.HOURS_12 -> "12 hours"
     TimeOut.DAY -> "1 day"
-    TimeOut.WEEK -> "7 days"
+    TimeOut.DAYS_2 -> "2 days"
+    TimeOut.DAYS_3 -> "3 days"
+    TimeOut.WEEK -> "1 week"
+    TimeOut.WEEKS_2 -> "2 weeks"
     TimeOut.MONTH -> "30 days"
   }
   override val timeOutButton = "Time out"
   override val suspendButton = "Suspend"
   override val letInButton = "Let in again"
   override val deleteButton = "Delete account"
-  override fun reallyDelete(name: String) = "Really delete $name? Their sessions keep their name; the account can't be brought back."
+  override fun reallyDelete(name: String) = "Really delete $name? Their sessions keep their name. This can't be undone."
   override val deleteNow = "Delete now"
   override fun timedOutDone(name: String) = "$name is timed out and was told by mail."
   override fun suspendedDone(name: String) = "$name is suspended and was told by mail."
@@ -355,7 +380,7 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun subtitle(accounts: Int, invited: Int) =
     "$accounts ${if (accounts == 1) "Konto" else "Konten"}${if (invited > 0) ", $invited eingeladen" else ""}"
   override val email = "E-Mail-Adresse"
-  override val suggestedName = "Ihr Name (ein Vorschlag)"
+  override val suggestedName = "Namensvorschlag"
   override val invite = "Einladen"
   override fun invited(address: String) = "$address eingeladen: Der Link funktioniert 7 Tage."
   override val invitedPill = "eingeladen"
@@ -376,13 +401,15 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val userGroup = "Benutzer"
   override val loginLabel = "Anmeldung"
   override val passwordLogin = "Passwort"
-  override val ssoLogin = "Single Sign-on"
+  override fun emailVerifiedBy(provider: String, verified: Boolean) =
+    if (verified) "in $provider bestätigt" else "in $provider nicht bestätigt"
+  override fun ssoLogin(provider: String?) = if (provider != null) "SSO ($provider)" else "SSO"
   override val twoFactorLabel = "Zwei-Faktor"
   override val on = "an"
   override val off = "aus"
   override val languageLabel = "Sprache"
   override val browserLanguage = "die des Browsers"
-  override val madeLabel = "Angelegt"
+  override val madeLabel = "Erstellt"
   override val invitationLabel = "Einladung"
   override val deletionLabel = "Löschung"
   override val sessionsLabel = "Sessions"
@@ -393,7 +420,7 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val sendThere = "Den Link dorthin senden"
   override fun linkWentTo(address: String) = "Ein neuer Link ging an $address."
   override val versions = "Versionen"
-  override val versionsSubtitle = "was gerade läuft"
+  override val versionsSubtitle = "aktuell laufend"
   override val trackerVersion = "Tracker"
   override val gatewayVersion = "Gateway"
   override val pageVersion = "Diese Seite"
@@ -402,14 +429,14 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val sessionsPerUser = "Sessions pro Benutzer (Standard)"
   override val sessionsPerUserTip =
     "Wie viele eigene laufende Sessions ein Benutzer gleichzeitig haben darf (0 bis 20; 0: nur Administratoren " +
-      "erstellen Sessions). Es zählen die Sessions, die jemand erstellt hat, nicht die, deren Session-Manager er " +
-      "wurde. Ein Konto kann in seinem Fenster eine eigene Zahl bekommen; diese gilt für alle anderen. " +
-      "Administratoren haben keine Grenze; die Zahl der Spielserver gilt für alle."
-  override val ownSessionsLabel = "Eigene Sessions"
-  override fun sessionsOf(running: Int, limit: Int) = "$running laufend, $limit gleichzeitig"
-  override val theDefault = "(der Standard)"
-  override val noLimit = "keine Grenze"
-  override val ownLimit = "Eigene Grenze"
+      "erstellen Sessions). Es zählen nur selbst erstellte Sessions, nicht die, die jemand für andere verwaltet. Ein " +
+      "Konto kann in seinem Fenster ein eigenes Limit bekommen; dieser Standard gilt für alle anderen. " +
+      "Administratoren haben kein Limit; die Zahl der Spielserver gilt für alle."
+  override val ownSessionsLabel = "Selbst erstellte Sessions"
+  override fun sessionsOf(running: Int, limit: Int) = "$running laufend, Limit $limit"
+  override val theDefault = "(Standard)"
+  override val noLimit = "kein Limit"
+  override val ownLimit = "Limit selbst erstellter Sessions"
   override val useDefault = "Standard verwenden"
   override fun limitSaved(name: String) = "Für $name gespeichert."
   override val saved = "Gespeichert."
@@ -419,21 +446,27 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val accessLabel = "Zugang"
   override val mayLogIn = "kann sich anmelden"
   override fun timedOutUntil(date: String) = "Auszeit bis $date"
-  override val suspended = "gesperrt, bis es zurückgenommen wird"
+  override val suspended = "gesperrt bis zur Aufhebung"
   override fun keptOutBy(name: String) = "von $name"
   override fun keptOutFor(reason: String) = "Grund: $reason"
-  override val reason = "Grund (wird der Person mitgeteilt; optional)"
+  override val reason = "Grund (optional; wird der Person mitgeteilt)"
   override fun timeOut(time: TimeOut) = when (time) {
     TimeOut.HOUR -> "1 Stunde"
+    TimeOut.HOURS_3 -> "3 Stunden"
+    TimeOut.HOURS_6 -> "6 Stunden"
+    TimeOut.HOURS_12 -> "12 Stunden"
     TimeOut.DAY -> "1 Tag"
-    TimeOut.WEEK -> "7 Tage"
+    TimeOut.DAYS_2 -> "2 Tage"
+    TimeOut.DAYS_3 -> "3 Tage"
+    TimeOut.WEEK -> "1 Woche"
+    TimeOut.WEEKS_2 -> "2 Wochen"
     TimeOut.MONTH -> "30 Tage"
   }
   override val timeOutButton = "Auszeit geben"
   override val suspendButton = "Sperren"
   override val letInButton = "Wieder zulassen"
   override val deleteButton = "Konto löschen"
-  override fun reallyDelete(name: String) = "$name wirklich löschen? Die Sessions behalten den Namen; das Konto lässt sich nicht zurückholen."
+  override fun reallyDelete(name: String) = "$name wirklich löschen? Die Sessions behalten den Namen. Das lässt sich nicht rückgängig machen."
   override val deleteNow = "Jetzt löschen"
   override fun timedOutDone(name: String) = "$name hat eine Auszeit und wurde per Mail informiert."
   override fun suspendedDone(name: String) = "$name ist gesperrt und wurde per Mail informiert."

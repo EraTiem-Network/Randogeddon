@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.shared.i18n
 
 import net.eratiem.randogeddon.shared.GenerationStage
+import net.eratiem.randogeddon.shared.GenerationStep
 
 import net.eratiem.randogeddon.shared.GameServerStatus
 
@@ -116,6 +117,7 @@ interface SessionAdminTexts {
   val generatesSeed: String
   /** What the generation does now (its stage), for the bar while it runs. */
   fun generationStage(stage: GenerationStage): String
+  fun generationStep(step: GenerationStep): String
   /** The slots that still need a player (or to be hosted) before generating. */
   fun slotsWithoutPlayer(slots: String): String
   val addPlayer: String
@@ -177,7 +179,7 @@ interface SessionTips {
 }
 
 internal object EnglishSessionAdmin : SessionAdminTexts {
-  override val stateAndControl = "State and Control"
+  override val stateAndControl = "State and control"
   override val deleted = "Deleted."
   override val deployedWithCli = "deployed with the CLI"
   override fun created(date: String) = "created $date"
@@ -199,21 +201,21 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val patchFiles = "Patch files"
   override fun patchFilesSubtitle(files: Int) = "$files ${if (files == 1) "file" else "files"} from the seed"
   override val noPatchFiles = "The seed brings no files to download."
-  override val filesTip = "Each player downloads their own under Your connection; here every slot's."
+  override val filesTip = "Players download their own under Your connection; this lists every slot's."
   override fun slotNumber(n: Int) = "slot $n"
   override val noneRunning = "none running"
-  override val nothingRunning = "No session is running right now. New session starts one."
+  override val nothingRunning = "No session is running right now."
   override val pickOne = "pick one…"
   override val newSession = "New session"
   override val pastSessions = "Past sessions"
-  override val pastSubtitle = "deleted automatically after a while, unless that is disabled"
+  override val pastSubtitle = "will be deleted automatically, unless deletion was disabled"
   override val noneYet = "None yet."
   override fun finishedOn(date: String, by: String?) = "finished $date${by?.let { " by $it" } ?: ""}"
   override val reopen = "Reopen"
   override val enableAutoDeletion = "Enable auto-deletion"
   override val disableAutoDeletion = "Disable auto-deletion"
   override val delete = "Delete"
-  override val confirmDeleteFinished = "Delete it for good? Its seed, save and history go; the logins stay."
+  override val confirmDeleteFinished = "Delete it for good? Its seed, save and history are removed; the accounts stay."
   override val yesDelete = "Yes, delete"
   override val confirmEnable = "Enable its auto-deletion again? Its time counts from now."
   override val confirmDisable = "Disable its auto-deletion? It stays until it is deleted by hand."
@@ -234,13 +236,13 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val taken = "Taken"
   override fun newSessionSubtitle(capacity: String) = "as many run at once as the gateway has game servers ($capacity)"
   override val everyServerInUse = "Every game server is in use: finish or stop a session first."
-  override val atLimit = "You manage as many running sessions as you may at once: finish one first."
+  override val atLimit = "You have as many running sessions of your own as you may: finish one first."
   override fun mayCreate(n: Int) = "You may create $n more running ${if (n == 1) "session" else "sessions"}."
   override val sessionId = "Session ID"
   override fun finishedSentence(complete: Boolean, date: String) = "${if (complete) "Ended" else "Paused"} $date."
   override val completedNoReopen = "It was completed, so it can't be reopened."
   override fun reopenUntilSentence(date: String) = "It can be reopened until $date."
-  override val pausedTooLong = "It was paused more than 14 days ago and can't be reopened any more."
+  override val pausedTooLong = "It was paused more than 14 days ago and can no longer be reopened."
   override fun onceNewer(deletion: String) = "Once a newer session exists: $deletion."
   override fun endsByItselfAt(time: String) = "Every slot is done: it ends by itself at $time."
   override val confirmEnd = "End it? The game server stops for good; a completed session can't be reopened."
@@ -249,7 +251,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val yesPause = "Yes, pause it"
   override val confirmSpoiler = "A full spoiler: where every item of the running session is. Show it?"
   override val showIt = "Show it"
-  override val confirmDeleteRunning = "Delete it? The game server stops; the seed and its save go to data/old. The logins stay."
+  override val confirmDeleteRunning = "Delete it? The game server stops; the seed and its save go to data/old. The accounts stay."
   override val endSession = "End session"
   override val pauseSession = "Pause session"
   override val deleteSession = "Delete session"
@@ -263,8 +265,8 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override fun notAdded(problem: String) = "Not added: $problem"
   override val stepPlayers = "2. Who plays which slot"
   override val playersHint =
-    "One slot per YAML. A slot can have several players (they play it together). New names get a login when the " +
-      "session is created."
+    "One slot per YAML. A slot can have several players (they play it together). Someone without an account is " +
+      "invited by e-mail."
   override val locks = "Locks"
   override val lockChoose = "Choose per slot"
   override val lockRandom = "Random"
@@ -287,8 +289,16 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generating = "Generating…"
   override val generateAndStart = "Generate and start"
   override val generatesSeed = "Archipelago generates the seed; that can take a minute."
+  override fun generationStep(step: GenerationStep) = when (step) {
+    GenerationStep.CHECK -> "Check"
+    GenerationStep.GENERATE -> "Generate"
+    GenerationStep.SET_UP -> "Set up"
+    GenerationStep.START -> "Start"
+  }
   override fun generationStage(stage: GenerationStage) = when (stage) {
-    GenerationStage.STARTING -> "Starting…"
+    GenerationStage.CHECKING -> "Checking the YAMLs, players and locks…"
+    GenerationStage.WAITING -> "Waiting for another session's generation to finish…"
+    GenerationStage.STARTING -> "Starting Archipelago…"
     GenerationStage.CREATING -> "Creating the worlds…"
     GenerationStage.ITEMS -> "Creating the items…"
     GenerationStage.RULES -> "Working out the rules…"
@@ -300,9 +310,11 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     GenerationStage.OUTPUT -> "Writing the files…"
     GenerationStage.PLAYTHROUGH -> "Working out the playthrough…"
     GenerationStage.ARCHIVE -> "Packing the seed…"
-    GenerationStage.DONE -> "Done, starting the game server…"
+    GenerationStage.DONE -> "The seed is done…"
+    GenerationStage.SAVING -> "Setting up the slots, players and passwords…"
+    GenerationStage.SERVER -> "Starting the game server…"
   }
-  override fun slotsWithoutPlayer(slots: String) = "Every slot needs a player or has to be hosted first: $slots"
+  override fun slotsWithoutPlayer(slots: String) = "Every slot needs a player or must be hosted: $slots"
   override val addPlayer = "Add a player…"
   override val addAnother = "Add another…"
   override val inviting = "Inviting…"
@@ -313,7 +325,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val yesHosted = "Yes, hosted"
   override val hostedLine = "No players: the game runs as a server of its own, which they join with their games."
   override fun missingApworlds(files: String, version: String) =
-    "No slots yet for $files: Archipelago $version has no APWorld for their games. They come by themselves once it has."
+    "No slots yet for $files: Archipelago $version has no APWorld for their games. They appear once it does."
   override val uploadThem = "Upload them under APWorlds."
   override val askAdministrator = "Ask an Administrator to upload them."
   override val hostedTip = "A hosted slot: its game runs as a server of its own, which the players join with their games; " +
@@ -350,14 +362,14 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val patchFiles = "Patch-Dateien"
   override fun patchFilesSubtitle(files: Int) = "$files ${if (files == 1) "Datei" else "Dateien"} aus dem Seed"
   override val noPatchFiles = "Der Seed bringt keine Dateien zum Herunterladen mit."
-  override val filesTip = "Jeder Spieler lädt seine eigenen unter Deine Verbindung herunter; hier die aller Slots."
+  override val filesTip = "Spieler laden ihre eigenen unter Deine Verbindung herunter; hier stehen die aller Slots."
   override fun slotNumber(n: Int) = "Slot $n"
   override val noneRunning = "keine läuft"
-  override val nothingRunning = "Gerade läuft keine Session. Neue Session startet eine."
+  override val nothingRunning = "Gerade läuft keine Session."
   override val pickOne = "eine wählen…"
   override val newSession = "Neue Session"
   override val pastSessions = "Vergangene Sessions"
-  override val pastSubtitle = "nach einer Weile automatisch gelöscht, wenn das nicht ausgeschaltet ist"
+  override val pastSubtitle = "werden automatisch gelöscht, sofern das Löschen nicht ausgeschaltet wurde"
   override val noneYet = "Noch keine."
   override fun finishedOn(date: String, by: String?) = "beendet $date${by?.let { " von $it" } ?: ""}"
   override val reopen = "Wieder öffnen"
@@ -365,7 +377,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val disableAutoDeletion = "Automatisch löschen aus"
   override val delete = "Löschen"
   override val confirmDeleteFinished =
-    "Endgültig löschen? Ihr Seed, Spielstand und Verlauf verschwinden; die Anmeldungen bleiben."
+    "Endgültig löschen? Ihr Seed, Spielstand und Verlauf werden entfernt; die Konten bleiben."
   override val yesDelete = "Ja, löschen"
   override val confirmEnable = "Automatisches Löschen wieder einschalten? Die Zeit zählt ab jetzt."
   override val confirmDisable = "Automatisches Löschen ausschalten? Sie bleibt, bis sie von Hand gelöscht wird."
@@ -379,14 +391,14 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val reopenNotPossible = "nicht möglich, sie war komplett"
   override fun reopenPossibleUntil(date: String) = "möglich bis $date"
   override val reopenNoLonger = "nicht mehr möglich"
-  override val deletionLabel = "Löschen"
+  override val deletionLabel = "Löschung"
   override val notAutomatic = "nicht automatisch"
   override val playersHeading = "SPIELER"
   override val nobodyWasNamed = "Für die Slots war niemand eingetragen."
   override val taken = "Vergeben"
   override fun newSessionSubtitle(capacity: String) = "so viele laufen gleichzeitig, wie das Gateway Spielserver hat ($capacity)"
   override val everyServerInUse = "Alle Spielserver sind belegt: Beende oder stoppe zuerst eine Session."
-  override val atLimit = "Du verwaltest so viele laufende Sessions, wie du gleichzeitig darfst: Beende zuerst eine."
+  override val atLimit = "Du hast so viele eigene laufende Sessions, wie du darfst: Beende zuerst eine."
   override fun mayCreate(n: Int) = "Du darfst noch $n ${if (n == 1) "laufende Session" else "laufende Sessions"} erstellen."
   override val sessionId = "Session-ID"
   override fun finishedSentence(complete: Boolean, date: String) = "${if (complete) "Beendet" else "Pausiert"} $date."
@@ -403,7 +415,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val confirmSpoiler = "Ein voller Spoiler: wo jedes Item der laufenden Session liegt. Anzeigen?"
   override val showIt = "Anzeigen"
   override val confirmDeleteRunning =
-    "Löschen? Der Spielserver stoppt; der Seed und sein Spielstand kommen nach data/old. Die Anmeldungen bleiben."
+    "Löschen? Der Spielserver stoppt; der Seed und sein Spielstand kommen nach data/old. Die Konten bleiben."
   override val endSession = "Session beenden"
   override val pauseSession = "Session pausieren"
   override val deleteSession = "Session löschen"
@@ -417,8 +429,8 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override fun notAdded(problem: String) = "Nicht hinzugefügt: $problem"
   override val stepPlayers = "2. Wer spielt welchen Slot"
   override val playersHint =
-    "Ein Slot pro YAML. Ein Slot kann mehrere Spieler haben (sie spielen ihn zusammen). Neue Namen bekommen eine " +
-      "Anmeldung, wenn die Session erstellt wird."
+    "Ein Slot pro YAML. Ein Slot kann mehrere Spieler haben (sie spielen ihn zusammen). Wer noch kein Konto hat, " +
+      "wird per E-Mail eingeladen."
   override val locks = "Sperren"
   override val lockChoose = "Je Slot wählen"
   override val lockRandom = "Zufällig"
@@ -441,34 +453,44 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generating = "Wird generiert…"
   override val generateAndStart = "Generieren und starten"
   override val generatesSeed = "Archipelago generiert den Seed; das kann eine Minute dauern."
+  override fun generationStep(step: GenerationStep) = when (step) {
+    GenerationStep.CHECK -> "Prüfen"
+    GenerationStep.GENERATE -> "Generieren"
+    GenerationStep.SET_UP -> "Einrichten"
+    GenerationStep.START -> "Starten"
+  }
   override fun generationStage(stage: GenerationStage) = when (stage) {
-    GenerationStage.STARTING -> "Startet…"
+    GenerationStage.CHECKING -> "Prüft YAMLs, Spieler und Sperren…"
+    GenerationStage.WAITING -> "Wartet, bis die Generierung einer anderen Session fertig ist…"
+    GenerationStage.STARTING -> "Startet Archipelago…"
     GenerationStage.CREATING -> "Erstellt die Welten…"
     GenerationStage.ITEMS -> "Erstellt die Items…"
     GenerationStage.RULES -> "Berechnet die Regeln…"
     GenerationStage.PLANDO -> "Platziert die geplanten Items…"
     GenerationStage.PREFILL -> "Platziert die eigenen Items der Welten…"
     GenerationStage.FILLING -> "Verteilt die Items (das dauert am längsten)…"
-    GenerationStage.BALANCING -> "Gleicht den Fortschritt aus…"
+    GenerationStage.BALANCING -> "Balanciert die Progression…"
     GenerationStage.PREOUTPUT -> "Bereitet das Schreiben vor…"
     GenerationStage.OUTPUT -> "Schreibt die Dateien…"
-    GenerationStage.PLAYTHROUGH -> "Berechnet den Spielverlauf…"
+    GenerationStage.PLAYTHROUGH -> "Berechnet den Lösungsweg…"
     GenerationStage.ARCHIVE -> "Packt den Seed…"
-    GenerationStage.DONE -> "Fertig, startet den Game-Server…"
+    GenerationStage.DONE -> "Der Seed ist fertig…"
+    GenerationStage.SAVING -> "Richtet Slots, Spieler und Passwörter ein…"
+    GenerationStage.SERVER -> "Startet den Spielserver…"
   }
-  override fun slotsWithoutPlayer(slots: String) = "Jeder Slot braucht erst einen Spieler oder wird gehostet: $slots"
+  override fun slotsWithoutPlayer(slots: String) = "Jeder Slot braucht einen Spieler oder muss gehostet sein: $slots"
   override val addPlayer = "Spieler hinzufügen…"
   override val addAnother = "Weiteren hinzufügen…"
   override val inviting = "Wird eingeladen…"
   override fun inviteAddress(address: String) = "$address einladen"
   override val noAccountMatches = "Kein Konto passt; gib die E-Mail-Adresse ein, um die Person einzuladen"
-  override val hostedCheck = "Hosted"
+  override val hostedCheck = "Gehostet"
   override val hostedQuestion = "Diesen Slot hosten? Seine Spieler werden entfernt: Sein Spiel läuft als eigener Server."
   override val yesHosted = "Ja, hosten"
   override val hostedLine = "Keine Spieler: Das Spiel läuft als eigener Server, dem sie mit ihren Spielen beitreten."
   override fun missingApworlds(files: String, version: String) =
-    "Noch keine Slots für $files: Archipelago $version hat keine APWorld für ihre Spiele. Sie kommen von selbst, " +
-      "sobald es sie hat."
+    "Noch keine Slots für $files: Archipelago $version hat keine APWorld für ihre Spiele. Sie erscheinen, " +
+      "sobald es eine gibt."
   override val uploadThem = "Lade sie unter APWorlds hoch."
   override val askAdministrator = "Bitte einen Administrator, sie hochzuladen."
   override val hostedTip = "Ein gehosteter Slot: Sein Spiel läuft als eigener Server, dem die Spieler mit ihren Spielen " +
@@ -476,7 +498,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     "Spieler seine Patch-Dateien."
   override fun invitedName(name: String) = "$name (eingeladen)"
   override val sessionCreated = "Session erstellt; der Spielserver startet."
-  override fun startLocked(slots: String) = "Starten gesperrt: $slots"
+  override fun startLocked(slots: String) = "Gesperrt am Start: $slots"
   override val done = "Fertig"
   override val lockOpen = "offen"
   override val lockChance = "zufällig"
@@ -505,7 +527,7 @@ internal object EnglishSessionTips : SessionTips {
   override val pointHints = "Players buy hints with !hint in their client and pay with points they earn by checking " +
     "locations. Off: !hint and !hint_location are refused; the server console can still give hints."
   override val autoHints = "Games may create hints by themselves, e.g. a shop that shows whose item it sells. Off: " +
-    "those only show the item to the game, no hint is made."
+    "those only show the item to the game; no hint is created."
   override val earlyKeys = "The keys of the locked slots are placed early: somewhere reachable from the start, so " +
     "the locked slots open soon instead of whenever the logic needs them."
   override val hintCost = "What one hint costs, in % of the slot's locations. With 10 % and 200 locations a hint " +
@@ -516,7 +538,7 @@ internal object EnglishSessionTips : SessionTips {
     "auto" to "By itself when the slot reaches its goal.",
     "enabled" to "Any time, with !release.",
     "disabled" to "Never; only its Session-Managers can, with a cheat.",
-    "goal" to "With !release, once the slot reached its goal.",
+    "goal" to "With !release, once the slot has reached its goal.",
     "auto-enabled" to "By itself at the goal, and any time with !release.",
   )
   override val collect = "When a slot gets its own items that are still in other slots."
@@ -524,14 +546,14 @@ internal object EnglishSessionTips : SessionTips {
     "auto" to "By itself when the slot reaches its goal.",
     "enabled" to "Any time, with !collect.",
     "disabled" to "Never; only its Session-Managers can, with a cheat.",
-    "goal" to "With !collect, once the slot reached its goal.",
+    "goal" to "With !collect, once the slot has reached its goal.",
     "auto-enabled" to "By itself at the goal, and any time with !collect.",
   )
   override val remaining = "Whether a player may ask which of their items are still out there."
   override val remainingChoices = listOf(
     "enabled" to "Any time.",
     "disabled" to "Never.",
-    "goal" to "Once the slot reached its goal.",
+    "goal" to "Once the slot has reached its goal.",
   )
   override val releaseVersion = "The Archipelago release that generates and serves this session; the session stays on " +
     "it. Which games it has is listed under APWorlds."
@@ -613,7 +635,7 @@ internal object GermanSessionTips : SessionTips {
   override val sessionId = "Der Name der Session in den Links und ihre Adresse für Spiel-Clients (<ID>.<Domain>). " +
     "Kleinbuchstaben, Ziffern und -, mit einem Buchstaben am Anfang; später nicht mehr änderbar."
   override val dashboard = "Das Dashboard der Session, wie ihre Spieler es sehen (Slot-Passwörter nur für deine eigenen Slots)."
-  override val pause = "Pausieren stoppt den Spielserver: Die Session ist schreibgeschützt, das Dashboard zeigt, wie " +
+  override val pause = "Pausieren stoppt den Spielserver: Die Session ist nur noch lesbar, das Dashboard zeigt, wie " +
     "weit sie kam, und ihre Spieler sehen das Spoiler-Log. Sie kann innerhalb von 14 Tagen wieder geöffnet werden."
   override val end = "Alle Checks sind erledigt. Beenden stoppt den Spielserver endgültig: Das Dashboard zeigt weiter, " +
     "wie sie ausging, und ihre Spieler sehen das Spoiler-Log. Eine komplette Session kann nicht wieder geöffnet " +
@@ -623,6 +645,6 @@ internal object GermanSessionTips : SessionTips {
   override val keep = "Eine beendete Session wird einige Zeit nach ihrem Ende von selbst gelöscht " +
     "(SESSION_RETENTION_DAYS, standardmäßig 90). Ist ihr automatisches Löschen aus, bleibt sie, bis sie von Hand " +
     "gelöscht wird; wieder eingeschaltet, zählt die Zeit ab dann."
-  override val spoiler = "Das Spoiler-Log zeigt, wo jedes Item des Seeds liegt, und den Durchspielweg Sphäre für " +
+  override val spoiler = "Das Spoiler-Log zeigt, wo jedes Item des Seeds liegt, und den Lösungsweg Sphäre für " +
     "Sphäre. Spieler sehen es, sobald die Session beendet ist."
 }

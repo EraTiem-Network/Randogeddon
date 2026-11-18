@@ -56,13 +56,14 @@ object German : Texts {
   }
 
   override val frame = object : FrameTexts {
-    override val cantReachServer = "Der Server ist nicht erreichbar – neuer Versuch läuft…"
+    override val cantReachServer = "Der Server ist nicht erreichbar – versuche erneut…"
     override fun loggedInAs(name: String) =
-      "Du bist als $name angemeldet. Um dich mit dieser Einladung zu registrieren, melde dich ab und öffne ihren Link erneut."
+      "Du bist als $name angemeldet. Um dich mit dieser Einladung zu registrieren, melde dich ab und öffne diesen Link erneut."
     override fun noSuchSession(id: String) = "Es gibt keine Session $id, oder du bist nicht dabei."
     override val allSessions = "Alle Sessions"
     override val pickASession = "Session wählen"
     override val noSession = "Keine Session"
+    override val newSessionQuestion = "Neue Session?"
     override fun seed(name: String) = "Seed $name"
     override fun archipelago(version: String) = "AP $version"
     override val pickOneOfYourSessions = "Wähle eine deiner Sessions"
@@ -94,8 +95,6 @@ object German : Texts {
       SessionStatus.PAUSED -> "pausiert"
       SessionStatus.ENDED -> "beendet"
     }
-    override val noPartAdministrator = "Du bist in keiner Session dabei. Alle Sessions findest du unter Verwalten."
-    override val noPart = "Du bist noch in keiner Session dabei."
     override val running = "Laufend"
     override val runningSubtitle = "wähle eine, um ihr Dashboard zu sehen"
     override val finished = "Beendet"
@@ -109,11 +108,9 @@ object German : Texts {
 
   override val account = object : AccountTexts {
     override val title = "Dein Konto"
-    override fun providerAccount(provider: String) = "Dein $provider-Konto"
+    override fun providerAccount(provider: String) = "Über $provider verwaltet"
     override val providerAccountSubtitle = "Name, Passwort, E-Mail-Adresse, Zwei-Faktor-Anmeldung"
-    override fun providerAccountHint(provider: String) =
-      "Du meldest dich über $provider an: Ändere das dort. Dein Konto hier folgt sofort, spätestens bei deiner " +
-        "nächsten Anmeldung; es wird mit deinem dort gelöscht."
+    override fun providerAccountHint(provider: String) = "Um dein Konto zu verwalten, besuche $provider:"
     override fun openProvider(provider: String) = "$provider öffnen"
     override val name = "Name"
     override val nameSubtitle = "was die anderen sehen; du meldest dich damit oder mit deiner E-Mail-Adresse an"
@@ -121,6 +118,7 @@ object German : Texts {
     override val nameSaved = "Gespeichert. Laufende Sessions zeigen ihn; beendete behalten den alten Namen."
     override val idTip = "Die ID deines Kontos: Sie unterscheidet dich von jemandem, der deinen Namen früher hatte"
     override fun id(id: String) = "ID $id"
+    override fun localId(id: String) = "Lokale ID $id"
     override val password = "Passwort"
     override val changePassword = "Passwort ändern"
     override val passwordChanged = "Geändert. Deine anderen Anmeldungen sind beendet."
@@ -128,7 +126,7 @@ object German : Texts {
     override val twoFactorSubtitleAdministrator = "Administratoren melden sich immer damit an"
     override val twoFactorSubtitle = "ein Code aus einer Authenticator-App nach deinem Passwort"
     override val twoFactorAdministratorsNeedIt =
-      "Was nur Administratoren tun, ist erst mit eingeschalteter Zwei-Faktor-Anmeldung möglich."
+      "Administrator-Funktionen gibt es erst mit eingeschalteter Zwei-Faktor-Anmeldung."
     override val twoFactorIsOff = "Die Zwei-Faktor-Anmeldung ist aus."
     override val recoveryCodes = "Deine Wiederherstellungscodes"
     override val recoveryCodesHint =
@@ -157,10 +155,10 @@ object German : Texts {
     override val confirmingAddress = "Deine neue Adresse wird bestätigt…"
     override val yourAccount = "Dein Konto"
     override val languageTitle = "Sprache"
-    override val languageSubtitle = "dieser App und der Mails an dich"
-    override fun automatic(current: Language) = "Automatisch (die des Browsers: ${current.label})"
+    override val languageSubtitle = "für diese App und die Mails, die wir dir schicken"
+    override fun automatic(current: Language) = "Automatisch (${current.label})"
     override val appearanceTitle = "Aussehen"
-    override val appearanceSubtitle = "das Design, hell oder dunkel; der Knopf auf der oberen Karte wechselt den Modus auch"
+    override val appearanceSubtitle = "Theme, Modus und Schrift; der Knopf auf der oberen Karte wechselt auch den Modus"
     override fun theme(theme: Theme) = when (theme) {
       Theme.RANDOGEDDON -> "Randogeddon"
       Theme.OCEAN -> "Ozean"
@@ -190,7 +188,7 @@ object German : Texts {
       Theme.STEAMOS -> "SteamOS"
     }
     override fun themeGroup(group: ThemeGroup) = when (group) {
-      ThemeGroup.OWN -> "Randogeddons eigene"
+      ThemeGroup.OWN -> "Randogeddons"
       ThemeGroup.NINTENDO -> "Angelehnt an Nintendos Konsolen"
       ThemeGroup.PLAYSTATION -> "Angelehnt an die PlayStation-Konsolen"
       ThemeGroup.STEAM -> "Angelehnt an SteamOS"
@@ -198,21 +196,24 @@ object German : Texts {
     }
     override val themesNotice = "Die Konsolen- und SteamOS-Themes sind nur an die Farben dieser Systeme angelehnt. Deren Namen sind " +
       "Marken ihrer Inhaber; Randogeddon steht in keiner Verbindung zu Nintendo, Sony, Microsoft oder Valve und wird von ihnen nicht unterstützt."
+    override val modeLabel = "Modus"
     override fun mode(mode: ThemeMode) = when (mode) {
       ThemeMode.LIGHT -> "Hell"
       ThemeMode.DARK -> "Dunkel"
-      ThemeMode.AUTO -> "Automatisch (wie das Gerät)"
+      ThemeMode.AUTO -> "Automatisch"
     }
-    override fun fontOfTheme(family: String?) = if (family != null) "Schrift: die des Themes ($family)" else "Schrift: die des Themes (das Original)"
-    override val fontOriginal = "Schrift: Randogeddons Original"
-    override fun fontOf(theme: String, family: String) = "Schrift: die von $theme ($family)"
-    override fun fontScopeAuto(display: Boolean) = if (display) "Wie die Schrift gedacht ist (nur Überschriften)" else "Wie die Schrift gedacht ist (alle Texte)"
-    override val fontScopeAll = "Diese Schrift für alle Texte"
-    override val fontScopeHeadings = "Diese Schrift nur für Überschriften"
+    override val fontLabel = "Schrift"
+    override fun fontOfTheme(family: String?) = if (family != null) "Die des Themes ($family)" else "Die des Themes (das Original)"
+    override val fontOriginal = "Randogeddons Original"
+    override fun fontOf(theme: String, family: String) = "Die von $theme ($family)"
+    override val fontScopeLabel = "Schriftmodus"
+    override val fontScopeAuto = "Standard der Schrift"
+    override val fontScopeAll = "Alles"
+    override val fontScopeHeadings = "Nur Überschriften"
     override val bridgeKeys = "Bridge-Schlüssel"
     override val bridgeKeysSubtitle = "die Anmeldungen der Randogeddon Bridge; ein neues Passwort beendet sie auch"
     override fun bridgeKey(made: String, used: String?, until: String) =
-      "Gemacht am $made · ${used?.let { "zuletzt genutzt am $it" } ?: "noch nicht genutzt"} · bis $until"
+      "Erstellt am $made · ${used?.let { "zuletzt genutzt am $it" } ?: "noch nicht genutzt"} · bis $until"
     override val endKey = "Beenden"
     override val deletion = "Dein Konto löschen"
     override val deletionSubtitle = "von selbst, nach deiner letzten Session; deine Sessions behalten deinen Namen"
@@ -228,6 +229,6 @@ object German : Texts {
     override val staysUntilChanged = "Dein Konto bleibt, bis du das änderst."
     override val notWhileRunning = "Nicht, solange eine deiner Sessions läuft."
     override fun deletesOn(date: String) =
-      "Stand jetzt am $date; eine Mail erinnert dich 14 Tage vorher, und eine neue Session schiebt es nach hinten."
+      "Derzeit am $date; eine Mail erinnert dich 14 Tage vorher, und eine neue Session verschiebt es."
   }
 }

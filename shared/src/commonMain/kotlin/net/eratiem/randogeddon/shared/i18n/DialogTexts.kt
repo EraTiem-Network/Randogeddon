@@ -142,7 +142,7 @@ internal object GermanDialogs : DialogTexts {
   override val nothingYet = "Noch nichts."
   override fun slotHeading(game: String, checked: Int, total: Int, percent: String) = "$game · $checked / $total Checks ($percent %)"
   override val loading = "Lädt…"
-  override val sessions = "Sitzungen"
+  override val sessions = "Sessions"
   override val status = "Status"
   override val online = "online"
   override val offline = "offline"
@@ -160,7 +160,7 @@ internal object EnglishConnection : ConnectionTexts {
   override val support = "Support"
   override val sessionManager = "Session-Manager"
   override val server = "Server"
-  override val watcherNote = "You watch this session: no slots, the spoiler log once it is finished."
+  override val watcherNote = "You're watching this session: no slots; the spoiler log opens once it has finished."
   override val supportNote = "You support this session: you help its players below."
   override val notPlaying = "You don't play in this session."
   override val slotsAppear = "Your slots appear here once the seed is running."
@@ -195,15 +195,15 @@ internal object EnglishConnection : ConnectionTexts {
   override val bridgeHow = "Download it for your system and start it: its page opens in your browser. Create a key " +
     "here and paste it there. Pick the session and the slot, Open, and enter the address it shows (localhost:<port>) " +
     "in the game."
-  override val bridgeWindows = "It isn't signed, so Windows asks first: More info, then Run anyway."
-  override val bridgeMacos = "It isn't signed: right-click it, Open, then Open again. Or in the Terminal: " +
+  override val bridgeWindows = "The app has no Windows code signature, so Windows asks first: More info, then Run anyway."
+  override val bridgeMacos = "The app isn't notarised by Apple: right-click it, Open, then Open again. Or in the Terminal: " +
     "xattr -d com.apple.quarantine <file>"
   override val bridgeLinux = "Make it executable first: chmod +x <file>"
   override val makeKey = "Create key"
   override fun keyMade(until: String) =
     "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
-  override val foldBridge = "Fold away"
-  override val openBridge = "Open"
+  override val foldBridge = "Collapse"
+  override val openBridge = "Expand"
 }
 
 internal object GermanConnection : ConnectionTexts {
@@ -213,7 +213,7 @@ internal object GermanConnection : ConnectionTexts {
   override val support = "Support"
   override val sessionManager = "Session-Manager"
   override val server = "Server"
-  override val watcherNote = "Du schaust bei dieser Session zu: keine Slots, das Spoiler-Log, sobald sie beendet ist."
+  override val watcherNote = "Du schaust bei dieser Session zu: keine Slots; das Spoiler-Log gibt es, sobald sie beendet ist."
   override val supportNote = "Du unterstützt diese Session: Du hilfst ihren Spielern unten."
   override val notPlaying = "Du spielst in dieser Session nicht mit."
   override val slotsAppear = "Deine Slots erscheinen hier, sobald der Seed läuft."
@@ -244,14 +244,14 @@ internal object GermanConnection : ConnectionTexts {
     "kann. Randogeddon lässt nur sichere Verbindungen herein."
   override val bridgeDoesTitle = "Was sie tut"
   override val bridgeDoes = "Das Spiel verbindet sich mit localhost auf deinem PC; die Bridge bringt es sicher zur Session " +
-    "und trägt Name und Passwort deines Slots ein, im Spiel ist nichts einzugeben."
+    "und trägt Name und Passwort deines Slots ein; im Spiel musst du nichts eingeben."
   override val bridgeHowTitle = "So nutzt du sie"
   override val bridgeHow = "Lade sie für dein System herunter und starte sie: Ihre Seite öffnet sich im Browser. Erstelle " +
     "hier einen Schlüssel und füge ihn dort ein. Wähle Session und Slot, Öffnen, und gib die gezeigte Adresse " +
     "(localhost:<Port>) im Spiel ein."
-  override val bridgeWindows = "Sie ist nicht signiert, deshalb fragt Windows erst: Weitere Informationen, dann Trotzdem " +
+  override val bridgeWindows = "Die App hat keine Windows-Signatur, deshalb fragt Windows erst nach: Weitere Informationen, dann Trotzdem " +
     "ausführen."
-  override val bridgeMacos = "Sie ist nicht signiert: Rechtsklick, Öffnen, dann noch einmal Öffnen. Oder im Terminal: " +
+  override val bridgeMacos = "Die App ist nicht von Apple beglaubigt: Rechtsklick, Öffnen, dann noch einmal Öffnen. Oder im Terminal: " +
     "xattr -d com.apple.quarantine <Datei>"
   override val bridgeLinux = "Erst ausführbar machen: chmod +x <Datei>"
   override val makeKey = "Schlüssel erstellen"

@@ -82,6 +82,8 @@ data class Account(
   val block: Block? = null,
   /** How many running sessions of their own they may have at once; `null`: the default. */
   val sessionLimit: Int? = null,
+  /** Whether the single sign-on provider calls their address verified; `null`: not its address, or it didn't say. */
+  val emailVerifiedByProvider: Boolean? = null,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -208,7 +210,17 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   suspend fun setEmail(id: Uuid, email: String?) = db.query {
-    UsersTable.update({ UsersTable.id eq id }) { it[UsersTable.email] = email }
+    UsersTable.update({ UsersTable.id eq id }) {
+      it[UsersTable.email] = email
+      // What the provider said was about the address before
+      it[emailVerifiedByProvider] = null
+    }
+    Unit
+  }
+
+  /** Whether the single sign-on provider calls [id]'s address verified; `null`: it didn't say. */
+  suspend fun setEmailVerifiedByProvider(id: Uuid, verified: Boolean?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[emailVerifiedByProvider] = verified }
     Unit
   }
 
@@ -363,6 +375,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
     hasPassword = row[UsersTable.passwordHash] != null, linked = row[UsersTable.oidcSubject] != null,
     twoFactor = row[UsersTable.totpEnabledAt] != null, block = block(row), sessionLimit = row[UsersTable.sessionLimit],
+    emailVerifiedByProvider = row[UsersTable.emailVerifiedByProvider],
   )
 }
 

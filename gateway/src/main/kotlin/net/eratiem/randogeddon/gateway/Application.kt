@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
+import kotlin.time.Duration.Companion.minutes
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Application")
 
@@ -96,11 +97,15 @@ data class GameServerSettings(
  * Runs one MultiServer per session and accepts game clients on [GatewayConfig.port], relaying each one to its
  * session's; the tracker controls them on [GatewayConfig.internalPort].
  */
+/** How long the gateway waits at its start for its database login and the tables (the tracker makes both). */
+private val DATABASE_WAIT = 2.minutes
+
 fun main() {
   val config = GatewayConfig.from(ApplicationConfig("application.yaml"))
   val options = config.gameServer
-  // Only reads (and counts the session time); the tracker migrates
-  val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3)
+  // Only reads (and counts the session time); the tracker migrates and makes this login. On a new database that
+  // happens a moment after both started: wait for it instead of failing and starting again
+  val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3, waitFor = DATABASE_WAIT)
   val passwordStore = SlotPasswordStore(database)
   val http = HttpClient(CIO) {
     install(ClientWebSockets) {

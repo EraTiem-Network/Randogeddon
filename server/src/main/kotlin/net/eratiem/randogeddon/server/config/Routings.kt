@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.config
 
+import net.eratiem.randogeddon.server.admin.SessionLimit
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
@@ -28,6 +29,7 @@ import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.ktor.ext.inject
@@ -43,6 +45,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val list by inject<SessionList>()
   val archives by inject<Archives>()
   val spoilers by inject<Spoilers>()
+  val spoilerSearches by inject<SpoilerSearches>()
   val lifecycle by inject<SessionLifecycle>()
   val cheats by inject<Cheats>()
   val accounts by inject<AccountService>()
@@ -56,6 +59,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val downloads by inject<SlotDownloads>()
   val bridgeKeys by inject<BridgeKeys>()
   val attempts by inject<LoginAttempts>()
+  val sessionLimit by inject<SessionLimit>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -68,9 +72,9 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     // Everything about the sessions needs a login (login and logout above are outside this branch)
     route("/api") {
       install(RequireLogin) { this.logins = logins }
-      meRoute(list)
+      meRoute(list, sessionLimit)
       accountRoutes(accounts, twoFactor, bridgeKeys, trackerConfig.cookieSecure)
-      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads)
+      sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads, spoilerSearches)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
       supportRoutes(support, logins)

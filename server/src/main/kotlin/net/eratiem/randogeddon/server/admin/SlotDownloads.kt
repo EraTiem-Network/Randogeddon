@@ -26,8 +26,8 @@ internal fun mayDownload(administrator: Boolean, role: SessionRole?, mySlots: Co
 
 /**
  * The seed's files of the slots (patches, mods) as their players download them: each player those of their own slots
- * (a slot played together: each of its players), Session-Managers and Administrators every slot's; support and
- * watchers none. For as long as the session exists, finished ones too. The files come from the gateway, which reads
+ * (a slot played together: each of its players) once the slot is open (a locked slot's wait for its key, like its
+ * password), Session-Managers and Administrators every slot's; support and watchers none. For as long as the session exists, finished ones too. The files come from the gateway, which reads
  * them from the seed's zip; their slot numbers get their names from the spoiler log.
  */
 @Single
@@ -43,7 +43,12 @@ class SlotDownloads(
     if (all.isEmpty()) return emptyList()
     val slots = slots(live)
     val named = all.map { file -> slots[file.slot]?.let { file.copy(slotName = it.name, game = it.game) } ?: file }
-    return named.filter { mayHave(live, user, it) }
+    // Still locked (their key not found yet): nothing to start a game with, for who doesn't manage the session
+    val manages = user.administrator || live.roleOf(user) == SessionRole.MANAGER
+    val locked = if (manages) emptySet() else runCatching {
+      live.summary().players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+    }.getOrDefault(emptySet())
+    return named.filter { mayHave(live, user, it) && it.slotName !in locked }
   }
 
   /** One of [of]'s files, with its bytes; 404 for one [user] may not have, as for one that doesn't exist. */

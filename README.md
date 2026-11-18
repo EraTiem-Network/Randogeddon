@@ -53,6 +53,7 @@ restart or update doesn't drop the players.
 | `output/` | The demo's files (gitignored) |
 | `data/` | Server side: each session's seed, `.apsave` savegame and `room.json` in `sessions/<id>/`, deleted ones in `old/`, the uploaded APWorlds in `apworlds/<release>/` (gitignored) |
 | `scripts/demo.sh` | The demo |
+| `scripts/unwanted_words.py` | Makes the list of words no name and no session ID may contain (`server/src/main/resources/unwanted-words.txt`) |
 
 ## One-time server setup
 
@@ -193,7 +194,7 @@ docker compose exec tracker randogeddon admins --grant <person>    # an existing
 **Administrators through Authentik** (single sign-on, `OIDC_*` in `.env`): with `OIDC_ISSUER` set, the login form
 has *Administrators: log in with Authentik*. Members of the Authentik group `OIDC_ADMIN_GROUP` (default
 `randogeddon-administrators`) are the Administrators: their account is linked by its verified e-mail address on the
-first login (or made then), the flag follows the group at every login, and Authentik's MFA takes the place of the
+first login (or made then; a linked account takes over the name and the address Authentik has, verified or not), the flag follows the group at every login, and Authentik's MFA takes the place of the
 app's two-factor login for them. Their login lasts a day (the group is asked again at each one, so leaving it
 shows within a day), and only such a login reads as an Administrator: an older password login, or a bridge key, sees
 no more than any user. There is no other way to an Administrator then: no password login for them, and the CLI
@@ -285,22 +286,23 @@ docker compose up -d
 
 ## Session day
 
-### In the panel (*Manage*)
+### In the Management panel
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
    isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
-2. **Create the session** (the gear button, *Manage*, then *New session*; every user can, as many running ones at
+2. **Create the session** (the gear button, the *Management panel*, then *New session*; every user can, as many running ones at
    once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
-   `brave-otter`; lowercase letters, digits and `-`, starting with a letter; it becomes the game server's host name,
-   so it can't be changed later), *Add YAMLs…*, then for every slot who
+   `brave-otter`; lowercase letters, digits and `-`, starting with a letter (capitals typed become small ones), and
+   without unwanted words, as for names; it becomes the game server's host name, so it can't be changed later), *Add YAMLs…*, then for every slot who
    plays it (one or more players, picked from the accounts, invited ones too: a slot with several players is played
    together); the locks
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
-   *Generate and start* (once every slot has a player or is hosted; while it generates, a bar shows the stage and about
-   how far it is). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
+   for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
+   is; the gateway generates one seed at a time, so a second session waits and says so). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
    name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
@@ -353,11 +355,31 @@ finished one deletes them for good. The accounts stay. As many sessions run at o
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
 - **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
-  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The
-  playthrough reads *Item @ Check*, marks the steps already checked with a ✓, and each sphere says how many of its
+  (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
+  log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a
+  browser to show at once. Its search runs on the server (a moment after the last key; per user one search at a
+  time, half a second apart) and jumps to whichever page a finding is on. Both searches have an × to empty them. The
+  playthrough reads *Item @ Check*, marks the steps already checked with a check mark, and each sphere says how many of its
   checks are done; its search keeps only the steps whose item, check or slot contains the text (and unfolds them).
   Administrators, its Session-Managers and support can open it at any time (behind a warning: it is a full spoiler);
   its players and watchers see it once it is finished.
+
+### Names nobody should have
+
+User names and session IDs are checked against a list of swear words and slurs (about 9,600, of the 17 languages
+written in Latin letters: `unwanted-words.txt`, made by `scripts/unwanted_words.py` from three lists:
+[LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0),
+[BadWords](https://github.com/FlacSy/badwords) (MIT) and
+[Google Profanity Words](https://github.com/coffee-and-fun/google-profanity-words) (MIT)). Ordinary words in them are
+taken out by checking against the 50,000 commonest words of each language
+([FrequencyWords](https://github.com/hermitdave/FrequencyWords)) and 4,900 first names, and by hand; words are added
+there too. The script downloads what it needs into `output/unwanted-words/` and runs in seconds. A name is read part by part (`Dark_Lord`, `darkLord`), written
+together, and with digits as the letters they stand in for (`sh1t`); a word of 7 letters or more, and a few
+marked ones, are also found inside a longer word. Short ones aren't (they are inside too many ordinary words and
+names), so the filter keeps the obvious out and can be got around by someone who tries. Who is refused isn't told
+which word it was. Names that exist already stay as they are; a name that comes from Authentik is made to fit
+(`Ada Lovelace`: `Ada_Lovelace`). To change the list: `OURS` and `ALLOWED` in the script, then run it; to take
+in what the lists have learned since, delete `output/unwanted-words/` first.
 
 ### APWorlds
 
@@ -367,7 +389,10 @@ and its APWorld library:
 - **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
   at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
   after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
-  inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. One that
+  inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. Each file
+  shows as a pill that fills yellow while it is checked and turns green (added), red (refused) or grey (skipped); its
+  tip says what it brought or why not;
+  *Clear* takes them away, and after an upload without trouble they go by themselves. One that
   doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
   would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
@@ -383,7 +408,7 @@ The gateway puts exactly these files into each release's `custom_worlds/` before
 
 ### The panel: the game server and its console
 
-Everyone gets a gear button in the dashboard's header: the panel (*Manage*). It lists the sessions the user manages
+Everyone gets a gear button in the dashboard's header: the *Management panel*. It lists the sessions the user manages
 (an Administrator's: every session; how far each is, its game server); a click picks one. For that session it shows
 its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
@@ -409,8 +434,11 @@ log.
 the slot and the item or location from searchable lists. *Check a location* goes either way: *from the slot* (one of
 its own open locations: its item goes to whoever owns it) or *to the slot* (an open location of another world that
 holds one of the slot's items, listed with the item: checked there, the slot gets it; from the spoiler log's
-placements, so only for a seed whose spoiler log has them). Free hints (`/hint`, `/hint_location`) only if the session
-was created with *Cheat hints*. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
+placements, so only for a seed whose spoiler log has them). Free hints (`/hint_location`) only if the session
+was created with *Cheat hints*. A hint names one place: a location only if it isn't hinted yet, and for an item one
+copy of it that is neither checked nor hinted, at random or the next one the playthrough needs (a switch beside it) (Archipelago's `/hint` would name every copy; it is only used
+for a seed whose spoiler log has no placements). The hints' table explains its states under the ⓘ in its last
+column. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
@@ -423,8 +451,11 @@ them, for an invited one *Send again* and *Other address*, and what an Administr
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
 
-**On the dashboard, by role:** support gets a *Support* section (give an item, check a location, a free hint; the
-spoiler log), logged and in the feed as "Erin (support) gave …". Players get *Watchers*: add someone by name or a new
+**Support** helps in the Management panel: the sessions someone supports are in its switch, each with how it
+stands, its dashboard, the *Support* section (give an item, check a location, a free hint; the spoiler log) and
+*Watchers* (adding and removing them, the share link), not what only a Session-Manager does. What support does is logged and in the feed as "Erin (support) gave …".
+
+**On the dashboard, by role:** Players get *Watchers*: add someone by name or a new
 address, remove watchers, and the share link. Watchers see a *Watching* pill in place of their slots. A **share
 link** (`#/watch/<token>`) opens the session's dashboard without a login, read-only: progress, tiles, players, hints
 and the live feed, no passwords and no spoiler; turned off or replaced, it says so.
@@ -442,8 +473,8 @@ with `docker compose down` and starting with `up -d` keeps the progress.
 
 **Sessions per user:** how many running sessions of their own a user may have at once (0 to 20; 0: only
 Administrators create sessions). *Sessions per user (default)* in the users' card is for every account without a
-number of its own; an account's panel shows its running sessions against its limit and takes its *Own limit* (or
-*Use the default* again). It counts the sessions someone **created**, while they run: being made Session-Manager of
+number of its own; an account's panel shows its running sessions against its limit and takes its *Self-created sessions limit* (the
+empty field shows the default; *Use default* brings it back). It counts the sessions someone **created**, while they run: being made Session-Manager of
 someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
 its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
 (`AP_PORTS`) applies to everyone.
@@ -451,7 +482,7 @@ its creator; an Administrator reopens regardless). Administrators have no limit,
 **Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
 managed where Administrators log in, so never one's own):
 
-- **Time out** for 1 hour, 1 day, 7 days or 30 days, or **Suspend** until it is taken back, with a reason if wanted
+- **Time out** for 1, 3, 6 or 12 hours, 1, 2 or 3 days, 1 or 2 weeks or 30 days, or **Suspend** until it is taken back, with a reason if wanted
   (at most 200 characters; the person reads it). Their logins end at once (Randogeddon Bridge's too) and they can't
   log in: after the right password the login form says so, until when and why, and a mail tells them. A time-out ends
   by itself; *Let in again* ends either before (a mail again). The list marks such accounts.
@@ -466,8 +497,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 
 - **Accounts** belong to people, not to a session. An Administrator invites someone by e-mail (*Users*), or anyone right
   in a new session's player field); the link (single use, 7 days, a new one replaces it) leads to the sign-up page,
-  where they choose their name (3–32 characters, no `@`,
-  unique without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
+  where they choose their name (3–32 characters: letters without accents, digits and `_`; not one that passes for
+  Randogeddon or someone with a say here, like *Admin* or *Support*; without unwanted words, see below; unique
+  without regard to case), a password (at least 12 characters, stored only as an Argon2id hash) and when their
   account deletes itself (2 or 4 weeks, 3 or 6 months, 1 year after the end of their last session, or never; a mail
   warns 14 days before). They log in with their name or their e-mail address. `randogeddon logins --create <player>`
   makes a login without an invitation (local use, the demo), `randogeddon logins --reset <player>` a new password
@@ -495,9 +527,9 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
   cheat is logged and shown in the feed with who did it, and as what ("Bob (Session-Manager) gave …").
 - **Support** helps the players of a session: gives items, checks locations and gives free hints (also in a session
   without cheat hints), and sees its spoiler log while it runs; no release or collect, game server or console. **Watchers**
-  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players add watchers too
-  (by name, or invite an address that has no account), and take them away again. A **share link** (players and
-  Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
+  follow a session (dashboard, feed, hints; no slots, the spoiler log once it is finished). Its players and support add watchers too
+  (by name, or invite an address that has no account), and take them away again. A **share link** (players, support
+  and Session-Managers) shows the session to anyone who has it, without a login and read-only (for a stream): no
   passwords, no spoiler, no accounts. It is shown once; a new link replaces the old one, and it can be turned off.
 - **Your account** (the person button on the top card): change the name, the password (the other logins end), the
   e-mail address (a link to the new address confirms it; until then the old one stays), two-factor login and the
@@ -551,7 +583,8 @@ In the panel, tick *starts locked* per slot, choose *Random* locks with the numb
 all. The gateway adds the World Locks slot (`Locks`, nobody plays it) to the seed.
 
 A locked slot can't connect until its key is found: the gateway refuses its game client (`SlotLocked`), hosted slots
-too, and *Your connection* and the bridge show it as locked, without a password. The tracker opens it once the key
+too, and *Your connection* and the bridge show it as locked, without a password (*Your connection*
+without its patch files too). The tracker opens it once the key
 has turned up (the gateway sees that within about 10 seconds). Keys show up as "World Key 1, 2, …" in game clients (`!hint World Key 2` works from the
 Locks slot), and as "Key to Alice-Celeste" on the dashboard, which also shows who found it or where it was hinted.
 
@@ -627,7 +660,7 @@ which the gateway writes before it starts the session's game server.
 
 - **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), the
   slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
-  downloads). The bridge folds away (*Fold away*, remembered in the browser): then the card is one narrow column and
+  downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
@@ -668,12 +701,15 @@ sign-up page) and `POST /api/email/confirm`
 `POST .../email`, `POST .../2fa/setup`, `.../2fa/enable`, `.../2fa/disable`, `.../2fa/codes` (the settings),
 `GET /api/me` (name, Administrator, the sessions they manage), `GET /api/sessions` (the sessions the user sees), and per session
 `GET /api/sessions/<id>/state` (summary JSON), `.../stream` (SSE), `.../player/<slot>`, `.../connection` (address,
-own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler`, `.../files` and
+own slots and passwords), `.../archive` (a finished one as it ended), `.../spoiler` (the playthrough and how many lines the log has),
+`.../spoiler/log?from=&count=` (some of its lines, at most 400), `.../spoiler/search?q=` (the lines that contain a
+text of 2 to 100 characters, the first 500; answers 429 while another search of the same user runs), `.../files` and
 `.../files/<name>` (the seed's files of the user's slots: patches, mods; every slot's for its Session-Managers and
 Administrators). The panel's are under
-`/api/manage` (the sessions the user manages), `/api/sessions/new` and `POST /api/sessions` (creating one, for
+`/api/manage` (the sessions the user manages or supports), `/api/sessions/new` (with `/id?id=`: whether an ID can
+be a new session's) and `POST /api/sessions` (creating one, for
 everyone), a session's management under `/api/sessions/<id>/manage/…` and its people under `.../people` (its Session-Managers and Administrators), support's
-`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players and Session-Managers),
+`.../support`, the watchers under `.../watchers` and the share link under `.../share` (players, support and Session-Managers),
 the share link's read-only `/api/watch/<token>/state`, `.../stream`, `.../player/<slot>` (without a login), and the
 Administrators' `/api/admin/sessions`, `/api/admin/users`, `/api/admin/settings`. A login's bridge keys are under `/api/account/bridge-keys` (`GET`, `POST`, `DELETE .../<id>`);
 the bridge's own routes, with a key as `Authorization: Bearer`, are `GET /bridge/info`, `/bridge/me`,
@@ -700,7 +736,7 @@ Each user picks a theme and a mode under *Your account*, *Appearance*, each them
 the device and switches with it. The themes are cards under a heading per group, each a small page in its colours in
 the mode that shows now:
 
-- **Randogeddon's own:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
+- **Randogeddon's:** Randogeddon (the default), Ocean, Forest, Ember, High contrast, Midnight, Sakura, Terminal,
   Sepia.
 - **Inspired by Nintendo's consoles:** NES, SNES, N64, GameCube, Wii, Wii U, Switch, Switch 2.
 - **Inspired by the PlayStation consoles:** PlayStation, PlayStation 2, 3, 4 and 5.
@@ -717,11 +753,11 @@ link's page, the browser's last choice applies (the login page takes its colours
 
 **Fonts:** every theme but the default brings a font that goes with it, and beside the mode there is a font choice:
 *the theme's* (the default), *Randogeddon's original*, or another theme's font with whatever theme is chosen. A
-third choice says where the font shows: *as the font is made* (the default: a display font, i.e. the pixel fonts of
+third choice (*Font mode*) says where the font shows: *Font's default* (as the font is made: a display font, i.e. the pixel fonts of
 NES and SNES and PlayStation 2's wide one, in the headings only, every other font in all text), in all text, or in
 the headings only (the rest stays the original). The choice is stored with the account like the theme. A font's files are only loaded once it is
-used (20 to 130 KB each); until then, and without them, the original shows. A change of the font is animated: the
-letters take the new one one by one, in no order. The login page keeps the system's font.
+used (20 to 130 KB each); until then, and without them, the original shows. A change of the font by hand (another theme, the
+font settings) is animated: the letters take the new one one by one, in no order; on page load it is just there. The login page keeps the system's font.
 
 | Theme | Font | Theme | Font |
 |---|---|---|---|

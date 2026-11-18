@@ -61,6 +61,13 @@ interface DashboardTexts {
   val hintUnmarked: String
   val noHintsYet: String
   val noHintsMatch: String
+  /** The ⓘ on the hints' state: what it is, and each state (the pill's words) with what it means. */
+  val hintStateTip: String
+  val hintOpenMeaning: String
+  val hintPriorityMeaning: String
+  val hintNoPriorityMeaning: String
+  val hintAvoidMeaning: String
+  val hintFoundMeaning: String
   val columnFor: String
   val columnItem: String
   val columnCheck: String
@@ -136,7 +143,7 @@ interface FinishTexts {
 
 internal object EnglishDashboard : DashboardTexts {
   override val managerUnavailable =
-    "A Session-Manager of this session isn't available at the moment. If you need help with managing the session, reach out to an Administrator."
+    "A Session-Manager of this session is unavailable right now. For help with managing it, contact an Administrator."
   override val overview = "Overview"
   override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots slots · $checked of $total checks"
   override val goals = "Goals"
@@ -181,7 +188,7 @@ internal object EnglishDashboard : DashboardTexts {
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
   override fun waitingForKey(key: String) = "Locked · waiting for $key"
   override fun points(n: Int) = "$n pts"
-  override val hintsFree = "hints free"
+  override val hintsFree = "free hints"
   override fun hintsForPoints(hints: Int, points: Int) = "$hints ${if (hints == 1) "hint" else "hints"} · $points pts"
   override fun hintsSubtitle(open: Int, total: Int) = "$open open · $total total"
   override val allPlayers = "All players"
@@ -195,6 +202,13 @@ internal object EnglishDashboard : DashboardTexts {
   override val hintUnmarked = "Unmarked"
   override val noHintsYet = "No hints yet."
   override val noHintsMatch = "No hints match the filter."
+  override val hintStateTip =
+    "How things stand with the hinted item. Its player marks it in their game client; found comes by itself."
+  override val hintOpenMeaning = "Not found yet, and its player hasn't marked it."
+  override val hintPriorityMeaning = "Its player wants it soon."
+  override val hintNoPriorityMeaning = "Its player doesn't need it soon."
+  override val hintAvoidMeaning = "Its player doesn't need it: better leave that check for later."
+  override val hintFoundMeaning = "The check is done: the item has arrived."
   override val columnFor = "For"
   override val columnItem = "Item"
   override val columnCheck = "Check"
@@ -210,7 +224,7 @@ internal object EnglishDashboard : DashboardTexts {
 
 internal object GermanDashboard : DashboardTexts {
   override val managerUnavailable =
-    "Ein Session-Manager dieser Session ist im Moment nicht erreichbar. Wenn du Hilfe beim Verwalten der Session brauchst, wende dich an einen Administrator."
+    "Ein Session-Manager dieser Session ist gerade nicht erreichbar. Für Hilfe beim Verwalten wende dich an einen Administrator."
   override val overview = "Überblick"
   override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots Slots · $checked von $total Checks"
   override val goals = "Ziele"
@@ -265,9 +279,16 @@ internal object GermanDashboard : DashboardTexts {
   override val hintPriority = "Priorität"
   override val hintAvoid = "Vermeiden"
   override val hintNoPriority = "Keine Priorität"
-  override val hintUnmarked = "Unmarkiert"
+  override val hintUnmarked = "Nicht markiert"
   override val noHintsYet = "Noch keine Hinweise."
   override val noHintsMatch = "Kein Hinweis passt zum Filter."
+  override val hintStateTip =
+    "Wie es um das Item des Hinweises steht. Sein Spieler markiert es im Spiel-Client; gefunden kommt von selbst."
+  override val hintOpenMeaning = "Noch nicht gefunden, und sein Spieler hat es nicht markiert."
+  override val hintPriorityMeaning = "Sein Spieler will es bald."
+  override val hintNoPriorityMeaning = "Sein Spieler braucht es nicht so bald."
+  override val hintAvoidMeaning = "Sein Spieler braucht es nicht: Den Check besser auf später lassen."
+  override val hintFoundMeaning = "Der Check ist erledigt: Das Item ist angekommen."
   override val columnFor = "Für"
   override val columnItem = "Item"
   override val columnCheck = "Check"
@@ -325,7 +346,7 @@ internal object GermanFeed : FeedTexts {
   override val placeRight = "Rechts"
   override val placeLeft = "Links"
   override val placeBelow = "Unten"
-  override val foundOwn = "{sender} hat das eigene {item} gefunden"
+  override val foundOwn = "{sender} hat ein eigenes Item gefunden: {item}"
   override val sent = "{sender} hat {item} an {receiver} geschickt"
   override val cheat = "Cheat: "
   override val unlocked = "{sender} hat den Schlüssel gefunden: {slot} ist entsperrt!"
@@ -352,7 +373,7 @@ internal object EnglishFinish : FinishTexts {
   override val spoilerLog = "Spoiler log"
   override val endNow = "End now"
   override val tip =
-    "A session ends 2 minutes after every slot reached its goal or was released; its Session-Managers can also " +
+    "A session ends 2 minutes after every slot has reached its goal or was released; its Session-Managers can also " +
       "pause or end it earlier. Then it is read-only: the game server stops, and its players see the spoiler log. " +
       "Unless it was completed (100 %), its Session-Managers can reopen it within 14 days."
 }
@@ -370,7 +391,7 @@ internal object GermanFinish : FinishTexts {
   override val endNow = "Jetzt beenden"
   override val tip =
     "Eine Session endet 2 Minuten, nachdem jeder Slot sein Ziel erreicht hat oder freigegeben wurde; ihre " +
-      "Session-Manager können sie auch früher pausieren oder beenden. Danach ist sie schreibgeschützt: Der " +
+      "Session-Manager können sie auch früher pausieren oder beenden. Danach ist sie nur noch lesbar: Der " +
       "Spielserver stoppt, und ihre Spieler sehen das Spoiler-Log. Wenn sie nicht komplett war (100 %), können ihre " +
       "Session-Manager sie innerhalb von 14 Tagen wieder öffnen."
 }

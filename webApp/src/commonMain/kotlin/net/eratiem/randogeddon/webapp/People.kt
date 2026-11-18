@@ -117,7 +117,7 @@ fun PeopleSection(id: String) {
 }
 
 /**
- * On the dashboard, for the session's players: who watches it with them, adding watchers (by name, or a new address)
+ * For the session's players (on the dashboard) and its support (in the panel): who watches it with them, adding watchers (by name, or a new address)
  * and taking them away, and the share link.
  */
 @Composable
