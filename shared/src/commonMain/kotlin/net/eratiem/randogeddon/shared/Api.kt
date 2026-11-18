@@ -638,7 +638,22 @@ enum class CheatAction {
  * *to* the slot: the other world it is in (one of [CheatNames.incoming]); `null`: the slot's own location.
  */
 @Serializable
-data class CheatRequest(val action: CheatAction, val slot: String, val value: String? = null, val from: String? = null)
+data class CheatRequest(
+  val action: CheatAction,
+  val slot: String,
+  val value: String? = null,
+  val from: String? = null,
+  /** An item hint: which of its copies it names. */
+  val pick: HintPick = HintPick.RANDOM,
+)
+
+/** Which copy of an item a hint names: one by chance, or the one the playthrough needs first. */
+@Serializable
+enum class HintPick {
+  @SerialName("random") RANDOM,
+  /** The copy in the earliest sphere of the playthrough; a copy the playthrough doesn't need comes after those. */
+  @SerialName("next") NEXT,
+}
 
 /** One cheat, as logged. */
 @Serializable

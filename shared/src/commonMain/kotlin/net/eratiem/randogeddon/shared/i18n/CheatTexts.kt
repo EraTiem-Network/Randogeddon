@@ -26,6 +26,10 @@ interface CheatTexts {
   /** Check a location: one of the slot's own (its item goes out), or one of another world holding the slot's item. */
   val fromSlot: String
   val toSlot: String
+  /** An item hint's copy: by chance, or the next one the playthrough needs. */
+  val randomCopy: String
+  val nextCopy: String
+  val copyTip: String
   /** A location of another world for the picker: `Mantis Claw · Crossroads (in Bob-SM64)`. */
   fun incoming(item: String, location: String, world: String): String
   val noIncoming: String
@@ -80,6 +84,10 @@ internal object EnglishCheats : CheatTexts {
   override val cheat = "Cheat"
   override val fromSlot = "From the slot"
   override val toSlot = "To the slot"
+  override val randomCopy = "Random"
+  override val nextCopy = "Next in playthrough"
+  override val copyTip = "Which copy of the item the hint names (of those neither checked nor hinted): one by chance, " +
+    "or the one the playthrough names first."
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "None of its items is left in other worlds"
   override val noPlacements = "The spoiler log doesn't say where items are"
@@ -145,6 +153,10 @@ internal object GermanCheats : CheatTexts {
   override val cheat = "Cheaten"
   override val fromSlot = "Vom Slot"
   override val toSlot = "Zum Slot"
+  override val randomCopy = "Zufällig"
+  override val nextCopy = "Nächstes im Lösungsweg"
+  override val copyTip = "Welche Kopie des Items der Hinweis nennt (von denen, die weder gecheckt oder bereits darauf hingewiesen wurden)" +
+    ": eine zufällige, oder die, die der Lösungsweg zuerst nennt."
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "Keins seiner Items liegt noch in anderen Welten"
   override val noPlacements = "Das Spoiler-Log sagt nicht, wo die Items liegen"

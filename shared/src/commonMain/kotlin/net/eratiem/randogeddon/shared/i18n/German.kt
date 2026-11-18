@@ -207,7 +207,7 @@ object German : Texts {
     override val fontOriginal = "Randogeddons Original"
     override fun fontOf(theme: String, family: String) = "Die von $theme ($family)"
     override val fontScopeLabel = "Schriftmodus"
-    override val fontScopeAuto = "Standard des Themes"
+    override val fontScopeAuto = "Standard der Schrift"
     override val fontScopeAll = "Alles"
     override val fontScopeHeadings = "Nur Überschriften"
     override val bridgeKeys = "Bridge-Schlüssel"
