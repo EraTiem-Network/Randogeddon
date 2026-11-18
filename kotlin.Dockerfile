@@ -26,10 +26,12 @@ COPY webApp webApp
 ARG NATIVE_MARCH=x86-64-v3
 ARG RANDOGEDDON_MAVEN=
 ARG RANDOGEDDON_MAVEN_NAME=
-# Mounted with a .kts name: Gradle picks the script language from the file extension
+# Mounted with a .kts name: Gradle picks the script language from the file extension. --build-cache: the tasks' results
+# are kept in the cache mount (Gradle's home), so a change to one app doesn't compile, test and natively build the
+# other again (the build directories start empty in every image build)
 RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gradle.kts \
     --mount=type=cache,target=/gradle-home \
-    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
+    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --build-cache --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
