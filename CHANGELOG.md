@@ -9,6 +9,14 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 16: English and German Side by Side
 
+### 0.16.13: Zoom without a reload
+- **A browser zoom no longer reloads the page.** Compose 1.12 kept the pixel density it started with and drew
+  blurry after a zoom, so the page reloaded itself, which kept the login but lost what was going on: a new session's
+  YAMLs and form, a running generation's bar, an upload. It reloaded also when the window went to a screen with
+  other scaling, which can come with resizing it. Compose 1.13 draws at the new density by itself
+  ([CMP-7230](https://youtrack.jetbrains.com/issue/CMP-7230)), so the page's own handling is gone.
+- **Compose Multiplatform 1.13.0-beta02** (was 1.12.2), a beta until 1.13.0 is stable.
+
 ### 0.16.12: The ID that is generated, and an upload without its line
 - **While a new session generated, it showed another ID:** the panel loads its overview again every 15 seconds,
   each time with a new suggested ID, and the form took it over (the session itself got the one that was sent, and the
