@@ -7,6 +7,19 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 18: Code Optimization
+
+### 0.18.1: The baseline and the audit
+- **`scripts/measure.sh`** measures a local stack with the demo's sessions running: the page's files as sent (plain,
+  gzip, Brotli), the images and what is in them, the containers' memory and CPU idle and with viewers' live streams
+  open, the API's answer times, and how long the first screen takes in headless Chromium; `--build` also times a
+  build from nothing and one without changes. `demo/admin.py measure` opens the viewers (up to 15 by the login, the
+  rest by the share link: one login holds at most 20 streams).
+- **`.docs/MEASUREMENTS.md`:** 0.17.2's numbers and what the audit found: streams that each poll their session, the
+  web files gzipped per request, little copied code but much repeated in kind (53 places decode an answer
+  themselves), one unused function, 63 compiler warnings, and a verdict for every code file (keep, split, move or
+  merge). Phase 18's next steps follow from it.
+
 ## Phase 17: A Repository That Can Be Shown
 What told too much about the servers left the repository and its history: their docs and setup, their addresses and
 names, the security scans' findings. The history was rewritten and signed again, and the GitHub repository made anew,

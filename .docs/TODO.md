@@ -713,4 +713,18 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [ ] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
       (e.g. a big file split by its parts, shared code moved to where both sides use it), so the code is easier to
       change and builds faster; not for its own sake
-    - What exactly and in which order (for both points): to be decided at the phase's start
+    - Decided: all four areas (page load, server resources, images and build, code structure), measured first;
+      the code structure over every code file (repeated code merged where it makes it simpler, split, moved or
+      merged where that helps), each step with its numbers before and after
+- [x] The baseline and the audit (0.18.1): `scripts/measure.sh`, its numbers and the findings in
+      `.docs/MEASUREMENTS.md`, with a verdict for every code file
+- [ ] Page load: the web files compressed once when built (Brotli and gzip), not per request
+- [ ] Server resources: a change told once to every stream instead of each polling every 750 ms; the share link's
+      summary serialized once; the panel's overview (8 ms, asked every 15 s); the tracker's growing memory and the
+      gateway's 363 MiB without a session looked into
+- [ ] Images and build: the gateway image (1.2 GB) and the tracker image (327 MB) slimmed where it pays; the build
+      (435 s from nothing) faster where caches help
+- [ ] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
+      helper used everywhere (53 places), the doubled components and the page frame shared; `Api.kt`,
+      `Accounts.kt`, `Stores.kt`, `SessionState.kt`, `LoginRoutes.kt` split; `GeneralTexts.kt` renamed; the compiler's
+      warnings fixed, `SingleSignOn.createLink` removed
