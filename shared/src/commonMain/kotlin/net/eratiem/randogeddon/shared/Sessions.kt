@@ -213,6 +213,8 @@ data class GenerateResult(
   val slots: List<String> = emptyList(),
   val log: List<String> = emptyList(),
   val suspects: List<Suspect> = emptyList(),
+  /** It took longer than the gateway allows and was stopped after this many minutes (the log is how far it got). */
+  val stoppedAfterMinutes: Int? = null,
 )
 
 /**

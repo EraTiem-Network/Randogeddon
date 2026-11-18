@@ -14,6 +14,8 @@ enum class GameServerStatus {
   @SerialName("stopped") STOPPED,
   /** Ended on its own; the gateway starts it again after a pause. */
   @SerialName("crashed") CRASHED,
+  /** Ended on its own again and again, each soon after its start: stays stopped until started again. */
+  @SerialName("failed") FAILED,
 }
 
 @Serializable
@@ -40,9 +42,9 @@ data class LogLines(val lines: List<LogLine>, val last: Long)
 @Serializable
 data class SessionServer(val id: String, val state: GameServerState, val port: Int? = null)
 
-/** `GET /internal/sessions`: every session the gateway has files of, and how many game servers can run at once. */
+/** `GET /internal/sessions`: every session the gateway has files of. */
 @Serializable
-data class SessionServers(val sessions: List<SessionServer> = emptyList(), val capacity: Int = 0)
+data class SessionServers(val sessions: List<SessionServer> = emptyList())
 
 /** A line for the server console, e.g. `/players`. */
 @Serializable

@@ -93,4 +93,6 @@ data class InviteRequest(val email: String, val suggestedName: String? = null)
 data class AppSettings(
   /** How many running sessions one user (not an Administrator) may manage at once. */
   val sessionsPerUser: Int = 1,
+  /** How many game servers may run at once, of every session; 0: no limit. */
+  val gameServers: Int = 8,
 )

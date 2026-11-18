@@ -59,7 +59,8 @@ interface SessionAdminTexts {
   val nobodyWasNamed: String
   // A new session
   val taken: String
-  fun newSessionSubtitle(capacity: String): String
+  /** [capacity]: how many game servers may run at once; 0: no limit. */
+  fun newSessionSubtitle(capacity: Int): String
   val everyServerInUse: String
   val atLimit: String
   fun mayCreate(n: Int): String
@@ -152,12 +153,14 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val automaticHints = "automatic hints"
   override fun releaseMode(mode: String) = "release $mode"
   override fun sessionsRunning(running: Int, inUse: Int, capacity: Int) =
-    "$running ${if (running == 1) "session" else "sessions"} running · $inUse of $capacity game servers in use " +
-      "(a finished session doesn't take one)"
+    "$running ${if (running == 1) "session" else "sessions"} running · " +
+      (if (capacity == 0) "$inUse game servers in use (no limit)" else "$inUse of $capacity game servers in use") +
+      " (a finished session doesn't take one)"
   override fun server(status: GameServerStatus) = when (status) {
     GameServerStatus.RUNNING -> "server running"
     GameServerStatus.STARTING -> "server starting"
     GameServerStatus.CRASHED -> "server crashed"
+    GameServerStatus.FAILED -> "server gave up"
     GameServerStatus.STOPPED -> "server stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
@@ -199,7 +202,8 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val playersHeading = "PLAYERS"
   override val nobodyWasNamed = "Nobody was named for its slots."
   override val taken = "Taken"
-  override fun newSessionSubtitle(capacity: String) = "as many run at once as the gateway has game servers ($capacity)"
+  override fun newSessionSubtitle(capacity: Int) =
+    if (capacity == 0) "as many run at once as are started" else "up to $capacity game servers run at once"
   override val everyServerInUse = "Every game server is in use: finish or stop a session first."
   override val atLimit = "You have as many running sessions of your own as you may: finish one first."
   override fun mayCreate(n: Int) = "You may create $n more running ${if (n == 1) "session" else "sessions"}."
@@ -313,12 +317,14 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val automaticHints = "automatische Hinweise"
   override fun releaseMode(mode: String) = "Release $mode"
   override fun sessionsRunning(running: Int, inUse: Int, capacity: Int) =
-    "$running ${if (running == 1) "Session läuft" else "Sessions laufen"} · $inUse von $capacity Spielservern belegt " +
-      "(eine beendete Session belegt keinen)"
+    "$running ${if (running == 1) "Session läuft" else "Sessions laufen"} · " +
+      (if (capacity == 0) "$inUse Spielserver belegt (ohne Grenze)" else "$inUse von $capacity Spielservern belegt") +
+      " (eine beendete Session belegt keinen)"
   override fun server(status: GameServerStatus) = when (status) {
     GameServerStatus.RUNNING -> "Server läuft"
     GameServerStatus.STARTING -> "Server startet"
     GameServerStatus.CRASHED -> "Server abgestürzt"
+    GameServerStatus.FAILED -> "Server aufgegeben"
     GameServerStatus.STOPPED -> "Server gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }
@@ -361,7 +367,8 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val playersHeading = "SPIELER"
   override val nobodyWasNamed = "Für die Slots war niemand eingetragen."
   override val taken = "Vergeben"
-  override fun newSessionSubtitle(capacity: String) = "so viele laufen gleichzeitig, wie das Gateway Spielserver hat ($capacity)"
+  override fun newSessionSubtitle(capacity: Int) =
+    if (capacity == 0) "so viele laufen gleichzeitig, wie gestartet werden" else "bis zu $capacity Spielserver laufen gleichzeitig"
   override val everyServerInUse = "Alle Spielserver sind belegt: Beende oder stoppe zuerst eine Session."
   override val atLimit = "Du hast so viele eigene laufende Sessions, wie du darfst: Beende zuerst eine."
   override fun mayCreate(n: Int) = "Du darfst noch $n ${if (n == 1) "laufende Session" else "laufende Sessions"} erstellen."

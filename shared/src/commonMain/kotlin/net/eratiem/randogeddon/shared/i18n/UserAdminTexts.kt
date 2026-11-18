@@ -59,6 +59,9 @@ interface UserAdminTexts {
   val notReachable: String
   val sessionsPerUser: String
   val sessionsPerUserTip: String
+  val gameServers: String
+  val gameServersTip: String
+  val oneToHundred: String
   /** In an account's panel: its running sessions against its limit, and its own number. */
   val ownSessionsLabel: String
   fun sessionsOf(running: Int, limit: Int): String
@@ -152,6 +155,11 @@ internal object EnglishUserAdmin : UserAdminTexts {
       "sessions). Only sessions they created count, not ones they manage for others. An account can get its own " +
       "limit in its panel; this default applies to all others. Administrators have no limit; the number of game " +
       "servers applies to everyone."
+  override val gameServers = "Game servers at once"
+  override val gameServersTip =
+    "How many game servers may run at the same time, of all sessions together (empty: no limit). Each one needs " +
+      "memory on the gateway (a few hundred MB); a finished session's doesn't run. Applies to Administrators too."
+  override val oneToHundred = "1 to 100, or empty for no limit"
   override val ownSessionsLabel = "Self-created sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running running, limit $limit"
   override val theDefault = "(default)"
@@ -255,6 +263,12 @@ internal object GermanUserAdmin : UserAdminTexts {
       "erstellen Sessions). Es zählen nur selbst erstellte Sessions, nicht die, die jemand für andere verwaltet. Ein " +
       "Konto kann in seinem Fenster ein eigenes Limit bekommen; dieser Standard gilt für alle anderen. " +
       "Administratoren haben kein Limit; die Zahl der Spielserver gilt für alle."
+  override val gameServers = "Spielserver gleichzeitig"
+  override val gameServersTip =
+    "Wie viele Spielserver gleichzeitig laufen dürfen, über alle Sessions zusammen (leer: ohne Grenze). Jeder braucht " +
+      "Speicher auf dem Gateway (ein paar hundert MB); der einer beendeten Session läuft nicht. Gilt auch für " +
+      "Administratoren."
+  override val oneToHundred = "1 bis 100, oder leer für ohne Grenze"
   override val ownSessionsLabel = "Selbst erstellte Sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running laufend, Limit $limit"
   override val theDefault = "(Standard)"
