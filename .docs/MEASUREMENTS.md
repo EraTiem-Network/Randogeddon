@@ -202,7 +202,8 @@ With the demo on the new images: both seeds generated, the players play, the gat
 
 ### Every code file: keep, split, move or merge
 
-**web app** (`webApp/src/…/webapp/`, 29 files in one package): rearranged into packages by area —
+**web app** (`webApp/src/…/webapp/`, 26 files in one package): the packages and splits done in 0.18.8 (45 files);
+the merges of what repeats (the request helper, the doubled components, the page frame) follow in 0.18.9. Rearranged into packages by area —
 `app` (start, routing, platform, theme, texts, fonts), `ui` (the shared components), `dashboard`, `manage` (the
 Management panel), `account`, `api` (the repositories and the request helper).
 

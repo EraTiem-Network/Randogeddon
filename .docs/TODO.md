@@ -739,3 +739,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] `server` (0.18.7): `SessionState.kt`'s model to `state/Model.kt` and its JSON accessors to `util/Json.kt`, the
           guards out of `LoginRoutes.kt` (`LoginGuards.kt`), the streams out of `PastRoutes.kt` (`Streams.kt`);
           `SingleSignOn.createLink` removed, the server's compiler warnings fixed
+    - [x] the web app, its files (0.18.8): 26 files of one package as 45 in `app`, `ui`, `api`, `dashboard`, `manage`
+          and `account`; `AdminSession.kt`, `Dashboard.kt`, `Components.kt`, `Settings.kt`, `Admin.kt` and `Watch.kt`
+          split by part
+    - [ ] the web app, what repeats (0.18.10): one request helper for the 53 places that decode an answer themselves,
+          the doubled components merged, the page frame and the clock shared, the interop opt-in for the module
+- [ ] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
+      without end and kept its port (counted as in use); after 5 quick crashes in a row it stays crashed with its last
+      exit code, frees its port, and *Start* tries again
