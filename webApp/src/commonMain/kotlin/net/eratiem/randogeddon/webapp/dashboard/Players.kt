@@ -1,0 +1,291 @@
+package net.eratiem.randogeddon.webapp.dashboard
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import net.eratiem.randogeddon.shared.LockInfo
+import net.eratiem.randogeddon.shared.PersonSummary
+import net.eratiem.randogeddon.shared.PlayerStatus
+import net.eratiem.randogeddon.shared.PlayerSummary
+import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.shared.i18n.Texts
+import net.eratiem.randogeddon.shared.i18n.ago
+import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.i18n.texts
+import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.webapp.app.LocalTexts
+import net.eratiem.randogeddon.webapp.app.clock
+import net.eratiem.randogeddon.webapp.ui.AppPopup
+import net.eratiem.randogeddon.webapp.ui.Avatar
+import net.eratiem.randogeddon.webapp.ui.Dot
+import net.eratiem.randogeddon.webapp.ui.DrawnIcon
+import net.eratiem.randogeddon.webapp.ui.GameChip
+import net.eratiem.randogeddon.webapp.ui.HoverRow
+import net.eratiem.randogeddon.webapp.ui.Icon
+import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Panel
+import net.eratiem.randogeddon.webapp.ui.Pill
+import net.eratiem.randogeddon.webapp.ui.ProgressBar
+import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Select
+import net.eratiem.randogeddon.webapp.ui.Tip
+import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.dimmedIf
+import net.eratiem.randogeddon.webapp.ui.hand
+
+private enum class PeopleSort { PLAYER, PROGRESS, ACTIVITY }
+
+@Composable
+internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onOpenPerson: (String) -> Unit) {
+  val p = LocalPalette.current
+  val d = LocalTexts.current.dashboard
+  var sort by remember { mutableStateOf(PeopleSort.PLAYER) }
+  val people = when (sort) {
+    PeopleSort.PLAYER -> s.people.sortedBy { it.name.lowercase() }
+    PeopleSort.PROGRESS -> s.people.sortedByDescending { it.percent }
+    PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
+  }
+  val worlds = s.players.associateBy { it.slot }
+  Section(
+    d.players, subtitle = d.playersSubtitle(s.people.size, s.players.size),
+    actions = {
+      Select(
+        PeopleSort.entries.map {
+          it to when (it) {
+            PeopleSort.PLAYER -> d.sortPlayer
+            PeopleSort.PROGRESS -> d.sortProgress
+            PeopleSort.ACTIVITY -> d.sortActivity
+          }
+        },
+        sort, { sort = it },
+      )
+    },
+  ) {
+    if (people.isEmpty()) {
+      Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
+    } else {
+      Grid(people.size, width, 330.dp) { i, modifier ->
+        PersonCard(people[i], people[i].slots.mapNotNull { worlds[it] }, now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+      }
+    }
+  }
+}
+
+/**
+ * A person's name, with their account's ID as a tip (it tells a deleted account's name in an old session from a new
+ * account of the same name); a deleted account is marked so.
+ */
+@Composable
+internal fun PersonName(name: String, userId: String?, deleted: Boolean, size: TextUnit, color: Color? = null) {
+  val p = LocalPalette.current
+  val d = LocalTexts.current.dashboard
+  val text = if (deleted) d.deleted(name) else name
+  if (userId == null) {
+    Txt(text, size = size, weight = FontWeight.Bold, color = color ?: p.text, maxLines = 1)
+  } else {
+    Tip(d.account(userId, deleted)) {
+      Txt(text, size = size, weight = FontWeight.Bold, color = color ?: if (deleted) p.muted else p.text, maxLines = 1)
+    }
+  }
+}
+
+@Composable
+private fun PersonCard(
+  person: PersonSummary,
+  worlds: List<PlayerSummary>,
+  now: Long,
+  hintsByPoints: Boolean,
+  modifier: Modifier,
+  onOpen: (Int) -> Unit,
+  onOpenPerson: (String) -> Unit,
+) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val locked = worlds.count { it.status == PlayerStatus.LOCKED }
+  Column(modifier.card(p).padding(8.dp)) {
+    // The header opens the person's overview; each world row opens that world
+    HoverRow(onClick = { onOpenPerson(person.name) }, modifier = Modifier.fillMaxWidth()) {
+     Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Box {
+        Avatar(person.name)
+        if (person.online) {
+          Box(Modifier.align(Alignment.BottomEnd).size(13.dp).clip(CircleShape).background(p.panel).padding(2.dp)) {
+            Dot(p.ok, 9.dp)
+          }
+        }
+      }
+      Column(Modifier.weight(1f)) {
+        PersonName(person.name, person.userId, person.deleted, size = 16.sp)
+        val played = worlds.sumOf { playTime(it, now) }
+        val parts = listOfNotNull(
+          t.sessions.slots(worlds.size),
+          locked.takeIf { it > 0 }?.let { t.dashboard.locked(it) },
+          if (person.goals > 0) t.dashboard.done(person.goals) else null,
+          if (played > 0) t.dashboard.played(t.duration(played)) else null,
+        )
+        Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 1)
+      }
+      Txt("${t.decimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
+     }
+    }
+    ProgressBar((person.percent / 100).toFloat(), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
+    worlds.forEach { WorldRow(it, now, hintsByPoints, onOpen) }
+  }
+}
+
+@Composable
+internal fun statusColor(status: PlayerStatus): Color = LocalPalette.current.let { p ->
+  when (status) {
+    PlayerStatus.GOAL, PlayerStatus.COMPLETE -> p.ok
+    PlayerStatus.RELEASED -> p.progression
+    PlayerStatus.PLAYING -> p.useful
+    PlayerStatus.LOCKED -> p.locked
+    PlayerStatus.IDLE -> p.muted
+  }
+}
+
+internal fun statusLabel(t: Texts, world: PlayerSummary): String = t.dashboard.status(world.status, started = world.checked > 0)
+
+/**
+ * For worlds that start locked, under the game icon, as wide and down to the end of the world's texts: a key once it
+ * was found, a lock until then (so the status pill leaves out "locked"). What it
+ * means (who found the key, where it was hinted, which key it waits for) shows on hover, or on tap on a phone.
+ */
+@Composable
+private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) {
+  val t = LocalTexts.current
+  val p = LocalPalette.current
+  val color = if (lock.unlocked) p.key else p.locked
+  val interaction = remember { MutableInteractionSource() }
+  val hovered by interaction.collectIsHoveredAsState()
+  var tapped by remember { mutableStateOf(false) }
+  Box(
+    modifier.width(34.dp).heightIn(min = 18.dp).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.18f))
+      .hoverable(interaction)
+      // Its own click: a tap shows the text instead of opening the world
+      .hand().clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+    contentAlignment = Alignment.Center,
+  ) {
+    DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, color, 11.dp)
+    if (hovered || tapped) {
+      AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
+        Txt(
+          when {
+            lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "")
+            lock.hintedAt != null -> t.dashboard.keyHinted(
+              lock.hintLocation?.let { t.dashboard.hintPlace(it, lock.hintSlot.orEmpty()) } ?: lock.hintedAt.orEmpty()
+            )
+            else -> t.dashboard.waitingForKey(lock.key)
+          },
+          size = 12.sp, maxLines = 3,
+          modifier = Modifier.widthIn(max = 260.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+      }
+    }
+  }
+}
+
+/** The hints a world can buy with its points, for the bubble next to its status ("3 hints · 12 pts"). */
+private fun hintBubble(t: Texts, world: PlayerSummary, hintsByPoints: Boolean): String? {
+  val points = world.hintPoints ?: return null
+  if (!hintsByPoints || world.status == PlayerStatus.LOCKED) return null
+  val cost = world.hintCost
+  return when {
+    cost == null -> t.dashboard.points(points)
+    cost == 0 -> t.dashboard.hintsFree
+    else -> t.dashboard.hintsForPoints(points / cost, points)
+  }
+}
+
+/** One world of a person: game, progress, status; a locked one says what opens it. */
+@Composable
+private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, onOpen: (Int) -> Unit) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val locked = world.status == PlayerStatus.LOCKED
+  HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+    // As tall as the texts, so the lock badge under the game icon ends with them
+    Row(Modifier.height(IntrinsicSize.Min).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
+        world.lock?.let { LockBadge(it, now, Modifier.weight(1f)) }
+      }
+      Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          Txt(world.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1,
+            modifier = Modifier.weight(1f).dimmedIf(locked))
+          hintBubble(t, world, hintsByPoints)?.let { Pill(it, p.progression) }
+          // "playing" in colour while a game client is connected, grey otherwise
+          val playing = world.status == PlayerStatus.PLAYING || world.online && world.status == PlayerStatus.IDLE
+          // Locked: the badge under the game icon says it
+          if (!locked) Pill(
+            if (playing) t.dashboard.playing else statusLabel(t, world),
+            if (playing && !world.online) p.muted else statusColor(if (playing) PlayerStatus.PLAYING else world.status),
+            icon = if (world.status == PlayerStatus.GOAL) Icon.FLAG else null,
+          )
+        }
+        Row(Modifier.fillMaxWidth()) {
+          Txt(t.dashboard.slot(shortSlotName(world.name, world.person)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+          if (!locked && !world.online) Txt(t.ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
+        }
+        Spacer(Modifier.height(6.dp))
+        ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+          Txt(t.dashboard.progress(world.checked, world.total, world.progressionReceived), size = 11.5.sp,
+            color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
+          val played = playTime(world, now)
+          if (played > 0 || world.goalAt != null) {
+            Txt(
+              listOfNotNull(
+                t.dashboard.played(t.duration(played)).takeIf { played > 0 },
+                world.goalAt?.let { t.dashboard.doneAt(t.clock(it)) },
+              ).joinToString(" · "),
+              size = 11.5.sp, color = p.muted, maxLines = 1,
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+/** Connected time of [world] so far, including the running session. */
+fun playTime(world: PlayerSummary, now: Long): Long =
+  world.playTimeMs + (world.onlineSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
