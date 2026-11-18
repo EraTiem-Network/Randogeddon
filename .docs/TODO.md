@@ -684,11 +684,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [ ] Compose Multiplatform 1.13.0 once it is stable (the beta until then)
 - [x] `RelayTest` waits for what it checks instead of a fixed moment (0.16.4)
 
-## Phase 17: A Repository That Can Be Shown
+## Phase 17: A Repository That Can Be Shown (done)
 
 *What is critical leaves the repository and its history, into a new one.*
 
-- [ ] Critical docs, data and information (the servers' setup and addresses in `.docs/INFRA.md` and `infra/`, what
+- [x] Critical docs, data and information (the servers' setup and addresses in `.docs/INFRA.md` and `infra/`, what
       the security scans found, anything else that tells too much) are removed from this repository and from its git
       history, and moved to a new repository: `infra` (the servers' network and setup, not on GitHub)
     - Decided: critical are the server docs and scripts, internal details (addresses, VM IDs, SSH hops, host paths,
@@ -698,5 +698,19 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           units are in `scripts/` now), the README's server specifics, the scans' findings (a summary line each
           stays); the other addresses are placeholders (`example.org`, `<internal-ip>`, …). The registry and the
           Maven mirror are each machine's settings, not the repository's
-    - [ ] Out of the history: every commit cleaned the same way, signed again, the tags too; the releases' notes and
-          the PRs' descriptions cleaned on GitHub
+    - [x] Out of the history: every commit cleaned the same way (672), every commit and tag (85) signed again;
+          authors, dates and messages kept otherwise. The GitHub repository was made anew with it (no old commit
+          stays reachable there): its pull requests start again at #1, the pre-releases were made again with their
+          notes cleaned. The old history and the old pull requests are kept outside the repository
+
+## Phase 18: Code Optimization
+
+*The code made leaner and faster where it pays, without changing what it does.*
+
+- [ ] The code looked through for what can be simpler, shared or dropped (repeated code, unused code, files that
+      grew too big), and for what is slow or heavy (the web app's size and start, the native images, the database's
+      queries, the work per update)
+- [ ] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
+      (e.g. a big file split by its parts, shared code moved to where both sides use it), so the code is easier to
+      change and builds faster; not for its own sake
+    - What exactly and in which order (for both points): to be decided at the phase's start
