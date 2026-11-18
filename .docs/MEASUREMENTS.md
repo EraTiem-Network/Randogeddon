@@ -94,6 +94,38 @@ tracker sends those as they are; a local build without them is compressed per re
   and start.
 - **The tracker image:** 347 MB (was 327); its web app 26 MB (was 16) with the `.br` and `.gz` files.
 
+## 0.18.3: one look per session, not per viewer
+
+- **The streams:** each session's version is looked at by one poller (`LiveSession.changes`, every 750 ms while
+  anyone follows it), and every stream of it waits for that instead of polling by itself; a stream only looks every
+  5 s whether its keepalive is due and, every 30 s, whether its login still holds. The session's options are decoded
+  once per setup (they were decoded on every look), the share link's summary is serialized once per change.
+- **The panel's overview** uses the sessions as they were read last (every 10 s, and right after every change made in
+  the panel) instead of reading them all again, and asking the gateway twice, for every request; the gateway's
+  releases are kept 30 s.
+
+Measured on the same running demo, 0.18.2 and then the changed tracker, 60 viewers (15 logged in, 45 by the share
+link) for 60 s:
+
+| | 0.18.2 | 0.18.3 |
+|---|---|---|
+| the tracker's CPU with 60 viewers (most) | 5.7 % | **0.8 %** |
+| the tracker's memory with them | 136 MiB | 130 MiB |
+| `GET /api/admin/sessions` (median) | 10.7 ms | **2.9 ms** |
+| the other answers, a stream's first event | 1.7–3.7 ms | the same |
+
+A stream still gets its first summary at once, a keepalive after 15 s, and ends at its next check once its login
+ended (tried: logged out, closed 30 s after it opened). (The share link allows 60 requests a minute per address: of
+the 45 viewers by link, 5 got 429, before as after; `measure.sh` waits that minute out before the first screen.)
+
+Looked into and left as they are:
+- **The gateway's 363 MiB "without a session"** were a running session: its MultiServer (Python) held 330 MB, the
+  native gateway 89 MB.
+- **The tracker's memory** (145 MB on live, 103–173 MiB locally): the native image's collector lets the heap grow
+  before it collects (up to a share of the container's 2 GB); no sign of something kept.
+- **The panel's game server stream** asks the gateway per open panel; only Session-Managers and Administrators have
+  one.
+
 ## What the audit found
 
 ### Server and page

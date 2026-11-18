@@ -720,9 +720,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       `.docs/MEASUREMENTS.md`, with a verdict for every code file
 - [x] Page load: the web files compressed once when built (Brotli and gzip), not per request (0.18.2): 3.4 MB
       instead of 4.5 MB with Brotli, the tracker's work per page load 10 ms instead of 207 ms
-- [ ] Server resources: a change told once to every stream instead of each polling every 750 ms; the share link's
-      summary serialized once; the panel's overview (8 ms, asked every 15 s); the tracker's growing memory and the
-      gateway's 363 MiB without a session looked into
+- [x] Server resources (0.18.3): one look per session for all its streams instead of each polling every 750 ms (the
+      tracker at 0.8 % instead of 5.7 % CPU with 60 viewers); the options decoded once, the share link's summary
+      serialized once; the panel's overview from the last reading (2.9 ms instead of 10.7 ms). The tracker's memory
+      and the gateway's looked into: nothing kept, the 363 MiB were a running session
 - [ ] Images and build: the gateway image (1.2 GB) and the tracker image (327 MB) slimmed where it pays; the build
       (435 s from nothing) faster where caches help
 - [ ] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
