@@ -74,7 +74,8 @@ data class TrackerConfig(
           security = MailSecurity.of(value("mail.security")),
           user = value("mail.user"),
           password = value("mail.password"),
-          from = value("mail.from"),
+          // Without its own sender, the mails go out from the login's address
+          from = value("mail.from").ifBlank { value("mail.user") },
         ),
         oidc = OidcConfig(
           issuer = value("oidc.issuer").trim(),
@@ -115,7 +116,7 @@ data class MailConfig(
   val security: MailSecurity = MailSecurity.STARTTLS,
   val user: String = "",
   val password: String = "",
-  val from: String = "randogeddon@example.net",
+  val from: String = "",
 )
 
 /**

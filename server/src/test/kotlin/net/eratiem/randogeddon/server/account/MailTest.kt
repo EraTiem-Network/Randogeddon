@@ -17,13 +17,13 @@ class MailTest {
   @Test
   fun `the message has its headers, a UTF-8 subject as an encoded word, and the text in base64`() {
     val mail = Mail("bob@example.org", "Grüße", "Hi Bob,\n\n.a line starting with a dot\n")
-    val message = SmtpClient.message("randogeddon@example.net", mail, ZonedDateTime.of(2026, 11, 13, 10, 0, 0, 0, ZoneOffset.UTC))
+    val message = SmtpClient.message("randogeddon@example.org", mail, ZonedDateTime.of(2026, 11, 13, 10, 0, 0, 0, ZoneOffset.UTC))
     val (head, body) = message.split("\r\n\r\n", limit = 2)
     assertTrue("Date: Fri, 13 Nov 2026 10:00:00 GMT" in head)
-    assertTrue("From: Randogeddon <randogeddon@example.net>" in head)
+    assertTrue("From: Randogeddon <randogeddon@example.org>" in head)
     assertTrue("To: <bob@example.org>" in head)
     assertTrue("Subject: =?UTF-8?B?R3LDvMOfZQ==?=" in head)
-    assertTrue(Regex("Message-ID: <[0-9a-f-]+@example.net>").containsMatchIn(head))
+    assertTrue(Regex("Message-ID: <[0-9a-f-]+@example.org>").containsMatchIn(head))
     assertEquals("Hi Bob,\r\n\r\n.a line starting with a dot\r\n", String(Base64.getMimeDecoder().decode(body.trim())))
     assertEquals("Plain", SmtpClient.encodedWord("Plain"))
   }
@@ -61,12 +61,12 @@ class MailTest {
   fun `sends through a server without TLS, logging in with AUTH PLAIN`() {
     val conversation = mutableListOf<String>()
     val port = fakeServer(mapOf("EHLO" to "250-fake\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME", "AUTH" to "235 ok", "DATA" to "354 go", "QUIT" to "221 bye"), conversation)
-    val config = MailConfig(host = "localhost", port = port, security = MailSecurity.NONE, user = "randogeddon@example.net", password = "secret")
-    SmtpClient(config, timeoutMs = 5_000).send("randogeddon@example.net", Mail("bob@example.org", "Hi", "Hello"))
+    val config = MailConfig(host = "localhost", port = port, security = MailSecurity.NONE, user = "randogeddon@example.org", password = "secret")
+    SmtpClient(config, timeoutMs = 5_000).send("randogeddon@example.org", Mail("bob@example.org", "Hi", "Hello"))
 
-    val plain = Base64.getEncoder().encodeToString("\u0000randogeddon@example.net\u0000secret".toByteArray())
+    val plain = Base64.getEncoder().encodeToString("\u0000randogeddon@example.org\u0000secret".toByteArray())
     assertEquals(
-      listOf("EHLO randogeddon", "AUTH PLAIN $plain", "MAIL FROM:<randogeddon@example.net>", "RCPT TO:<bob@example.org>", "DATA"),
+      listOf("EHLO randogeddon", "AUTH PLAIN $plain", "MAIL FROM:<randogeddon@example.org>", "RCPT TO:<bob@example.org>", "DATA"),
       conversation.filterNot { it.startsWith("DATA>") }.take(5),
     )
     assertTrue("DATA> Subject: Hi" in conversation)
