@@ -7,12 +7,15 @@
     admin.py prune <id>...         deletes the demo sessions (demo-...) other than these, finished or not (one left
                                    running by an earlier demo has no players any more)
     admin.py check                 only logs in (exit 1 if that fails)
+    admin.py measure <s> <n>       the API's answer times, then n live streams held open for s seconds
+                                   (scripts/measure.sh)
 
 The admin's name and password come from DEMO_ADMIN and DEMO_PASSWORD, the tracker from DEMO_TRACKER
 (http://tracker:8000 inside the compose network). Admins log in with two-factor login: on the first login this sets it
 up and keeps the secret in /out/admin.totp (output/demo/), later logins compute the code from it.
 """
 import base64
+import collections
 import hashlib
 import hmac
 import http.cookiejar
@@ -130,11 +133,79 @@ def prune(keep: list[str]):
             print(f"Deleted {session['id']}" if status == 204 else f"Could not delete {session['id']} ({status})")
 
 
+def timed(path: str, times: int = 20) -> dict:
+    """The median and slowest answer time of GET [path] (ms) and its size (bytes)."""
+    took, size = [], 0
+    for _ in range(times):
+        start = time.perf_counter()
+        request = urllib.request.Request(TRACKER + path)
+        with opener.open(request, timeout=60) as response:
+            size = len(response.read())
+        took.append((time.perf_counter() - start) * 1000)
+    took.sort()
+    return {"path": path, "medianMs": round(took[len(took) // 2], 1), "maxMs": round(took[-1], 1), "bytes": size}
+
+
+def first_event(path: str) -> float:
+    """How long a stream takes to its first event (ms)."""
+    start = time.perf_counter()
+    with opener.open(urllib.request.Request(TRACKER + path, headers={"Accept": "text/event-stream"}), timeout=60) as r:
+        while r.readline().strip() != b"event: state":
+            pass
+    return round((time.perf_counter() - start) * 1000, 1)
+
+
+def measure(seconds: int, viewers: int):
+    """The API's answer times, then [viewers] streams held open for [seconds] (scripts/measure.sh samples the
+    containers meanwhile); prints one JSON object and the share link's token for the page's timing."""
+    import threading
+    status, overview = call("GET", "/api/admin/sessions")
+    running = [s["id"] for s in overview["sessions"] if s.get("status") in ("live", "finishing")] if status == 200 else []
+    if not running:
+        sys.exit("No running session: ./scripts/demo.sh first")
+    result = {"api": [timed("/api/me"), timed("/api/admin/sessions")]}
+    for id_ in running:
+        result["api"].append(timed(f"/api/sessions/{id_}/state"))
+        result.setdefault("firstEventMs", {})[id_] = first_event(f"/api/sessions/{id_}/stream")
+    status, link = call("POST", f"/api/sessions/{running[0]}/share")
+    token = link.get("token", "") if status == 201 else ""
+    if token:
+        result["api"].append(timed(f"/api/watch/{token}/state"))
+    events = [0] * viewers
+    errors = collections.Counter()
+
+    def follow(n: int, path: str):
+        try:
+            with opener.open(urllib.request.Request(TRACKER + path, headers={"Accept": "text/event-stream"}),
+                             timeout=seconds + 30) as r:
+                end = time.time() + seconds
+                while time.time() < end:
+                    if r.readline().startswith(b"event: state"):
+                        events[n] += 1
+        except Exception as e:  # the stream ended or timed out: what it got counts, and why it ended
+            errors[type(e).__name__ + (f" {e.code}" if hasattr(e, "code") else "")] += 1
+    # One login may hold 20 streams (OpenStreams.MAX): up to 15 viewers with the login, the others by the share link
+    paths = [f"/api/sessions/{running[n % len(running)]}/stream" if n < 15 or not token else f"/api/watch/{token}/stream"
+             for n in range(viewers)]
+    threads = [threading.Thread(target=follow, args=(n, paths[n]), daemon=True) for n in range(viewers)]
+    print("VIEWERS_OPEN", flush=True)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(seconds + 35)
+    result["viewers"] = {"count": viewers, "seconds": seconds, "events": sum(events), "byLink": max(0, viewers - 15) if token else 0,
+                         "withoutUpdate": events.count(0), "errors": dict(errors)}
+    result["shareToken"] = token
+    print(json.dumps(result))
+
+
 login()
 if sys.argv[1:2] == ["create"] and len(sys.argv) == 4:
     create(sys.argv[2], sys.argv[3])
 elif sys.argv[1:2] == ["prune"]:
     prune(sys.argv[2:])
+elif sys.argv[1:2] == ["measure"] and len(sys.argv) == 4:
+    measure(int(sys.argv[2]), int(sys.argv[3]))
 elif sys.argv[1:] == ["check"]:
     print(f"Logged in as {os.environ['DEMO_ADMIN']}")
 else:

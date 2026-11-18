@@ -921,6 +921,14 @@ and review the result:
 ./gradlew :server:metadataCopy                  # likewise :gateway:run and :gateway:metadataCopy
 ```
 
+## Measuring
+
+`./scripts/measure.sh [viewers] [seconds]` (in WSL, with `./scripts/demo.sh` running) prints a report of the stack:
+the page's files as sent (plain, gzip, Brotli), the images and what is in them, the containers' memory and CPU idle
+and with that many viewers' live streams open (default 20 for 60 s), the API's answer times and how long the first
+screen takes in headless Chromium. `--build` first times a build from nothing (it clears BuildKit's cache) and one
+without changes. The baseline, the audit of the code and what changed since are in `.docs/MEASUREMENTS.md`.
+
 ## Known flaws in the dependencies
 
 `./scripts/audit.sh` looks the bridge's Go modules, the tracker's and the gateway's JVM libraries and the gateway
