@@ -126,6 +126,40 @@ Looked into and left as they are:
 - **The panel's game server stream** asks the gateway per open panel; only Session-Managers and Administrators have
   one.
 
+## 0.18.4: a slimmer gateway image, a build that redoes less
+
+- **The gateway image:** Archipelago is installed in a stage of its own (`archipelago-build`, with git and the
+  compilers its speedups and the worlds' packages need); the image takes only the installed packages and Archipelago's
+  directory, and of the system packages only `libtk8.6`. Nothing at runtime used git, gcc or pip.
+- **The image build keeps Gradle's task results** (`--build-cache`, in the cache mount): the build directories start
+  empty in every image build, so a change to one app compiled, tested and natively built the other again. The native
+  images and Binaryen's optimisation of the web app are cached too (their plugins don't mark them so; the GraalVM
+  version counts as an input of the native ones).
+
+| | 0.18.3 | 0.18.4 |
+|---|---|---|
+| gateway image | 1,177 MB | **725 MB** (−38 %) |
+| tracker image | 347 MB | 347 MB |
+| an image build after a change to the tracker's code | 416 s | **149 s** |
+| after a change to the web app's code | 416 s | **193 s** |
+| after a change of a comment only (the same classes) | 416 s | 63 s |
+| from nothing | 398–435 s | 446–647 s (see below) |
+
+With the demo on the new images: both seeds generated, the players play, the gateway's log is clean.
+
+- **From nothing** varies a lot here (446 s, then 647 s); twice it failed in Gradle's step, both times right after
+  BuildKit's cache was cleared (every library downloaded from the mirror again), and the next try built. The error
+  itself wasn't kept; a deploy's log keeps it if it comes again.
+- **Left as it is:** the tracker image's 46 MB of the bridge's builds (they are downloads; packing them would change
+  how they are offered, for 20 MB).
+- **Found on the way, fixed:** while a new session waited for its `room.json`, its tracker connection ended with an
+  exception instead of noting it and trying again (`TrackerService.start` called Kotlin's `error()`, which throws,
+  instead of its own: the parameter `refused` has no default). The 10 s reading started it again, so it only showed as
+  stack traces in the log (8 for two new sessions).
+- **`measure.sh`'s first screen** waits for the page's own signs now (the splash gone, the session's state come, two
+  frames after); screenshots, its way so far, hold up the page's start in headless Chromium, so with the new images
+  it never saw the dashboard. 1,478–1,678 ms here this time.
+
 ## What the audit found
 
 ### Server and page
