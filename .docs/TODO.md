@@ -735,3 +735,4 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           cheats, APWorlds), `Accounts.kt` into the account, the login, the users' administration and a session's
           people; `GeneralTexts.kt` into `ApworldTexts.kt` and `UserAdminTexts.kt`, the session tips out of
           `SessionAdminTexts.kt`
+    - [x] `database` (0.18.6): `Stores.kt` into the accounts' stores, the sessions' stores and the settings' store
