@@ -8,6 +8,15 @@ Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a Gi
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 16: English and German Side by Side
+Every page read and looked through in English and German, and what came up with it: support and the Management
+panel, names with rules and a filter for unwanted words, a new session's progress, single hints, APWorld uploads as
+pills, a spoiler log that stays usable, and a zoom that keeps what is going on. Updating: migration V22 runs by itself
+(whether Authentik calls an address verified; known from the next login); the web app is built with Compose
+Multiplatform 1.13.0-beta02 until 1.13.0 is stable.
+
+### 0.16.15: Phase 16 done
+- TODO: Phase 16's points as they were done, step by step, and the open one (Compose Multiplatform 1.13.0 once it
+  is stable); Phase 16 done. Phase 17's new repository is `infra`.
 
 ### 0.16.14: Ctrl and the mouse wheel zoom, and which copy a hint names
 - **Ctrl and the mouse wheel zoom the page again** (and a trackpad's pinch): the app's canvas took the wheel and
