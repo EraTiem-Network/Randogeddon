@@ -690,5 +690,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 
 - [ ] Critical docs, data and information (the servers' setup and addresses in `.docs/INFRA.md` and `infra/`, what
       the security scans found, anything else that tells too much) are removed from this repository and from its git
-      history, and moved to a new repository: `infra` (example.org's network and servers, not on GitHub; it has
-      `INFRA.md`, `MAIL_MIGRATION.md` and the README's infrastructure parts already)
+      history, and moved to a new repository: `infra` (the servers' network and setup, not on GitHub)
+    - Decided: critical are the server docs and scripts, internal details (addresses, VM IDs, SSH hops, host paths,
+      service accounts), the scans' findings, and every address but `randogeddon.eratiem.net` (with its subdomains)
+      and the licence's contact; the history is rewritten, not squashed, and every commit and tag signed again
+    - [x] Out of the tree (0.17.1): `.docs/INFRA.md`, `.docs/MAIL_MIGRATION.md`, `infra/` (Randogeddon's own backup
+          units are in `scripts/` now), the README's server specifics, the scans' findings (a summary line each
+          stays); the other addresses are placeholders (`example.org`, `<internal-ip>`, …). The registry and the
+          Maven mirror are each machine's settings, not the repository's
+    - [ ] Out of the history: every commit cleaned the same way, signed again, the tags too; the releases' notes and
+          the PRs' descriptions cleaned on GitHub
