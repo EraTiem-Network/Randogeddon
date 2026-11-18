@@ -37,7 +37,8 @@ randogeddon:
     security: "$MAIL_SECURITY:starttls"
     user: "$MAIL_USER:"
     password: "$MAIL_PASSWORD:"
-    from: "$MAIL_FROM:randogeddon@example.net"
+    # The sender; empty: the login's address (user)
+    from: "$MAIL_FROM:"
   oidc:
     # Administrators log in through this OpenID Connect provider (Authentik): its issuer, e.g.
     # https://auth.example.org/application/o/randogeddon/ ; empty: no single sign-on, Administrators log in with their

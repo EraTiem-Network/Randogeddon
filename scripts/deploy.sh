@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Updates the live server (the live VM) from this working tree, run in WSL from the repository:
+# Updates the live server from this working tree, run in WSL from the repository:
 #   ./scripts/deploy.sh             build the native images, push them to the registry tagged with the version and
 #                                   `latest` (the commit tagged v<version>), or else the commit and `edge`; dump the
 #                                   database, switch the server to the new (fixed) tag, check that it runs
@@ -9,17 +9,23 @@
 # GitHub release).
 #
 # The server holds only what runs (README, "The live server"); this script copies its compose files and the backup
-# script there. Needs: `docker login pkg.example.org` (the deploy token), the Gradle init script for the build, and
+# script there. Needs: `docker login` to the registry (a token that may push), the Gradle init script for the build, and
 # an SSH alias DEPLOY_SSH (default randogeddon-live) for the server, e.g. in ~/.ssh/config:
 #   Host randogeddon-live
-#     HostName <internal-ip>
+#     HostName <the server's address>
 #     User randogeddon
-#     ProxyJump root@example.org
+#     ProxyJump <a host in front of it, if any>
+# The registry and the mirrors are this machine's settings, not the repository's: IMAGES, RANDOGEDDON_MAVEN (and
+# RANDOGEDDON_MAVEN_NAME) and BRIDGE_REGISTRY from the environment or from ~/.config/randogeddon/deploy.env (DEPLOY_SETTINGS), lines like
+#   IMAGES=registry.example.org/randogeddon
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+settings="${DEPLOY_SETTINGS:-$HOME/.config/randogeddon/deploy.env}"
+if [[ -r "$settings" ]]; then set -a; source "$settings"; set +a; fi
 # The project's images in the registry: <IMAGES>/tracker, <IMAGES>/gateway
-IMAGES="${IMAGES:-pkg.example.org/eratiem-network/randogeddon}"
+IMAGES="${IMAGES:?set IMAGES (the registry and path of the images, e.g. registry.example.org/randogeddon) in $settings}"
+export RANDOGEDDON_MAVEN="${RANDOGEDDON_MAVEN:-}" RANDOGEDDON_MAVEN_NAME="${RANDOGEDDON_MAVEN_NAME:-}"
 DEPLOY_SSH="${DEPLOY_SSH:-randogeddon-live}"
 DIR=/srv/randogeddon
 AP_VERSION="$(sed -n 's/.*AP_VERSION:-\([0-9.]*\)}.*/\1/p' docker-compose.yml | head -1)"
@@ -114,8 +120,8 @@ for image in "tracker:$tag" "gateway:$gateway_tag" "tracker:$moving" "gateway:$m
 
 echo "== The server's files"
 remote "mkdir -p /tmp/randogeddon-deploy"
-scp -q docker-compose.yml docker-compose.proxy.yml scripts/backup.sh infra/randogeddon/randogeddon-backup.service \
-  infra/randogeddon/randogeddon-backup.timer "$DEPLOY_SSH:/tmp/randogeddon-deploy/"
+scp -q docker-compose.yml docker-compose.proxy.yml scripts/backup.sh scripts/randogeddon-backup.service \
+  scripts/randogeddon-backup.timer "$DEPLOY_SSH:/tmp/randogeddon-deploy/"
 remote sudo bash -s <<SH
 set -euo pipefail
 cd /tmp/randogeddon-deploy

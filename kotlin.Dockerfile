@@ -6,8 +6,9 @@
 # The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once. Randogeddon Bridge (bridge/, Go)
 # is built in its own stage for every system the dashboard offers it for; the tracker serves the builds.
 #
-# The token for pkg.example.org comes from your Gradle init script as a BuildKit secret (see docker-compose.yml); it is
-# only mounted while Gradle runs and never ends up in an image layer.
+# Gradle takes its libraries from the Maven mirror in RANDOGEDDON_MAVEN if there is one (else Maven Central, the Gradle
+# plugin portal and Google); its login comes from your Gradle init script as a BuildKit secret (see docker-compose.yml),
+# only mounted while Gradle runs and never in an image layer.
 
 FROM ghcr.io/graalvm/native-image-community:25 AS build
 # Node.js, which the Kotlin/Wasm build downloads for webpack, needs libatomic; gradlew needs xargs (findutils)
@@ -23,10 +24,12 @@ COPY gateway gateway
 COPY webApp webApp
 # CPU level of the native code: x86-64-v3 runs on the i7-8700 (and every AVX2 CPU); `native` only when building on it
 ARG NATIVE_MARCH=x86-64-v3
+ARG RANDOGEDDON_MAVEN=
+ARG RANDOGEDDON_MAVEN_NAME=
 # Mounted with a .kts name: Gradle picks the script language from the file extension
 RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gradle.kts \
     --mount=type=cache,target=/gradle-home \
-    ./gradlew --no-daemon --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
+    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);

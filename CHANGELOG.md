@@ -7,6 +7,35 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 17: A Repository That Can Be Shown
+What told too much about the servers left the repository and its history: their docs and setup, their addresses and
+names, the security scans' findings. The history was rewritten and signed again, and the GitHub repository made anew,
+so the pull requests start again at #1. Updating: a clone made before has another history; clone again (a fetch
+won't fit it). The Maven mirror, the image registry and the bridge's registry are each machine's settings now (see
+the README: `randogeddon.maven`, `~/.config/randogeddon/deploy.env`).
+
+### 0.17.2: Phase 17 done
+- **The history without the servers' details:** every commit cleaned like the tree in 0.17.1 and signed again, every
+  tag too, on the same dates. The GitHub repository was made anew with it; its pre-releases were made again (their
+  notes cleaned).
+- TODO: Phase 17 done; Phase 18 (*Code Optimization*).
+
+### 0.17.1: The servers' details out of the tree
+- **Moved out of the repository** (into one of their own, not on GitHub): `.docs/INFRA.md`, `.docs/MAIL_MIGRATION.md`,
+  `infra/` (Authentik's and Artifact Keeper's compose files and setup scripts, the ports' firewall, the stack dump),
+  the README's specifics of the live server, and the two security scans' findings (`.docs/TODO.md` keeps a summary
+  line each). Randogeddon's own backup units moved to `scripts/`.
+- **No other addresses in the text:** the servers' internal addresses, the VMs' IDs, host paths, service accounts and
+  every domain but `randogeddon.eratiem.net` are placeholders now (`example.org`, `<internal-ip>`, *the live VM*, …).
+- **The Maven mirror is a setting:** `randogeddon.maven` (Gradle property) or `RANDOGEDDON_MAVEN` (environment,
+  `.env` for the Docker build); without one, Maven Central, the Gradle plugin portal and Google directly. Its login
+  still comes from the Gradle init script, which can find it by its URL or its name (`randogeddon.maven.name`,
+  `RANDOGEDDON_MAVEN_NAME`, default `mirror`).
+- **`scripts/deploy.sh`** takes `IMAGES`, `RANDOGEDDON_MAVEN` and `BRIDGE_REGISTRY` from the environment or from
+  `~/.config/randogeddon/deploy.env`; `IMAGES` has no default any more. `scripts/publish-bridge.sh` publishes to
+  Artifact Keeper only with `BRIDGE_REGISTRY`.
+- **The mails' sender** is `MAIL_FROM`, else the login's address (`MAIL_USER`); it had a fixed default.
+
 ## Phase 16: English and German Side by Side
 Every page read and looked through in English and German, and what came up with it: support and the Management
 panel, names with rules and a filter for unwanted words, a new session's progress, single hints, APWorld uploads as
