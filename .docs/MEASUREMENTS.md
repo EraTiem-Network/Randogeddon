@@ -255,7 +255,8 @@ Management panel), `account`, `api` (the repositories and the request helper).
 | `Stores.kt` | 1,166 | **split**: the accounts' stores (users, two-factor, invitations, address changes, logins, login links) and the sessions' (time, setup, sessions, slot passwords, finishing, cheat log, roles) |
 | `Tables.kt` 199, `Database.kt` 81, `GatewayRole.kt` 38, `MigrationIndex.kt` 38 | | keep |
 
-**server** (`server/src/main/…/server/`)
+**server** (`server/src/main/…/server/`): done in 0.18.7, as below; the lenient JSON accessors went to `util/Json.kt` (the
+login, the tracker, the archives and the room file use them too), not to the state.
 
 | File | Lines | Verdict |
 |---|---|---|

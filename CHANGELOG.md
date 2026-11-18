@@ -9,6 +9,17 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.7: The server's big files by part
+- **`SessionState.kt` (789 lines):** the model (`ClientStatus`, `SlotType`, `NetworkItem`, `Player` and their
+  constants) is in `state/Model.kt`, the lenient JSON accessors of the Archipelago packets in `util/Json.kt` (the login,
+  the tracker, the archives and the room file use them too); the state keeps its own private parts (706 lines).
+- **`LoginRoutes.kt`** keeps the login's routes; the guards (`RequireLogin`, `RequireBridgeKey`,
+  `RequireSessionMember`, `RequireAdministrator`, `RequireSessionRole`, the logged-in user) are in `LoginGuards.kt`.
+- **`PastRoutes.kt`** keeps the session routes; the live streams' `follow`, `OpenStreams` and their times are in
+  `Streams.kt`.
+- `SingleSignOn.createLink` is gone (nothing used it; the CLI makes its links itself), and the server's two compiler
+  warnings are fixed (safe calls on a value that can't be null).
+
 ### 0.18.6: The stores in files by area
 - **`Stores.kt` (1,166 lines, 33 types) split:** the accounts' stores (users, two-factor login, invitations, address
   changes, logins and login links) in `AccountStores.kt`, the sessions' (session time, setup, the sessions, slot

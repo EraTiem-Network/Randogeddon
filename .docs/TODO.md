@@ -736,3 +736,6 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           people; `GeneralTexts.kt` into `ApworldTexts.kt` and `UserAdminTexts.kt`, the session tips out of
           `SessionAdminTexts.kt`
     - [x] `database` (0.18.6): `Stores.kt` into the accounts' stores, the sessions' stores and the settings' store
+    - [x] `server` (0.18.7): `SessionState.kt`'s model to `state/Model.kt` and its JSON accessors to `util/Json.kt`, the
+          guards out of `LoginRoutes.kt` (`LoginGuards.kt`), the streams out of `PastRoutes.kt` (`Streams.kt`);
+          `SingleSignOn.createLink` removed, the server's compiler warnings fixed
