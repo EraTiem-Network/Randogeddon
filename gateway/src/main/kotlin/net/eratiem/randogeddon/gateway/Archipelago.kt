@@ -19,6 +19,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
@@ -127,7 +128,13 @@ class Launcher(
  * start locked. The new seed goes into its session's directory, which must not have one yet. One generation at a
  * time, with the release's apworlds as they are now. When it fails, the games that may be the cause come with the log.
  */
-class Generator(private val archipelago: Archipelago, private val dirs: SessionDirs, private val apworlds: Apworlds) {
+class Generator(
+  private val archipelago: Archipelago,
+  private val dirs: SessionDirs,
+  private val apworlds: Apworlds,
+  /** How long one may take before it is stopped. */
+  private val minutes: Int = 60,
+) {
   private val mutex = Mutex()
   /** How far each running generation is, by session (from Generate.py's output as it comes). */
   private val progress = ConcurrentHashMap<String, GenerationProgress>()
@@ -154,7 +161,8 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
     val release = apworlds.release(request.apVersion)
     progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
     val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
-    return if (result.seedName != null) result
+    // Stopped for its time: no game is to blame
+    return if (result.seedName != null || result.stoppedAfterMinutes != null) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
@@ -174,7 +182,13 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
       // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
-      Thread { if (!proc.waitFor(10, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
+      val stopped = AtomicBoolean(false)
+      Thread {
+        if (!proc.waitFor(minutes.toLong(), TimeUnit.MINUTES)) {
+          stopped.set(true)
+          proc.destroyForcibly()
+        }
+      }.apply { isDaemon = true }.start()
       // Only its end is of use (the error, the seed's name): the rest of a long output isn't kept
       val lines = ArrayDeque<String>()
       proc.inputStream.bufferedReader().useLines { output ->
@@ -185,6 +199,10 @@ class Generator(private val archipelago: Archipelago, private val dirs: SessionD
         }
       }
       proc.waitFor()
+      if (stopped.get()) {
+        logger.warn("Generating took longer than {} minutes: stopped", minutes)
+        return GenerateResult(log = lines.takeLast(20), stoppedAfterMinutes = minutes)
+      }
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
         ?: return GenerateResult(
         // The error from its traceback on, not the list of every world it prints first

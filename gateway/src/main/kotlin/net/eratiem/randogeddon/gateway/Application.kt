@@ -30,6 +30,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.database.DEFAULT_GAME_SERVERS
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionFinishStore
@@ -73,8 +75,8 @@ data class GatewayConfig(
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
           customWorlds = Path.of(server("customWorlds")),
-          ports = parsePorts(server("ports")),
           adminPassword = server("adminPassword"),
+          generationMinutes = server("generationMinutes").toInt(),
         ),
       )
     }
@@ -88,9 +90,9 @@ data class GameServerSettings(
   val dataDir: Path,
   /** The apworlds put on the server by hand, for every release (read-only). */
   val customWorlds: Path,
-  /** One per session that runs; as many sessions can run at once. */
-  val ports: List<Int>,
   val adminPassword: String,
+  /** How long a generation may take before it is stopped. */
+  val generationMinutes: Int,
 )
 
 /**
@@ -131,8 +133,11 @@ fun main() {
   // The files of one session at a time, from before, into sessions/<id>/
   dirs.migrate { seed -> runBlocking { runCatching { sessionStore.idOf(seed) }.getOrNull() } ?: legacySessionId(seed) }
   val launcher = Launcher(archipelago, SessionSetupStore(database), options.adminPassword)
+  // How many game servers may run at once (the Administrators' setting), read again at most every 30 s
+  val settings = AppSettingsStore(database)
+  val gameServers = Cached(30.seconds) { runCatching { settings.gameServers() }.getOrDefault(DEFAULT_GAME_SERVERS) }
   val sessions = Sessions(
-    dirs, options.ports,
+    dirs, gameServers::get,
     create = { _, dir, port ->
       val roomJson = dir.resolve("room.json")
       GameServer(
@@ -170,9 +175,9 @@ fun main() {
   val connections = ConnectionLimits()
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
-    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once", config.port,
+    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit)", config.port,
     if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
-    archipelago.versions().joinToString(), options.ports.size,
+    archipelago.versions().joinToString(), runBlocking { gameServers.get() },
   )
 
   embeddedServer(
@@ -210,7 +215,7 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds), apworlds, dirs)
+        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds, options.generationMinutes), apworlds, dirs)
       }
     }
     monitor.subscribe(ApplicationStopping) {
