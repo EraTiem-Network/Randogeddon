@@ -8,13 +8,13 @@ import kotlin.test.assertTrue
 
 class GatewayRoleTest {
   @Test
-  fun `the gateway's role reads the sessions and the slot passwords, and writes only the session time`() {
+  fun `the gateway's role reads the sessions, the slot passwords and the settings, and writes only the session time`() {
     val statements = GatewayRole.statements("randogeddon_gateway", "pw")
     val grants = statements.filter { it.startsWith("GRANT") }
     assertEquals(
       listOf(
         "GRANT USAGE ON SCHEMA public TO randogeddon_gateway",
-        "GRANT SELECT ON sessions, slot_passwords TO randogeddon_gateway",
+        "GRANT SELECT ON sessions, slot_passwords, app_settings TO randogeddon_gateway",
         "GRANT UPDATE (run_time_ms, counted_until) ON sessions TO randogeddon_gateway",
       ),
       grants,
