@@ -742,8 +742,15 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] the web app, its files (0.18.8): 26 files of one package as 45 in `app`, `ui`, `api`, `dashboard`, `manage`
           and `account`; `AdminSession.kt`, `Dashboard.kt`, `Components.kt`, `Settings.kt`, `Admin.kt` and `Watch.kt`
           split by part
-    - [ ] the web app, what repeats (0.18.10): one request helper for the 53 places that decode an answer themselves,
+    - [ ] the web app, what repeats (0.18.11): one request helper for the 53 places that decode an answer themselves,
           the doubled components merged, the page frame and the clock shared, the interop opt-in for the module
-- [ ] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
-      without end and kept its port (counted as in use); after 5 quick crashes in a row it stays crashed with its last
-      exit code, frees its port, and *Start* tries again
+- [x] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
+      without end and kept its place (counted as in use); after 5 crashes in a row, each within a minute of its start,
+      it stays down (*gave up*) with its last exit code, and *Start* tries again
+- [x] No port pool (asked for later, 0.18.9): game clients come through the gateway's relay only, so each game server
+      takes a free port of the gateway's container; how many run at once is a setting (*Game servers at once*, default
+      8, empty: no limit), asked by the tracker and kept by the gateway too
+- [ ] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
+      30 minutes; hosted slots don't count; Administrators can keep a session running), and starts again when a player
+      connects, if there is room
+- Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more

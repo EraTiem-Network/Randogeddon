@@ -21,7 +21,7 @@ flowchart TB
   traefik[Traefik] --> gateway
   traefik --> tracker
   subgraph gateway ["gateway (Ktor): checks each Connect's slot password"]
-    multiserver["MultiServer per session :38300…"]
+    multiserver["MultiServer per session (a free port)"]
   end
   tracker["tracker (Ktor): login, API, SSE, the panel, Wasm app"]
   tracker -- "internal API :8001 (control)" --> gateway
@@ -31,9 +31,10 @@ flowchart TB
   tracker --> postgres
 ```
 
-The gateway runs one MultiServer per running session as a child process, each on a port of `AP_PORTS` (default
-`38300-38303`: four sessions at once). Only the tracker reaches them directly (those ports and the internal API on
-8001 are not published). The gateway relays each game client to its session's MultiServer: by the host name it
+The gateway runs one MultiServer per running session as a child process, each on a free port of its container. Only
+the tracker reaches them directly (those ports and the internal API on 8001 are not published). How many run at once
+is a setting of the Administrators (*Game servers at once*, under *Users*; default 8, empty: no limit): each one needs
+a few hundred MB of the gateway's memory. The gateway relays each game client to its session's MultiServer: by the host name it
 connected to (`<session-id>.<BASE_DOMAIN>`), or locally by the path (`ws://localhost:38281/<session-id>`). A tracker
 restart or update doesn't drop the players.
 
@@ -304,7 +305,9 @@ docker compose up -d
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
    is; the gateway generates one seed at a time, so a second session waits and says so). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
-   Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
+   Archipelago release and starts the game server on it. A generation that takes longer than `GENERATION_MINUTES`
+   (default 60) is stopped, and the panel says so; Archipelago fills on one core, so a big multiworld (thousands of
+   progression items) takes long. A file that isn't a player YAML (not `.yaml`/`.yml`, no
    name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
    slot yet: one message names them (and tells someone who isn't an Administrator to ask one to upload it), and they
    become slots by themselves once the APWorld is there (uploaded by anyone, anywhere). If Generate.py fails, the panel names the games that may be the cause (one the error mentions,
@@ -334,8 +337,10 @@ docker compose up -d
 Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
 server; players download their own from the dashboard (step 4), as long as the session exists. **Deleting** a
 running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
-finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
-(`AP_PORTS`); a finished session doesn't take one.
+finished one deletes them for good. The accounts stay. As many game servers run at once as the Administrators allow
+(*Game servers at once*, under *Users*; empty: no limit); a finished session doesn't run one. A game server that ends
+with an error is started again after a pause; after 5 times in a row, each within a minute of its start, it gives up
+(*gave up* in the panel, with its log) and stays stopped until it is started again.
 
 ### Finishing, past sessions and the spoiler log
 
@@ -477,7 +482,7 @@ number of its own; an account's panel shows its running sessions against its lim
 empty field shows the default; *Use default* brings it back). It counts the sessions someone **created**, while they run: being made Session-Manager of
 someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
 its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
-(`AP_PORTS`) applies to everyone.
+(*Game servers at once*) applies to everyone.
 
 **Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
 managed where Administrators log in, so never one's own):
