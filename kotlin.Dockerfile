@@ -100,7 +100,9 @@ CMD ["/app/randogeddon"]
 
 # Archipelago from a pinned upstream release, for the game server and seed generation. Debian 12 (glibc 2.36), so the
 # native gateway runs on it too.
-FROM python:3.12-slim-bookworm AS archipelago
+# Archipelago installed with what its install needs (git, compilers for the speedups and the worlds' packages); the
+# stage below takes only the result, without them (they were 350 MB of the gateway image)
+FROM python:3.12-slim-bookworm AS archipelago-build
 ARG AP_VERSION=0.6.8
 # The commit the release's tag stands for: a tag can be moved, the commit can't (empty: not checked)
 ARG AP_COMMIT=54803be064fc7e80c4628777ed0b46a9390f255f
@@ -125,6 +127,20 @@ RUN python ModuleUpdate.py -y
 # The newest certificate bundle, whatever the requirements pulled in (scripts/audit.sh: an old one has known flaws)
 # hadolint ignore=DL3013
 RUN pip install --no-cache-dir --upgrade certifi
+
+# Archipelago as it runs: the installed packages and its directory, and the one system library it needs (libtk8.6)
+FROM python:3.12-slim-bookworm AS archipelago
+ARG AP_VERSION=0.6.8
+ENV PYTHONUNBUFFERED=1 \
+    AP_HOME=/opt/archipelago/${AP_VERSION}
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libtk8.6 \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=archipelago-build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=archipelago-build /usr/local/bin /usr/local/bin
+COPY --from=archipelago-build ${AP_HOME} ${AP_HOME}
+WORKDIR ${AP_HOME}
 # Never try to pip-install anything at runtime
 ENV SKIP_REQUIREMENTS_UPDATE=true
 
