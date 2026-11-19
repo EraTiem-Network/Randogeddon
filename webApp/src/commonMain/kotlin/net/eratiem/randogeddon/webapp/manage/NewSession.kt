@@ -782,7 +782,7 @@ private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (Lock
 }
 
 @Composable
-private fun Check(label: String, checked: Boolean, tip: String? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+internal fun Check(label: String, checked: Boolean, tip: String? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
   val p = LocalPalette.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     Row(

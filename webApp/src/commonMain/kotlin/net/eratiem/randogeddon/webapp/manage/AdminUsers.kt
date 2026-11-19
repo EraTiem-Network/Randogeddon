@@ -446,6 +446,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   var saved by remember { mutableStateOf<AppSettings?>(null) }
   var perUser by remember { mutableStateOf("") }
   var servers by remember { mutableStateOf("") }
+  var idle by remember { mutableStateOf("") }
   var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   LaunchedEffect(Unit) {
     when (val r = call("GET", "api/admin/settings", null) { ApiJson.decodeFromString(AppSettings.serializer(), it) }) {
@@ -453,6 +454,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
         saved = r.value
         perUser = r.value.sessionsPerUser.toString()
         servers = r.value.gameServers.takeIf { it > 0 }?.toString().orEmpty()
+        idle = r.value.idleMinutes.toString()
         onLoaded(r.value.sessionsPerUser)
       }
       is Answer.Failed -> state = false to r.message
@@ -461,7 +463,8 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   val value = perUser.trim().toIntOrNull()?.takeIf { it in 0..20 }
   // Empty: no limit (0)
   val serversValue = if (servers.isBlank()) 0 else servers.trim().toIntOrNull()?.takeIf { it in 1..100 }
-  val settings = if (value != null && serversValue != null) AppSettings(value, serversValue) else null
+  val idleValue = idle.trim().toIntOrNull()?.takeIf { it in 0..1440 }
+  val settings = if (value != null && serversValue != null && idleValue != null) AppSettings(value, serversValue, idleValue) else null
   FlowRow(
     verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
     itemVerticalAlignment = Alignment.CenterVertically,
@@ -476,6 +479,11 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
       InfoTip(t.users.gameServersTip)
       NumberField(servers, { servers = it; state = null }, "∞", 1..100, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
     }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt(t.users.idleMinutes, size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.users.idleMinutesTip)
+      NumberField(idle, { idle = it; state = null }, "30", 0..1440, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
+    }
     Button(t.common.save, enabled = settings != null && settings != saved) {
       scope.launch {
         val changed = settings!!
@@ -488,6 +496,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   }
   if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
   if (serversValue == null) Txt(t.users.oneToHundred, size = 12.5.sp, color = p.trap)
+  if (idleValue == null && idle.isNotBlank()) Txt(t.users.zeroToDay, size = 12.5.sp, color = p.trap)
   state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
 }
 
