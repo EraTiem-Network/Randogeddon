@@ -38,6 +38,8 @@ interface SessionAdminTexts {
   val reopen: String
   val enableAutoDeletion: String
   val disableAutoDeletion: String
+  val keepRunning: String
+  val keepRunningTip: String
   val delete: String
   val confirmDeleteFinished: String
   val yesDelete: String
@@ -161,6 +163,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     GameServerStatus.STARTING -> "server starting"
     GameServerStatus.CRASHED -> "server crashed"
     GameServerStatus.FAILED -> "server gave up"
+    GameServerStatus.IDLE -> "server asleep"
     GameServerStatus.STOPPED -> "server stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
@@ -182,6 +185,10 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val reopen = "Reopen"
   override val enableAutoDeletion = "Enable auto-deletion"
   override val disableAutoDeletion = "Disable auto-deletion"
+  override val keepRunning = "Keep running without players"
+  override val keepRunningTip =
+    "Its game server doesn't go to sleep when nobody plays (else it stops after the time set under Users, and starts " +
+      "again when a player connects). For a game that only connects now and then."
   override val delete = "Delete"
   override val confirmDeleteFinished = "Delete it for good? Its seed, save and history are removed; the accounts stay."
   override val yesDelete = "Yes, delete"
@@ -325,6 +332,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     GameServerStatus.STARTING -> "Server startet"
     GameServerStatus.CRASHED -> "Server abgestürzt"
     GameServerStatus.FAILED -> "Server aufgegeben"
+    GameServerStatus.IDLE -> "Server schläft"
     GameServerStatus.STOPPED -> "Server gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }
@@ -346,6 +354,10 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val reopen = "Wieder öffnen"
   override val enableAutoDeletion = "Automatisch löschen an"
   override val disableAutoDeletion = "Automatisch löschen aus"
+  override val keepRunning = "Ohne Spieler weiterlaufen"
+  override val keepRunningTip =
+    "Ihr Spielserver schläft nicht ein, wenn niemand spielt (sonst stoppt er nach der unter Benutzer eingestellten Zeit " +
+      "und startet wieder, sobald sich jemand verbindet). Für ein Spiel, das sich nur ab und zu verbindet."
   override val delete = "Löschen"
   override val confirmDeleteFinished =
     "Endgültig löschen? Ihr Seed, Spielstand und Verlauf werden entfernt; die Konten bleiben."

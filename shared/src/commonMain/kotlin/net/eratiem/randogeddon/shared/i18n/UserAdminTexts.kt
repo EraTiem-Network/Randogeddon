@@ -62,6 +62,9 @@ interface UserAdminTexts {
   val gameServers: String
   val gameServersTip: String
   val oneToHundred: String
+  val idleMinutes: String
+  val idleMinutesTip: String
+  val zeroToDay: String
   /** In an account's panel: its running sessions against its limit, and its own number. */
   val ownSessionsLabel: String
   fun sessionsOf(running: Int, limit: Int): String
@@ -160,6 +163,12 @@ internal object EnglishUserAdmin : UserAdminTexts {
     "How many game servers may run at the same time, of all sessions together (empty: no limit). Each one needs " +
       "memory on the gateway (a few hundred MB); a finished session's doesn't run. Applies to Administrators too."
   override val oneToHundred = "1 to 100, or empty for no limit"
+  override val idleMinutes = "Sleep after (minutes)"
+  override val idleMinutesTip =
+    "A game server without players for this long stops, and starts again by itself when a player connects (if " +
+      "fewer run than may at once). Hosted slots don't count as players. 0: never. An Administrator can keep a " +
+      "session running in its panel."
+  override val zeroToDay = "0 to 1440 minutes"
   override val ownSessionsLabel = "Self-created sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running running, limit $limit"
   override val theDefault = "(default)"
@@ -269,6 +278,12 @@ internal object GermanUserAdmin : UserAdminTexts {
       "Speicher auf dem Gateway (ein paar hundert MB); der einer beendeten Session läuft nicht. Gilt auch für " +
       "Administratoren."
   override val oneToHundred = "1 bis 100, oder leer für ohne Grenze"
+  override val idleMinutes = "Schlafen nach (Minuten)"
+  override val idleMinutesTip =
+    "Ein Spielserver, der so lange ohne Spieler ist, stoppt und startet von selbst wieder, sobald sich jemand verbindet " +
+      "(wenn weniger laufen, als gleichzeitig dürfen). Gehostete Slots zählen nicht als Spieler. 0: nie. Ein " +
+      "Administrator kann eine Session in ihrem Fenster weiterlaufen lassen."
+  override val zeroToDay = "0 bis 1440 Minuten"
   override val ownSessionsLabel = "Selbst erstellte Sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running laufend, Limit $limit"
   override val theDefault = "(Standard)"

@@ -107,6 +107,8 @@ data class SessionInfo(
   val reopenUntil: Long? = null,
   /** Its auto-deletion is disabled. */
   val keep: Boolean = false,
+  /** Its game server keeps running without players (an Administrator's choice); else it sleeps when idle. */
+  val keepRunning: Boolean = false,
   /** Once it is a past session, it is deleted then; `null`: never (kept, or no auto-deletion). */
   val deletesAt: Long? = null,
   /** How far its slots got, live (or as it finished). */
@@ -156,6 +158,10 @@ data class ArchivedSession(
 /** `POST /api/admin/sessions/{id}/keep`: [keep] disables the session's auto-deletion. */
 @Serializable
 data class KeepRequest(val keep: Boolean)
+
+/** `PUT /api/admin/sessions/{id}/keep-running`: its game server doesn't sleep without players. */
+@Serializable
+data class KeepRunningRequest(val keepRunning: Boolean)
 
 /** `GET /api/admin/sessions/{id}`: one session, what a new one can use, and who has a login. */
 @Serializable
