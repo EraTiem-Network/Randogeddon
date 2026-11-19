@@ -1,7 +1,12 @@
 package net.eratiem.randogeddon.webapp.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,9 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -262,4 +272,15 @@ fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspe
 @Composable
 fun SmallHeading(text: String, modifier: Modifier = Modifier) {
   Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = modifier)
+}
+
+/** Something works meanwhile: an arc going round, in [color]. */
+@Composable
+fun Working(color: Color, size: Dp = 12.dp) {
+  val turn by rememberInfiniteTransition().animateFloat(0f, 360f, infiniteRepeatable(tween(1000, easing = LinearEasing)))
+  Canvas(Modifier.size(size).graphicsLayer { rotationZ = turn }) {
+    val stroke = 2.dp.toPx()
+    drawArc(color, 0f, 270f, useCenter = false, style = Stroke(stroke, cap = StrokeCap.Round),
+      topLeft = Offset(stroke / 2, stroke / 2), size = Size(this.size.width - stroke, this.size.height - stroke))
+  }
 }

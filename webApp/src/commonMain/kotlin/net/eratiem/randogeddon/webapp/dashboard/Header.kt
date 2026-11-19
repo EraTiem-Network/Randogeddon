@@ -54,7 +54,9 @@ import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Themes
+import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.Working
 import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.hand
 
@@ -156,6 +158,17 @@ internal fun Hero(
       }
     }
     val controls: @Composable () -> Unit = {
+      // Its spoiler log still being completed after the seed: a pill with a working symbol, what that means on hover
+      if (summary != null && summary.finishedAt == null && summary.spoilerCompleting) Tip(t.frame.spoilerCompletingTip) {
+        Row(
+          Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Working(onHero)
+          Txt(t.frame.spoilerCompleting, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+        }
+      }
       // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
       if (summary != null && summary.finishedAt == null) Row(
         Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
