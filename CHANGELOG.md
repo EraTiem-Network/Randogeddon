@@ -16,6 +16,14 @@ up after crashing again and again and sleep without players; generation in the b
 versions. Updating: nothing to do (`AP_PORTS` is gone from the environment since 0.18.9; `GENERATION_MINUTES` is
 new and optional).
 
+### 0.18.18: The Archipelago section
+- The panel's *APWorlds* is *Archipelago* now: the gateway's releases as pills under *Supported versions* (the one
+  picked shows its games; there is one now, 0.6.8), then *Supported games* one level higher: the bundled games and
+  the custom ones together by name, each custom one as its APWorld's chip (its game and version, its file name and
+  size in its tip), *bundled* / *custom games* (was "from an APWorld") to show only those. *upload apworld*, *remove*
+  and the search sit on that heading's row. The separate list of the uploaded files is gone: an APWorld that brings
+  no game shows among the games (red), and the removal picks from the chips.
+
 ### 0.18.17: Phase 18 done
 - TODO: Phase 18 done; Phase 19 (*Generating Like the Launcher*) to come.
 

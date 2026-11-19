@@ -361,7 +361,7 @@ docker compose up -d
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
-   isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
+   isn't bundled with Archipelago needs its `.apworld` (see *Archipelago* below).
 2. **Create the session** (the gear button, the *Management panel*, then *New session*; every user can, as many running ones at
    once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
    `brave-otter`; lowercase letters, digits and `-`, starting with a letter (capitals typed become small ones), and
@@ -470,10 +470,12 @@ in what the lists have learned since, delete `output/unwanted-words/` first.
 
 ### APWorlds
 
-The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
-and its APWorld library:
+The panel's *Archipelago* (Administrators) shows the gateway's releases under *Supported versions* (as pills; with
+several, a click shows that release's games) and, under *Supported games*, every game the release can generate and
+serve: the bundled ones (grey) and the custom ones, each APWorld as its chip (see below), together by name, with
+*bundled* / *custom games* to show only those, and a search. Beside the heading:
 
-- **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
+- **upload apworld** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
   at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
   after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
   inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. Each file
@@ -483,10 +485,10 @@ and its APWorld library:
   doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
   would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
-  same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
+  same game (by its manifest, `archipelago.json`), which goes then. *remove* takes files out again: pick them (the
   uploaded ones; *Select all*), *Remove (n)*, confirm. An APWorld may import `tkinter` (for its client window): the
   image has the Tk library it needs.
-- **The library:** each file as a bubble with its game and its version (from its `archipelago.json`, e.g. *Anno 1800
+- **The custom games:** each file as a chip with its game and its version (from its `archipelago.json`, e.g. *Anno 1800
   – 1.5.1*; an APWorld without one shows no version), coloured by where it comes from (see its ⓘ); its tip says its
   file name and size, and the oldest Archipelago release it needs, if it says so.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
@@ -538,7 +540,7 @@ Below the finished sessions, Administrators find *General*: *Users* (every accou
 Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
 language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
 them, for an invited one *Send again* and *Other address*, and what an Administrator does to it: see below),
-*APWorlds* and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
+*Archipelago* and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
 
@@ -1041,7 +1043,7 @@ To update: set `AP_VERSION` to the new release tag and `AP_COMMIT` to that tag's
 stand for its commit any more), `docker compose build`, and recreate the gateway once no session
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
-other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.
+other releases* (*Archipelago* in the panel) and can be tried with it, or upload versions made for the new release.
 
 ## License
 

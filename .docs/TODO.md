@@ -768,6 +768,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Tips that keep themselves open (asked for later, 0.18.12): one that came up under the pointer closed and opened
       again and again; a tip stays while the pointer is on it or its anchor. The APWorld pills' errors as wide as the
       window allows
+- [x] The section as *Archipelago* (asked for later, 0.18.18): the supported versions as pills, the supported games
+      one level higher with the custom games' chips among them, the upload, the removal and the search on their row
 - [x] An APWorld's version in the library (asked for later, 0.18.16): each file as its game and its version (from its
       `archipelago.json`), its file name and size, and the oldest release it needs, in its tip
 - [x] Tips that can be copied (asked for later, 0.18.15): a tip's text can be selected (and copied with Ctrl+C), and a

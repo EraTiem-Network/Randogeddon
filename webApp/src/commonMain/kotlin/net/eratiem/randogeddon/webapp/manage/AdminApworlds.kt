@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -219,6 +220,8 @@ fun ApworldsSection() {
   }
 
   val current = info
+  // The release whose games show (the newest, until another is picked)
+  var shownRelease by remember { mutableStateOf<String?>(null) }
   Section(texts.title, subtitle = texts.subtitle, actions = { InfoTip(texts.tip) }) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
@@ -247,10 +250,10 @@ fun ApworldsSection() {
       when {
         current == null -> Txt(if (problem == null) texts.listing else "…", size = 13.sp, color = p.muted)
         current.releases.isEmpty() -> Txt(texts.noRelease, size = 13.sp, color = p.trap)
-        else -> current.releases.forEachIndexed { i, release ->
-          if (i > 0) Divider()
+        else -> {
+          val release = current.releases.firstOrNull { it.version == shownRelease } ?: current.releases.first()
           ReleaseBlock(
-            release, current.apworlds, enabled = busy == null,
+            current.releases, release, onShow = { shownRelease = it }, current.apworlds, enabled = busy == null,
             onUpload = { upload(release.version) },
             onRemove = { files -> remove(release.version, files) },
             onTry = { file -> tryWith(release.version, file) },
@@ -333,10 +336,18 @@ private fun UploadPillView(pill: UploadPill) {
   }
 }
 
+/**
+ * The gateway's Archipelago: its releases as pills (the one picked shows its games), then the games it can generate
+ * and serve, bundled ones and custom ones (an uploaded APWorld's chip: its game and version), with the upload, the
+ * removal and a search on their heading's row. A custom APWorld that brings no game shows there too (red); while
+ * removing, the uploaded ones can be picked.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReleaseBlock(
-  release: ReleaseInfo,
+  releases: List<ReleaseInfo>,
+  shown: ReleaseInfo,
+  onShow: (String) -> Unit,
   files: List<ApworldFile>,
   enabled: Boolean,
   onUpload: () -> Unit,
@@ -346,10 +357,11 @@ private fun ReleaseBlock(
   val p = LocalPalette.current
   val t = LocalTexts.current
   val texts = t.apworlds
+  val release = shown
   var filter by remember { mutableStateOf("") }
-  // The supported games shown: true bundled, false from an apworld, null all
+  // The games shown: true bundled, false custom (from an APWorld), null all
   var source by remember { mutableStateOf<Boolean?>(null) }
-  // Removing: the uploaded files can be picked (by name), and the removal is asked once more
+  // Removing: the uploaded files can be picked, and the removal is asked once more
   var picking by remember { mutableStateOf(false) }
   var picked by remember { mutableStateOf(emptySet<String>()) }
   var asking by remember { mutableStateOf(false) }
@@ -359,18 +371,27 @@ private fun ReleaseBlock(
   val others = files.filter { f -> f.release != release.version && f.source == GameSource.UPLOADED && own.none { it.file == f.file } }
     .distinctBy { it.file }
 
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-    Txt(texts.release(release.version), size = 14.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-    if (enabled && !picking) {
-      SmallButton(texts.upload, onUpload)
-      if (own.any { it.source == GameSource.UPLOADED }) SmallButton(texts.removeSome, { picking = true })
+  Txt(texts.supportedVersions, size = 14.sp, weight = FontWeight.SemiBold)
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    releases.forEach { r ->
+      val on = r.version == release.version
+      Txt(
+        r.version, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1,
+        color = if (on) p.onBrand else p.accent,
+        modifier = Modifier.clip(CircleShape).background(if (on) p.accent else p.accent.copy(alpha = 0.15f))
+          .then(if (releases.size > 1) Modifier.hand().clickable { onShow(r.version) } else Modifier)
+          .padding(horizontal = 10.dp, vertical = 3.dp),
+      )
     }
   }
   release.error?.let { Txt(it, size = 12.5.sp, color = p.trap) }
 
-  // The library: one bubble per file with the games it brings; uploaded ones can be removed (asked once more)
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    SmallHeading(texts.uploaded, Modifier.padding(top = 4.dp))
+  // Its games: bundled ones as pills, the custom ones as their APWorld's chip (one per file, a file can bring several)
+  val q = filter.trim()
+  val bundled = release.games.filter { it.source == GameSource.BUNDLED }.map { it.game }
+  val custom = own.map { file -> file to release.games.filter { it.apworld == file.file }.map { it.game } }
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Txt(texts.supportedGames(release.games.size), size = 14.sp, weight = FontWeight.SemiBold)
     InfoTip(
       texts.uploadedTip,
       options = listOf(
@@ -380,21 +401,42 @@ private fun ReleaseBlock(
         texts.grey to texts.greyMeaning,
       ),
     )
+    Spacer(Modifier.weight(1f))
+    if (enabled && !picking) {
+      SmallButton(texts.upload, onUpload)
+      if (own.any { it.source == GameSource.UPLOADED }) SmallButton(texts.removeSome, { picking = true })
+    }
+    FilterField(filter, { filter = it }, t.common.search, Modifier.width(180.dp))
   }
-  if (own.isEmpty()) Txt(texts.noneYet, size = 12.5.sp, color = p.muted)
+  // Click to show only those; again to show all
+  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    SourceFilter(texts.bundled, p.muted, source == true) { source = if (source == true) null else true }
+    SourceFilter(texts.fromApworld, p.key, source == false) { source = if (source == false) null else false }
+  }
+  if (own.isEmpty() && source == false) Txt(texts.noneYet, size = 12.5.sp, color = p.muted)
+  // Bundled and custom, by name together
+  val entries = buildList<Pair<String, ApworldFile?>> {
+    if (source != false) bundled.forEach { add(it to null) }
+    if (source != true) custom.forEach { (file, games) -> add((games.joinToString(", ").ifEmpty { file.game ?: file.file }) to file) }
+  }.filter { (title, file) ->
+    q.isEmpty() || title.contains(q, ignoreCase = true) || file?.file?.contains(q, ignoreCase = true) == true
+  }.sortedBy { it.first.lowercase() }
   FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    own.forEach { file ->
-      val games = release.games.filter { it.apworld == file.file }.map { it.game }
-      val pickable = picking && !asking && file.source == GameSource.UPLOADED
-      ApworldChip(
-        file, games,
-        picked = if (picking && file.source == GameSource.UPLOADED) file.file in picked else null,
-        onClick = if (pickable) ({ picked = if (file.file in picked) picked - file.file else picked + file.file }) else null,
-      )
+    entries.forEach { (title, file) ->
+      if (file == null) {
+        BundledChip(title)
+      } else {
+        val pickable = picking && !asking && file.source == GameSource.UPLOADED
+        ApworldChip(
+          file, custom.first { it.first == file }.second,
+          picked = if (picking && file.source == GameSource.UPLOADED) file.file in picked else null,
+          onClick = if (pickable) ({ picked = if (file.file in picked) picked - file.file else picked + file.file }) else null,
+        )
+      }
     }
   }
   if (picking) {
-    // On their own lines, below the files: the question and the buttons
+    // On their own lines, below the games: the question and the buttons
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
       if (asking) {
         Txt(texts.removeQuestion(picked.sorted().joinToString(", "), release.version), size = 13.sp)
@@ -430,26 +472,16 @@ private fun ReleaseBlock(
       }
     }
   }
+}
 
-  // Everything the release can generate; the games of apworlds in their own colour
-  if (release.games.isNotEmpty()) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      SmallHeading(texts.supportedGames(release.games.size), Modifier.weight(1f).padding(top = 4.dp))
-      FilterField(filter, { filter = it }, t.common.search, Modifier.width(180.dp))
-    }
-    // Click to show only those; again to show all
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      SourceFilter(texts.bundled, p.muted, source == true) { source = if (source == true) null else true }
-      SourceFilter(texts.fromApworld, p.key, source == false) { source = if (source == false) null else false }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      release.games.filter { filter.isBlank() || it.game.contains(filter.trim(), ignoreCase = true) }
-        .filter { source == null || (it.source == GameSource.BUNDLED) == source }
-        .forEach { game ->
-        Pill(game.game, if (game.source == GameSource.BUNDLED) p.muted else p.key)
-      }
-    }
-  }
+/** A bundled game, in the shape of the custom games' chips beside it (grey). */
+@Composable
+private fun BundledChip(game: String) {
+  val muted = LocalPalette.current.muted
+  Txt(
+    game, size = 12.5.sp, weight = FontWeight.SemiBold, color = muted, maxLines = 1,
+    modifier = Modifier.clip(CircleShape).background(muted.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 3.dp),
+  )
 }
 
 /** One of the supported games' sources as a toggle: [selected] shows only its games. */
