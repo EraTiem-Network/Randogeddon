@@ -27,6 +27,9 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.GameServer")
 
+/** How many lines of a game server's output are kept (the panel pages through them). */
+private const val LOG_LINES = 10_000
+
 /**
  * One start of MultiServer: the command line, extra environment variables and the directory to run in. [firstLines]:
  * console lines it gets right after the start, not shown in the log (what must not stand on the command line, which
@@ -93,7 +96,7 @@ class GameServerConfig(
  */
 class GameServer(private val config: GameServerConfig, private val scope: CoroutineScope) {
   private val mutex = Mutex()
-  private val log = LogBuffer(2000)
+  private val log = LogBuffer(LOG_LINES)
   // Set by the supervisor's thread, read by the API's
   @Volatile
   private var process: Process? = null
@@ -309,7 +312,17 @@ class LogBuffer(private val capacity: Int) {
     if (lines.size > capacity) lines.removeFirst()
   }
 
-  /** Lines numbered above [since]; with 0, all that are kept. */
+  /**
+   * Lines numbered above [since]; with 0, all that are kept. At most [max] at once: then [LogLines.last] is the last
+   * one's, to ask on from.
+   */
   @Synchronized
-  fun after(since: Long): LogLines = LogLines(lines.filter { it.n > since }, last)
+  fun after(since: Long, max: Int = Int.MAX_VALUE): LogLines {
+    val after = lines.filter { it.n > since }
+    return if (after.size <= max) LogLines(after, last) else after.take(max).let { LogLines(it, it.last().n) }
+  }
+
+  /** Every line kept, oldest first. */
+  @Synchronized
+  fun all(): List<LogLine> = lines.toList()
 }
