@@ -123,6 +123,7 @@ interface SessionAdminTexts {
   fun spoilerLevel(level: Int): String
   fun spoilerWorking(level: Int): String
   val spoilerWaiting: String
+  val spoilerPaused: String
   fun spoilerStopped(level: Int, why: String): String
   fun generationTime(time: String): String
   val generationWorking: String
@@ -295,6 +296,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override fun spoilerWorking(level: Int) =
     if (level == 2) "working out the playthrough (level 2)" else "working out the paths to every item (level $level)"
   override val spoilerWaiting = "waiting for its turn (a new session's generation goes first)"
+  override val spoilerPaused = "paused: a new session's generation goes first; it goes on after, where it was"
   override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
   override val generationWorking = "working"
   override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
@@ -490,6 +492,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override fun spoilerWorking(level: Int) =
     if (level == 2) "berechnet den Lösungsweg (Stufe 2)" else "berechnet die Wege zu jedem Item (Stufe $level)"
   override val spoilerWaiting = "wartet, bis es dran ist (die Generierung einer neuen Session geht vor)"
+  override val spoilerPaused = "pausiert: Die Generierung einer neuen Session geht vor; danach geht es dort weiter, wo es war"
   override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
   override val generationWorking = "arbeitet"
   override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"

@@ -66,6 +66,8 @@ data class SpoilerProgress(
   val running: Int? = null,
   val cpu: Int? = null,
   val stopped: String? = null,
+  /** The run is held for a new session's generation (its level-3 run only); it goes on once there is room. */
+  val paused: Boolean = false,
 )
 
 /** `GET /internal/sessions`: every session the gateway has files of. */

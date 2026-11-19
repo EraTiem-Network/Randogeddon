@@ -121,6 +121,8 @@ data class SessionInfo(
 data class SessionEntry(
   val id: String,
   val seedName: String,
+  /** Its spoiler log has its playthrough (completed after the seed): until then no spoiler log, no hints, no cheats. */
+  val spoilerReady: Boolean = true,
   val title: String,
   val status: SessionStatus = SessionStatus.LIVE,
   val createdAt: Long? = null,

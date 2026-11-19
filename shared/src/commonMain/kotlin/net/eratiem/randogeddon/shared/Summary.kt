@@ -30,6 +30,8 @@ data class Summary(
   val serverAsleep: Boolean = false,
   /** Its spoiler log is still being completed after the seed (the playthrough, the paths): the top panel says so. */
   val spoilerCompleting: Boolean = false,
+  /** Its spoiler log has its playthrough: it can be opened (by who may). */
+  val spoilerReady: Boolean = true,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,
