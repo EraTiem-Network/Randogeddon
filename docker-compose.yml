@@ -125,6 +125,7 @@ services:
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
       # How long a generation may take before it is stopped (minutes)
       GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
+      GENERATIONS_AT_ONCE: ${GENERATIONS_AT_ONCE:-0}
       # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""
