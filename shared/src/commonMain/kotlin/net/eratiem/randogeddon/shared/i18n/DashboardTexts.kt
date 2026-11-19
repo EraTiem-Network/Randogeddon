@@ -33,6 +33,7 @@ interface DashboardTexts {
   fun deleted(name: String): String
   fun account(id: String, deleted: Boolean): String
   fun locked(n: Int): String
+  fun connections(n: Int): String
   fun done(n: Int): String
   fun played(duration: String): String
   /** A slot's state; [started]: some of its checks are done. */
@@ -172,6 +173,7 @@ internal object EnglishDashboard : DashboardTexts {
   override fun deleted(name: String) = "$name (deleted)"
   override fun account(id: String, deleted: Boolean) = "Account $id${if (deleted) " (deleted)" else ""}"
   override fun locked(n: Int) = "$n locked"
+  override fun connections(n: Int) = "$n connections"
   override fun done(n: Int) = "$n done"
   override fun played(duration: String) = "$duration played"
   override fun status(status: PlayerStatus, started: Boolean) = when (status) {
@@ -254,6 +256,7 @@ internal object GermanDashboard : DashboardTexts {
   override fun deleted(name: String) = "$name (gelöscht)"
   override fun account(id: String, deleted: Boolean) = "Konto $id${if (deleted) " (gelöscht)" else ""}"
   override fun locked(n: Int) = "$n gesperrt"
+  override fun connections(n: Int) = "$n Verbindungen"
   override fun done(n: Int) = "$n fertig"
   override fun played(duration: String) = "$duration gespielt"
   override fun status(status: PlayerStatus, started: Boolean) = when (status) {
