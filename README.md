@@ -486,6 +486,9 @@ and its APWorld library:
   same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
   uploaded ones; *Select all*), *Remove (n)*, confirm. An APWorld may import `tkinter` (for its client window): the
   image has the Tk library it needs.
+- **The library:** each file as a bubble with its game and its version (from its `archipelago.json`, e.g. *Anno 1800
+  – 1.5.1*; an APWorld without one shows no version), coloured by where it comes from (see its ⓘ); its tip says its
+  file name and size, and the oldest Archipelago release it needs, if it says so.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
