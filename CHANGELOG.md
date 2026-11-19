@@ -8,6 +8,16 @@ Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a Gi
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
 ## Phase 18: Code Optimization
+Measured first, then made leaner where it paid: the web files compressed when built, one look per session for all
+its streams, the gateway image 40 % smaller and the builds cached, the code split and merged along what belongs
+together (every module, the web app in packages). Asked for on the way: game servers without a port pool, that give
+up after crashing again and again and sleep without players; generation in the background with its log and a
+*Cancel*; tips that stay and can be copied; invited players' addresses kept to Administrators; the APWorlds'
+versions. Updating: nothing to do (`AP_PORTS` is gone from the environment since 0.18.9; `GENERATION_MINUTES` is
+new and optional).
+
+### 0.18.17: Phase 18 done
+- TODO: Phase 18 done; Phase 19 (*Generating Like the Launcher*) to come.
 
 ### 0.18.16: An APWorld's version in the library
 - The library shows each file as its game and its version, e.g. *Anno 1800 – 1.5.1* (was: the file name, its games
