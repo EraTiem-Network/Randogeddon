@@ -130,16 +130,41 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     supervisor = scope.launch(Dispatchers.IO) { supervise() }
   }
 
-  /** Asks MultiServer to save and end (`/exit`), kills it if it doesn't, and keeps it stopped. */
+  /**
+   * Asks MultiServer to save and end (`/exit`), kills it if it doesn't, and keeps it stopped. One that sleeps stays
+   * stopped too: a player's connection doesn't start it then.
+   */
   suspend fun stop() = mutex.withLock {
-    val job = supervisor ?: return@withLock
+    if (supervisor == null && state.status != GameServerStatus.IDLE) return@withLock
+    end()
+    state = state.copy(status = GameServerStatus.STOPPED, since = null)
+    note("Stopped by an admin")
+  }
+
+  /**
+   * Ends it like [stop] (if it runs), as [GameServerStatus.IDLE]: nobody plays, and a player's connection starts it
+   * again ([why] in its log). A session that has no seed yet or must not be served (finished) doesn't sleep.
+   */
+  suspend fun sleep(why: String) = mutex.withLock {
+    val seed = withContext(Dispatchers.IO) { newestSeed() } ?: return@withLock
+    val refusal = withContext(Dispatchers.IO) { runCatching { config.refuse(seed) }.getOrNull() }
+    if (refusal != null) {
+      if (supervisor == null) state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
+      return@withLock
+    }
+    end()
+    state = state.copy(status = GameServerStatus.IDLE, seed = seed.name, since = null)
+    note(why)
+  }
+
+  /** Ends the supervisor and its MultiServer (under [mutex]). */
+  private suspend fun end() {
+    val job = supervisor ?: return
     supervisor = null
     stopping = true
     job.cancel()
     withContext(Dispatchers.IO) { endProcess() }
     job.join()
-    state = state.copy(status = GameServerStatus.STOPPED, since = null)
-    note("Stopped by an admin")
   }
 
   suspend fun restart() {
