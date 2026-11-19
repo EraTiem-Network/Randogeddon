@@ -463,8 +463,11 @@ private fun SourceFilter(text: String, color: Color, selected: Boolean, onClick:
   )
 }
 
-/** An apworld file as a bubble: its name and games, coloured by where it comes from; [onRemove]: its ×. */
-/** One file of the library; while removing, [picked] (null: it can't be picked) and a click picks or drops it. */
+/**
+ * One file of the library as a bubble: its games and its version (from its `archipelago.json`), coloured by where it
+ * comes from; on hover its file name and size (and what else is known of it). While removing, [picked] (null: it
+ * can't be picked) and a click picks or drops it.
+ */
 @Composable
 private fun ApworldChip(file: ApworldFile, games: List<String>, picked: Boolean?, onClick: (() -> Unit)?) {
   val p = LocalPalette.current
@@ -475,23 +478,27 @@ private fun ApworldChip(file: ApworldFile, games: List<String>, picked: Boolean?
     file.from != null -> p.warn
     else -> p.key
   }
-  Row(
-    Modifier.clip(CircleShape).background(color.copy(alpha = if (picked == true) 0.32f else 0.15f))
-      .then(if (picked == true) Modifier.border(1.5.dp, color, CircleShape) else Modifier)
-      .then(if (onClick != null) Modifier.hand().clickable(onClick = onClick) else Modifier)
-      .then(if (picked == false) Modifier.border(1.dp, color.copy(alpha = 0.4f), CircleShape) else Modifier)
-      .padding(horizontal = 10.dp, vertical = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Txt(file.file, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
-    val details = listOfNotNull(
-      games.joinToString(", ").ifEmpty { t.apworlds.noGame },
-      file.from?.let { t.apworlds.from(it) },
-      t.fileSize(file.size),
-    )
-    Txt(details.joinToString(" · "), size = 11.5.sp, color = color.copy(alpha = 0.8f), maxLines = 1)
-    if (picked == true) DrawnIcon(Icon.CHECK, color, 12.dp)
+  val title = games.joinToString(", ").ifEmpty { file.game ?: file.file }
+  val about = listOfNotNull(
+    "${file.file} – ${t.fileSize(file.size)}",
+    games.isEmpty().takeIf { it }?.let { t.apworlds.noGame },
+    file.from?.let { t.apworlds.from(it) },
+    file.minimumAp?.let { t.apworlds.needsAp(it) },
+  ).joinToString("\n")
+  Tip(about) {
+    Row(
+      Modifier.clip(CircleShape).background(color.copy(alpha = if (picked == true) 0.32f else 0.15f))
+        .then(if (picked == true) Modifier.border(1.5.dp, color, CircleShape) else Modifier)
+        .then(if (onClick != null) Modifier.hand().clickable(onClick = onClick) else Modifier)
+        .then(if (picked == false) Modifier.border(1.dp, color.copy(alpha = 0.4f), CircleShape) else Modifier)
+        .padding(horizontal = 10.dp, vertical = 3.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      Txt(title, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
+      file.version?.let { Txt("– $it", size = 11.5.sp, color = color.copy(alpha = 0.8f), maxLines = 1) }
+      if (picked == true) DrawnIcon(Icon.CHECK, color, 12.dp)
+    }
   }
 }
 
