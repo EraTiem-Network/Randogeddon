@@ -113,6 +113,34 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
 
+  /** Session [id]'s last generation's log lines after [since] (a part of it at a time); `null`: none. */
+  suspend fun generationLog(id: String, since: Long): LogLines? {
+    val response = request { http.get("${session(id)}/generate/log?since=$since&max=1000") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s last generation's whole log as text (what ran, then its output); `null`: none. */
+  suspend fun generationLogText(id: String): String? {
+    val response = request { http.get("${session(id)}/generate/log.txt") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> response.bodyAsText()
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Ends session [id]'s generation; `false`: none runs there (not yet, or no more). */
+  suspend fun cancelGeneration(id: String): Boolean {
+    val response = request { http.delete("${session(id)}/generate") { auth() } }
+    if (response.status == HttpStatusCode.NotFound) return false
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    return true
+  }
+
   /** How far session [id]'s generation is; `null`: none runs. */
   suspend fun generationProgress(id: String): GenerationProgress? = call { http.get("${session(id)}/progress") { auth() } }
     .takeIf { it.isNotBlank() }?.let { ApiJson.decodeFromString(GenerationProgress.serializer(), it) }
