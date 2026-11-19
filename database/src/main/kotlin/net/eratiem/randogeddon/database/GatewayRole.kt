@@ -3,8 +3,8 @@ package net.eratiem.randogeddon.database
 /**
  * The gateway's own database role. The gateway runs Archipelago's Python next to itself (Generate.py, MultiServer, the
  * apworlds), which could read its database login; so its role gets only what the gateway needs: reading the sessions,
- * the slot passwords and the settings that apply to everyone (how many game servers run at once), and counting a
- * session's time. Nothing of the accounts (password hashes, addresses, logins,
+ * their hosted slots, the slot passwords and the settings that apply to everyone (how many game servers run at once,
+ * when one sleeps), and counting a session's time. Nothing of the accounts (password hashes, addresses, logins,
  * two-factor secrets), and no other writes.
  */
 object GatewayRole {
@@ -26,7 +26,7 @@ object GatewayRole {
       "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM $role",
       "REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM $role",
       "GRANT USAGE ON SCHEMA public TO $role",
-      "GRANT SELECT ON sessions, slot_passwords, app_settings TO $role",
+      "GRANT SELECT ON sessions, session_hosted_slots, slot_passwords, app_settings TO $role",
       "GRANT UPDATE (run_time_ms, counted_until) ON sessions TO $role",
     )
   }

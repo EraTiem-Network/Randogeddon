@@ -10,6 +10,11 @@ const val GAME_SERVERS = "game_servers"
 const val DEFAULT_GAME_SERVERS = 8
 const val MAX_GAME_SERVERS = 100
 
+/** The key of how long a game server runs without players before it sleeps ([AppSettingsStore.idleMinutes]). */
+const val IDLE_MINUTES = "idle_minutes"
+const val DEFAULT_IDLE_MINUTES = 30
+const val MAX_IDLE_MINUTES = 24 * 60
+
 /** What Administrators set for everyone, by key. */
 class AppSettingsStore(private val db: RandogeddonDatabase) {
   suspend fun get(key: String): String? = db.query {
@@ -21,6 +26,12 @@ class AppSettingsStore(private val db: RandogeddonDatabase) {
    * the panel, the gateway too (at its own start as well).
    */
   suspend fun gameServers(): Int = get(GAME_SERVERS)?.toIntOrNull()?.takeIf { it in 0..MAX_GAME_SERVERS } ?: DEFAULT_GAME_SERVERS
+
+  /**
+   * How many minutes a game server runs without a player before it sleeps (it starts again when one connects); 0:
+   * never. A session an Administrator keeps running doesn't sleep.
+   */
+  suspend fun idleMinutes(): Int = get(IDLE_MINUTES)?.toIntOrNull()?.takeIf { it in 0..MAX_IDLE_MINUTES } ?: DEFAULT_IDLE_MINUTES
 
   suspend fun set(key: String, value: String) = db.query {
     val updated = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value }
