@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -150,12 +153,24 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   val idProblem = formProblem ?: idRefused
   // While it generates, the form makes room for the ID and the bar
   var generating by remember { mutableStateOf(false) }
+  // The form shrinks to the bar when it starts generating (the button was at its end, far down): the page goes back
+  // up to it, once it has its new height
+  val card = remember { BringIntoViewRequester() }
+  LaunchedEffect(generating) {
+    if (generating) {
+      withFrameNanos { }
+      card.bringIntoView()
+    }
+  }
   // As many game servers run as the Administrators allow (0: no limit)
   val full = overview != null && overview.capacity > 0 && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
   Section(t.sessionAdmin.newSession, subtitle = overview?.capacity?.let(t.sessionAdmin::newSessionSubtitle) ?: "…") {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+      Modifier.fillMaxWidth().bringIntoViewRequester(card).card(p).padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
       created?.let { result ->
         Created(result.locked, onDone = { created = null })
       }
