@@ -11,6 +11,18 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.2: It isn't stuck
+- Under the generation's bar two pills: how long it runs since its start (each second), and what it does: *working*
+  (with Generate.py's share of one core, which the gateway measures each time the page asks: a working fill or
+  playthrough keeps one busy), *waiting for its turn*, or *no response* once it has used next to no CPU for a
+  minute. So a long stage that says nothing (the playthrough) shows that it works.
+- The texts: the fill no longer "takes the longest"; the playthrough does in a big multiworld (with Archipelago's
+  spoiler level 3, its paths to every item), and says nothing meanwhile. The bar's shares fit that: the fill 30 to
+  50 %, the output 58 to 66 %, the playthrough from 66 %.
+- Tried for what comes next: with the same `--seed` and inputs, `--spoiler_only` at levels 2 and 3 gives the same
+  seed name and every placement the same as the seed's (the demo's 1,934 locations). In the TODO: the spoiler log in
+  stages for every generation (0.19.3), and several generations at once (0.19.4).
+
 ### 0.19.1: Back to the generation's bar
 - *Generate and start* is at the new session form's end; the form shrinks to the generation's bar then, which left
   the page far below it. Now the page goes back up to the bar (also when it comes back after a reload).
