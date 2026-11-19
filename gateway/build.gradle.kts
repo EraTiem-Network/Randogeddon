@@ -29,28 +29,12 @@ dependencies {
   testImplementation(libs.ktor.server.test.host)
 }
 
-application {
-  mainClass = "$group.ApplicationKt"
-}
-
 // Native executable (Linux x86_64), set up in the root build
 graalvmNative {
   binaries {
     named("main") {
       imageName.set("randogeddon-gateway")
     }
-  }
-}
-
-kotlin {
-  jvmToolchain(25)
-}
-
-sourceSets {
-  main {
-    java.srcDirs.clear()
-
-    kotlin.srcDirs("src/main/kotlin")
   }
 }
 

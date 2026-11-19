@@ -13,9 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +58,8 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.Avatar
+import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.Icon
@@ -163,13 +163,7 @@ private fun UserPill(user: AdminUser, onOpen: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current.users
   val name = user.name ?: user.email.orEmpty()
-  Row(
-    Modifier.clip(CircleShape).background(p.panelAlt).border(1.dp, p.border, CircleShape).hand().clickable(onClick = onOpen)
-      .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Avatar(name, 22.dp)
+  AvatarPill(name, p.panelAlt, p.border, onOpen) {
     Txt(name, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, color = if (user.state == AccountState.INVITED) p.muted else p.text)
     if (user.state == AccountState.INVITED) Pill(t.invitedPill, p.accent)
     if (user.administrator) Pill(t.administrator, p.ok)
@@ -195,23 +189,18 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
   val invited = user.state == AccountState.INVITED
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     SelectionContainer {
-      Column(Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp))) {
-        Row(
-          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          Avatar(user.name ?: user.email.orEmpty(), 40.dp)
-          Column(Modifier.weight(1f)) {
-            Txt(user.name ?: user.email.orEmpty(), size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-              if (invited) Pill(u.invitedPill, p.accent)
-              if (user.administrator) Pill(u.administrator, p.ok)
-              user.block?.let { Pill(if (it.until != null) u.timedOutPill else u.suspendedPill, if (it.until != null) p.warn else p.trap) }
-            }
+      DialogCard(560.dp, header = {
+        Avatar(user.name ?: user.email.orEmpty(), 40.dp)
+        Column(Modifier.weight(1f)) {
+          Txt(user.name ?: user.email.orEmpty(), size = 18.sp, weight = FontWeight.Bold, maxLines = 2)
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (invited) Pill(u.invitedPill, p.accent)
+            if (user.administrator) Pill(u.administrator, p.ok)
+            user.block?.let { Pill(if (it.until != null) u.timedOutPill else u.suspendedPill, if (it.until != null) p.warn else p.trap) }
           }
-          IconButton(onClose, Icon.CLOSE)
         }
-        Divider()
+        IconButton(onClose, Icon.CLOSE)
+      }) {
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           val none = u.notAvailable
           // An Administrator with single sign-on has no other way in (their password is one nobody knows)
