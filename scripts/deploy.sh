@@ -3,6 +3,8 @@
 #   ./scripts/deploy.sh             build the native images, push them to the registry tagged with the version and
 #                                   `latest` (the commit tagged v<version>), or else the commit and `edge`; dump the
 #                                   database, switch the server to the new (fixed) tag, check that it runs
+#   ./scripts/deploy.sh --publish   build and push the same, and a release's bridge and GitHub release, but leave the
+#                                   server alone: nothing is copied there and it keeps running what it runs
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
 #                                   README, restoring)
 # A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
@@ -87,6 +89,13 @@ if [[ "${1:-}" == "--rollback" ]]; then
   exit
 fi
 
+live=1
+case "${1:-}" in
+  "") ;;
+  --publish) live= ;;
+  *) echo "Unknown option $1 (--publish, --rollback)"; exit 1 ;;
+esac
+
 [[ -z "$(git status --porcelain)" ]] || { echo "Uncommitted changes: deploy a commit"; exit 1; }
 # A release (the commit tagged v<version>, see README, versions) goes out under its version and `latest`, anything else
 # under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
@@ -118,6 +127,7 @@ docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$moving"
 for image in "tracker:$tag" "gateway:$gateway_tag" "tracker:$moving" "gateway:$moving"; do docker push -q "$IMAGES/$image"; done
 
+if [[ -n "$live" ]]; then
 echo "== The server's files"
 remote "mkdir -p /tmp/randogeddon-deploy"
 scp -q docker-compose.yml docker-compose.proxy.yml scripts/backup.sh scripts/randogeddon-backup.service \
@@ -135,6 +145,9 @@ SH
 
 echo "== Switching to $tag"
 remote "sudo IMAGES='$IMAGES' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"
+else
+  echo "== Published only: the server keeps running what it runs"
+fi
 
 # A release's bridge, as its image serves it
 [[ "$moving" != latest ]] || ./scripts/publish-bridge.sh "$version" "$IMAGES/tracker:$tag"
