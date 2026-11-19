@@ -1,8 +1,6 @@
 package net.eratiem.randogeddon.webapp.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -13,28 +11,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.SessionRole
@@ -77,6 +70,9 @@ import net.eratiem.randogeddon.webapp.dashboard.WatchApp
 import net.eratiem.randogeddon.webapp.dashboard.showHints
 import net.eratiem.randogeddon.webapp.manage.AdminView
 import net.eratiem.randogeddon.webapp.manage.WatchersSection
+import net.eratiem.randogeddon.webapp.api.post
+import net.eratiem.randogeddon.webapp.ui.PageFrame
+import net.eratiem.randogeddon.webapp.ui.rememberNow
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.NARROW
 import net.eratiem.randogeddon.webapp.ui.RandogeddonTheme
@@ -152,14 +148,7 @@ private fun TrackerApp() {
 
 
   // Relative times ("5m ago") and the session duration move on without new data
-  var now by remember { mutableLongStateOf(Platform.now()) }
-  LaunchedEffect(Unit) {
-    while (true) {
-      delay(30_000)
-      now = Platform.now()
-    }
-  }
-  LaunchedEffect(summary?.version) { now = Platform.now() }
+  val now = rememberNow(summary?.version)
 
   var detailSlot by remember { mutableStateOf<Int?>(null) }
   var detailPerson by remember { mutableStateOf<String?>(null) }
@@ -223,180 +212,164 @@ private fun TrackerApp() {
   RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
     val t = LocalTexts.current
-    BoxWithConstraints(
-      // The page colour first: the tint on top of it is translucent
-      Modifier.fillMaxSize().background(p.background).background(
-        Brush.verticalGradient(listOf(p.brandEnd.copy(alpha = if (p.dark) 0.06f else 0.07f), p.background, p.background))
-      )
-    ) {
-      val wide = maxWidth >= WIDE
-      val narrow = maxWidth < NARROW
-      val contentWidth = minOf(maxWidth, 1432.dp) - 32.dp
-      Column(
-        Modifier.fillMaxSize().scrolling().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
-        // Text can be selected (and copied) anywhere on the page
-        SelectionContainer {
-          Column(Modifier.widthIn(max = 1400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GAP)) {
-            val s = summary
-            val user = me ?: run {
-              // Before the login is known: either the login form of index.html covers the page, or the server is away
-              if (unreachable) Txt(
-                t.frame.cantReachServer, color = LocalPalette.current.muted,
-                modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
-              )
-              return@Column
-            }
-            val r = route
-            val dashboard = (r as? Route.Dashboard)?.id
-            // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
-            // the admin panel and Your account keep the dashboard's session in it, a spoiler log its own
-            val keepsSession = adminOpen || r == Route.Settings
-            val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
-            val switchable = sessions.filter { it.myRole != null || it.id == shown }
-            Headline(onHome = { go(Route.Home) })
-            // Without a session of their own: where a new one starts (for who may create one)
-            val newSessionHint = r == Route.Home && loadedSessions != null && switchable.isEmpty() && user.createsSessions
-            Hero(
-              s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
-              sessions = switchable, shown = shown,
-              onSession = { go(Route.Dashboard(it)) },
-              onAllSessions = { go(Route.Home) },
-              // Light, dark, automatic: for the account (and this browser)
-              onToggleTheme = {
-                val next = Themes.mode.next
-                Themes.apply(Themes.theme, next)
-                scope.launch { saveTheme(Themes.theme, next) }
-              },
-              feedVisible = feedVisible,
-              // Only where there is a feed: a session's dashboard, once the session is there
-              onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
-              onLogout = { scope.launch { repository.logout() } },
-              onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
-              settingsOpen = r == Route.Settings,
-              onAdmin = {
-                // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
-                val theirs = selected?.takeIf { id ->
-                  user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
-                }
-                go(if (adminOpen) back(selected) else Route.Admin(theirs))
-              },
-              adminOpen = adminOpen,
-              newSessionHint = newSessionHint,
-              stacked = narrow,
-            )
-            when (r) {
-              is Route.Spoiler -> {
-                SpoilerView(r.id, onBack = { go(if (r.fromAdmin) Route.Admin(r.id) else Route.Dashboard(r.id)) })
-                return@Column
-              }
-              is Route.Admin -> {
-                AdminView(
-                  now, user.administrator, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
-                  onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
-                  onDashboard = { go(Route.Dashboard(it)) },
-                )
-                return@Column
-              }
-              Route.Settings -> {
-                SettingsView(onBack = { go(back(selected)) }, onRenamed = { scope.launch { repository.reloadMe() } })
-                return@Column
-              }
-              is Route.ConfirmEmail -> {
-                ConfirmEmailView(r.token, onSettings = { go(Route.Settings) })
-                return@Column
-              }
-              // [App] shows it
-              is Route.Watch -> return@Column
-              is Route.Invite -> {
-                // Signing up happens logged out (index.html's form); this browser is someone's already
-                Txt(t.frame.loggedInAs(user.name), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  SmallButton(t.common.logOut, { scope.launch { repository.logout() } })
-                  SmallButton(t.common.allYourSessions, { go(Route.Home) })
-                }
-                return@Column
-              }
-              Route.Home -> {
-                if (loadedSessions != null) {
-                  SessionPicker(sessions.filter { it.myRole != null }, onOpen = { go(Route.Dashboard(it)) })
-                }
-                return@Column
-              }
-              is Route.Dashboard -> if (loadedSessions != null && sessions.none { it.id == r.id }) {
-                Txt(t.frame.noSuchSession(r.id), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
-                SmallButton(t.common.allYourSessions, { go(Route.Home) })
-                return@Column
-              }
-            }
-            if (s == null || selected == null) return@Column
-            val entry = sessions.firstOrNull { it.id == selected }
-            val mine = entry?.mySlots?.isNotEmpty() == true
-            val role = entry?.myRole
-            val error = s.error
-            if (s.serverAsleep && s.finishedAt == null) Banner(t.dashboard.serverAsleep)
-            else if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
-            // A Session-Manager is timed out, suspended or gone: who to turn to instead
-            if (s.managerUnavailable) Banner(t.dashboard.managerUnavailable)
-            FinishBanner(
-              s, user.administrator || role == SessionRole.MANAGER,
-              onFinishNow = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish") } },
-              onCancel = { scope.launch { Platform.request("POST", "api/sessions/$selected/manage/finish/cancel") } },
-              onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
-            )
-            val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
-            if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
-              // The tiles and the connection share a row and its height
-              Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-                ConnectionSection(
-                  user.name, connection, selected.orEmpty(), files, mine, role, s,
-                  Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
-                  twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
-                )
-              }
-            } else {
-              ConnectionSection(
-                user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
-                twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
-              )
-              Stats(s, now, contentWidth)
-            }
-            val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
-              // Its place is only offered where it can be beside the players
-              Feed(
-                s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
-                onHide = { setFeedVisible(false) },
-              )
-            }
-            val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
-            if (side) {
-              // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
-              SideBySide(
-                sideFirst = feedPosition == FeedPosition.LEFT,
-                sideWidth = FEED_WIDTH,
-                main = {
-                  Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
-                    People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-                    if (showHints(s)) Hints(s, compact = false)
-                  }
-                },
-                side = { feed(Modifier.fillMaxSize(), true) },
-              )
-            } else {
-              // Narrow screens: left/right means right after the players, "below" at the very end
-              People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
-              if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
-              if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-              if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
-            }
-            // Players add watchers (support helps in the panel)
-            val id = selected
-            if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
+    PageFrame(GAP) { pageWidth, contentWidth ->
+      val wide = pageWidth >= WIDE
+      val narrow = pageWidth < NARROW
+      val s = summary
+      val user = me ?: run {
+        // Before the login is known: either the login form of index.html covers the page, or the server is away
+        if (unreachable) Txt(
+          t.frame.cantReachServer, color = LocalPalette.current.muted,
+          modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
+        )
+        return@PageFrame
+      }
+      val r = route
+      val dashboard = (r as? Route.Dashboard)?.id
+      // The hero's switch: the user's sessions, and the one shown (an admin may watch one they don't play in);
+      // the admin panel and Your account keep the dashboard's session in it, a spoiler log its own
+      val keepsSession = adminOpen || r == Route.Settings
+      val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
+      val switchable = sessions.filter { it.myRole != null || it.id == shown }
+      Headline(onHome = { go(Route.Home) })
+      // Without a session of their own: where a new one starts (for who may create one)
+      val newSessionHint = r == Route.Home && loadedSessions != null && switchable.isEmpty() && user.createsSessions
+      Hero(
+        s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
+        sessions = switchable, shown = shown,
+        onSession = { go(Route.Dashboard(it)) },
+        onAllSessions = { go(Route.Home) },
+        // Light, dark, automatic: for the account (and this browser)
+        onToggleTheme = {
+          val next = Themes.mode.next
+          Themes.apply(Themes.theme, next)
+          scope.launch { saveTheme(Themes.theme, next) }
+        },
+        feedVisible = feedVisible,
+        // Only where there is a feed: a session's dashboard, once the session is there
+        onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
+        onLogout = { scope.launch { repository.logout() } },
+        onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
+        settingsOpen = r == Route.Settings,
+        onAdmin = {
+          // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
+          val theirs = selected?.takeIf { id ->
+            user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
           }
+          go(if (adminOpen) back(selected) else Route.Admin(theirs))
+        },
+        adminOpen = adminOpen,
+        newSessionHint = newSessionHint,
+        stacked = narrow,
+      )
+      when (r) {
+        is Route.Spoiler -> {
+          SpoilerView(r.id, onBack = { go(if (r.fromAdmin) Route.Admin(r.id) else Route.Dashboard(r.id)) })
+          return@PageFrame
+        }
+        is Route.Admin -> {
+          AdminView(
+            now, user.administrator, r.page, onPage = { go(Route.Admin(it)) }, onBack = { go(back(selected)) },
+            onSpoiler = { go(Route.Spoiler(it, fromAdmin = true)) },
+            onDashboard = { go(Route.Dashboard(it)) },
+          )
+          return@PageFrame
+        }
+        Route.Settings -> {
+          SettingsView(onBack = { go(back(selected)) }, onRenamed = { scope.launch { repository.reloadMe() } })
+          return@PageFrame
+        }
+        is Route.ConfirmEmail -> {
+          ConfirmEmailView(r.token, onSettings = { go(Route.Settings) })
+          return@PageFrame
+        }
+        // [App] shows it
+        is Route.Watch -> return@PageFrame
+        is Route.Invite -> {
+          // Signing up happens logged out (index.html's form); this browser is someone's already
+          Txt(t.frame.loggedInAs(user.name), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SmallButton(t.common.logOut, { scope.launch { repository.logout() } })
+            SmallButton(t.common.allYourSessions, { go(Route.Home) })
+          }
+          return@PageFrame
+        }
+        Route.Home -> {
+          if (loadedSessions != null) {
+            SessionPicker(sessions.filter { it.myRole != null }, onOpen = { go(Route.Dashboard(it)) })
+          }
+          return@PageFrame
+        }
+        is Route.Dashboard -> if (loadedSessions != null && sessions.none { it.id == r.id }) {
+          Txt(t.frame.noSuchSession(r.id), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
+          SmallButton(t.common.allYourSessions, { go(Route.Home) })
+          return@PageFrame
         }
       }
+      if (s == null || selected == null) return@PageFrame
+      val entry = sessions.firstOrNull { it.id == selected }
+      val mine = entry?.mySlots?.isNotEmpty() == true
+      val role = entry?.myRole
+      val error = s.error
+      if (s.serverAsleep && s.finishedAt == null) Banner(t.dashboard.serverAsleep)
+      else if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
+      // A Session-Manager is timed out, suspended or gone: who to turn to instead
+      if (s.managerUnavailable) Banner(t.dashboard.managerUnavailable)
+      FinishBanner(
+        s, user.administrator || role == SessionRole.MANAGER,
+        onFinishNow = { scope.launch { post("api/sessions/$selected/manage/finish") } },
+        onCancel = { scope.launch { post("api/sessions/$selected/manage/finish/cancel") } },
+        onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
+      )
+      val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
+      if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
+        // The tiles and the connection share a row and its height
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
+          Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+          ConnectionSection(
+            user.name, connection, selected.orEmpty(), files, mine, role, s,
+            Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
+            twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
+          )
+        }
+      } else {
+        ConnectionSection(
+          user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
+          twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
+        )
+        Stats(s, now, contentWidth)
+      }
+      val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
+        // Its place is only offered where it can be beside the players
+        Feed(
+          s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
+          onHide = { setFeedVisible(false) },
+        )
+      }
+      val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
+      if (side) {
+        // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
+        SideBySide(
+          sideFirst = feedPosition == FeedPosition.LEFT,
+          sideWidth = FEED_WIDTH,
+          main = {
+            Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
+              People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+              if (showHints(s)) Hints(s, compact = false)
+            }
+          },
+          side = { feed(Modifier.fillMaxSize(), true) },
+        )
+      } else {
+        // Narrow screens: left/right means right after the players, "below" at the very end
+        People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+        if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+        if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
+        if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+      }
+      // Players add watchers (support helps in the panel)
+      val id = selected
+      if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
     }
     detailPerson?.let { name ->
       summary?.let { s ->
