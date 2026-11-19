@@ -373,7 +373,8 @@ docker compose up -d
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
    *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
-   is; the gateway generates one seed at a time, so a second session waits and says so). It generates in the
+   is; the gateway generates as many seeds at once as it has cores, less one (`GENERATIONS_AT_ONCE`), so a session
+   beyond that waits and says so). It generates in the
    background: the page can be closed, and shows it again (also after a reload) until it is done; *Cancel* ends it
    while it generates, and its ID is free again. Under the bar, Generate.py's output, newest on top, a page at a
    time and searchable; if it fails, the whole output can be downloaded, with the command that ran first. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
@@ -448,9 +449,13 @@ finished session's don't start this way. An Administrator can keep a session's g
   the earlier one only when it places every item the same as the seed (else it stays, and the panel says why). The
   spoiler log, the hints and the cheats wait for level 2; meanwhile the session's top panel shows *spoiler log being
   completed* (for everyone), and the panel's *Spoiler log* (Session-Managers, Administrators, support) how far it is,
-  the run going now and its log. One run at a time, and none while a new session waits for its generation (a level-3
-  run makes way for it, and for a change of the APWorlds, and starts over after). Sessions from before 0.19.3 have
-  their complete spoiler log already.
+  the run going now and its log. These runs share the generations' places (`GENERATIONS_AT_ONCE`) with the new
+  sessions' seeds and leave one of them free (where there is more than one). None starts while a new session waits
+  for a place; if none is free, a level-3 run is paused for the new session (the panel says so) and goes on after,
+  where it was. A level-2 run is never paused: the new session waits for it. A change of the APWorlds waits for the
+  seeds and level-2 runs that are going; level-3 runs end for it and start over after. Until its spoiler log has its
+  playthrough, a session shows no *Spoiler log* button and no *Cheats* (or support) section. Sessions from before
+  0.19.3 have their complete spoiler log already.
 - **Spoiler log:** the seed's spoiler log, with the playthrough sphere by sphere and the whole log
   (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
   log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a
