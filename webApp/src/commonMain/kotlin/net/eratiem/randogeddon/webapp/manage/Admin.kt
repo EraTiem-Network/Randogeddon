@@ -3,20 +3,14 @@ package net.eratiem.randogeddon.webapp.manage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,8 +30,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +49,7 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.StatusPill
+import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.Icon
@@ -70,7 +63,6 @@ import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.hand
-import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /**
  * The panel, for everyone: the sessions the user manages (an [administrator]: every session). In a frame on top, one
@@ -307,36 +299,13 @@ private fun ServerControls(
   }
 }
 
+/** The game server's output, newest on top, a page at a time and searchable; the gateway's own notes stand out. */
 @Composable
 private fun LogSection(log: List<LogLine>) {
   val p = LocalPalette.current
-  val scroll = rememberScrollState()
-  // Shows new lines while at the top; scrolled down, it stays on the lines it shows
-  var follow by remember { mutableStateOf(true) }
-  var lastMax by remember { mutableStateOf(0) }
-  LaunchedEffect(scroll.value) { follow = scroll.value < 40 }
-  LaunchedEffect(scroll.maxValue) {
-    val grown = scroll.maxValue - lastMax
-    lastMax = scroll.maxValue
-    if (!follow && grown > 0) scroll.scrollBy(grown.toFloat())
-  }
-  Section(LocalTexts.current.panel.log, subtitle = LocalTexts.current.panel.logSubtitle) {
-    Box(Modifier.fillMaxWidth().card(p).height(420.dp)) {
-      SelectionContainer {
-        Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
-          if (log.isEmpty()) Txt(LocalTexts.current.panel.nothingYet, size = 13.sp, color = p.muted)
-          log.asReversed().forEach { line ->
-            BasicText(
-              line.text,
-              style = TextStyle(
-                color = if (line.text.startsWith("[gateway]")) p.accent else p.text,
-                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-              ),
-            )
-          }
-        }
-      }
-    }
+  val t = LocalTexts.current
+  Section(t.panel.log, subtitle = t.panel.logSubtitle) {
+    LogView(log, t.panel.nothingYet, color = { line -> if (line.text.startsWith("[gateway]")) p.accent else null })
   }
 }
 

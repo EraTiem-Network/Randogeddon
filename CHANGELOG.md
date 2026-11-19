@@ -9,6 +9,25 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.12: Generation in the background, with its log; tips that stay
+- **A new session generates in the background:** the page's request answered only when the session was there (up
+  to `GENERATION_MINUTES`), and closing the page lost what came after the generation (the session's setup, its
+  start). Now the tracker checks the form at once and runs the generation and the setup as a job of its own; the
+  page follows it (and finds it again after a reload) and shows the session, the failure, or that it was cancelled.
+- **Cancel:** while it generates (also while it waits for its turn), *Cancel* ends Generate.py on the gateway; its ID
+  is free again. Too late once the seed is there (it is being set up then).
+- **Generate.py's output under the bar:** its whole output (the last 20,000 lines), newest on top, 300 lines a page
+  with a search (as the spoiler log's: the lines found counted and marked, Enter goes from one to the next). It
+  starts with what ran: the directory and the command (`python Generate.py --player_files_path … --outputpath …`) and
+  the YAMLs. A failed generation's log stays (an hour) and can be downloaded, with the command.
+- **The game server's log too:** the panel keeps its last 10,000 lines (was 2,000) and shows them the same way, a page
+  at a time and searchable; a browser lagged with thousands of lines at once.
+- **Tips stay while the pointer is on them:** a tip with no room below came up under the pointer, which closed it,
+  which showed it again, without end. A tip now stays while the pointer is on it or on what it explains (a moment's
+  grace for the way between). The APWorld pills' errors (Archipelago's message) are as wide as the window allows.
+- The routes: `POST /api/sessions` answers 202 with the creation; `GET /api/sessions/new/creation[/{id}]`, its
+  `/log?since=` and `/log.txt`, `DELETE` to cancel (or forget one that ended); the creator's and Administrators'.
+
 ### 0.18.11: The web app's shared helpers, and the browser's own menu
 - **One request helper:** the web app's requests go through `call` (with the answer's serializer instead of a decode
   of its own at each of 56 places) and `load` (for what is shown when it is there: the session list, a player's

@@ -112,15 +112,24 @@ def create(id_: str, group: str):
               for w in setup["worlds"]]
     request = {"id": id_, "yamls": yamls, "worlds": worlds, "options": setup.get("options", {})}
     for attempt in range(1, 6):
-        status, answer = call("POST", "/api/sessions", request, timeout=12 * 60)
-        if status != 422:
+        status, answer = call("POST", "/api/sessions", request)
+        if status != 202:
+            sys.exit(f"{id_}: {status} {answer}")
+        # It generates in the background: asked until it ended
+        while answer["state"] == "running":
+            time.sleep(2)
+            status, answer = call("GET", f"/api/sessions/new/creation/{id_}")
+            if status != 200:
+                sys.exit(f"{id_}: {status} {answer}")
+        call("DELETE", f"/api/sessions/new/creation/{id_}")
+        if answer["state"] == "done":
             break
-        print(f"{id_}: no seed (attempt {attempt}): {answer.get('message', '').splitlines()[0]}", file=sys.stderr)
+        message = (answer.get("error") or {}).get("message", answer["state"])
+        print(f"{id_}: no seed (attempt {attempt}): {message.splitlines()[0]}", file=sys.stderr)
     else:
         sys.exit(3)
-    if status != 200:
-        sys.exit(f"{id_}: {status} {answer}")
-    print(f"Session {id_} (seed {answer['seedName']}); locked: {', '.join(answer['locked']) or 'none'}")
+    created = answer["created"]
+    print(f"Session {id_} (seed {created['seedName']}); locked: {', '.join(created['locked']) or 'none'}")
 
 
 def prune(keep: list[str]):

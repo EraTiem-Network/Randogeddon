@@ -17,7 +17,8 @@ import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.webapp.app.Platform
 
-private const val MAX_LOG_LINES = 2000
+/** As many lines as the gateway keeps of a game server's output; the panel shows them a page at a time. */
+private const val MAX_LOG_LINES = 10_000
 
 /** The admin panel's view of session [id]'s game server: its state and log over one stream, and the actions. */
 class AdminRepository(private val scope: CoroutineScope, private val id: String) {

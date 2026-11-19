@@ -309,7 +309,8 @@ private fun UploadPillView(pill: UploadPill) {
     UploadState.ASKING -> texts.pillAsking
     else -> texts.pillChecking
   }
-  Tip(tip) {
+  // Archipelago's message can be long: as wide as the window allows
+  Tip(tip, wide = pill.detail != null) {
     Box(
       Modifier.clip(CircleShape).background(color.copy(alpha = 0.12f)).border(1.dp, color.copy(alpha = 0.5f), CircleShape),
     ) {

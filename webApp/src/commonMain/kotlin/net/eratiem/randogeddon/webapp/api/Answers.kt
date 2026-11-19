@@ -8,9 +8,9 @@ import net.eratiem.randogeddon.webapp.app.Languages
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.word
 
-/** POST without a body; the error message, or `null`. */
-internal suspend fun post(path: String, body: String? = null): String? =
-  (call("POST", path, body) { } as? Answer.Failed)?.message
+/** POST (or [method]) with an answer of no interest; the error message, or `null`. */
+internal suspend fun post(path: String, body: String? = null, method: String = "POST"): String? =
+  (call(method, path, body) { } as? Answer.Failed)?.message
 
 /** An answer of the admin API: the decoded body, or the error message. */
 internal sealed interface Answer<out T> {

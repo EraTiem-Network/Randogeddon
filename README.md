@@ -304,7 +304,10 @@ docker compose up -d
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
    *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
-   is; the gateway generates one seed at a time, so a second session waits and says so). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   is; the gateway generates one seed at a time, so a second session waits and says so). It generates in the
+   background: the page can be closed, and shows it again (also after a reload) until it is done; *Cancel* ends it
+   while it generates, and its ID is free again. Under the bar, Generate.py's output, newest on top, a page at a
+   time and searchable; if it fails, the whole output can be downloaded, with the command that ran first. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
    long press on a phone. The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A generation that takes longer than `GENERATION_MINUTES`
    (default 60) is stopped, and the panel says so; Archipelago fills on one core, so a big multiworld (thousands of
@@ -427,7 +430,8 @@ its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **Pe
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
 share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
-them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
+them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live
+(the last 10,000 lines, newest on top, a page at a time and searchable),
 and has the server console:
 
 ```

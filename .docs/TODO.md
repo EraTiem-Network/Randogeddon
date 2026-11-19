@@ -754,10 +754,16 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
       30 minutes; hosted slots don't count; Administrators can keep a session running), and starts again when a player
       connects, if there is room; at the gateway's start every session sleeps
-- [ ] A generation in the background, and cancelling it (asked for later, 0.18.12): creating a session waits for its
+- [x] A generation in the background, and cancelling it (asked for later, 0.18.12): creating a session waits for its
       whole generation in the page's request (up to `GENERATION_MINUTES`), so closing the page loses what comes after
       it (the session's setup, its start); the tracker runs it as a job of its own instead, the panel shows one that
       runs (after a reload too) and its end, and *Cancel* ends Generate.py on the gateway and frees the ID again
+- [x] The generation's log under its bar (asked for later, 0.18.12): Generate.py's whole output, newest on top, a page
+      at a time with a search; a failed one's to download, with the command that ran; the game server's log a page at a
+      time with a search too
+- [x] Tips that keep themselves open (asked for later, 0.18.12): one that came up under the pointer closed and opened
+      again and again; a tip stays while the pointer is on it or its anchor. The APWorld pills' errors as wide as the
+      window allows
 - [ ] The gateway on demand (asked for later): its container runs all the time, also without a session that runs
       (363 MiB with none, 0.18.1); it could start when it is needed (a generation, any session's game server to run,
       a player connecting to a sleeping one) and stop again when no game server runs and nothing generates
