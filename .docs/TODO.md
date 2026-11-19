@@ -764,7 +764,8 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Tips that keep themselves open (asked for later, 0.18.12): one that came up under the pointer closed and opened
       again and again; a tip stays while the pointer is on it or its anchor. The APWorld pills' errors as wide as the
       window allows
-- [ ] The gateway on demand (asked for later): its container runs all the time, also without a session that runs
-      (363 MiB with none, 0.18.1); it could start when it is needed (a generation, any session's game server to run,
-      a player connecting to a sleeping one) and stop again when no game server runs and nothing generates
+- [x] Game servers only while they are needed (asked for later; noted here first, wrongly, as "the gateway on
+      demand"): that is 0.18.10's sleep and start on connect. Generating doesn't use a game server (the gateway runs
+      `Generate.py` itself), and the gateway with every session asleep needs some 35 MB. How it fits together, with two
+      diagrams, in the README (0.18.13: *Sessions and their game servers*)
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more

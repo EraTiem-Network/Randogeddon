@@ -163,7 +163,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override fun sessionsRunning(running: Int, inUse: Int, capacity: Int) =
     "$running ${if (running == 1) "session" else "sessions"} running · " +
       (if (capacity == 0) "$inUse game servers in use (no limit)" else "$inUse of $capacity game servers in use") +
-      " (a finished session doesn't take one)"
+      " (a sleeping or finished session doesn't take one)"
   override fun server(status: GameServerStatus) = when (status) {
     GameServerStatus.RUNNING -> "server running"
     GameServerStatus.STARTING -> "server starting"
@@ -339,7 +339,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override fun sessionsRunning(running: Int, inUse: Int, capacity: Int) =
     "$running ${if (running == 1) "Session läuft" else "Sessions laufen"} · " +
       (if (capacity == 0) "$inUse Spielserver belegt (ohne Grenze)" else "$inUse von $capacity Spielservern belegt") +
-      " (eine beendete Session belegt keinen)"
+      " (eine schlafende oder beendete Session belegt keinen)"
   override fun server(status: GameServerStatus) = when (status) {
     GameServerStatus.RUNNING -> "Server läuft"
     GameServerStatus.STARTING -> "Server startet"

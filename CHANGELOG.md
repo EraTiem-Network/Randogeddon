@@ -9,6 +9,17 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.13: How the sessions' game servers work, explained
+- The README's *Sessions and their game servers*: how a session is created (a diagram from the form to its game
+  server: the tracker's checks, `Generate.py` in the gateway, one at a time, the setup, the start) and a game
+  server's life (a diagram of its states: starting, running, asleep, crashed, given up, stopped), which of them count
+  towards *Game servers at once*, and what a gateway start does. A seed isn't made by a game server; game servers
+  only run while they are needed (since 0.18.10).
+- The README's first diagram shows the player's PC with Randogeddon Bridge (optional: a game without TLS connects to it
+  on `localhost`, it takes the connection on over `wss://` and logs in to the tracker with its key).
+- The panel's count says that a sleeping session doesn't take a game server either.
+- The TODO's "gateway on demand" set right: what was asked for were the game servers, done in 0.18.10.
+
 ### 0.18.12: Generation in the background, with its log; tips that stay
 - **A new session generates in the background:** the page's request answered only when the session was there (up
   to `GENERATION_MINUTES`), and closing the page lost what came after the generation (the session's setup, its
