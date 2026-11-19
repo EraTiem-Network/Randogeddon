@@ -4,8 +4,11 @@ import net.eratiem.randogeddon.server.admin.SessionLimit
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
+import io.ktor.server.http.content.CompressedFileType
+import io.ktor.server.http.content.preCompressed
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
@@ -20,6 +23,7 @@ import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.account.TwoFactor
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
@@ -33,6 +37,7 @@ import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.ktor.ext.inject
+import java.io.File
 
 private val HASHED = Regex("[0-9a-f]{16,}\\.wasm")
 
@@ -60,6 +65,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val bridgeKeys by inject<BridgeKeys>()
   val attempts by inject<LoginAttempts>()
   val sessionLimit by inject<SessionLimit>()
+  val gameServerLimit by inject<GameServerLimit>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -85,7 +91,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)
@@ -96,19 +102,28 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       call.respondText("""{"ok":true}""", ContentType.Application.Json)
     }
 
-    // The web app. The .wasm files are named after their content hash and never change; everything else is
-    // revalidated (ETag/Last-Modified), so a new build is picked up on the next load
-    staticFiles("/", trackerConfig.webDir.toFile(), index = "index.html") {
-      cacheControl { file ->
-        if (HASHED.matches(file.name)) listOf(CacheControl.MaxAge(maxAgeSeconds = 31_536_000, visibility = CacheControl.Visibility.Public))
-        else listOf(CacheControl.NoCache(null))
-      }
-      contentType { file ->
-        when (file.extension) {
-          "wasm" -> ContentType("application", "wasm")
-          "webmanifest" -> ContentType("application", "manifest+json")
-          else -> null
-        }
+    webApp(trackerConfig.webDir.toFile())
+  }
+}
+
+/**
+ * The web app from [dir]. The .wasm files are named after their content hash and never change; everything else is
+ * revalidated (ETag/Last-Modified), so a new build is picked up on the next load. Files compressed when the image was
+ * built (`.br`, `.gz` beside them, kotlin.Dockerfile) go out as they are, for a browser that takes them; the others
+ * (a local build) are compressed per request by [Compression][io.ktor.server.plugins.compression.Compression].
+ */
+fun Route.webApp(dir: File) {
+  staticFiles("/", dir, index = "index.html") {
+    preCompressed(CompressedFileType.BROTLI, CompressedFileType.GZIP)
+    cacheControl { file ->
+      if (HASHED.matches(file.name)) listOf(CacheControl.MaxAge(maxAgeSeconds = 31_536_000, visibility = CacheControl.Visibility.Public))
+      else listOf(CacheControl.NoCache(null))
+    }
+    contentType { file ->
+      when (file.extension) {
+        "wasm" -> ContentType("application", "wasm")
+        "webmanifest" -> ContentType("application", "manifest+json")
+        else -> null
       }
     }
   }

@@ -1,33 +1,12 @@
 package net.eratiem.randogeddon.gateway
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import net.eratiem.randogeddon.shared.ApiJson
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
-import net.eratiem.randogeddon.shared.ApworldConflict
-import net.eratiem.randogeddon.shared.ApworldFile
-import net.eratiem.randogeddon.shared.ApworldRemoval
-import net.eratiem.randogeddon.shared.ApworldResults
-import net.eratiem.randogeddon.shared.ApworldResult
-import net.eratiem.randogeddon.shared.ApworldTry
-import net.eratiem.randogeddon.shared.ApworldUpload
-import net.eratiem.randogeddon.shared.ArchipelagoInfo
-import net.eratiem.randogeddon.shared.FailedLoad
-import net.eratiem.randogeddon.shared.GameInfo
-import net.eratiem.randogeddon.shared.GameSource
-import net.eratiem.randogeddon.shared.ReleaseInfo
-import net.eratiem.randogeddon.shared.Suspect
-import org.slf4j.LoggerFactory
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
@@ -42,6 +21,29 @@ import kotlin.io.path.readBytes
 import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ApworldConflict
+import net.eratiem.randogeddon.shared.ApworldFile
+import net.eratiem.randogeddon.shared.ApworldRemoval
+import net.eratiem.randogeddon.shared.ApworldResult
+import net.eratiem.randogeddon.shared.ApworldResults
+import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.ApworldUpload
+import net.eratiem.randogeddon.shared.ArchipelagoInfo
+import net.eratiem.randogeddon.shared.FailedLoad
+import net.eratiem.randogeddon.shared.GameInfo
+import net.eratiem.randogeddon.shared.GameSource
+import net.eratiem.randogeddon.shared.ReleaseInfo
+import net.eratiem.randogeddon.shared.Suspect
+import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Apworlds")
 
@@ -89,12 +91,16 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   /** The library of every release, and the hand-placed files (listed under each release). */
   fun files(): List<ApworldFile> = archipelago.versions().flatMap { version ->
     val uploaded = uploads(version).map { file ->
-      ApworldFile(file.name, version, GameSource.UPLOADED, from = origin(file), size = file.fileSize())
+      ApworldFile(file.name, version, GameSource.UPLOADED, from = origin(file), size = file.fileSize()).described(file)
     }
     val hand = manualFiles().filter { m -> uploaded.none { it.file == m.name } }
-      .map { ApworldFile(it.name, version, GameSource.MANUAL, size = it.fileSize()) }
+      .map { ApworldFile(it.name, version, GameSource.MANUAL, size = it.fileSize()).described(it) }
     uploaded + hand
   }
+
+  /** With what its `archipelago.json` says, if it has one. */
+  private fun ApworldFile.described(path: Path): ApworldFile =
+    apworldManifest(path)?.let { copy(game = it.game, version = it.version, minimumAp = it.minimumAp) } ?: this
 
   /**
    * Adds uploaded apworlds to the release's library, together (the release lists its games once for all of them). Each
@@ -393,3 +399,26 @@ internal fun suspects(games: List<String>, log: List<String>, release: ReleaseIn
     }
   }.sortedBy { it.second }.map { it.first }
 }
+
+/** What an apworld's `archipelago.json` says about it (Archipelago 0.6 and newer): its game, version, oldest release. */
+data class ApworldManifest(val game: String?, val version: String?, val minimumAp: String?)
+
+/**
+ * [apworld]'s `archipelago.json` (at its top or in its one directory), read without loading it; `null` without one,
+ * or one that isn't JSON. Values that aren't short text are left out.
+ */
+fun apworldManifest(apworld: Path): ApworldManifest? = runCatching {
+  ZipFile(apworld.toFile()).use { zip ->
+    val entry = zip.entries().asSequence()
+      .filter { !it.isDirectory && it.name.substringAfterLast('/') == "archipelago.json" && it.name.count { c -> c == '/' } <= 1 }
+      .minByOrNull { it.name.length } ?: return@use null
+    if (entry.size > MANIFEST_BYTES) return@use null
+    val json = zip.getInputStream(entry).use { it.readNBytes(MANIFEST_BYTES.toInt()) }.decodeToString()
+    val fields = ApiJson.parseToJsonElement(json) as? JsonObject ?: return@use null
+    fun text(key: String) = (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.take(80)?.ifEmpty { null }
+    ApworldManifest(text("game"), text("world_version"), text("minimum_ap_version"))
+  }
+}.getOrNull()
+
+/** An `archipelago.json` is a few lines: more is no manifest. */
+private const val MANIFEST_BYTES = 64 * 1024L

@@ -14,18 +14,6 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
-kotlin {
-  jvmToolchain(25)
-}
-
-sourceSets {
-  main {
-    java.srcDirs.clear()
-
-    kotlin.srcDirs("src/main/kotlin")
-  }
-}
-
 // Against a real PostgreSQL (Testcontainers, needs Docker), so not part of `test` and the Docker image build:
 // `./gradlew :database:integrationTest`
 val integrationTest by sourceSets.creating {

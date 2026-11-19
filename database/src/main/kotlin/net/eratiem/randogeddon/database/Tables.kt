@@ -123,6 +123,8 @@ object SessionsTable : Table("sessions") {
   val keep = bool("keep").default(false)
   /** Its auto-deletion was enabled again then: the retention counts from there (`null`: from [finishedAt]). */
   val retainedSince = timestamp("retained_since").nullable()
+  /** Its game server keeps running without players (an Administrator's choice, V23); else it sleeps when idle. */
+  val keepRunning = bool("keep_running").default(false)
   /** Who created it (V21): it counts towards their limit while it runs. `null`: nobody known (a seed from the CLI). */
   val createdBy = uuid("created_by").references(UsersTable.id).nullable()
   override val primaryKey = PrimaryKey(id)

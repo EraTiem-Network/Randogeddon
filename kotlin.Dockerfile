@@ -26,10 +26,12 @@ COPY webApp webApp
 ARG NATIVE_MARCH=x86-64-v3
 ARG RANDOGEDDON_MAVEN=
 ARG RANDOGEDDON_MAVEN_NAME=
-# Mounted with a .kts name: Gradle picks the script language from the file extension
+# Mounted with a .kts name: Gradle picks the script language from the file extension. --build-cache: the tasks' results
+# are kept in the cache mount (Gradle's home), so a change to one app doesn't compile, test and natively build the
+# other again (the build directories start empty in every image build)
 RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gradle.kts \
     --mount=type=cache,target=/gradle-home \
-    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
+    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --build-cache --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
@@ -68,11 +70,21 @@ FROM debian:bookworm-slim AS runtime
 RUN useradd --uid 1000 --home /app --no-create-home randogeddon && mkdir -p /app && chown randogeddon /app
 WORKDIR /app
 
+# The web app's files compressed once, at their best (Brotli 11, gzip 9), next to each file as .br and .gz: the
+# tracker sends those as they are (Routings.kt, preCompressed) instead of compressing every request. Only what is
+# worth it: text and wasm of 1 KB and more; images and woff2 are compressed already.
+FROM debian:bookworm-slim AS web
+RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /web
+RUN find /web -type f -size +1k \( -name '*.wasm' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' \
+      -o -name '*.json' -o -name '*.webmanifest' -o -name '*.svg' -o -name '*.map' -o -name '*.ttf' -o -name '*.otf' \
+      -o -name '*.txt' \) -exec brotli -q 11 -k {} \; -exec gzip -9 -k -n {} \;
+
 FROM runtime AS tracker
 # The named volume behind /state takes this directory's owner, so the tracker can write its history there
 RUN mkdir -p /state && chown randogeddon /state
 COPY --from=build /src/server/build/native/nativeCompile/randogeddon /src/server/build/native/nativeCompile/*.so /app/
-COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /app/web
+COPY --from=web /web /app/web
 # Randogeddon Bridge's builds, offered under Your connection (/downloads/bridge/<file>)
 COPY --from=bridge /out /app/bridge
 # `docker compose exec tracker randogeddon admins` finds the binary on the PATH
@@ -90,7 +102,9 @@ CMD ["/app/randogeddon"]
 
 # Archipelago from a pinned upstream release, for the game server and seed generation. Debian 12 (glibc 2.36), so the
 # native gateway runs on it too.
-FROM python:3.12-slim-bookworm AS archipelago
+# Archipelago installed with what its install needs (git, compilers for the speedups and the worlds' packages); the
+# stage below takes only the result, without them (they were 350 MB of the gateway image)
+FROM python:3.12-slim-bookworm AS archipelago-build
 ARG AP_VERSION=0.6.8
 # The commit the release's tag stands for: a tag can be moved, the commit can't (empty: not checked)
 ARG AP_COMMIT=54803be064fc7e80c4628777ed0b46a9390f255f
@@ -115,6 +129,20 @@ RUN python ModuleUpdate.py -y
 # The newest certificate bundle, whatever the requirements pulled in (scripts/audit.sh: an old one has known flaws)
 # hadolint ignore=DL3013
 RUN pip install --no-cache-dir --upgrade certifi
+
+# Archipelago as it runs: the installed packages and its directory, and the one system library it needs (libtk8.6)
+FROM python:3.12-slim-bookworm AS archipelago
+ARG AP_VERSION=0.6.8
+ENV PYTHONUNBUFFERED=1 \
+    AP_HOME=/opt/archipelago/${AP_VERSION}
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libtk8.6 \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=archipelago-build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=archipelago-build /usr/local/bin /usr/local/bin
+COPY --from=archipelago-build ${AP_HOME} ${AP_HOME}
+WORKDIR ${AP_HOME}
 # Never try to pip-install anything at runtime
 ENV SKIP_REQUIREMENTS_UPDATE=true
 

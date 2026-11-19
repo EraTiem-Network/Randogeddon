@@ -27,6 +27,8 @@ interface PanelTexts {
   val log: String
   val logSubtitle: String
   val nothingYet: String
+  val newerLines: String
+  val olderLines: String
   val console: String
   val consoleSubtitle: String
   val consoleTip: String
@@ -43,6 +45,8 @@ internal object EnglishPanel : PanelTexts {
     GameServerStatus.RUNNING -> "running"
     GameServerStatus.STARTING -> "starting"
     GameServerStatus.CRASHED -> "crashed"
+    GameServerStatus.FAILED -> "gave up (crashed again and again)"
+    GameServerStatus.IDLE -> "asleep (starts when a player connects)"
     GameServerStatus.STOPPED -> "stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
@@ -64,6 +68,8 @@ internal object EnglishPanel : PanelTexts {
   override val log = "Log"
   override val logSubtitle = "the game server's output, newest on top"
   override val nothingYet = "Nothing yet."
+  override val newerLines = "Newer lines"
+  override val olderLines = "Older lines"
   override val console = "Console"
   override val consoleSubtitle = "server commands, e.g. /players, /send <slot> <item>, /hint <slot> <item>"
   override val consoleTip =
@@ -83,6 +89,8 @@ internal object GermanPanel : PanelTexts {
     GameServerStatus.RUNNING -> "läuft"
     GameServerStatus.STARTING -> "startet"
     GameServerStatus.CRASHED -> "abgestürzt"
+    GameServerStatus.FAILED -> "aufgegeben (immer wieder abgestürzt)"
+    GameServerStatus.IDLE -> "schläft (startet, sobald jemand verbindet)"
     GameServerStatus.STOPPED -> "gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }
@@ -107,6 +115,8 @@ internal object GermanPanel : PanelTexts {
   override val log = "Log"
   override val logSubtitle = "die Ausgabe des Spielservers, neueste oben"
   override val nothingYet = "Noch nichts."
+  override val newerLines = "Neuere Zeilen"
+  override val olderLines = "Ältere Zeilen"
   override val console = "Konsole"
   override val consoleSubtitle = "Server-Befehle, z. B. /players, /send <Slot> <Item>, /hint <Slot> <Item>"
   override val consoleTip =

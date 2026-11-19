@@ -9,6 +9,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -164,6 +165,36 @@ class StoresTest {
   }
 
   @Test
+  fun `the gateway's role reads whether a session sleeps (kept running, its hosted slots, the setting)`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val alice = users.create("Alice", "hash")
+    setups.create(
+      "sleepy-otter", "seed-sleepy", "0.6.8", "{}",
+      mapOf("Alice-HK" to listOf(alice.id), "Hosted-Game" to emptyList()), hosted = setOf("Hosted-Game"),
+    )
+    AppSettingsStore(db).set(IDLE_MINUTES, "45")
+    GatewayRole.ensure(db, "sleep_gateway", "sleep-password")
+    RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "sleep_gateway", "sleep-password"), migrate = false, poolSize = 1)
+      .use { gateway ->
+        val read = SessionSetupStore(gateway)
+        assertEquals(IdleRules(keepRunning = false, hosted = setOf("Hosted-Game")), read.idleRules("seed-sleepy"))
+        assertEquals(45, AppSettingsStore(gateway).idleMinutes())
+        assertTrue(setups.setKeepRunning("seed-sleepy", true))
+        assertEquals(true, read.idleRules("seed-sleepy")?.keepRunning)
+        assertNull(read.idleRules("nope"))
+        // It reads, it doesn't change
+        assertFailsWith<Exception> { read.setKeepRunning("seed-sleepy", false) }
+      }
+    assertEquals(true, setups.of("seed-sleepy")?.keepRunning)
+    assertFalse(setups.setKeepRunning("nope", true))
+    AppSettingsStore(db).set(IDLE_MINUTES, "9999")
+    // Out of range: the default
+    assertEquals(DEFAULT_IDLE_MINUTES, AppSettingsStore(db).idleMinutes())
+    assertTrue(setups.delete("seed-sleepy"))
+  }
+
+  @Test
   fun `a session finishes, is listed as finished, and can be reopened`() = runBlocking {
     val finishes = SessionFinishStore(db)
     val t0 = Instant.parse("2026-11-13T20:00:00Z")
@@ -240,6 +271,20 @@ class StoresTest {
     val next = slots.ensure("seed2", listOf("Alice-HK"), generate)
     assertNotEquals(first["Alice-HK"], next["Alice-HK"])
     assertEquals(emptyMap(), slots.passwords("unknown"))
+  }
+
+  @Test
+  fun `an invited player is in a session without anything of their address, then by their name`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val invited = users.invite("john.smith@example.org")
+    setups.create("quiet-heron", "seed-heron", "0.6.8", "{}", mapOf("John-HK" to listOf(invited.id)))
+    val before = setups.of("seed-heron")!!.worlds["John-HK"].orEmpty()
+    assertEquals(listOf("Invited-${invited.id.toString().take(4)}"), before)
+    assertTrue(before.none { "john" in it.lowercase() || "@" in it })
+    assertTrue(users.signUp(invited.id, "Johnny", "hash", "6m"))
+    assertEquals(listOf("Johnny"), setups.of("seed-heron")!!.worlds["John-HK"])
+    assertTrue(setups.delete("seed-heron"))
   }
 
   @Test

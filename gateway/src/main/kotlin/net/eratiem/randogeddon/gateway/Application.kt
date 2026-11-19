@@ -30,6 +30,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.database.DEFAULT_GAME_SERVERS
+import net.eratiem.randogeddon.database.DEFAULT_IDLE_MINUTES
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionFinishStore
@@ -73,8 +76,8 @@ data class GatewayConfig(
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
           customWorlds = Path.of(server("customWorlds")),
-          ports = parsePorts(server("ports")),
           adminPassword = server("adminPassword"),
+          generationMinutes = server("generationMinutes").toInt(),
         ),
       )
     }
@@ -88,9 +91,9 @@ data class GameServerSettings(
   val dataDir: Path,
   /** The apworlds put on the server by hand, for every release (read-only). */
   val customWorlds: Path,
-  /** One per session that runs; as many sessions can run at once. */
-  val ports: List<Int>,
   val adminPassword: String,
+  /** How long a generation may take before it is stopped. */
+  val generationMinutes: Int,
 )
 
 /**
@@ -130,9 +133,18 @@ fun main() {
   val dirs = SessionDirs(options.dataDir)
   // The files of one session at a time, from before, into sessions/<id>/
   dirs.migrate { seed -> runBlocking { runCatching { sessionStore.idOf(seed) }.getOrNull() } ?: legacySessionId(seed) }
-  val launcher = Launcher(archipelago, SessionSetupStore(database), options.adminPassword)
+  val setups = SessionSetupStore(database)
+  val launcher = Launcher(archipelago, setups, options.adminPassword)
+  // How many game servers may run at once and when one sleeps (the Administrators' settings), read at most every 30 s
+  val settings = AppSettingsStore(database)
+  val gameServers = Cached(30.seconds) { runCatching { settings.gameServers() }.getOrDefault(DEFAULT_GAME_SERVERS) }
+  val idleMinutes = Cached(30.seconds) { runCatching { settings.idleMinutes() }.getOrDefault(DEFAULT_IDLE_MINUTES) }
+  // A session's: kept running, its hosted slots. Unknown (the database didn't answer): it keeps running
+  suspend fun rulesOf(session: SessionGameServer): SleepRules =
+    readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
+      ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
   val sessions = Sessions(
-    dirs, options.ports,
+    dirs, gameServers::get,
     create = { _, dir, port ->
       val roomJson = dir.resolve("room.json")
       GameServer(
@@ -167,12 +179,21 @@ fun main() {
       }
     }
   }
+  // Game servers nobody played on for a while go to sleep; a player's connection starts them again
+  background.launch {
+    while (true) {
+      delay(1.minutes)
+      runCatching { sessions.sweep(idleMinutes.get(), ::rulesOf) }
+        .onSuccess { if (it.isNotEmpty()) logger.info("Asleep, nobody played: {}", it.joinToString()) }
+        .onFailure { logger.warn("Could not put idle game servers to sleep: {}", it.message) }
+    }
+  }
   val connections = ConnectionLimits()
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
-    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once", config.port,
-    if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
-    archipelago.versions().joinToString(), options.ports.size,
+    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit), asleep after {} min without players (0: never)",
+    config.port, if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
+    archipelago.versions().joinToString(), runBlocking { gameServers.get() }, runBlocking { idleMinutes.get() },
   )
 
   embeddedServer(
@@ -199,18 +220,34 @@ fun main() {
         webSocket("/{path...}") {
           val id = sessionIdOf(call.request.origin.serverHost, call.parameters.getAll("path").orEmpty(), config.baseDomain)
           val session = if (id != null) sessions.get(id) else sessions.onlyActive()
+          // A sleeping game server starts for its player (if there's room), who waits meanwhile
+          if (session != null && session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {
+            val woke = try {
+              sessions.wake(session.id)
+            } catch (_: ServersBusy) {
+              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Every game server is in use: try again later"))
+              return@webSocket
+            }
+            if (!woke) {
+              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "The game server didn't start: try again in a moment"))
+              return@webSocket
+            }
+          }
           val port = session?.port?.takeIf { session.active }
           if (session == null || port == null) {
             val why = if (id == null) "Which session? Connect to <session>.<domain>" else "Session $id isn't running"
             close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
             return@webSocket
           }
-          serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections)
+          // A player keeps it awake; a hosted slot's connection doesn't
+          serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections) { slot ->
+            if (slot in rulesOf(session).hosted) null else session.joined()
+          }
         }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds), apworlds, dirs)
+        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds, options.generationMinutes), apworlds, dirs)
       }
     }
     monitor.subscribe(ApplicationStopping) {
@@ -222,7 +259,7 @@ fun main() {
       http.close()
       database.close()
     }
-  }.also { runBlocking { sessions.startAll() } }.start(wait = true)
+  }.also { runBlocking { sessions.sleepAll() } }.start(wait = true)
 }
 
 /**

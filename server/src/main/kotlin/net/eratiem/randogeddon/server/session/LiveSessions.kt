@@ -2,9 +2,16 @@ package net.eratiem.randogeddon.server.session
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -23,16 +30,18 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.util.logger
-import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionServer
 import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.shared.UserNames
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -48,6 +57,8 @@ class LiveSession(
   record: SessionRecord,
   private val config: TrackerConfig,
   private val archives: Archives,
+  /** Where the one poller of its [changes] runs (the sessions' own scope, not a viewer's). */
+  private val streams: CoroutineScope,
 ) {
   /** Written by the gateway before each start of its game server. */
   val roomJson: Path = config.dataDir.resolve("sessions").resolve(id).resolve("room.json")
@@ -83,9 +94,17 @@ class LiveSession(
 
   val finished: Boolean get() = finish?.finishedAt != null
 
-  /** The options it was created with; `null` for a seed from before (the defaults apply). */
+  /** The options it was created with; `null` for a seed from before (the defaults apply). Decoded once per setup. */
   val options: SessionOptions?
-    get() = setup?.options?.let { runCatching { ApiJson.decodeFromString(SessionOptions.serializer(), it) }.getOrNull() }
+    get() {
+      val text = setup?.options ?: return null
+      decodedOptions?.let { (from, options) -> if (from == text) return options }
+      return runCatching { ApiJson.decodeFromString(SessionOptions.serializer(), text) }.getOrNull()
+        .also { decodedOptions = text to it }
+    }
+
+  @Volatile
+  private var decodedOptions: Pair<String, SessionOptions?>? = null
 
   /**
    * Person -> their slots, from the session's setup (a slot played together shows up for each of its users). A seed
@@ -137,7 +156,10 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable()).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep).hashCode().toLong().shl(16)
+
+  /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
+  val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
 
   /** A Session-Manager of it can't act for it now (kept out by an Administrator, or gone), while it runs. */
   fun managerUnavailable(): Boolean = !finished &&
@@ -147,12 +169,15 @@ class LiveSession(
   suspend fun build(): Summary {
     val people = people()
     val options = options ?: SessionOptions()
-    val error = tracker.lastError
+    val asleep = asleep
+    val error = tracker.lastError.takeUnless { asleep }
     val time = time
     val finish = finish
     return tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }.copy(
       sessionId = id,
       errorRefused = error != null && tracker.lastErrorRefused,
+      // As the gateway said at its last look; connected again: awake (it woke for a player since)
+      serverAsleep = asleep && !tracker.read { connected },
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),
@@ -165,13 +190,37 @@ class LiveSession(
 
   suspend fun json(): String = mutex.withLock { current().second }
 
-  /** The summary for its share link: the people without their accounts, no connection error (it names our hosts). */
-  suspend fun publicJson(): String {
-    val summary = summary()
-    return ApiJson.encodeToString(
-      Summary.serializer(),
-      summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }, managerUnavailable = false),
-    )
+  private var publicFor: Summary? = null
+  private var publicJson = ""
+
+  /**
+   * The summary for its share link: the people without their accounts, no connection error (it names our hosts).
+   * Made once per summary, however many watch it.
+   */
+  suspend fun publicJson(): String = mutex.withLock {
+    val summary = current().first
+    if (summary !== publicFor) {
+      publicJson = ApiJson.encodeToString(
+        Summary.serializer(),
+        summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }, managerUnavailable = false),
+      )
+      publicFor = summary
+    }
+    publicJson
+  }
+
+  /**
+   * Its [version] as one poller sees it, every [CHANGES_POLL], for every stream of it at once: the work grows with the
+   * sessions watched, not with their viewers. It polls only while someone follows it (and a moment after the last
+   * one went, so a page that reloads finds it running).
+   */
+  val changes: StateFlow<Long> by lazy {
+    flow {
+      while (true) {
+        emit(version())
+        delay(CHANGES_POLL)
+      }
+    }.stateIn(streams, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000), NO_VERSION)
   }
 
   private suspend fun current(): Pair<Summary, String> {
@@ -228,6 +277,12 @@ class LiveSession(
  * and right away after the admin panel changed something ([refresh]). The sessions that aren't finished get a tracker
  * connection of their own.
  */
+/** How often a watched session's version is looked at: burst of item sends (a release) becomes one update. */
+val CHANGES_POLL = 750.milliseconds
+
+/** [LiveSession.changes] before its first look. */
+const val NO_VERSION = Long.MIN_VALUE
+
 @Single
 class LiveSessions(
   private val config: TrackerConfig,
@@ -240,13 +295,15 @@ class LiveSessions(
 ) {
   private val mutex = Mutex()
   private val sessions = ConcurrentHashMap<String, LiveSession>()
+  // The sessions' change pollers, for as long as the application runs
+  private val streams = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
   @Volatile
   private var scope: CoroutineScope? = null
 
-  /** How many game servers can run at once, as the gateway said the last time. */
+  /** The sessions the gateway had files of the last time it answered (also those this tracker doesn't follow). */
   @Volatile
-  var capacity: Int = 0
+  var onGateway: Set<String> = emptySet()
     private set
 
   fun get(id: String): LiveSession? = sessions[id]
@@ -257,7 +314,7 @@ class LiveSessions(
   suspend fun refresh() = mutex.withLock {
     val records = store.all()
     val servers = runCatching { gameServer.sessions() }.getOrNull()
-    servers?.let { capacity = it.capacity }
+    servers?.let { onGateway = it.sessions.map { s -> s.id }.toSet() }
     // A session is one the gateway has the files of, or a finished one with its archive; older rows (seeds from before
     // whose files are gone) aren't. Without an answer from the gateway, the sessions stay as they were.
     val onGateway = servers?.sessions?.map { it.id }?.toSet()
@@ -268,7 +325,7 @@ class LiveSessions(
       sessions.remove(gone)?.let { runCatching { it.disconnect() } }
     }
     for (record in records.filter { it.id in ids }) {
-      val live = sessions.getOrPut(record.id) { LiveSession(record.id, record, config, archives) }
+      val live = sessions.getOrPut(record.id) { LiveSession(record.id, record, config, archives, streams) }
       live.record = record
       live.time = runCatching { times.of(record.seedName) }.getOrNull()
       live.setup = runCatching { setups.of(record.seedName) }.getOrNull()
@@ -304,5 +361,8 @@ class LiveSessions(
     }
   }
 
-  fun close() = sessions.values.forEach { runCatching { it.close() } }
+  fun close() {
+    streams.cancel()
+    sessions.values.forEach { runCatching { it.close() } }
+  }
 }

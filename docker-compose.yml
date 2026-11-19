@@ -123,8 +123,8 @@ services:
       DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
       INTERNAL_TOKEN: *internal-token
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
-      # One MultiServer per running session, each on one of these ports (inside compose only): as many run at once
-      AP_PORTS: ${AP_PORTS:-38300-38303}
+      # How long a generation may take before it is stopped (minutes)
+      GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
       # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""

@@ -16,12 +16,19 @@ the **game** is just its title, e.g. Hollow Knight.
 
 ```mermaid
 flowchart TB
-  clients["players' game clients"] -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  subgraph pc ["a player's PC"]
+    clients["game clients that do TLS"]
+    plain["game client without TLS"] -- "ws://localhost:#lt;port#gt;" --> bridge["Randogeddon Bridge"]
+    browser
+  end
+  clients -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  bridge -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443 (fills in the slot's password)" --> traefik
+  bridge -. "https: its key, the slots" .-> traefik
   browser -- "https://randogeddon.eratiem.net" --> traefik
   traefik[Traefik] --> gateway
   traefik --> tracker
   subgraph gateway ["gateway (Ktor): checks each Connect's slot password"]
-    multiserver["MultiServer per session :38300…"]
+    multiserver["MultiServer per running session (a free port)"]
   end
   tracker["tracker (Ktor): login, API, SSE, the panel, Wasm app"]
   tracker -- "internal API :8001 (control)" --> gateway
@@ -31,11 +38,75 @@ flowchart TB
   tracker --> postgres
 ```
 
-The gateway runs one MultiServer per running session as a child process, each on a port of `AP_PORTS` (default
-`38300-38303`: four sessions at once). Only the tracker reaches them directly (those ports and the internal API on
-8001 are not published). The gateway relays each game client to its session's MultiServer: by the host name it
+The gateway runs one MultiServer per running session as a child process, each on a free port of its container. Only
+the tracker reaches them directly (those ports and the internal API on 8001 are not published). How many run at once
+is a setting of the Administrators (*Game servers at once*, under *Users*; default 8, empty: no limit): each one needs
+a few hundred MB of the gateway's memory. One nobody plays on for a while sleeps (*Sleep after*, under *Users*;
+default 30 minutes) and starts again when a player connects. The gateway relays each game client to its session's MultiServer: by the host name it
 connected to (`<session-id>.<BASE_DOMAIN>`), or locally by the path (`ws://localhost:38281/<session-id>`). A tracker
 restart or update doesn't drop the players.
+
+### Sessions and their game servers
+
+A new session's seed isn't made by a game server: the gateway runs Archipelago's `Generate.py` itself, one generation
+at a time, and puts the seed into `data/sessions/<id>/`. The tracker runs the creation in the background, so the page
+can be closed meanwhile; only once the seed is there and the session is set up does its game server start.
+
+```mermaid
+sequenceDiagram
+  actor Creator as Creator (panel)
+  participant Tracker
+  participant Gateway
+  participant Server as Game server (MultiServer)
+  Creator->>Tracker: Generate and start (the form)
+  Tracker->>Tracker: checks the form, the limits, the ID
+  Tracker-->>Creator: 202: it runs (or why not, at once)
+  Tracker->>Gateway: generate (the YAMLs, the locks, the release)
+  Note over Gateway: Generate.py, one at a time (others wait their turn), its log starts with the command that ran
+  loop until it ends
+    Creator->>Tracker: how far? the log since …
+    Tracker->>Gateway: progress, log
+  end
+  opt Cancel (while it generates)
+    Creator->>Tracker: cancel
+    Tracker->>Gateway: end Generate.py
+  end
+  Gateway-->>Tracker: the seed in the session's directory, data/sessions/ID (or the failure, with the log to download)
+  Tracker->>Tracker: the session, its slot passwords, its locks, its Session-Manager
+  Tracker->>Gateway: start its game server
+  Gateway->>Server: start (a free port)
+  Creator->>Tracker: how far?
+  Tracker-->>Creator: done: the logins
+```
+
+Each session has its game server: one MultiServer, run only while it is needed. One nobody plays on sleeps, and the
+first player who connects starts it again (if fewer run than may at once; they wait a moment meanwhile).
+
+```mermaid
+stateDiagram-v2
+  [*] --> Starting: created
+  Asleep --> Starting: a player connects (if there is room)
+  Starting --> Running: MultiServer listens
+  Running --> Asleep: nobody played for "Sleep after" (unless kept running)
+  Running --> Crashed: MultiServer ended on its own
+  Crashed --> Starting: again after a pause (1 s, doubling up to 30 s)
+  Crashed --> GaveUp: 5 times in a row, each within a minute of its start
+  Running --> Stopped: Stop (in the panel)
+  Asleep --> Stopped: Stop (in the panel)
+  Stopped --> Starting: Start (in the panel)
+  GaveUp --> Starting: Start (in the panel)
+  Running --> Stopped: the session finished (until it is reopened)
+  GaveUp: Gave up
+```
+
+- **At the gateway's start** (a deploy, a reboot) none starts: every session sleeps until its first player, a
+  finished one stays stopped.
+- **Game servers at once** (*Users*, default 8) counts *Starting*, *Running* and *Crashed*: those hold a MultiServer
+  (a few hundred MB each). Asleep, stopped, given up and finished sessions don't; with all of them asleep the gateway
+  itself needs some 35 MB.
+- A player can't wake one that was stopped by hand, gave up or is finished; the panel can start it.
+- *Keep running without players* (an Administrator's switch in a session's *State and Control*) keeps it from
+  sleeping; *Sleep after* `0` keeps them all running.
 
 | Path | What it is |
 |---|---|
@@ -290,7 +361,7 @@ docker compose up -d
 
 1. **Collect the YAMLs**, one per slot, each with a unique `name:` (e.g. `Alice-HK`, `Alice-Celeste`). Players export
    them from the game's options page on archipelago.gg or via the Launcher's *Generate Template Options*. A game that
-   isn't bundled with Archipelago needs its `.apworld` (see *apworlds* below).
+   isn't bundled with Archipelago needs its `.apworld` (see *Archipelago* below).
 2. **Create the session** (the gear button, the *Management panel*, then *New session*; every user can, as many running ones at
    once as the Administrators allow, and is then its Session-Manager): its *Session ID* (prefilled with a free suggestion like
    `brave-otter`; lowercase letters, digits and `-`, starting with a letter (capitals typed become small ones), and
@@ -302,9 +373,15 @@ docker compose up -d
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
    *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
-   is; the gateway generates one seed at a time, so a second session waits and says so). Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
-   long press on a phone. The gateway generates the seed with the chosen
-   Archipelago release and starts the game server on it. A file that isn't a player YAML (not `.yaml`/`.yml`, no
+   is; the gateway generates one seed at a time, so a second session waits and says so). It generates in the
+   background: the page can be closed, and shows it again (also after a reload) until it is done; *Cancel* ends it
+   while it generates, and its ID is free again. Under the bar, Generate.py's output, newest on top, a page at a
+   time and searchable; if it fails, the whole output can be downloaded, with the command that ran first. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
+   long press on a phone; a tip stays while the pointer is on it, and its text can be selected and copied (a long
+   message, such as an APWorld's error, has a *Copy* button). The gateway generates the seed with the chosen
+   Archipelago release and starts the game server on it. A generation that takes longer than `GENERATION_MINUTES`
+   (default 60) is stopped, and the panel says so; Archipelago fills on one core, so a big multiworld (thousands of
+   progression items) takes long. A file that isn't a player YAML (not `.yaml`/`.yml`, no
    name or game, not readable) isn't taken, and the panel says why. A YAML whose game the release has no APWorld for gets no
    slot yet: one message names them (and tells someone who isn't an Administrator to ask one to upload it), and they
    become slots by themselves once the APWorld is there (uploaded by anyone, anywhere). If Generate.py fails, the panel names the games that may be the cause (one the error mentions,
@@ -312,7 +389,8 @@ docker compose up -d
 3. **Players are added** per slot, from a dropdown with a search (a slot starts without players). **New players are
    invited** by e-mail right there (type their address: only one that has no account), or beforehand by an
    Administrator (*Users*): they get a link, valid for 7 days, and choose their name and password themselves. Until
-   they sign up, the session shows them by the suggested name. When a session ends, its invitations nobody accepted
+   they sign up, the session shows them by the suggested name (without one: `Invited-` and the start of their
+   account's ID; never anything of their address, which only Administrators see). When a session ends, its invitations nobody accepted
    go (unless another running session has them).
    **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
    Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
@@ -334,8 +412,17 @@ docker compose up -d
 Patch files for ROM-based games (and mods some games need) are in the seed, `data/sessions/<id>/AP_<seed>.zip` on the
 server; players download their own from the dashboard (step 4), as long as the session exists. **Deleting** a
 running session (the panel) stops its game server and moves its files to `data/old/<id>-<time>/`; deleting a
-finished one deletes them for good. The accounts stay. As many sessions run at once as the gateway has ports for
-(`AP_PORTS`); a finished session doesn't take one.
+finished one deletes them for good. The accounts stay. As many game servers run at once as the Administrators allow
+(*Game servers at once*, under *Users*; empty: no limit); a finished session doesn't run one. A game server that ends
+with an error is started again after a pause; after 5 times in a row, each within a minute of its start, it gives up
+(*gave up* in the panel, with its log) and stays stopped until it is started again.
+
+A game server without players for *Sleep after (minutes)* (under *Users*; default 30, 0: never) saves and stops:
+*asleep* in the panel, and the dashboard says so. Players are game clients in a slot through the gateway; the
+tracker and hosted slots don't count. The first player who connects starts it again, if fewer run than may at once
+(else they are told every game server is in use), and waits meanwhile. One stopped by hand, one that gave up and a
+finished session's don't start this way. An Administrator can keep a session's game server running without players
+(*Keep running without players*, in its *State and Control*).
 
 ### Finishing, past sessions and the spoiler log
 
@@ -383,10 +470,12 @@ in what the lists have learned since, delete `output/unwanted-words/` first.
 
 ### APWorlds
 
-The panel's *apworlds* (Administrators) lists, for every Archipelago release of the gateway, the games it can generate and serve,
-and its APWorld library:
+The panel's *Archipelago* (Administrators) shows the gateway's releases under *Supported versions* (as pills; with
+several, a click shows that release's games) and, under *Supported games*, every game the release can generate and
+serve: the bundled ones (grey) and the custom ones, each APWorld as its chip (see below), together by name, with
+*bundled* / *custom games* to show only those, and a search. Beside the heading:
 
-- **Upload APWorld…** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
+- **upload apworld** adds `.apworld` files to that release's library (kept in `data/apworlds/<release>/`), several
   at once, together (the release lists its games once for all of them). The gateway checks that each is an APWorld (a zip with one world folder), names it
   after that folder (Archipelago imports it by its file name: `Pokemon Emerald (1).apworld` with `pokemon_emerald/`
   inside becomes `pokemon_emerald.apworld`), loads the release's worlds again and says which game it brought. Each file
@@ -396,9 +485,12 @@ and its APWorld library:
   doesn't load (e.g. it needs a newer Archipelago) is refused: it isn't kept, a file it would have replaced stays, and
   the panel says why. A game the release brings itself is refused too (its own world always wins). An upload that
   would replace something asks first (*Replace* / *Skip*): a file of the same name, or another uploaded APWorld of the
-  same game (by its manifest, `archipelago.json`), which goes then. *Remove…* takes files out again: pick them (the
+  same game (by its manifest, `archipelago.json`), which goes then. *remove* takes files out again: pick them (the
   uploaded ones; *Select all*), *Remove (n)*, confirm. An APWorld may import `tkinter` (for its client window): the
   image has the Tk library it needs.
+- **The custom games:** each file as a chip with its game and its version (from its `archipelago.json`, e.g. *Anno 1800
+  – 1.5.1*; an APWorld without one shows no version), coloured by where it comes from (see its ⓘ); its tip says its
+  file name and size, and the oldest Archipelago release it needs, if it says so.
 - **From other releases:** an APWorld uploaded for another release can be tried with this one (*Try with …*); it is
   copied and marked "untested here" (or refused, like an upload, if it doesn't load). If generating fails, such APWorlds are among the suspects.
 - APWorlds put into the server's `custom_worlds/` by hand count for every release (they can't be removed in the
@@ -414,7 +506,8 @@ its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **Pe
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
 share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
-them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live,
+them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live
+(the last 10,000 lines, newest on top, a page at a time and searchable),
 and has the server console:
 
 ```
@@ -447,7 +540,7 @@ Below the finished sessions, Administrators find *General*: *Users* (every accou
 Administrator; a click shows its information panel: name, address, ID, state, group, how it logs in, two-factor,
 language, when it was made, the invitation, the deletion, *n/a* where there is none, its sessions as pills that open
 them, for an invited one *Send again* and *Other address*, and what an Administrator does to it: see below),
-*APWorlds* and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
+*Archipelago* and *Versions* (what runs now: the tracker's, the gateway's and this page's version, the
 gateway's Archipelago releases; to check a deploy). With no session running, the panel says so; *New session* opens the
 form.
 
@@ -466,7 +559,8 @@ client, depending on the session's options. `AP_ADMIN_PASSWORD` enables `!admin`
 ### Progress and restarts
 
 Each game server saves to `data/sessions/<id>/AP_<seed>.apsave` continuously, and `restart: unless-stopped` brings
-the gateway back after crashes or reboots; it starts every session's game server again that isn't finished. Stopping
+the gateway back after crashes or reboots; every session that isn't finished sleeps then, and starts with its first
+player. Stopping
 with `docker compose down` and starting with `up -d` keeps the progress.
 
 ## Logins and passwords
@@ -477,7 +571,7 @@ number of its own; an account's panel shows its running sessions against its lim
 empty field shows the default; *Use default* brings it back). It counts the sessions someone **created**, while they run: being made Session-Manager of
 someone else's session doesn't count. It is asked when a session is created and when a finished one is reopened (for
 its creator; an Administrator reopens regardless). Administrators have no limit, and the number of game servers
-(`AP_PORTS`) applies to everyone.
+(*Game servers at once*) applies to everyone.
 
 **Keeping an account out, deleting it** (in its panel under *Users*; never an Administrator's account, which is
 managed where Administrators log in, so never one's own):
@@ -728,7 +822,8 @@ The dashboard is a web app (PWA), so no app store or Apple account is needed:
 - **iPhone / iPad (Safari):** open the page → Share → *Add to Home Screen*. It opens full screen with its own icon.
 
 It needs a browser with WebAssembly GC: iOS/Safari 18.2+, Chrome/Edge 119+, Firefox 120+. Older browsers get a
-message asking for an update. The first load is about 4 MB (gzip); after that the browser has it cached.
+message asking for an update. The first load is about 3.4 MB (Brotli, compressed when the image is built); after
+that the browser has it cached.
 
 ### Appearance
 
@@ -921,6 +1016,14 @@ and review the result:
 ./gradlew :server:metadataCopy                  # likewise :gateway:run and :gateway:metadataCopy
 ```
 
+## Measuring
+
+`./scripts/measure.sh [viewers] [seconds]` (in WSL, with `./scripts/demo.sh` running) prints a report of the stack:
+the page's files as sent (plain, gzip, Brotli), the images and what is in them, the containers' memory and CPU idle
+and with that many viewers' live streams open (default 20 for 60 s), the API's answer times and how long the first
+screen takes in headless Chromium. `--build` first times a build from nothing (it clears BuildKit's cache) and one
+without changes. The baseline, the audit of the code and what changed since are in `.docs/MEASUREMENTS.md`.
+
 ## Known flaws in the dependencies
 
 `./scripts/audit.sh` looks the bridge's Go modules, the tracker's and the gateway's JVM libraries and the gateway
@@ -940,7 +1043,7 @@ To update: set `AP_VERSION` to the new release tag and `AP_COMMIT` to that tag's
 stand for its commit any more), `docker compose build`, and recreate the gateway once no session
 of the old release is running (finish or delete them first). Everyone's client and APWorld versions should be compatible with
 the release. The new release starts with an empty APWorld library: the APWorlds of the old one show under *From
-other releases* (*apworlds* in the panel) and can be tried with it, or upload versions made for the new release.
+other releases* (*Archipelago* in the panel) and can be tried with it, or upload versions made for the new release.
 
 ## License
 

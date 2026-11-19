@@ -151,7 +151,7 @@ class SingleSignOn(
       is SsoAccount.Linked -> decision.user
       is SsoAccount.ByEmail -> {
         if (!users.linkSubject(decision.user.id, identity.subject)) throw SsoRefused(Problem.SSO_LINKED_ELSEWHERE, "name" to decision.user.name)
-        logger.info("{} is linked to {} now", decision.user.name, config.oidc?.name)
+        logger.info("{} is linked to {} now", decision.user.name, config.oidc.name)
         decision.user
       }
       is SsoAccount.New -> {
@@ -160,7 +160,7 @@ class SingleSignOn(
         val email = identity.email?.takeIf { users.accountByEmail(it) == null }
         val created = users.create(name, PasswordHasher.hash(PasswordGenerator.generate()), email = email)
         users.linkSubject(created.id, identity.subject)
-        logger.info("{} came through {}: a new account", name, config.oidc?.name)
+        logger.info("{} came through {}: a new account", name, config.oidc.name)
         created
       }
       is SsoAccount.Refused -> {
@@ -216,9 +216,6 @@ class SingleSignOn(
     val claims = ApiJson.parseToJsonElement(String(Base64.getUrlDecoder().decode(token.split('.')[1]))).jsonObject
     (claims["jti"] as? JsonPrimitive)?.contentOrNull
   }.getOrNull()
-
-  /** A one-time login link for [user] (the CLI), for [LOGIN_LINK_DURATION]. */
-  suspend fun createLink(user: User, now: Instant = Instant.now()): String = createLoginLink(links, config.publicUrl, user, now)
 
   /** Whether [authorization] (the request's header) carries the provider's deletion token; never without one. */
   fun deletionAllowed(authorization: String?): Boolean =

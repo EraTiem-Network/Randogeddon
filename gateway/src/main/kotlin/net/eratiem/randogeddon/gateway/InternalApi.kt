@@ -93,6 +93,22 @@ fun Route.internalApi(
           val id = sessionId() ?: return@get
           generator.progress(id)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
         }
+        // Its last generation's log: lines after ?since= (at most ?max=), or all of it as text
+        get("/generate/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          val max = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
+          generator.log(id, since, max)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
+        get("/generate/log.txt") {
+          val id = sessionId() ?: return@get
+          generator.logText(id)?.let { call.respondText(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
+        // Ends its generation, also one waiting for its turn (the request that started it answers then)
+        delete("/generate") {
+          val id = sessionId() ?: return@delete
+          call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
@@ -163,14 +179,14 @@ private suspend fun RoutingContext.server(sessions: Sessions, block: suspend (Se
   block(session)
 }
 
-/** Start, stop or restart: the new state; 404 for an unknown session, 409 when no port is free. */
+/** Start, stop or restart: the new state; 404 for an unknown session, 409 when as many run as are allowed. */
 private suspend fun RoutingContext.control(action: suspend (String) -> GameServerState) {
   val id = sessionId() ?: return
   try {
     call.respond(action(id))
   } catch (e: NoSuchElementException) {
     call.respond(HttpStatusCode.NotFound, ApiError(e.message ?: "No session $id"))
-  } catch (e: NoFreePort) {
+  } catch (e: ServersBusy) {
     call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "No game server free"))
   }
 }

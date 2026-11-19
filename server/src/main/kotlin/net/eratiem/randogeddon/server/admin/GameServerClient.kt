@@ -40,6 +40,11 @@ import net.eratiem.randogeddon.shared.SessionServers
 import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
 import org.koin.core.annotation.Single
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.seconds
+
+private val VERSIONS_KEPT = 30.seconds
 
 /** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
 class GameServerUnavailable(val status: HttpStatusCode, message: String) : Exception(message)
@@ -80,9 +85,19 @@ class GameServerClient(private val config: TrackerConfig) {
     http.get("${session(id)}/server/log?since=$since") { auth() }
   }.let { ApiJson.decodeFromString(LogLines.serializer(), it) }
 
-  /** The Archipelago releases the gateway has, newest first. */
-  suspend fun versions(): List<String> = call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
-    .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
+  @Volatile
+  private var versionsSeen: Pair<TimeMark, List<String>>? = null
+
+  /**
+   * The Archipelago releases the gateway has, newest first. They change only with the gateway's image, so the answer
+   * is kept for [VERSIONS_KEPT] (the panel's overview asks for it every 15 s).
+   */
+  suspend fun versions(): List<String> {
+    versionsSeen?.let { (at, versions) -> if (at.elapsedNow() < VERSIONS_KEPT) return versions }
+    return call { http.get("${config.gameServerApi}/internal/versions") { auth() } }
+      .let { ApiJson.decodeFromString(ListSerializer(String.serializer()), it) }
+      .also { versionsSeen = TimeSource.Monotonic.markNow() to it }
+  }
 
   /** The gateway's own version. */
   suspend fun gatewayVersion(): String = call { http.get("${config.gameServerApi}/internal/version") { auth() } }.trim()
@@ -91,11 +106,40 @@ class GameServerClient(private val config: TrackerConfig) {
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
     http.post("${session(id)}/generate") {
       auth()
-      timeout { requestTimeoutMillis = 11 * 60_000 }
+      // As long as the gateway lets it take (GENERATION_MINUTES), and then some: it answers when it stops one
+      timeout { requestTimeoutMillis = 4 * 60 * 60_000L }
       contentType(ContentType.Application.Json)
       setBody(ApiJson.encodeToString(GenerateRequest.serializer(), request))
     }
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
+
+  /** Session [id]'s last generation's log lines after [since] (a part of it at a time); `null`: none. */
+  suspend fun generationLog(id: String, since: Long): LogLines? {
+    val response = request { http.get("${session(id)}/generate/log?since=$since&max=1000") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s last generation's whole log as text (what ran, then its output); `null`: none. */
+  suspend fun generationLogText(id: String): String? {
+    val response = request { http.get("${session(id)}/generate/log.txt") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> response.bodyAsText()
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Ends session [id]'s generation; `false`: none runs there (not yet, or no more). */
+  suspend fun cancelGeneration(id: String): Boolean {
+    val response = request { http.delete("${session(id)}/generate") { auth() } }
+    if (response.status == HttpStatusCode.NotFound) return false
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    return true
+  }
 
   /** How far session [id]'s generation is; `null`: none runs. */
   suspend fun generationProgress(id: String): GenerationProgress? = call { http.get("${session(id)}/progress") { auth() } }

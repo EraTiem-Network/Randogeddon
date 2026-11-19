@@ -27,6 +27,9 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.GameServer")
 
+/** How many lines of a game server's output are kept (the panel pages through them). */
+private const val LOG_LINES = 10_000
+
 /**
  * One start of MultiServer: the command line, extra environment variables and the directory to run in. [firstLines]:
  * console lines it gets right after the start, not shown in the log (what must not stand on the command line, which
@@ -70,6 +73,12 @@ class GameServerConfig(
   /** The first pause before restarting after a crash; doubles up to [maxBackoff]. */
   val backoff: Duration = 1.seconds,
   val maxBackoff: Duration = 30.seconds,
+  /**
+   * After this many crashes in a row, each within [quickCrash] of its start, it isn't started again by itself
+   * ([GameServerStatus.FAILED]): a seed MultiServer can't serve would otherwise be started every [maxBackoff] for good.
+   */
+  val giveUpAfter: Int = 5,
+  val quickCrash: Duration = 60.seconds,
   /** After `/exit`, how long MultiServer gets to save and end before it is killed. */
   val stopTimeout: Duration = 10.seconds,
   /** MultiServer on this seed (file name) accepts clients now; for the session time. */
@@ -87,7 +96,7 @@ class GameServerConfig(
  */
 class GameServer(private val config: GameServerConfig, private val scope: CoroutineScope) {
   private val mutex = Mutex()
-  private val log = LogBuffer(2000)
+  private val log = LogBuffer(LOG_LINES)
   // Set by the supervisor's thread, read by the API's
   @Volatile
   private var process: Process? = null
@@ -124,16 +133,41 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     supervisor = scope.launch(Dispatchers.IO) { supervise() }
   }
 
-  /** Asks MultiServer to save and end (`/exit`), kills it if it doesn't, and keeps it stopped. */
+  /**
+   * Asks MultiServer to save and end (`/exit`), kills it if it doesn't, and keeps it stopped. One that sleeps stays
+   * stopped too: a player's connection doesn't start it then.
+   */
   suspend fun stop() = mutex.withLock {
-    val job = supervisor ?: return@withLock
+    if (supervisor == null && state.status != GameServerStatus.IDLE) return@withLock
+    end()
+    state = state.copy(status = GameServerStatus.STOPPED, since = null)
+    note("Stopped by an admin")
+  }
+
+  /**
+   * Ends it like [stop] (if it runs), as [GameServerStatus.IDLE]: nobody plays, and a player's connection starts it
+   * again ([why] in its log). A session that has no seed yet or must not be served (finished) doesn't sleep.
+   */
+  suspend fun sleep(why: String) = mutex.withLock {
+    val seed = withContext(Dispatchers.IO) { newestSeed() } ?: return@withLock
+    val refusal = withContext(Dispatchers.IO) { runCatching { config.refuse(seed) }.getOrNull() }
+    if (refusal != null) {
+      if (supervisor == null) state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
+      return@withLock
+    }
+    end()
+    state = state.copy(status = GameServerStatus.IDLE, seed = seed.name, since = null)
+    note(why)
+  }
+
+  /** Ends the supervisor and its MultiServer (under [mutex]). */
+  private suspend fun end() {
+    val job = supervisor ?: return
     supervisor = null
     stopping = true
     job.cancel()
     withContext(Dispatchers.IO) { endProcess() }
     job.join()
-    state = state.copy(status = GameServerStatus.STOPPED, since = null)
-    note("Stopped by an admin")
   }
 
   suspend fun restart() {
@@ -157,6 +191,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
 
   private suspend fun supervise() {
     var backoff = config.backoff
+    var quickCrashes = 0
     while (true) {
       val seed = newestSeed()
       if (seed == null) {
@@ -178,7 +213,15 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       // Ended because an admin stopped it: not a crash
       if (!currentCoroutineContext().isActive) return
       // A run that lasted a while was no crash loop: the next crash starts with the short pause again
-      if (System.currentTimeMillis() - started > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
+      val ran = System.currentTimeMillis() - started
+      if (ran > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
+      quickCrashes = if (ran < config.quickCrash.inWholeMilliseconds) quickCrashes + 1 else 0
+      if (quickCrashes >= config.giveUpAfter) {
+        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code, restarts = state.restarts + 1)
+        note("Game server ended with exit code $code, $quickCrashes times in a row within ${config.quickCrash} of its start; " +
+          "it stays stopped until it is started again")
+        return
+      }
       state = state.copy(status = GameServerStatus.CRASHED, since = null, lastExitCode = code, restarts = state.restarts + 1)
       note("Game server ended with exit code $code; starting again in $backoff")
       delay(backoff)
@@ -269,7 +312,17 @@ class LogBuffer(private val capacity: Int) {
     if (lines.size > capacity) lines.removeFirst()
   }
 
-  /** Lines numbered above [since]; with 0, all that are kept. */
+  /**
+   * Lines numbered above [since]; with 0, all that are kept. At most [max] at once: then [LogLines.last] is the last
+   * one's, to ask on from.
+   */
   @Synchronized
-  fun after(since: Long): LogLines = LogLines(lines.filter { it.n > since }, last)
+  fun after(since: Long, max: Int = Int.MAX_VALUE): LogLines {
+    val after = lines.filter { it.n > since }
+    return if (after.size <= max) LogLines(after, last) else after.take(max).let { LogLines(it, it.last().n) }
+  }
+
+  /** Every line kept, oldest first. */
+  @Synchronized
+  fun all(): List<LogLine> = lines.toList()
 }

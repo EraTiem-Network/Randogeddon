@@ -7,6 +7,231 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 18: Code Optimization
+Measured first, then made leaner where it paid: the web files compressed when built, one look per session for all
+its streams, the gateway image 40 % smaller and the builds cached, the code split and merged along what belongs
+together (every module, the web app in packages). Asked for on the way: game servers without a port pool, that give
+up after crashing again and again and sleep without players; generation in the background with its log and a
+*Cancel*; tips that stay and can be copied; invited players' addresses kept to Administrators; the APWorlds'
+versions. Updating: nothing to do (`AP_PORTS` is gone from the environment since 0.18.9; `GENERATION_MINUTES` is
+new and optional).
+
+### 0.18.18: The Archipelago section
+- The panel's *APWorlds* is *Archipelago* now: the gateway's releases as pills under *Supported versions* (the one
+  picked shows its games; there is one now, 0.6.8), then *Supported games* one level higher: the bundled games and
+  the custom ones together by name, each custom one as its APWorld's chip (its game and version, its file name and
+  size in its tip), *bundled* / *custom games* (was "from an APWorld") to show only those. *upload apworld*, *remove*
+  and the search sit on that heading's row. The separate list of the uploaded files is gone: an APWorld that brings
+  no game shows among the games (red), and the removal picks from the chips.
+
+### 0.18.17: Phase 18 done
+- TODO: Phase 18 done; Phase 19 (*Generating Like the Launcher*) to come.
+
+### 0.18.16: An APWorld's version in the library
+- The library shows each file as its game and its version, e.g. *Anno 1800 – 1.5.1* (was: the file name, its games
+  and its size). The gateway reads them from the APWorld's `archipelago.json` (Archipelago 0.6 and newer: 27 of the
+  30 on the live server have one) without loading it; an APWorld without one shows its game without a version.
+- Its tip: the file name and size, the oldest Archipelago release it needs (`minimum_ap_version`), where it was
+  copied from, or that it brings no game.
+
+### 0.18.15: Tips to copy, invited players' addresses kept to Administrators
+- **A tip's text can be selected and copied:** a tip is a window of its own with its own selection (and stays while
+  the pointer is on it, since 0.18.12), so its text can be marked and copied with Ctrl+C. A long message (an APWorld's
+  error on its pill: Archipelago's exception) has a *Copy* button above it.
+- **An invited player's address only for Administrators:** in a session an invited player was called by the part of
+  their address before the `@` until they signed up (shown on the dashboard and in the panel to everyone); now by the
+  name suggested for them, or `Invited-` and their account ID's start. Signing up gives them their own name in the
+  running sessions, as before. Sessions made before keep the old name until then.
+- A session's view in the Management panel listed every account, the invited ones with their address, also to its
+  Session-Managers; now only to Administrators (Session-Managers get the active accounts by name, as for a new
+  session).
+
+### 0.18.14: The audit's leftovers
+- **One dialog frame:** a person's and a world's dialog on the dashboard, and an account's and a session person's panel
+  in the Management panel, in one `DialogCard` (the card, its header with the close button, a divider, the body),
+  with `DialogSection` and `TwoColumns`; the panels now fit the window's height and scroll inside.
+- **One pill for people:** an account's pill (users) and a session person's (people) are one `AvatarPill`; the
+  people's is 1 dp taller now.
+- **The build files:** Java 25, the sources only in `src/main/kotlin` and the main class are set once in the root
+  build for the tracker, the gateway and the database module, not in each.
+- **The text fields:** `FilterField` and `NumberField` on the state-based `BasicTextField` (the old one is deprecated);
+  the number field takes only digits, as before. The web app's last two deprecation warnings are gone.
+- Screenshots of eight pages before and after: the same, pixel for pixel (but for a random session ID).
+- To do, asked for (Phase 19, *Generating Like the Launcher*): why a seed the Launcher generates didn't here, an
+  APWorld's packages installed on its upload, generator settings per session, ROMs and tools kept encrypted, a
+  session from a seed generated elsewhere.
+
+### 0.18.13: How the sessions' game servers work, explained
+- The README's *Sessions and their game servers*: how a session is created (a diagram from the form to its game
+  server: the tracker's checks, `Generate.py` in the gateway, one at a time, the setup, the start) and a game
+  server's life (a diagram of its states: starting, running, asleep, crashed, given up, stopped), which of them count
+  towards *Game servers at once*, and what a gateway start does. A seed isn't made by a game server; game servers
+  only run while they are needed (since 0.18.10).
+- The README's first diagram shows the player's PC with Randogeddon Bridge (optional: a game without TLS connects to it
+  on `localhost`, it takes the connection on over `wss://` and logs in to the tracker with its key).
+- The panel's count says that a sleeping session doesn't take a game server either.
+- The TODO's "gateway on demand" set right: what was asked for were the game servers, done in 0.18.10.
+
+### 0.18.12: Generation in the background, with its log; tips that stay
+- **A new session generates in the background:** the page's request answered only when the session was there (up
+  to `GENERATION_MINUTES`), and closing the page lost what came after the generation (the session's setup, its
+  start). Now the tracker checks the form at once and runs the generation and the setup as a job of its own; the
+  page follows it (and finds it again after a reload) and shows the session, the failure, or that it was cancelled.
+- **Cancel:** while it generates (also while it waits for its turn), *Cancel* ends Generate.py on the gateway; its ID
+  is free again. Too late once the seed is there (it is being set up then).
+- **Generate.py's output under the bar:** its whole output (the last 20,000 lines), newest on top, 300 lines a page
+  with a search (as the spoiler log's: the lines found counted and marked, Enter goes from one to the next). It
+  starts with what ran: the directory and the command (`python Generate.py --player_files_path … --outputpath …`) and
+  the YAMLs. A failed generation's log stays (an hour) and can be downloaded, with the command.
+- **The game server's log too:** the panel keeps its last 10,000 lines (was 2,000) and shows them the same way, a page
+  at a time and searchable; a browser lagged with thousands of lines at once.
+- **Tips stay while the pointer is on them:** a tip with no room below came up under the pointer, which closed it,
+  which showed it again, without end. A tip now stays while the pointer is on it or on what it explains (a moment's
+  grace for the way between). The APWorld pills' errors (Archipelago's message) are as wide as the window allows.
+- The routes: `POST /api/sessions` answers 202 with the creation; `GET /api/sessions/new/creation[/{id}]`, its
+  `/log?since=` and `/log.txt`, `DELETE` to cancel (or forget one that ended); the creator's and Administrators'.
+
+### 0.18.11: The web app's shared helpers, and the browser's own menu
+- **One request helper:** the web app's requests go through `call` (with the answer's serializer instead of a decode
+  of its own at each of 56 places) and `load` (for what is shown when it is there: the session list, a player's
+  details, the connection, the slot files); the panel's game server actions use `post` instead of their own error
+  handling. The requests that look at a status themselves (a share link that is gone, the login's check, the spoiler
+  log) stay as they are.
+- **The page frame and the clock shared:** the dashboard and a share link's page use one `PageFrame` (the page
+  colour with the brand's tint, the scrolling column of at most 1400 dp, selectable text) and one `rememberNow` (the
+  time, moved on every 30 s and with new data).
+- **Components merged:** `Mono` (keys, passwords, file names, a program's output) and `SmallHeading` once in `ui`
+  instead of twice; the new session's number fields (hint cost, points per check) use `ui`'s `NumberField`, with its
+  arrows. The labels (`Labeled`, `Labelled`, `Label`) stay three: a row with a tip, a column that wraps on a phone, a
+  fixed width beside a value.
+- **The browser's own menu on a right click:** the app took the right click (Compose cancels the browser's menu to
+  show its own, which had only *Copy*); now the browser shows its menu everywhere, and the app none of its own, also
+  not as the toolbar over a selection. Ctrl+C still copies a selection.
+- The browser interop is opted into once for the module (`ExperimentalWasmJsInterop`, with `-Xexpect-actual-classes`):
+  the web app's 58 compiler warnings are 2 (the old `BasicTextField`, a migration of its own).
+- Screenshots of eight pages before and after: the same, pixel for pixel (but for a random session ID and a button's
+  fade).
+
+### 0.18.10: Game servers that sleep
+- **A game server nobody plays on goes to sleep:** after *Sleep after (minutes)* without a player (a setting under
+  *Users*, beside the game servers at once; default 30, 0: never) it saves and stops (*asleep* in the panel). Players
+  are game clients in a slot through the gateway's relay; the tracker doesn't count, nor do hosted slots (a game that
+  runs as a server of its own would keep it up for good).
+- **And starts when a player connects:** the gateway starts a sleeping game server for the first player who connects
+  (if fewer run than may at once; else "Every game server is in use"), who waits meanwhile. One stopped by hand, one
+  that gave up and a finished session's don't start this way.
+- **The gateway starts none at its start:** every session sleeps until its first player (after a deploy too), so a
+  deploy or a reboot doesn't start them all at once.
+- **Keep running without players:** an Administrator's switch in a session's *State and Control*, for a game that
+  only connects now and then (`sessions.keep_running`, migration V23).
+- The dashboard says the game server sleeps and starts when a player connects, instead of a connection error.
+- The gateway's database role may read the sessions' hosted slots now (to tell them from players).
+
+### 0.18.9: Game servers without a port pool, and no crash loop
+- **No port pool:** a game server takes a free port of the gateway's container when it starts (its last one again if
+  free). The four ports of `AP_PORTS` (38300–38303) were the only limit of how many ran at once, but game clients come
+  through the gateway's relay (`wss://`, the bridge for the others), so the ports are the gateway's own; `AP_PORTS` is
+  gone.
+- **How many run at once is a setting:** *Game servers at once* under *Users*, beside *Sessions per user* (default 8,
+  empty: no limit; each one needs a few hundred MB of the gateway's memory). The tracker asks it before a session is
+  created, before a game server starts or restarts from the panel and when a session is reopened (until now that
+  relied on the gateway's "no free port"); the gateway keeps to it too, also at its own start (it reads the setting:
+  its database role may read `app_settings` now).
+- **A game server that keeps crashing gives up:** it was started again every 30 s without end and kept its place.
+  After 5 crashes in a row, each within a minute of its start, it stays down (*gave up*, with its last exit code and
+  its log) and doesn't count as running; *Start* tries again.
+- **A generation may take 60 minutes** (was 10), set with `GENERATION_MINUTES`; one that takes longer says so ("took
+  longer than 60 minutes and was stopped") instead of guessing at a game or a YAML. Generation stays on one core:
+  Archipelago's fill is single-threaded Python and has no option to use more, so a big multiworld (a session of 23
+  slots with 29,791 items was stopped at 10 minutes, 4,000 of 5,086 progression items placed) takes long.
+
+### 0.18.8: The web app in packages by area
+- **The web app's 26 files of one package are 45 files in six:** `app` (the start, the app's shell and routing, the
+  platform, texts, fonts), `ui` (the theme and the shared components: surfaces, icons, tips, inputs, the scrollbar),
+  `api` (the repositories of the dashboard, the panel and the share link, the requests' answers, the login's watch),
+  `dashboard` (header, overview, players, hints, feed, the dialogs, the connection, the spoiler log, past sessions,
+  the share link's page), `manage` (the Management panel: the running session, a new session, past sessions, the
+  session switch, APWorlds, cheats, users, people) and `account` (settings, the own account, bridge keys, two-factor
+  login, appearance).
+- **The big files split by part:** `AdminSession.kt` (1,318 lines), `Dashboard.kt` (1,310), `Components.kt` (948),
+  `Settings.kt`, `Admin.kt` and `Watch.kt`. Every declaration moved as it was; 24 private ones that the parts share
+  are `internal` now.
+- The pages look as before: 16 screenshots (8 pages in English and German) before and after are the same to the pixel,
+  but for the breathing *New session* button and the suggested session ID, which is random.
+
+### 0.18.7: The server's big files by part
+- **`SessionState.kt` (789 lines):** the model (`ClientStatus`, `SlotType`, `NetworkItem`, `Player` and their
+  constants) is in `state/Model.kt`, the lenient JSON accessors of the Archipelago packets in `util/Json.kt` (the login,
+  the tracker, the archives and the room file use them too); the state keeps its own private parts (706 lines).
+- **`LoginRoutes.kt`** keeps the login's routes; the guards (`RequireLogin`, `RequireBridgeKey`,
+  `RequireSessionMember`, `RequireAdministrator`, `RequireSessionRole`, the logged-in user) are in `LoginGuards.kt`.
+- **`PastRoutes.kt`** keeps the session routes; the live streams' `follow`, `OpenStreams` and their times are in
+  `Streams.kt`.
+- `SingleSignOn.createLink` is gone (nothing used it; the CLI makes its links itself), and the server's two compiler
+  warnings are fixed (safe calls on a value that can't be null).
+
+### 0.18.6: The stores in files by area
+- **`Stores.kt` (1,166 lines, 33 types) split:** the accounts' stores (users, two-factor login, invitations, address
+  changes, logins and login links) in `AccountStores.kt`, the sessions' (session time, setup, the sessions, slot
+  passwords, finishing, the cheat log, roles, share links) in `SessionStores.kt`, the settings in `AppSettingsStore.kt`.
+  Every declaration moved as it was; `StoresTest.kt` stays one file (most of its tests cover both).
+
+### 0.18.5: `shared` in files by area
+- **`Api.kt` (928 lines, 77 types) split by area:** `Api.kt` keeps the JSON format, the session IDs, `Me`, `ApiError`
+  and `Versions`; the dashboard's summary is in `Summary.kt`, the connection in `Connection.kt`, the game server in
+  `GameServer.kt`, the panel's sessions and their generation in `Sessions.kt`, and `Spoiler.kt`, `Cheats.kt`,
+  `Apworlds.kt`.
+- **`Accounts.kt` (429 lines)** keeps the account and its settings; the login's steps are in `Login.kt`, the users'
+  administration in `Users.kt`, a session's people, watchers and share link in `SessionPeople.kt`.
+- **The texts:** `GeneralTexts.kt` held the APWorlds' and the user administration's texts: now `ApworldTexts.kt` and
+  `UserAdminTexts.kt`; the session tips have `SessionTipsTexts.kt` of their own.
+- Nothing else changed: every declaration moved as it was (the same package, so the same names everywhere).
+
+### 0.18.4: A slimmer gateway image, a build that redoes less
+- **The gateway image is 725 MB instead of 1.2 GB:** Archipelago is installed in a stage of its own with git and the
+  compilers it needs for that, and the image takes only the result (the installed packages, Archipelago's directory,
+  `libtk8.6`).
+- **The image build keeps Gradle's task results** (`--build-cache`, in its cache mount), the native images and the web
+  app's optimisation included: a change to the tracker's code builds in 149 s instead of 416 s (the gateway and the
+  web app come from the cache), one to the web app's in 193 s.
+- **Fixed:** while a new session waited for its game server's `room.json`, its tracker connection ended with an
+  exception (Kotlin's `error()` was called instead of the tracker's own) and was only started again 10 s later; the
+  log got a stack trace each time.
+- **`scripts/measure.sh`** times the first screen by the page's own signs (the splash gone, the session's state come,
+  two frames after): screenshots, taken while the page starts, held its start up in headless Chromium.
+
+### 0.18.3: One look per session, not per viewer
+- **The live streams share one look at their session:** every open dashboard polled its session every 750 ms by
+  itself, so the work grew with the viewers; now one poller per watched session tells all its streams
+  (`LiveSession.changes`). With 60 viewers the tracker uses 0.8 % CPU instead of 5.7 %. A stream still ends at its
+  next check (30 s) once its login or its right to the session does.
+- **The options are decoded once** per setup (they were on every look of every stream), and **the share link's
+  summary is serialized once** per change, not once per viewer.
+- **The panel's overview** uses the sessions as they were read last (every 10 s, and right after each change made in
+  the panel) and no longer reads them all again and asks the gateway twice per request: 2.9 ms instead of 10.7 ms
+  (every open panel asks every 15 s). The gateway's releases are kept 30 s.
+- **`scripts/measure.sh`** waits out the share link's rate limit (60 a minute) before timing the first screen.
+
+### 0.18.2: The web app compressed once
+- **The web app's files are compressed when the image is built**, Brotli (level 11) and gzip (level 9) beside
+  each file, and the tracker sends them as they are (Ktor's `preCompressed`); before, it gzipped the 12 MB for every
+  visitor. A browser over HTTPS takes Brotli: **3.4 MB instead of 4.5 MB to load**. The tracker's work per page load
+  is about 10 ms instead of 207 ms. A local build without those files is compressed per request as before.
+- **`scripts/measure.sh`** times the dashboard until it is drawn (the page's title showing), not until the loading
+  splash goes: that can be before anything is drawn, so 0.18.1's 243 ms were wrong (it is about 1.2 s locally). The
+  files' table also shows how long the tracker takes for each.
+
+### 0.18.1: The baseline and the audit
+- **`scripts/measure.sh`** measures a local stack with the demo's sessions running: the page's files as sent (plain,
+  gzip, Brotli), the images and what is in them, the containers' memory and CPU idle and with viewers' live streams
+  open, the API's answer times, and how long the first screen takes in headless Chromium; `--build` also times a
+  build from nothing and one without changes. `demo/admin.py measure` opens the viewers (up to 15 by the login, the
+  rest by the share link: one login holds at most 20 streams).
+- **`.docs/MEASUREMENTS.md`:** 0.17.2's numbers and what the audit found: streams that each poll their session, the
+  web files gzipped per request, little copied code but much repeated in kind (53 places decode an answer
+  themselves), one unused function, 63 compiler warnings, and a verdict for every code file (keep, split, move or
+  merge). Phase 18's next steps follow from it.
+
 ## Phase 17: A Repository That Can Be Shown
 What told too much about the servers left the repository and its history: their docs and setup, their addresses and
 names, the security scans' findings. The history was rewritten and signed again, and the GitHub repository made anew,

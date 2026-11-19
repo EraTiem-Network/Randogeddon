@@ -18,10 +18,9 @@ gateway:
     dataDir: "$DATA_DIR:/data"
     # Apworlds put on the server by hand; every release gets them
     customWorlds: "$CUSTOM_WORLDS:/custom_worlds"
-    # One MultiServer per running session, each on one of these ports (only reachable inside compose): as many
-    # sessions can run at once
-    ports: "$AP_PORTS:38300-38303"
     adminPassword: "$AP_ADMIN_PASSWORD:"
+    # How long a generation may take before it is stopped (a big multiworld fills on one core for a long time)
+    generationMinutes: "$GENERATION_MINUTES:60"
   database:
     # PostgreSQL: the slot passwords (created by the tracker)
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"

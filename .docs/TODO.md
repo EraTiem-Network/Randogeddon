@@ -703,14 +703,117 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           stays reachable there): its pull requests start again at #1, the pre-releases were made again with their
           notes cleaned. The old history and the old pull requests are kept outside the repository
 
-## Phase 18: Code Optimization
+## Phase 18: Code Optimization (done)
 
 *The code made leaner and faster where it pays, without changing what it does.*
 
-- [ ] The code looked through for what can be simpler, shared or dropped (repeated code, unused code, files that
+- [x] The code looked through for what can be simpler, shared or dropped (repeated code, unused code, files that
       grew too big), and for what is slow or heavy (the web app's size and start, the native images, the database's
       queries, the work per update)
-- [ ] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
+- [x] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
       (e.g. a big file split by its parts, shared code moved to where both sides use it), so the code is easier to
       change and builds faster; not for its own sake
-    - What exactly and in which order (for both points): to be decided at the phase's start
+    - Decided: all four areas (page load, server resources, images and build, code structure), measured first;
+      the code structure over every code file (repeated code merged where it makes it simpler, split, moved or
+      merged where that helps), each step with its numbers before and after
+- [x] The baseline and the audit (0.18.1): `scripts/measure.sh`, its numbers and the findings in
+      `.docs/MEASUREMENTS.md`, with a verdict for every code file
+- [x] Page load: the web files compressed once when built (Brotli and gzip), not per request (0.18.2): 3.4 MB
+      instead of 4.5 MB with Brotli, the tracker's work per page load 10 ms instead of 207 ms
+- [x] Server resources (0.18.3): one look per session for all its streams instead of each polling every 750 ms (the
+      tracker at 0.8 % instead of 5.7 % CPU with 60 viewers); the options decoded once, the share link's summary
+      serialized once; the panel's overview from the last reading (2.9 ms instead of 10.7 ms). The tracker's memory
+      and the gateway's looked into: nothing kept, the 363 MiB were a running session
+- [x] Images and build (0.18.4): the gateway image 725 MB instead of 1.2 GB (Archipelago built in a stage of its own,
+      without its compilers); Gradle's build cache in the image build, so a change to the tracker builds in 149 s
+      instead of 416 s. The tracker image stays (its 46 MB of bridge builds are downloads)
+- [x] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
+      helper used everywhere (53 places), the doubled components and the page frame shared; `Api.kt`,
+      `Accounts.kt`, `Stores.kt`, `SessionState.kt`, `LoginRoutes.kt` split; `GeneralTexts.kt` renamed; the compiler's
+      warnings fixed, `SingleSignOn.createLink` removed
+    - [x] `shared` (0.18.5): `Api.kt` split by area (summary, connection, game server, sessions, spoiler log,
+          cheats, APWorlds), `Accounts.kt` into the account, the login, the users' administration and a session's
+          people; `GeneralTexts.kt` into `ApworldTexts.kt` and `UserAdminTexts.kt`, the session tips out of
+          `SessionAdminTexts.kt`
+    - [x] `database` (0.18.6): `Stores.kt` into the accounts' stores, the sessions' stores and the settings' store
+    - [x] `server` (0.18.7): `SessionState.kt`'s model to `state/Model.kt` and its JSON accessors to `util/Json.kt`, the
+          guards out of `LoginRoutes.kt` (`LoginGuards.kt`), the streams out of `PastRoutes.kt` (`Streams.kt`);
+          `SingleSignOn.createLink` removed, the server's compiler warnings fixed
+    - [x] the web app, its files (0.18.8): 26 files of one package as 45 in `app`, `ui`, `api`, `dashboard`, `manage`
+          and `account`; `AdminSession.kt`, `Dashboard.kt`, `Components.kt`, `Settings.kt`, `Admin.kt` and `Watch.kt`
+          split by part
+    - [x] the web app, what repeats (0.18.11): one request helper for the 53 places that decode an answer themselves,
+          the doubled components merged, the page frame and the clock shared, the interop opt-in for the module; the
+          browser's own menu on a right click instead of the app's (asked for later)
+    - [x] the audit's leftovers (0.18.14): `PersonDialog.kt` and `PlayerDialog.kt` with one dialog frame, the pills
+          and panels of people of `AdminUsers.kt` and `People.kt` shared, the lines `server/` and `gateway/`
+          `build.gradle.kts` repeat in one place, the two old `BasicTextField`s (the web app's last two warnings)
+          moved to the state-based one
+- [x] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
+      without end and kept its place (counted as in use); after 5 crashes in a row, each within a minute of its start,
+      it stays down (*gave up*) with its last exit code, and *Start* tries again
+- [x] No port pool (asked for later, 0.18.9): game clients come through the gateway's relay only, so each game server
+      takes a free port of the gateway's container; how many run at once is a setting (*Game servers at once*, default
+      8, empty: no limit), asked by the tracker and kept by the gateway too
+- [x] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
+      30 minutes; hosted slots don't count; Administrators can keep a session running), and starts again when a player
+      connects, if there is room; at the gateway's start every session sleeps
+- [x] A generation in the background, and cancelling it (asked for later, 0.18.12): creating a session waits for its
+      whole generation in the page's request (up to `GENERATION_MINUTES`), so closing the page loses what comes after
+      it (the session's setup, its start); the tracker runs it as a job of its own instead, the panel shows one that
+      runs (after a reload too) and its end, and *Cancel* ends Generate.py on the gateway and frees the ID again
+- [x] The generation's log under its bar (asked for later, 0.18.12): Generate.py's whole output, newest on top, a page
+      at a time with a search; a failed one's to download, with the command that ran; the game server's log a page at a
+      time with a search too
+- [x] Tips that keep themselves open (asked for later, 0.18.12): one that came up under the pointer closed and opened
+      again and again; a tip stays while the pointer is on it or its anchor. The APWorld pills' errors as wide as the
+      window allows
+- [x] The section as *Archipelago* (asked for later, 0.18.18): the supported versions as pills, the supported games
+      one level higher with the custom games' chips among them, the upload, the removal and the search on their row
+- [x] An APWorld's version in the library (asked for later, 0.18.16): each file as its game and its version (from its
+      `archipelago.json`), its file name and size, and the oldest release it needs, in its tip
+- [x] Tips that can be copied (asked for later, 0.18.15): a tip's text can be selected (and copied with Ctrl+C), and a
+      long message (an APWorld's error on its pill) has a *Copy* button
+- [x] An invited player's address seen only by Administrators (asked for later, 0.18.15): in a session an invited
+      player was called by the part of their address before the `@` until they signed up, on the dashboard and in the
+      panel; now the name suggested for them, or `Invited-` and their account's ID's start. A session's view in the
+      panel listed every account with the invited ones' addresses to its Session-Managers too; now only to
+      Administrators
+- [x] Game servers only while they are needed (asked for later; noted here first, wrongly, as "the gateway on
+      demand"): that is 0.18.10's sleep and start on connect. Generating doesn't use a game server (the gateway runs
+      `Generate.py` itself), and the gateway with every session asleep needs some 35 MB. How it fits together, with two
+      diagrams, in the README (0.18.13: *Sessions and their game servers*)
+- Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
+
+## Phase 19: Generating Like the Launcher
+
+*A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
+generates didn't generate on the server, and an APWorld that loaded before was refused).*
+
+- [ ] Find out why first: the failed generation's log (its download, with the command, since 0.18.12) and the refused
+      APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
+      0.18.4), an empty `host.yaml` (Archipelago's defaults, as an untouched Launcher's, but nothing that asks for a
+      file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
+      release 0.6.8
+- [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
+      names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
+      (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
+      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. First to check: how
+      Archipelago 0.6.8 names a zipped APWorld's requirements (or only a world folder's)
+- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form the
+      spoiler level, race mode, plando options and skipping progression balancing, checked and passed as
+      `Generate.py`'s arguments (`--spoiler`, `--race`, `--plando`, `--skip_prog_balancing`); file and program paths
+      never come from the form
+- [ ] ROMs and tools for the worlds that need them (decided: kept encrypted in the database): an Administrator uploads
+      a base ROM (or a tool such as EnemizerCLI) for a world; stored encrypted (AES-GCM, its key from the
+      environment, not in the database, so a database dump alone doesn't hold them), never downloadable, the panel
+      shows only what is there (world, file name, checksum, who, when). Decrypted for one generation only into its
+      own temp directory, named in a `host.yaml` made for that generation, deleted after; a tool only one a world
+      names, run as the gateway's user. Our own dumps only: they aren't shared
+- [ ] A session from a seed generated elsewhere (asked for later): instead of the YAMLs, the `AP_<seed>.zip` that
+      Archipelago's Launcher (or `Generate.py`) made, uploaded in the new session's form. Checked before anything of it
+      runs, since a zip and the `.archipelago` in it come from outside: its size and file names (no paths out of it),
+      only the files a seed has, the multidata read without running it (it is a pickle: only Archipelago's own
+      classes allowed, as MultiServer does), its release against the gateway's, its games against the release's
+      APWorlds; then its slots for the players and locks as with YAMLs (locks need the World Locks slot generated
+      in, so a seed from elsewhere has none)

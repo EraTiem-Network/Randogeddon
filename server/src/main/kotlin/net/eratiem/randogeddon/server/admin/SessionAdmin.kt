@@ -1,6 +1,5 @@
 package net.eratiem.randogeddon.server.admin
 
-import net.eratiem.randogeddon.server.account.UnwantedWords
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import java.security.SecureRandom
@@ -9,8 +8,13 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 import kotlin.random.asKotlinRandom
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.database.AppSettingsStore
@@ -22,9 +26,9 @@ import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.account.PasswordGenerator
+import net.eratiem.randogeddon.server.account.UnwantedWords
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.config.english
-import net.eratiem.randogeddon.server.config.sessionsPerUser
 import net.eratiem.randogeddon.server.config.toApiError
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
@@ -38,15 +42,19 @@ import net.eratiem.randogeddon.server.session.reopenUntil
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
+import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.Creation
+import net.eratiem.randogeddon.shared.CreationState
 import net.eratiem.randogeddon.shared.GenerateRequest
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
+import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.NewSessionView
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -66,6 +74,35 @@ private const val LOCKS_SLOT = "Locks"
 /** A request the admin panel can't carry out, with what to tell the admin. */
 class SessionProblem(val status: HttpStatusCode, val refusal: Refusal) : Exception(refusal.english()) {
   constructor(status: HttpStatusCode, problem: Problem, vararg args: Pair<String, Any?>) : this(status, Refusal.of(problem, *args))
+}
+
+/** How long an ended creation stays to be asked about (its page shows the end, the log can be downloaded). */
+private const val CREATION_KEPT = 60 * 60_000L
+
+/** A creation was cancelled: the gateway ended its generation. */
+private class CreationCancelled : Exception("Cancelled")
+
+/** One new session's creation, running in the background, and how it ended. */
+private class CreationJob(val id: String, val creatorId: Uuid, val creator: String, val startedAt: Long) {
+  @Volatile
+  var state = CreationState.RUNNING
+
+  @Volatile
+  var created: CreateSessionResult? = null
+
+  @Volatile
+  var error: ApiError? = null
+
+  @Volatile
+  var endedAt: Long? = null
+
+  @Volatile
+  var job: Job? = null
+
+  /** Its creator, and Administrators. */
+  fun visibleTo(user: User): Boolean = user.id == creatorId || user.administrator
+
+  fun view(progress: GenerationProgress?) = Creation(id, state, progress, created, error, creator, startedAt)
 }
 
 /** Two words for a session ID that is easy to say: `brave-otter`, `friday-chaos`. */
@@ -115,6 +152,7 @@ class SessionAdmin(
   private val roles: SessionRoleStore,
   private val settings: AppSettingsStore,
   private val limit: SessionLimit,
+  private val gameServers: GameServerLimit,
 ) {
   /**
    * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
@@ -122,8 +160,8 @@ class SessionAdmin(
    * invited accounts (by address) and the users' names.
    */
   suspend fun overview(user: User): AdminOverview {
-    sessions.refresh()
-    val taken = takenIds()
+    // As the sessions were read last (every 10 s, and right after each change made here): the panel asks every 15 s
+    val taken = takenIds(fresh = false)
     val all = sessions.all()
     val managed = if (user.administrator) all else all.filter { user.id in it.managers() || it.roleOf(user) == SessionRole.SUPPORT }
     return AdminOverview(
@@ -131,7 +169,7 @@ class SessionAdmin(
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = if (user.administrator) users.active().map { it.name }.sorted() else emptyList(),
       people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
-      capacity = sessions.capacity,
+      capacity = gameServers.limit(),
       suggestedId = suggestId(random) { it in taken },
       taken = taken.sorted(),
       inUse = all.count { it.server?.port != null },
@@ -152,14 +190,14 @@ class SessionAdmin(
       suggestedId = suggestId(random) { it in taken },
       people = users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
       left = if (user.administrator) null else limit.of(user.id)?.left,
-      capacity = servers?.capacity ?: sessions.capacity,
+      capacity = gameServers.limit(),
       running = servers?.sessions?.count { it.port != null } ?: 0,
       taken = taken.sorted(),
     )
   }
 
   /** One session as the admin panel shows it. */
-  suspend fun view(id: String): AdminSessionView {
+  suspend fun view(id: String, user: User): AdminSessionView {
     val live = session(id)
     val setup = live.setup
     val finish = live.finish
@@ -180,6 +218,7 @@ class SessionAdmin(
       finishedAt = finishedAt?.toEpochMilli(),
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },
       keep = finish?.keep == true,
+      keepRunning = setup?.keepRunning == true,
       deletesAt = finishedAt?.let { deletesAt(it, finish.keep, config.sessionRetentionDays, finish.retainedSince)?.toEpochMilli() },
       percent = percent,
     )
@@ -187,7 +226,8 @@ class SessionAdmin(
       session = info,
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = users.active().map { it.name }.sorted(),
-      people = people(),
+      // Invited accounts (by their address) only for Administrators, as for a new session
+      people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
     )
   }
 
@@ -210,17 +250,103 @@ class SessionAdmin(
   /** Who creates a session right now (its seed generates for minutes); each one at a time. */
   private val creating = ConcurrentHashMap.newKeySet<Uuid>()
 
+  /** The creations running, and those that ended within [CREATION_KEPT] (until their page has seen the end). */
+  private val creations = ConcurrentHashMap<String, CreationJob>()
+
+  /** The creations run here, not in the request that started them: its page may be closed meanwhile. */
+  private val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
   /**
    * A new session of [creator], who becomes its Session-Manager. One at a time each: the limits (theirs, and the game
-   * servers') are checked before the seed generates, and the session only counts once it has one.
+   * servers') and the form are checked now (a refusal answers at once); the seed generates and the session is set up
+   * in the background ([creation] says how far, [cancel] ends it). It only counts once it has a seed.
    */
-  suspend fun create(request: CreateSessionRequest, creator: User): CreateSessionResult {
+  suspend fun create(request: CreateSessionRequest, creator: User): Creation {
     if (!creating.add(creator.id)) throw SessionProblem(HttpStatusCode.Conflict, Problem.CREATING_ALREADY)
-    try {
-      return createReserved(request, creator)
-    } finally {
+    val id = request.id.trim()
+    val generate = try {
+      prepare(request, creator)
+    } catch (e: Throwable) {
       creating.remove(creator.id)
-      stages.remove(request.id.trim())
+      stages.remove(id)
+      throw e
+    }
+    val now = System.currentTimeMillis()
+    creations.entries.removeIf { (_, job) -> job.endedAt?.let { now - it > CREATION_KEPT } == true }
+    val creation = CreationJob(id, creator.id, creator.name.orEmpty(), now)
+    creations[id] = creation
+    creation.job = background.launch {
+      try {
+        creation.created = generate()
+        creation.state = CreationState.DONE
+      } catch (e: CreationCancelled) {
+        creation.state = CreationState.CANCELLED
+        logger.info("{}'s creation of session {} was cancelled", creator.name, id)
+      } catch (e: CancellationException) {
+        creation.state = CreationState.CANCELLED
+        logger.info("{}'s creation of session {} was cancelled", creator.name, id)
+      } catch (e: SessionProblem) {
+        creation.error = e.refusal.toApiError()
+        creation.state = CreationState.FAILED
+      } catch (e: GameServerUnavailable) {
+        creation.error = Refusal.of(Problem.GATEWAY_ANSWERED, "status" to e.status.value, detail = e.message).toApiError()
+        creation.state = CreationState.FAILED
+      } catch (e: Exception) {
+        logger.warn("Creating session {} failed", id, e)
+        creation.error = Refusal(Problem.NOT_POSSIBLE, detail = e.message).toApiError()
+        creation.state = CreationState.FAILED
+      } finally {
+        creation.endedAt = System.currentTimeMillis()
+        creating.remove(creator.id)
+        stages.remove(id)
+      }
+    }
+    return creation.view(generationProgress(id))
+  }
+
+  /** New session [id]'s creation, for [user] (its creator or an Administrator); `null`: none (or long ago). */
+  suspend fun creation(id: String, user: User): Creation? =
+    creations[id]?.takeIf { it.visibleTo(user) }?.let { it.view(if (it.state == CreationState.RUNNING) generationProgress(id) else null) }
+
+  /** [user]'s own newest creation (running, or ended within [CREATION_KEPT]), for their page after a reload. */
+  suspend fun ownCreation(user: User): Creation? =
+    creations.values.filter { it.creatorId == user.id }.maxByOrNull { it.startedAt }?.let { creation(it.id, user) }
+
+  /** The lines of new session [id]'s generation log after [since]; `null`: none for [user]. */
+  suspend fun creationLog(id: String, since: Long, user: User): LogLines? {
+    if (creations[id]?.visibleTo(user) != true) return null
+    return gameServer.generationLog(id, since)
+  }
+
+  /** New session [id]'s whole generation log as text (with the command that ran); `null`: none for [user]. */
+  suspend fun creationLogText(id: String, user: User): String? {
+    if (creations[id]?.visibleTo(user) != true) return null
+    return gameServer.generationLogText(id)
+  }
+
+  /**
+   * Cancels new session [id]'s creation (its creator or an Administrator): the gateway ends Generate.py, and the ID is
+   * free again. Too late once the seed is there. One that ended is forgotten (its page has seen the end).
+   */
+  suspend fun cancel(id: String, user: User) {
+    val creation = creations[id]?.takeIf { it.visibleTo(user) }
+      ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+    if (creation.state != CreationState.RUNNING) {
+      creations.remove(id)
+      return
+    }
+    if (stages[id]?.stage in setOf(GenerationStage.SAVING, GenerationStage.SERVER)) {
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.CANCEL_TOO_LATE)
+    }
+    logger.info("{} cancels the creation of session {}", user.name, id)
+    // Generating: the gateway ends it, and the creation ends with the answer. Not there yet: it ends here, and the
+    // gateway is told once more in a moment (in case its request was on the way)
+    if (!runCatching { gameServer.cancelGeneration(id) }.getOrDefault(false)) {
+      creation.job?.cancel()
+      background.launch {
+        delay(2.seconds)
+        runCatching { gameServer.cancelGeneration(id) }
+      }
     }
   }
 
@@ -234,7 +360,8 @@ class SessionAdmin(
     if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
   }
 
-  private suspend fun createReserved(request: CreateSessionRequest, creator: User): CreateSessionResult {
+  /** Checks a new session; what generates its seed and sets it up after (to run in the background). */
+  private suspend fun prepare(request: CreateSessionRequest, creator: User): suspend () -> CreateSessionResult {
     val admin = creator.name
     if (!creator.administrator) {
       limit.of(creator.id)?.takeIf { it.reached }?.let {
@@ -248,11 +375,8 @@ class SessionAdmin(
     val id = request.id.trim()
     checkId(id)
     stages[id] = GenerationProgress(GenerationStage.CHECKING, 1)
-    val servers = gameServer.sessions()
     // The sessions others are creating right now will take a game server each too
-    if (servers.sessions.count { it.port != null } + creating.size - 1 >= servers.capacity) {
-      throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVERS_IN_USE, "capacity" to servers.capacity)
-    }
+    gameServers.check(null, starting = creating.size - 1)
     val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
     inspected.problems.firstOrNull()?.let { throw SessionProblem(HttpStatusCode.BadRequest, Refusal(it.code ?: Problem.NOT_POSSIBLE, it.args)) }
     if (inspected.worlds.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOTS)
@@ -288,27 +412,30 @@ class SessionAdmin(
     if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ONE_OPEN)
     logger.info("{} creates session {}: {} slots, {} players, Archipelago {}", admin, id, plans.size, people.size, version)
     val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
-    val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
-    val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
-    stages[id] = GenerationProgress(GenerationStage.SAVING, 93)
+    return {
+      val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
+      if (generated.cancelled) throw CreationCancelled()
+      val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
+      stages[id] = GenerationProgress(GenerationStage.SAVING, 93)
 
-    setups.create(
-      id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
-      plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
-      hosted = plans.filterValues { it.hosted }.keys,
-      // It counts towards the creator's limit while it runs
-      createdBy = creator.id,
-    )
-    slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
-    // No one connects a locked slot until its key is found (the tracker opens it then)
-    slotPasswords.setLocked(seed, locked.toSet())
-    stages[id] = GenerationProgress(GenerationStage.SERVER, 97)
-    gameServer.control(id, "start")
-    sessions.refresh()
-    roles.add(id, creator.id, SessionRole.MANAGER.code, creator.name, creator.name)
-    sessions.refresh()
-    logger.info("{} created session {} (seed {}) and manages it", admin, id, seed)
-    return CreateSessionResult(id, seed, locked)
+      setups.create(
+        id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
+        plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
+        hosted = plans.filterValues { it.hosted }.keys,
+        // It counts towards the creator's limit while it runs
+        createdBy = creator.id,
+      )
+      slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
+      // No one connects a locked slot until its key is found (the tracker opens it then)
+      slotPasswords.setLocked(seed, locked.toSet())
+      stages[id] = GenerationProgress(GenerationStage.SERVER, 97)
+      gameServer.control(id, "start")
+      sessions.refresh()
+      roles.add(id, creator.id, SessionRole.MANAGER.code, creator.name, creator.name)
+      sessions.refresh()
+      logger.info("{} created session {} (seed {}) and manages it", admin, id, seed)
+      CreateSessionResult(id, seed, locked)
+    }
   }
 
   /** The tracker's own stages of the sessions being created (checking before the gateway generates, setting up after). */
@@ -378,12 +505,25 @@ class SessionAdmin(
     logger.info("{} {} the auto-deletion of {}", admin, if (keep) "disabled" else "enabled", id)
   }
 
+  /** [keep]: its game server keeps running without players; else it sleeps when idle (the gateway decides). */
+  suspend fun setKeepRunning(id: String, keep: Boolean, admin: String) {
+    val live = session(id)
+    if (!setups.setKeepRunning(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+    sessions.refresh()
+    logger.info("{} let {} {}", admin, id, if (keep) "keep running without players" else "sleep when idle")
+  }
+
   private fun session(id: String): LiveSession =
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 
   /** The IDs in use: in the database, and the gateway's session directories (a deleted one's files are in old/). */
-  private suspend fun takenIds(): Set<String> =
-    store.all().map { it.id }.toSet() + runCatching { gameServer.sessions().sessions.map { it.id } }.getOrDefault(emptyList())
+  /**
+   * Every session ID in use: the database's and the gateway's. [fresh]: the gateway asked now (before an ID is
+   * taken); else as it answered last.
+   */
+  private suspend fun takenIds(fresh: Boolean = true): Set<String> = store.all().map { it.id }.toSet() +
+    creations.values.filter { it.state == CreationState.RUNNING }.map { it.id } +
+    if (fresh) runCatching { gameServer.sessions().sessions.map { it.id } }.getOrDefault(emptyList()) else sessions.onGateway
 }
 
 /**
@@ -421,6 +561,7 @@ internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<
 /** What to tell the admin when Generate.py made no seed: the games that may be the cause, then its output. */
 internal fun failure(result: GenerateResult): Refusal {
   val output = result.log.joinToString("\n")
+  result.stoppedAfterMinutes?.let { return Refusal.of(Problem.GENERATION_TOO_LONG, "minutes" to it, detail = output) }
   if (result.suspects.isEmpty()) return Refusal(Problem.GENERATION_FAILED, detail = output)
   val suspects = result.suspects.joinToString("\n") { s ->
     val file = listOfNotNull(s.apworld, s.from?.let { "Archipelago $it" })

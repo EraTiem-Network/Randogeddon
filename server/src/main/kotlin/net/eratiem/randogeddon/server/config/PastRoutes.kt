@@ -12,13 +12,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
-import io.ktor.server.sse.ServerSSESession
 import io.ktor.server.sse.sse
-import io.ktor.sse.ServerSentEvent
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
@@ -26,41 +20,19 @@ import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
-import net.eratiem.randogeddon.shared.SpoilerFindings
-import net.eratiem.randogeddon.shared.SpoilerLines
-import net.eratiem.randogeddon.server.session.SpoilerSearches
-import net.eratiem.randogeddon.server.session.SpoilerLog
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.server.session.SpoilerLog
+import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.server.session.markChecked
-import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SlotFiles
-
-private val POLL_INTERVAL = 750.milliseconds
-private val KEEPALIVE = 15.seconds
-/** How often a stream checks that its login still holds (ended: e.g. logged out, or at the provider). */
-internal val LOGIN_CHECK = 30.seconds
-
-/** The live streams open per account (each polls for as long as it is open): only so many at once. */
-object OpenStreams {
-  const val MAX = 20
-  private val open = ConcurrentHashMap<String, Int>()
-
-  /** Runs [block] as one of [account]'s streams; not at all if they have [MAX] open already. */
-  suspend fun <T> counted(account: String, block: suspend () -> T): T? {
-    val mine = open.merge(account, 1, Int::plus) ?: 1
-    try {
-      return if (mine > MAX) null else block()
-    } finally {
-      open.compute(account) { _, n -> (n ?: 1).minus(1).takeIf { it > 0 } }
-    }
-  }
-}
+import net.eratiem.randogeddon.shared.SpoilerFindings
+import net.eratiem.randogeddon.shared.SpoilerLines
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
@@ -186,36 +158,6 @@ internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Ar
   val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else live.tracker.read { playerDetail(slot) })
     ?: return call.respond(HttpStatusCode.NotFound)
   call.respond(detail)
-}
-
-/** Sends [live]'s summary ([json]) whenever it changes, with a keepalive in between, until the client goes. */
-internal suspend fun ServerSSESession.follow(
-  live: LiveSession,
-  stillAllowed: suspend () -> Boolean = { true },
-  json: suspend () -> String,
-) {
-  var sentVersion = -1L
-  var idle = 0.milliseconds
-  var unchecked = 0.milliseconds
-  while (true) {
-    if (unchecked >= LOGIN_CHECK) {
-      if (!stillAllowed()) return
-      unchecked = 0.milliseconds
-    }
-    // A finished session's summary no longer changes, but finishing (and reopening) changes the version
-    val version = live.version()
-    if (version != sentVersion) {
-      sentVersion = version
-      send(ServerSentEvent(data = json(), event = "state"))
-      idle = 0.milliseconds
-    } else if (idle >= KEEPALIVE) {
-      send(ServerSentEvent(comments = "keepalive"))
-      idle = 0.milliseconds
-    }
-    delay(POLL_INTERVAL)
-    idle += POLL_INTERVAL
-    unchecked += POLL_INTERVAL
-  }
 }
 
 /** The session of the path's `{id}`, or 404. */

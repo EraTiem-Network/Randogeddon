@@ -9,6 +9,7 @@ import kotlinx.coroutines.withTimeout
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.shared.GameServerStatus
 import org.junit.Assume.assumeFalse
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -18,9 +19,14 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class SessionsTest {
   private val scope = CoroutineScope(SupervisorJob())
@@ -31,10 +37,27 @@ class SessionsTest {
   }
 
   @Test
-  fun `ports are given as ranges or lists`() {
-    assertEquals(listOf(38300, 38301, 38302, 38303), parsePorts("38300-38303"))
-    assertEquals(listOf(38300, 38305, 38306), parsePorts("38300, 38305-38306,38300"))
-    assertFailsWith<IllegalArgumentException> { parsePorts("38303-38300") }
+  fun `a game server gets a free port, its last one while nothing else listens there`() {
+    val port = freePort(null, emptySet())
+    assertEquals(port, freePort(port, emptySet()))
+    // Taken by another game server, or by something else listening: another one
+    assertNotEquals(port, freePort(port, setOf(port)))
+    ServerSocket(port).use { assertNotEquals(port, freePort(port, emptySet())) }
+  }
+
+  @Test
+  fun `a game server sleeps once it ran without players for the time set, unless kept running`() {
+    val running = GameServerStatus.RUNNING
+    assertTrue(sleepsNow(running, players = 0, idleFor = 30.minutes, idleMinutes = 30, keepRunning = false))
+    assertFalse(sleepsNow(running, players = 0, idleFor = 29.minutes, idleMinutes = 30, keepRunning = false))
+    assertFalse(sleepsNow(running, players = 1, idleFor = 3.minutes * 60, idleMinutes = 30, keepRunning = false))
+    assertFalse(sleepsNow(running, players = 0, idleFor = 3.minutes * 60, idleMinutes = 30, keepRunning = true))
+    // 0: never
+    assertFalse(sleepsNow(running, players = 0, idleFor = 3.minutes * 60, idleMinutes = 0, keepRunning = false))
+    // Only one that runs: not one starting, stopped or asleep already
+    for (status in GameServerStatus.entries - running) {
+      assertFalse(sleepsNow(status, players = 0, idleFor = 3.minutes * 60, idleMinutes = 30, keepRunning = false))
+    }
   }
 
   @Test
@@ -56,7 +79,7 @@ class SessionsTest {
    * [finished] ones are refused.
    */
   private fun sessions(
-    ids: List<String>, ports: List<Int>, finished: Set<String> = emptySet(),
+    ids: List<String>, limit: Int, finished: Set<String> = emptySet(),
   ): Pair<Sessions, SessionDirs> {
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
     val data: Path = Files.createTempDirectory("data")
@@ -65,7 +88,7 @@ class SessionsTest {
     for (id in ids) data.resolve("sessions/$id").createDirectories().resolve("AP_$id.zip").createFile()
     val dirs = SessionDirs(data)
     val sessions = Sessions(
-      dirs, ports,
+      dirs, { limit },
       create = { id, dir, port ->
         GameServer(
           GameServerConfig(
@@ -79,6 +102,8 @@ class SessionsTest {
       },
       // Never asked here: no client connects
       passwords = { SlotPasswordCache(SlotPasswordStore(error("no database")), it) },
+      // In order from 40001, so the test knows them; its last one again while no other session has it
+      port = { last, taken -> last?.takeIf { it !in taken } ?: (40001..40100).first { it !in taken } },
     )
     return sessions to dirs
   }
@@ -88,19 +113,20 @@ class SessionsTest {
   }
 
   @Test
-  fun `each running session gets a port of its own, as long as one is free`() = runBlocking {
-    val (sessions, dirs) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), listOf(40001, 40002))
+  fun `only as many run as the limit allows, each on a port of its own`() = runBlocking {
+    val (sessions, dirs) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 2)
 
-    // Two ports: the third session stays stopped
-    sessions.startAll()
-    sessions.await("brave-otter", GameServerStatus.RUNNING)
-    sessions.await("friday-chaos", GameServerStatus.RUNNING)
-    assertEquals(GameServerStatus.STOPPED, sessions.get("quiet-fox")?.server?.state?.status)
+    // All asleep at the gateway's start; a limit of two: the third player's session stays asleep
+    sessions.sleepAll()
+    assertEquals(List(3) { GameServerStatus.IDLE }, sessions.all().map { it.server.state.status })
+    assertTrue(sessions.wake("brave-otter"))
+    assertTrue(sessions.wake("friday-chaos"))
     assertEquals(listOf(40001, 40002, null), sessions.list().sessions.map { it.port })
-    assertEquals(2, sessions.list().capacity)
-    assertFailsWith<NoFreePort> { sessions.start("quiet-fox") }
+    assertFailsWith<ServersBusy> { sessions.wake("quiet-fox") }
+    assertEquals(GameServerStatus.IDLE, sessions.get("quiet-fox")?.server?.state?.status)
+    assertFailsWith<ServersBusy> { sessions.start("quiet-fox") }
 
-    // Stopping one frees its port for another
+    // Stopping one makes room, and frees its port for another
     sessions.stop("brave-otter")
     sessions.start("quiet-fox")
     sessions.await("quiet-fox", GameServerStatus.RUNNING)
@@ -114,15 +140,58 @@ class SessionsTest {
   }
 
   @Test
-  fun `finished sessions take no port when the gateway starts them all`() = runBlocking {
+  fun `finished sessions don't sleep and don't wake, and don't count`() = runBlocking {
     val (sessions, _) = sessions(
-      listOf("brave-otter", "calm-heron", "friday-chaos", "quiet-fox"), listOf(40001, 40002),
+      listOf("brave-otter", "calm-heron", "friday-chaos", "quiet-fox"), limit = 2,
       finished = setOf("brave-otter", "calm-heron"),
     )
-    sessions.startAll()
-    sessions.await("friday-chaos", GameServerStatus.RUNNING)
-    sessions.await("quiet-fox", GameServerStatus.RUNNING)
+    sessions.sleepAll()
+    assertEquals(
+      listOf(GameServerStatus.STOPPED, GameServerStatus.STOPPED, GameServerStatus.IDLE, GameServerStatus.IDLE),
+      sessions.all().map { it.server.state.status },
+    )
+    assertFalse(sessions.wake("brave-otter"))
+    assertTrue(sessions.wake("friday-chaos"))
+    assertTrue(sessions.wake("quiet-fox"))
     assertEquals(listOf(null, null, 40001, 40002), sessions.list().sessions.map { it.port })
+    sessions.stopAll()
+  }
+
+  @Test
+  fun `without a limit every session runs`() = runBlocking {
+    val (sessions, _) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 0)
+    sessions.sleepAll()
+    for (id in listOf("brave-otter", "friday-chaos", "quiet-fox")) assertTrue(sessions.wake(id))
+    assertEquals(listOf(40001, 40002, 40003), sessions.list().sessions.map { it.port })
+    sessions.stopAll()
+  }
+
+  @Test
+  fun `one nobody plays on goes to sleep, but not with a player or kept running, and a stop keeps it from waking`() = runBlocking {
+    val (sessions, _) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 0)
+    sessions.sleepAll()
+    for (id in listOf("brave-otter", "friday-chaos", "quiet-fox")) assertTrue(sessions.wake(id))
+    // Each ran an hour; one has a player, one is kept running
+    for (session in sessions.all()) session.idleSince = TimeSource.Monotonic.markNow() - 60.minutes
+    val leave = sessions.get("brave-otter")!!.joined()
+    val kept = { s: SessionGameServer -> SleepRules(keepRunning = s.id == "friday-chaos") }
+    assertEquals(listOf("quiet-fox"), sessions.sweep(30, kept))
+    assertEquals(GameServerStatus.IDLE, sessions.get("quiet-fox")?.server?.state?.status)
+    assertNull(sessions.list().sessions.first { it.id == "quiet-fox" }.port)
+    // The player leaves: its time without players counts from now
+    leave()
+    leave()
+    assertEquals(0, sessions.get("brave-otter")?.players)
+    assertEquals(emptyList(), sessions.sweep(30, kept))
+    sessions.get("brave-otter")!!.idleSince = TimeSource.Monotonic.markNow() - 31.minutes
+    assertEquals(listOf("brave-otter"), sessions.sweep(30, kept))
+    // A player wakes it again, on its port; a stop by hand keeps it from waking
+    assertTrue(sessions.wake("quiet-fox"))
+    assertEquals(GameServerStatus.RUNNING, sessions.get("quiet-fox")?.server?.state?.status)
+    sessions.stop("brave-otter")
+    assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
+    assertFalse(sessions.wake("brave-otter"))
+    assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
     sessions.stopAll()
   }
 }
