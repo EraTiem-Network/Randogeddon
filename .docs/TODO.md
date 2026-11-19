@@ -796,6 +796,12 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
       release 0.6.8, and Linux instead of Windows: file names are case-sensitive here, so an APWorld that imports
       `.Items` for its `items.py` (or builds paths with `\`) works in the Launcher only
+    - Found for Skyward Sword HD (after 0.19.4, from its log): the APWorld wants the extracted ROM on the generating
+      machine; without it, it generates with fallbacks, and its fallback item pool has one *Progressive Loftwing*
+      where the logic needs two for *Spiral Charge*, so four locations can't be reached (`FillError` with
+      `accessibility: full`). A bug of the APWorld (one line: `"Progressive Loftwing": 2` in its fallback
+      `POOL_ITEM_COUNTS`); until it is fixed, `start_inventory: {Progressive Loftwing: 2}` in the YAML generates here.
+      Reproduced with the gateway's image, both ways tried. The refused APWorld's message is still to come
 - [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
       names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
       (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
@@ -824,16 +830,14 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       directory); a change of the library waits for them. Memory: each needs its own (a big one gigabytes; a paused one
       keeps its), a killed one says "probably out of memory"
 - [x] No *Spoiler log* button and no *Cheats* section before the spoiler log has its playthrough (asked for, 0.19.4)
-- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form race
-      mode, plando options and skipping progression balancing, checked and passed as `Generate.py`'s arguments
-      (`--race`, `--plando`, `--skip_prog_balancing`); file and program paths never come from the form. The spoiler
-      level isn't one of them (decided: every generation goes through all three, see above)
-- [ ] ROMs and tools for the worlds that need them (decided: kept encrypted in the database): an Administrator uploads
-      a base ROM (or a tool such as EnemizerCLI) for a world; stored encrypted (AES-GCM, its key from the
-      environment, not in the database, so a database dump alone doesn't hold them), never downloadable, the panel
-      shows only what is there (world, file name, checksum, who, when). Decrypted for one generation only into its
-      own temp directory, named in a `host.yaml` made for that generation, deleted after; a tool only one a world
-      names, run as the gateway's user. Our own dumps only: they aren't shared
+- [x] Generator settings per session (decided: chosen settings, no raw `host.yaml`; 0.19.5): in the new session's
+      form the plando modules the YAMLs may use, no progression balancing, and race mode, passed as `Generate.py`'s
+      arguments (`--plando` with the known names only, `--skip_prog_balancing`, `--race --spoiler 0`); file and
+      program paths never come from the form. A seed's settings are kept for its spoiler log's later levels; a race
+      has no spoiler log and no later levels. The spoiler level isn't one of them (decided: every generation goes
+      through all three, see above)
+- ROMs for the worlds that need them: undecided, thought about later. No ROM is uploaded to the server (said after
+      0.19.4; the earlier plan to keep them encrypted in the database is dropped)
 - [ ] A session from a seed generated elsewhere (asked for later): instead of the YAMLs, the `AP_<seed>.zip` that
       Archipelago's Launcher (or `Generate.py`) made, uploaded in the new session's form. Checked before anything of it
       runs, since a zip and the `.archipelago` in it come from outside: its size and file names (no paths out of it),
