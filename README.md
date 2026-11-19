@@ -34,7 +34,8 @@ flowchart TB
 The gateway runs one MultiServer per running session as a child process, each on a free port of its container. Only
 the tracker reaches them directly (those ports and the internal API on 8001 are not published). How many run at once
 is a setting of the Administrators (*Game servers at once*, under *Users*; default 8, empty: no limit): each one needs
-a few hundred MB of the gateway's memory. The gateway relays each game client to its session's MultiServer: by the host name it
+a few hundred MB of the gateway's memory. One nobody plays on for a while sleeps (*Sleep after*, under *Users*;
+default 30 minutes) and starts again when a player connects. The gateway relays each game client to its session's MultiServer: by the host name it
 connected to (`<session-id>.<BASE_DOMAIN>`), or locally by the path (`ws://localhost:38281/<session-id>`). A tracker
 restart or update doesn't drop the players.
 
@@ -342,6 +343,13 @@ finished one deletes them for good. The accounts stay. As many game servers run 
 with an error is started again after a pause; after 5 times in a row, each within a minute of its start, it gives up
 (*gave up* in the panel, with its log) and stays stopped until it is started again.
 
+A game server without players for *Sleep after (minutes)* (under *Users*; default 30, 0: never) saves and stops:
+*asleep* in the panel, and the dashboard says so. Players are game clients in a slot through the gateway; the
+tracker and hosted slots don't count. The first player who connects starts it again, if fewer run than may at once
+(else they are told every game server is in use), and waits meanwhile. One stopped by hand, one that gave up and a
+finished session's don't start this way. An Administrator can keep a session's game server running without players
+(*Keep running without players*, in its *State and Control*).
+
 ### Finishing, past sessions and the spoiler log
 
 - **Ending and pausing:** 2 minutes after every slot has reached its goal or was released, the session ends by
@@ -471,7 +479,8 @@ client, depending on the session's options. `AP_ADMIN_PASSWORD` enables `!admin`
 ### Progress and restarts
 
 Each game server saves to `data/sessions/<id>/AP_<seed>.apsave` continuously, and `restart: unless-stopped` brings
-the gateway back after crashes or reboots; it starts every session's game server again that isn't finished. Stopping
+the gateway back after crashes or reboots; every session that isn't finished sleeps then, and starts with its first
+player. Stopping
 with `docker compose down` and starting with `up -d` keeps the progress.
 
 ## Logins and passwords

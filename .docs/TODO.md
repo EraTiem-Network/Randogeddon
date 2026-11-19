@@ -750,7 +750,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] No port pool (asked for later, 0.18.9): game clients come through the gateway's relay only, so each game server
       takes a free port of the gateway's container; how many run at once is a setting (*Game servers at once*, default
       8, empty: no limit), asked by the tracker and kept by the gateway too
-- [ ] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
+- [x] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
       30 minutes; hosted slots don't count; Administrators can keep a session running), and starts again when a player
-      connects, if there is room
+      connects, if there is room; at the gateway's start every session sleeps
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more

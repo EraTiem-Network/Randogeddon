@@ -9,6 +9,21 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.10: Game servers that sleep
+- **A game server nobody plays on goes to sleep:** after *Sleep after (minutes)* without a player (a setting under
+  *Users*, beside the game servers at once; default 30, 0: never) it saves and stops (*asleep* in the panel). Players
+  are game clients in a slot through the gateway's relay; the tracker doesn't count, nor do hosted slots (a game that
+  runs as a server of its own would keep it up for good).
+- **And starts when a player connects:** the gateway starts a sleeping game server for the first player who connects
+  (if fewer run than may at once; else "Every game server is in use"), who waits meanwhile. One stopped by hand, one
+  that gave up and a finished session's don't start this way.
+- **The gateway starts none at its start:** every session sleeps until its first player (after a deploy too), so a
+  deploy or a reboot doesn't start them all at once.
+- **Keep running without players:** an Administrator's switch in a session's *State and Control*, for a game that
+  only connects now and then (`sessions.keep_running`, migration V23).
+- The dashboard says the game server sleeps and starts when a player connects, instead of a connection error.
+- The gateway's database role may read the sessions' hosted slots now (to tell them from players).
+
 ### 0.18.9: Game servers without a port pool, and no crash loop
 - **No port pool:** a game server takes a free port of the gateway's container when it starts (its last one again if
   free). The four ports of `AP_PORTS` (38300–38303) were the only limit of how many ran at once, but game clients come
