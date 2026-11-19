@@ -44,6 +44,17 @@ import net.eratiem.randogeddon.server.util.string
 
 /** Tags of clients that don't play: trackers (including this one), text clients and hint games. */
 private val NON_GAME_TAGS = setOf("Tracker", "TextOnly", "HintGame")
+
+/**
+ * A `Part` message of a client that doesn't play: MultiServer's text for it ends with the client's tags
+ * (`… has stopped tracking the game. Client(0.6.8), ['Tracker'].`). One without a text counts as a game's.
+ */
+private fun nonGameLeft(packet: JsonObject): Boolean {
+  val text = (packet["data"] as? JsonArray).orEmpty()
+    .joinToString("") { ((it as? JsonObject)?.get("text") as? JsonPrimitive)?.content.orEmpty() }
+  val tags = text.substringAfterLast("Client(", "")
+  return NON_GAME_TAGS.any { "'$it'" in tags }
+}
 const val MAX_EVENTS = 500
 
 private data class Group(val name: String, val game: String)
@@ -327,7 +338,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       }
 
       "Part" -> {
-        // Part carries no tags; only count down what was counted up
+        // Part carries no tags, but its text ends with the client's: a tracker or text client leaving (ours too) isn't
+        // a game leaving. And only count down what was counted up
+        if (nonGameLeft(packet)) return
         val slot = packet.int("slot")!!
         val player = players[slot]?.takeIf { it.online > 0 } ?: return
         player.online--
@@ -491,6 +504,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         percent = percent(p.checked.size, total),
         status = statusOf(p, lock),
         online = p.online > 0,
+        connections = p.online,
         lastActivity = p.lastActivity,
         itemsReceived = p.items.size,
         progressionReceived = p.items.count { it.flags and ItemFlags.PROGRESSION != 0 },
