@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -65,34 +66,70 @@ fun InfoTip(
   val p = LocalPalette.current
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
+  // The tip itself keeps it open: where there is no room below, it can come up under the pointer
+  val tipInteraction = remember { MutableInteractionSource() }
+  val tipHovered by tipInteraction.collectIsHoveredAsState()
+  val open = stayOpen(hovered || tipHovered)
   var tapped by remember { mutableStateOf(false) }
   var closedAt by remember { mutableLongStateOf(0L) }
   Box(
-    modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (hovered || tapped) p.accent else p.muted, CircleShape)
+    modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (open || tapped) p.accent else p.muted, CircleShape)
       .hoverable(interaction)
       .hand().clickable(interactionSource = interaction, indication = null) {
         if (!justClosed(closedAt)) tapped = !tapped
       },
     contentAlignment = Alignment.Center,
   ) {
-    Txt("i", size = 10.sp, color = if (hovered || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
-    if (hovered || tapped) {
+    Txt("i", size = 10.sp, color = if (open || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
+    if (open || tapped) {
       AppPopup(
         offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }),
         onDismissRequest = { tapped = false; closedAt = Platform.now() },
       ) {
-        TipCard(text, options, sections)
+        TipCard(text, options, sections, modifier = Modifier.hoverable(tipInteraction))
       }
     }
   }
 }
 
-/** What a tip says: the text, then each choice (name, meaning) and each part (heading, text) below a divider. */
+/**
+ * Whether a tip stays open: while [hovered] (its anchor, or the tip itself), and a moment after, so the pointer can
+ * go from one to the other (and a tip that comes up under the pointer doesn't close and open again and again).
+ */
 @Composable
-private fun TipCard(text: String, options: List<Pair<String, String>>, sections: List<Pair<String, String>> = emptyList()) {
+private fun stayOpen(hovered: Boolean): Boolean {
+  var open by remember { mutableStateOf(false) }
+  LaunchedEffect(hovered) {
+    if (hovered) {
+      open = true
+    } else {
+      delay(TIP_GRACE_MS)
+      open = false
+    }
+  }
+  return open || hovered
+}
+
+/** How long a tip stays after the pointer left it and its anchor. */
+private const val TIP_GRACE_MS = 200L
+
+/**
+ * What a tip says: the text, then each choice (name, meaning) and each part (heading, text) below a divider. [wide]:
+ * as wide as the window allows (a long message, such as Archipelago's), else a narrow column.
+ */
+@Composable
+private fun TipCard(
+  text: String,
+  options: List<Pair<String, String>>,
+  sections: List<Pair<String, String>> = emptyList(),
+  wide: Boolean = false,
+  modifier: Modifier = Modifier,
+) {
   val p = LocalPalette.current
+  val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
   Column(
-    Modifier.widthIn(max = 340.dp).card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+    modifier.widthIn(max = if (wide) (window - 32.dp).coerceAtLeast(340.dp) else 340.dp)
+      .card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     if (text.isNotBlank()) Txt(text, size = 12.sp)
@@ -121,14 +158,19 @@ private const val TIP_DELAY_MS = 600L
 internal fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
 
 /**
- * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it. A click
- * hides it until the pointer comes back (a dropdown's list opens there). Touch screens have no hover: there a long
- * press shows it, instead of the click; a tap anywhere closes it.
+ * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it; it
+ * stays while the pointer is on it or on the tip. A click hides it until the pointer comes back (a dropdown's list
+ * opens there). Touch screens have no hover: there a long press shows it, instead of the click; a tap anywhere closes
+ * it. [wide]: the tip as wide as the window allows (a long message).
  */
 @Composable
-fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content: @Composable () -> Unit) {
+fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: Boolean = false, content: @Composable () -> Unit) {
   val interaction = remember { MutableInteractionSource() }
-  val hovered by interaction.collectIsHoveredAsState()
+  val anchorHovered by interaction.collectIsHoveredAsState()
+  val tipInteraction = remember { MutableInteractionSource() }
+  val tipHovered by tipInteraction.collectIsHoveredAsState()
+  // Where there is no room below, the tip can come up under the pointer: then it keeps itself open
+  val hovered = stayOpen(anchorHovered || tipHovered)
   var shown by remember { mutableStateOf(false) }
   var clicked by remember { mutableStateOf(false) }
   // Shown by a long press
@@ -136,7 +178,7 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content
   var height by remember { mutableStateOf(0) }
   LaunchedEffect(hovered, clicked) {
     if (hovered && !clicked) {
-      delay(TIP_DELAY_MS)
+      if (!shown) delay(TIP_DELAY_MS)
       shown = true
     } else {
       shown = false
@@ -175,7 +217,7 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), content
         offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }),
         onDismissRequest = { shown = false; held = false },
       ) {
-        TipCard(text, options)
+        TipCard(text, options, wide = wide, modifier = Modifier.hoverable(tipInteraction))
       }
     }
   }
