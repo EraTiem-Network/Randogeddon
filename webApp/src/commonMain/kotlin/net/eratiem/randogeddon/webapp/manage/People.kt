@@ -1,7 +1,5 @@
 package net.eratiem.randogeddon.webapp.manage
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -10,9 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +18,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +53,8 @@ import net.eratiem.randogeddon.webapp.dashboard.playTime
 import net.eratiem.randogeddon.webapp.dashboard.statusColor
 import net.eratiem.randogeddon.webapp.dashboard.statusLabel
 import net.eratiem.randogeddon.webapp.ui.Avatar
+import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.GameChip
@@ -75,7 +71,6 @@ import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
-import net.eratiem.randogeddon.webapp.ui.hand
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /** The parts a Session-Manager gives (players come with the slots). */
@@ -267,13 +262,7 @@ private fun roleColor(role: SessionRole) = LocalPalette.current.let { p ->
 private fun PersonPill(person: SessionPerson, onClick: () -> Unit) {
   val t = LocalTexts.current
   val color = roleColor(person.role)
-  Row(
-    Modifier.clip(CircleShape).background(color.copy(alpha = 0.14f)).hand().clickable(onClick = onClick)
-      .padding(start = 3.dp, end = 12.dp, top = 3.dp, bottom = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Avatar(person.name, 22.dp)
+  AvatarPill(person.name, color.copy(alpha = 0.14f), null, onClick) {
     PersonName(person.name, person.id, deleted = person.deleted, size = 12.5.sp)
     Txt(t.people.role(person.role), size = 11.5.sp, color = color, maxLines = 1)
   }
@@ -319,20 +308,15 @@ private fun PersonPanel(
   }
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     SelectionContainer {
-      Column(Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp))) {
-        Row(
-          Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          Avatar(person.name, 40.dp)
-          Column(Modifier.weight(1f)) {
-            PersonName(person.name, person.id, deleted = person.deleted, size = 18.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Pill(texts.role(person.role), roleColor(person.role)) }
-          }
-          stats?.let { Txt("${t.decimal(it.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand) }
-          IconButton(onClose, Icon.CLOSE)
+      DialogCard(560.dp, header = {
+        Avatar(person.name, 40.dp)
+        Column(Modifier.weight(1f)) {
+          PersonName(person.name, person.id, deleted = person.deleted, size = 18.sp)
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Pill(texts.role(person.role), roleColor(person.role)) }
         }
-        Divider()
+        stats?.let { Txt("${t.decimal(it.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand) }
+        IconButton(onClose, Icon.CLOSE)
+      }) {
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           if (stats != null) {
             ProgressBar((stats.percent / 100).toFloat())

@@ -2,7 +2,6 @@ package net.eratiem.randogeddon.webapp.dashboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
@@ -40,6 +38,8 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.app.fill
 import net.eratiem.randogeddon.webapp.ui.Avatar
+import net.eratiem.randogeddon.webapp.ui.DialogCard
+import net.eratiem.randogeddon.webapp.ui.DialogSection
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.GameChip
@@ -49,8 +49,8 @@ import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
+import net.eratiem.randogeddon.webapp.ui.TwoColumns
 import net.eratiem.randogeddon.webapp.ui.Txt
-import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /**
@@ -97,107 +97,92 @@ fun PersonDialog(
       return@Dialog
     }
     SelectionContainer {
-      BoxWithConstraints(Modifier.padding(16.dp)) {
-        val twoColumns = maxWidth >= 760.dp
-        Column(Modifier.widthIn(max = 960.dp).fillMaxWidth().heightIn(max = maxHeight).card(p, RoundedCornerShape(20.dp))) {
-          Row(
-            Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Avatar(person.name, 44.dp)
-            Column(Modifier.weight(1f)) {
-              Txt(person.name, size = 18.sp, weight = FontWeight.Bold)
-              Txt(
-                t.dialogs.personLine(worlds.size, person.checked, person.total, person.online),
-                size = 12.5.sp, color = if (person.online) p.ok else p.muted,
-              )
-            }
-            Txt("${t.decimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
-            IconButton(onClose, Icon.CLOSE)
+      DialogCard(960.dp, header = {
+        Avatar(person.name, 44.dp)
+        Column(Modifier.weight(1f)) {
+          Txt(person.name, size = 18.sp, weight = FontWeight.Bold)
+          Txt(
+            t.dialogs.personLine(worlds.size, person.checked, person.total, person.online),
+            size = 12.5.sp, color = if (person.online) p.ok else p.muted,
+          )
+        }
+        Txt("${t.decimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
+        IconButton(onClose, Icon.CLOSE)
+      }) { available ->
+        val twoColumns = available >= 760.dp
+        Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+          ProgressBar((person.percent / 100).toFloat())
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Fact(t.dialogs.played, t.duration(played))
+            Fact(t.dialogs.goals, "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
+            Fact(t.dialogs.locked, "${worlds.count { it.status == PlayerStatus.LOCKED }}")
+            if (s.hintSettings.pointHints) Fact(t.dialogs.hintPoints, "${worlds.sumOf { it.hintPoints ?: 0 }}")
           }
-          Divider()
-          Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            ProgressBar((person.percent / 100).toFloat())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Fact(t.dialogs.played, t.duration(played))
-              Fact(t.dialogs.goals, "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
-              Fact(t.dialogs.locked, "${worlds.count { it.status == PlayerStatus.LOCKED }}")
-              if (s.hintSettings.pointHints) Fact(t.dialogs.hintPoints, "${worlds.sumOf { it.hintPoints ?: 0 }}")
-            }
 
-            val left: @Composable ColumnScope.() -> Unit = {
-              Section(t.dialogs.slots)
-              worlds.forEach { w ->
-                HoverRow(onClick = { openWorld = w.slot }, modifier = Modifier.fillMaxWidth()) {
-                  Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GameChip(w.game, dimmed = w.status == PlayerStatus.LOCKED)
-                    Column(Modifier.weight(1f)) {
-                      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Txt(w.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
-                        Pill(statusLabel(t, w), statusColor(w.status))
-                      }
-                      Txt(
-                        t.dialogs.slotLine(w.checked, w.total, t.duration(playTime(w, now)), w.goalAt?.let { t.clock(it) }),
-                        size = 11.5.sp, color = p.muted, maxLines = 1,
-                      )
-                      Spacer(Modifier.height(4.dp))
-                      ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
-                    }
-                  }
-                }
-              }
-              if (s.hintSettings.enabled || openHints.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Section(t.dialogs.openHints(person.name, openHints.size))
-                if (openHints.isEmpty()) Txt(t.dialogs.none, size = 13.sp, color = p.muted)
-                openHints.forEach { h ->
-                  Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+          val left: @Composable ColumnScope.() -> Unit = {
+            DialogSection(t.dialogs.slots)
+            worlds.forEach { w ->
+              HoverRow(onClick = { openWorld = w.slot }, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                  GameChip(w.game, dimmed = w.status == PlayerStatus.LOCKED)
+                  Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                      Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
-                      HintStatus(h)
+                      Txt(w.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
+                      Pill(statusLabel(t, w), statusColor(w.status))
                     }
-                    Txt(fill(t.dialogs.hintWhereFor, "location" to h.locationName, "finder" to h.finderName, "receiver" to h.receiverName), size = 12.sp, color = p.muted)
+                    Txt(
+                      t.dialogs.slotLine(w.checked, w.total, t.duration(playTime(w, now)), w.goalAt?.let { t.clock(it) }),
+                      size = 11.5.sp, color = p.muted, maxLines = 1,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                   }
-                  Divider()
                 }
               }
             }
-            val right: @Composable ColumnScope.() -> Unit = {
-              Section(t.dialogs.connections(sessions.size))
-              if (sessions.isEmpty()) Txt(t.dialogs.noClientYet, size = 13.sp, color = p.muted)
-              sessions.take(20).forEach { (world, c) ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                  Dot(if (c.end == null) p.ok else p.muted, 7.dp)
-                  Column(Modifier.weight(1f)) {
-                    Txt(world, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
-                    Txt(
-                      t.dialogs.connection(c.implicit, t.clock(c.start), c.end?.let { t.clock(it) }),
-                      size = 12.sp, color = p.muted,
-                    )
+            if (s.hintSettings.enabled || openHints.isNotEmpty()) {
+              Spacer(Modifier.height(10.dp))
+              DialogSection(t.dialogs.openHints(person.name, openHints.size))
+              if (openHints.isEmpty()) Txt(t.dialogs.none, size = 13.sp, color = p.muted)
+              openHints.forEach { h ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
+                    HintStatus(h)
                   }
-                  Txt(t.duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+                  Txt(fill(t.dialogs.hintWhereFor, "location" to h.locationName, "finder" to h.finderName, "receiver" to h.receiverName), size = 12.sp, color = p.muted)
                 }
                 Divider()
               }
-              Spacer(Modifier.height(10.dp))
-              Section(t.dialogs.recentActivity)
-              if (activity.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
-              Column(Modifier.heightIn(max = 520.dp).scrolling()) {
-                activity.forEach { FeedRow(it) }
-              }
-            }
-            if (twoColumns) {
-              Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Column(Modifier.weight(1f), content = left)
-                Column(Modifier.weight(1f), content = right)
-              }
-            } else {
-              Column(content = left)
-              Column(content = right)
             }
           }
+          val right: @Composable ColumnScope.() -> Unit = {
+            DialogSection(t.dialogs.connections(sessions.size))
+            if (sessions.isEmpty()) Txt(t.dialogs.noClientYet, size = 13.sp, color = p.muted)
+            sessions.take(20).forEach { (world, c) ->
+              Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Dot(if (c.end == null) p.ok else p.muted, 7.dp)
+                Column(Modifier.weight(1f)) {
+                  Txt(world, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                  Txt(
+                    t.dialogs.connection(c.implicit, t.clock(c.start), c.end?.let { t.clock(it) }),
+                    size = 12.sp, color = p.muted,
+                  )
+                }
+                Txt(t.duration((c.end ?: now) - c.start), size = 12.5.sp, color = p.muted)
+              }
+              Divider()
+            }
+            Spacer(Modifier.height(10.dp))
+            DialogSection(t.dialogs.recentActivity)
+            if (activity.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
+            Column(Modifier.heightIn(max = 520.dp).scrolling()) {
+              activity.forEach { FeedRow(it) }
+            }
+          }
+          TwoColumns(twoColumns, 18.dp, left, right)
         }
       }
     }
@@ -213,8 +198,3 @@ internal fun RowScope.Fact(label: String, value: String, color: Color = LocalPal
   }
 }
 
-@Composable
-private fun Section(title: String) {
-  Txt(title.uppercase(), size = 12.sp, color = LocalPalette.current.muted, weight = FontWeight.SemiBold,
-    modifier = Modifier.padding(bottom = 8.dp))
-}
