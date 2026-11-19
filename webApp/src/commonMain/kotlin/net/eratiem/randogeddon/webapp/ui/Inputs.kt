@@ -24,6 +24,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -293,6 +298,38 @@ fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: M
 
 private val KNOB = 20.dp
 
+/**
+ * A one-line field for a [value] kept outside it: what is typed goes to [onChange] (what [allow] lets through), and a
+ * value set from outside (emptied, a step of the arrows, a new form) comes into the field. [decorate] draws around
+ * the text ([inner]); its `empty` says whether the field shows nothing.
+ */
+@Composable
+private fun OneLineField(
+  value: String,
+  onChange: (String) -> Unit,
+  modifier: Modifier,
+  allow: InputTransformation? = null,
+  decorate: @Composable (empty: Boolean, inner: @Composable () -> Unit) -> Unit,
+) {
+  val p = LocalPalette.current
+  val state = rememberTextFieldState(value)
+  val current by rememberUpdatedState(value)
+  val changed by rememberUpdatedState(onChange)
+  LaunchedEffect(value) { if (state.text.toString() != value) state.setTextAndPlaceCursorAtEnd(value) }
+  LaunchedEffect(state) {
+    snapshotFlow { state.text.toString() }.collect { if (it != current) changed(it) }
+  }
+  BasicTextField(
+    state,
+    modifier,
+    inputTransformation = allow,
+    textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
+    lineLimits = TextFieldLineLimits.SingleLine,
+    cursorBrush = SolidColor(p.accent),
+    decorator = { inner -> decorate(state.text.isEmpty(), inner) },
+  )
+}
+
 /** A one-line text field. [clearable] (a search): an × at its end empties it, while there is something in it. */
 @Composable
 fun FilterField(
@@ -304,32 +341,24 @@ fun FilterField(
   clearable: Boolean = false,
 ) {
   val p = LocalPalette.current
-  BasicTextField(
-    value = value,
-    onValueChange = onChange,
-    singleLine = true,
-    textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
-    cursorBrush = SolidColor(p.accent),
-    modifier = modifier,
-    decorationBox = { inner ->
-      Row(
-        Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = if (clearable) 4.dp else 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
-          if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
-          inner()
-        }
-        if (clearable && value.isNotEmpty()) {
-          Box(
-            Modifier.size(22.dp).clip(CircleShape).hand().clickable { onChange("") },
-            contentAlignment = Alignment.Center,
-          ) { DrawnIcon(Icon.CLOSE, p.muted, 10.dp) }
-        }
+  OneLineField(value, onChange, modifier) { empty, inner ->
+    Row(
+      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+        .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = if (clearable) 4.dp else 10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
+        if (empty) Txt(placeholder, size = 13.sp, color = p.muted)
+        inner()
       }
-    },
-  )
+      if (clearable && !empty) {
+        Box(
+          Modifier.size(22.dp).clip(CircleShape).hand().clickable { onChange("") },
+          contentAlignment = Alignment.Center,
+        ) { DrawnIcon(Icon.CLOSE, p.muted, 10.dp) }
+      }
+    }
+  }
 }
 
 /**
@@ -379,34 +408,33 @@ fun NumberField(
     val from = value.trim().toIntOrNull() ?: placeholder.toIntOrNull()
     onChange((if (from == null) range.first else (from + by)).coerceIn(range).toString())
   }
-  BasicTextField(
-    value = value,
-    onValueChange = { typed -> onChange(typed.filter(Char::isDigit).take(range.last.toString().length)) },
-    singleLine = true,
-    textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
-    cursorBrush = SolidColor(p.accent),
-    modifier = modifier,
-    decorationBox = { inner ->
-      Row(
-        Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-          .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
-          if (value.isEmpty()) Txt(placeholder, size = 13.sp, color = p.muted)
-          inner()
+  // Digits only, no more of them than the range's end has
+  val digits = range.last.toString().length
+  val allow = remember(digits) {
+    InputTransformation {
+      if (length > digits || asCharSequence().any { !it.isDigit() }) revertAllChanges()
+    }
+  }
+  OneLineField(value, onChange, modifier, allow) { empty, inner ->
+    Row(
+      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+        .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
+        if (empty) Txt(placeholder, size = 13.sp, color = p.muted)
+        inner()
+      }
+      Column {
+        Box(Modifier.size(18.dp, 14.dp).rotate(180f).hand().clickable { step(1) }, contentAlignment = Alignment.Center) {
+          DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
         }
-        Column {
-          Box(Modifier.size(18.dp, 14.dp).rotate(180f).hand().clickable { step(1) }, contentAlignment = Alignment.Center) {
-            DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
-          }
-          Box(Modifier.size(18.dp, 14.dp).hand().clickable { step(-1) }, contentAlignment = Alignment.Center) {
-            DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
-          }
+        Box(Modifier.size(18.dp, 14.dp).hand().clickable { step(-1) }, contentAlignment = Alignment.Center) {
+          DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
         }
       }
-    },
-  )
+    }
+  }
 }
 
 /** Fades content of locked worlds. */
