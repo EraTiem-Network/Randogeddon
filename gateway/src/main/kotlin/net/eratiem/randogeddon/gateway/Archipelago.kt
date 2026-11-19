@@ -26,6 +26,9 @@ import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
+import net.eratiem.randogeddon.shared.LogLines
+import java.io.IOException
+import java.time.Instant
 import kotlin.io.path.name
 import kotlin.io.path.writeText
 
@@ -124,9 +127,35 @@ class Launcher(
 }
 
 /**
+ * One generation's log: what ran (Generate.py's command, its directory), then its output, numbered; kept for
+ * [GENERATION_LOG_KEPT] after its end, for the panel to page through and download.
+ */
+class GenerationLog(val version: String) {
+  val lines = LogBuffer(GENERATION_LOG_LINES)
+  val startedAt: Long = System.currentTimeMillis()
+
+  @Volatile
+  var endedAt: Long? = null
+
+  /** All of it as one text, for a download: which session and release, when, then the lines. */
+  fun text(id: String): String = buildString {
+    append("Randogeddon: generating session ").append(id).append(" with Archipelago ").append(version).append('\n')
+    append("Started ").append(Instant.ofEpochMilli(startedAt))
+    endedAt?.let { append(", ended ").append(Instant.ofEpochMilli(it)) }
+    append("\n\n")
+    lines.all().forEach { append(it.text).append('\n') }
+  }
+}
+
+/** How many lines of a generation's output are kept, and how long after its end. */
+private const val GENERATION_LOG_LINES = 20_000
+private const val GENERATION_LOG_KEPT = 60 * 60_000L
+
+/**
  * Generates seeds with Archipelago's Generate.py: the uploaded YAMLs, plus a World Locks slot for the slots that
  * start locked. The new seed goes into its session's directory, which must not have one yet. One generation at a
  * time, with the release's apworlds as they are now. When it fails, the games that may be the cause come with the log.
+ * Each one's whole output is kept a while ([log]); one can be cancelled ([cancel]), also while it waits for its turn.
  */
 class Generator(
   private val archipelago: Archipelago,
@@ -139,34 +168,69 @@ class Generator(
   /** How far each running generation is, by session (from Generate.py's output as it comes). */
   private val progress = ConcurrentHashMap<String, GenerationProgress>()
 
+  /** Each session's last generation's log (while it runs, and a while after). */
+  private val logs = ConcurrentHashMap<String, GenerationLog>()
+  /** Generate.py of each running generation, and the generations to end ([cancel]). */
+  private val processes = ConcurrentHashMap<String, Process>()
+  private val cancelled = ConcurrentHashMap.newKeySet<String>()
+
   /** How far session [id]'s generation is; `null`: none runs. */
   fun progress(id: String): GenerationProgress? = progress[id]
 
+  /** Session [id]'s last generation's lines numbered above [since], at most [max]; `null`: none (or long ago). */
+  fun log(id: String, since: Long, max: Int): LogLines? = logs[id]?.lines?.after(since, max)
+
+  /** Session [id]'s last generation's whole log as text; `null`: none. */
+  fun logText(id: String): String? = logs[id]?.text(id)
+
+  /** Ends session [id]'s generation (also one that waits for its turn); `false`: none runs. */
+  fun cancel(id: String): Boolean {
+    if (!progress.containsKey(id)) return false
+    cancelled += id
+    processes[id]?.destroyForcibly()
+    logger.info("Generating {}: cancelled", id)
+    return true
+  }
+
   /** Throws [IllegalStateException] if session [id] has a seed already. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult {
+    val now = System.currentTimeMillis()
+    logs.entries.removeIf { (_, log) -> log.endedAt?.let { now - it > GENERATION_LOG_KEPT } == true }
+    val log = GenerationLog(request.apVersion).also { logs[id] = it }
+    cancelled -= id
     // One at a time: until it is this one's turn, it says that it waits
     progress[id] = GenerationProgress(GenerationStage.WAITING, 0)
     return try {
-      mutex.withLock { generateNow(id, request) }
+      mutex.withLock { generateNow(id, request, log) }
     } finally {
       progress.remove(id)
+      cancelled -= id
+      log.endedAt = System.currentTimeMillis()
     }
   }
 
-  private suspend fun generateNow(id: String, request: GenerateRequest): GenerateResult {
+  private suspend fun generateNow(id: String, request: GenerateRequest, log: GenerationLog): GenerateResult {
+    if (id in cancelled) {
+      log.lines.add("[gateway] Cancelled before its turn")
+      return GenerateResult(cancelled = true)
+    }
     check(dirs.seed(id) == null) { "Session $id has a seed already" }
     val home = runCatching { archipelago.home(request.apVersion) }.getOrElse {
       return GenerateResult(log = listOf(it.message ?: "Archipelago ${request.apVersion} is missing"))
     }
     val release = apworlds.release(request.apVersion)
     progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
-    val result = apworlds.holding(request.apVersion) { withContext(Dispatchers.IO) { run(request, home, dirs.dir(id)) { progress[id] = it } } }
-    // Stopped for its time: no game is to blame
-    return if (result.seedName != null || result.stoppedAfterMinutes != null) result
+    val result = apworlds.holding(request.apVersion) {
+      withContext(Dispatchers.IO) { run(id, request, home, dirs.dir(id), log) { progress[id] = it } }
+    }
+    // Stopped for its time or cancelled: no game is to blame
+    return if (result.seedName != null || result.stoppedAfterMinutes != null || result.cancelled) result
     else result.copy(suspects = suspects(request.games, result.log, release, apworlds.files()))
   }
 
-  private fun run(request: GenerateRequest, home: Path, target: Path, onProgress: (GenerationProgress) -> Unit): GenerateResult {
+  private fun run(
+    id: String, request: GenerateRequest, home: Path, target: Path, log: GenerationLog, onProgress: (GenerationProgress) -> Unit,
+  ): GenerateResult {
     val work = createTempDirectory("generate")
     try {
       val players = work.resolve("players").createDirectories()
@@ -175,10 +239,18 @@ class Generator(
       if (request.locked.isNotEmpty()) players.resolve("zz-world-locks.yaml").writeText(locksYaml(request.locked, request.earlyKeys))
 
       logger.info("Generating a seed from {} YAMLs with Archipelago {}", request.yamls.size, request.apVersion)
-      val proc = ProcessBuilder(
+      val command = listOf(
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
         "--outputpath", output.absolutePathString(),
-      ).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+      )
+      // What ran, so it can be run again by hand
+      log.lines.add("$ cd ${home.absolutePathString()}")
+      log.lines.add("$ ${command.joinToString(" ") { if (it.any(Char::isWhitespace)) "'$it'" else it }}")
+      log.lines.add("[gateway] YAMLs: ${players.listDirectoryEntries().map { it.name }.sorted().joinToString()}")
+      val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+      processes[id] = proc
+      // Cancelled while it started
+      if (id in cancelled) proc.destroyForcibly()
       // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
       proc.outputStream.close()
       // Reading blocks until the output ends: the time limit has to end the process from outside
@@ -191,20 +263,33 @@ class Generator(
       }.apply { isDaemon = true }.start()
       // Only its end is of use (the error, the seed's name): the rest of a long output isn't kept
       val lines = ArrayDeque<String>()
-      proc.inputStream.bufferedReader().useLines { output ->
-        output.forEach { line ->
-          lines += line.take(MAX_LOG_LINE)
-          if (lines.size > MAX_LOG_LINES) lines.removeFirst()
-          generationProgress(line)?.let(onProgress)
+      try {
+        proc.inputStream.bufferedReader().useLines { output ->
+          output.forEach { line ->
+            lines += line.take(MAX_LOG_LINE)
+            if (lines.size > MAX_LOG_LINES) lines.removeFirst()
+            log.lines.add(line.take(MAX_LOG_LINE))
+            generationProgress(line)?.let(onProgress)
+          }
         }
+      } catch (e: IOException) {
+        // Ended from outside (cancelled, or over its time): Java closes its output then ("Stream closed")
+        if (id !in cancelled && !stopped.get()) throw e
       }
-      proc.waitFor()
+      val code = proc.waitFor()
+      processes.remove(id)
+      if (id in cancelled) {
+        log.lines.add("[gateway] Cancelled")
+        return GenerateResult(log = lines.takeLast(20), cancelled = true)
+      }
       if (stopped.get()) {
         logger.warn("Generating took longer than {} minutes: stopped", minutes)
+        log.lines.add("[gateway] Stopped: it took longer than $minutes minutes")
         return GenerateResult(log = lines.takeLast(20), stoppedAfterMinutes = minutes)
       }
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
-        ?: return GenerateResult(
+      if (zip == null) log.lines.add("[gateway] Generate.py ended with exit code $code, without a seed")
+      zip ?: return GenerateResult(
         // The error from its traceback on, not the list of every world it prints first
         log = lines.indexOfLast { it.startsWith("Traceback") }.let { if (it >= 0) lines.drop(it).take(60) else lines.takeLast(60) }
           .ifEmpty { listOf("Generate.py ended without a seed") },
@@ -213,8 +298,10 @@ class Generator(
       Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
       val seedName = zip.name.removePrefix("AP_").removeSuffix(".zip")
       logger.info("Generated seed {}", seedName)
+      log.lines.add("[gateway] Seed $seedName")
       return GenerateResult(seedName = seedName, seedFile = zip.name, log = lines.takeLast(10))
     } finally {
+      processes.remove(id)
       work.toFile().deleteRecursively()
     }
   }

@@ -93,6 +93,22 @@ fun Route.internalApi(
           val id = sessionId() ?: return@get
           generator.progress(id)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
         }
+        // Its last generation's log: lines after ?since= (at most ?max=), or all of it as text
+        get("/generate/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          val max = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
+          generator.log(id, since, max)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
+        get("/generate/log.txt") {
+          val id = sessionId() ?: return@get
+          generator.logText(id)?.let { call.respondText(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
+        // Ends its generation, also one waiting for its turn (the request that started it answers then)
+        delete("/generate") {
+          val id = sessionId() ?: return@delete
+          call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
