@@ -59,6 +59,7 @@ interface ApworldTexts {
   val fromApworld: String
   val noGame: String
   fun from(release: String): String
+  fun needsAp(version: String): String
 }
 
 internal object EnglishApworlds : ApworldTexts {
@@ -116,6 +117,7 @@ internal object EnglishApworlds : ApworldTexts {
   override val fromApworld = "from an APWorld"
   override val noGame = "no game"
   override fun from(release: String) = "from $release"
+  override fun needsAp(version: String) = "needs Archipelago $version or newer"
 }
 
 internal object GermanApworlds : ApworldTexts {
@@ -175,4 +177,5 @@ internal object GermanApworlds : ApworldTexts {
   override val fromApworld = "aus einer APWorld"
   override val noGame = "kein Spiel"
   override fun from(release: String) = "aus $release"
+  override fun needsAp(version: String) = "braucht Archipelago $version oder neuer"
 }

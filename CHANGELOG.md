@@ -9,6 +9,13 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.16: An APWorld's version in the library
+- The library shows each file as its game and its version, e.g. *Anno 1800 – 1.5.1* (was: the file name, its games
+  and its size). The gateway reads them from the APWorld's `archipelago.json` (Archipelago 0.6 and newer: 27 of the
+  30 on the live server have one) without loading it; an APWorld without one shows its game without a version.
+- Its tip: the file name and size, the oldest Archipelago release it needs (`minimum_ap_version`), where it was
+  copied from, or that it brings no game.
+
 ### 0.18.15: Tips to copy, invited players' addresses kept to Administrators
 - **A tip's text can be selected and copied:** a tip is a window of its own with its own selection (and stays while
   the pointer is on it, since 0.18.12), so its text can be marked and copied with Ctrl+C. A long message (an APWorld's
