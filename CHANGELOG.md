@@ -11,6 +11,24 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.3: The spoiler log in stages
+- **A session starts sooner:** its seed is generated with a spoiler log without the playthrough (Archipelago's level
+  1), which skips the longest part of a big multiworld's generation; the session's game server starts right after.
+- **The rest in the background:** the gateway generates the seed once more with the same seed number and inputs, only
+  its spoiler log (`--spoiler_only`): level 2 with the playthrough, then level 3 with the paths to every item. What it
+  was generated from is kept in the session's `generation/` (its YAMLs, the seed number, the APWorlds of its games by
+  their SHA-256, `stages.json`), so it goes on after a gateway restart; an APWorld changed since stops it. A later level
+  replaces the earlier one only when it places every item the same as the seed (`spoiler.txt` next to the seed);
+  otherwise it stays, and the panel says why.
+- **One run at a time**, and none while a new session waits for its generation; a level-3 run makes way for one (and
+  for a change of the APWorlds) and starts over after. Several generations at once come with 0.19.4.
+- **The spoiler log, the hints and the cheats wait for level 2** ("still being worked out"); with a spoiler that
+  couldn't be completed they go on with the seed's.
+- **On the dashboard** the session's top panel shows *spoiler log being completed* with a working symbol, for
+  everyone; **in the panel** a *Spoiler log* section (Session-Managers, Administrators, support) says its level, the
+  run going now with Generate.py's share of a core (or that it waits for its turn), why it stopped, and the run's log.
+- Sessions from before have their complete spoiler log; nothing changes for them.
+
 ### 0.19.2: It isn't stuck
 - Under the generation's bar two pills: how long it runs since its start (each second), and what it does: *working*
   (with Generate.py's share of one core, which the gateway measures each time the page asks: a working fill or

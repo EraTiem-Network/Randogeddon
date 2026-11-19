@@ -180,14 +180,21 @@ class SpoilerSearches {
   }
 }
 
-/** The spoiler logs of the sessions, from the gateway (it reads them from the seeds' zips), kept once read. */
+/**
+ * The spoiler logs of the sessions, from the gateway (the seed's, or the one completed after it), kept once read: read
+ * again when the gateway has completed a higher level of it.
+ */
 @Single
-class Spoilers(private val gameServer: GameServerClient) {
-  private val cache = ConcurrentHashMap<String, SpoilerLog>()
+class Spoilers(private val gameServer: GameServerClient, private val sessions: LiveSessions) {
+  private val cache = ConcurrentHashMap<String, Pair<Int, SpoilerLog>>()
 
   /** Session [id]'s spoiler log; [seed]: its seed's name. */
-  suspend fun of(id: String, seed: String): SpoilerLog? =
-    cache[id] ?: gameServer.spoiler(id)?.let { SpoilerLog(seed, it) }?.also { cache[id] = it }
+  suspend fun of(id: String, seed: String): SpoilerLog? {
+    // Complete (3), or how far the gateway is with it
+    val level = sessions.get(id)?.server?.spoiler?.level ?: 3
+    cache[id]?.takeIf { it.first == level }?.let { return it.second }
+    return gameServer.spoiler(id)?.let { SpoilerLog(seed, it) }?.also { cache[id] = level to it }
+  }
 
   fun forget(id: String) {
     cache.remove(id)

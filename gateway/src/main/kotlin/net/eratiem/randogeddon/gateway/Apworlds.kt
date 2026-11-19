@@ -109,7 +109,15 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
    * uploaded file of the same game, is only replaced with [ApworldUpload.replace] (else its answer names it, and it
    * isn't taken). One answer per file, in their order.
    */
+  /** Called before the library changes: a long background run (a spoiler's paths) makes way for it. */
+  var beforeChange: () -> Unit = {}
+
+  /** The library's file [name] for [version] (uploaded, else put by hand); `null`: none. */
+  fun fileOf(version: String, name: String): Path? =
+    uploads(version).firstOrNull { it.name == name } ?: manualFiles().firstOrNull { it.name == name }
+
   suspend fun upload(upload: ApworldUpload): ApworldResults {
+    beforeChange()
     requireRelease(upload.release)
     val answers = arrayOfNulls<ApworldResult>(upload.files.size)
     val taken = mutableListOf<Pair<Int, Change>>()
@@ -171,6 +179,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
 
   /** Copies an apworld of another release's library to [ApworldTry.release]'s, marked as from there (untested). */
   suspend fun tryWith(request: ApworldTry): ApworldResult {
+    beforeChange()
     requireRelease(request.release)
     val name = apworldName(request.file)
     val source = library.resolve(request.from).resolve(name)
@@ -184,6 +193,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
 
   /** Takes uploaded files out of a release's library, together; it lists its games again when it is next asked. */
   suspend fun remove(removal: ApworldRemoval) {
+    beforeChange()
     requireRelease(removal.release)
     val dir = library.resolve(removal.release)
     val names = removal.files.map(::apworldName).distinct()

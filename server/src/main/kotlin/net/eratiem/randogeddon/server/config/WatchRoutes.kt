@@ -1,8 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
-import net.eratiem.randogeddon.server.config.refuse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.ratelimit.rateLimit
@@ -16,30 +13,36 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
+import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
+import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.admin.Support
+import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.CheatRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.WatcherRequest
-import kotlin.uuid.Uuid
 
 /**
  * Under the protected `/api` branch, `/sessions/{id}/support` for the session's support (and Administrators): the slots
  * to help, a slot's items and open locations, and giving an item, checking a location or a free hint.
  */
-fun Route.supportRoutes(support: Support, logins: LoginCheck) {
+fun Route.supportRoutes(support: Support, spoilerRuns: SpoilerRuns, logins: LoginCheck) {
   route("/sessions/{id}/support") {
     install(RequireSessionRole) {
       this.logins = logins
       roles = setOf(SessionRole.SUPPORT)
     }
     get { gatewayCall { call.respond(support.view(id())) } }
+    // How its spoiler log is completed, as Session-Managers see it
+    spoilerRunRoutes(spoilerRuns)
     get("/names") {
       val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
       gatewayCall { call.respond(support.names(id(), slot)) }

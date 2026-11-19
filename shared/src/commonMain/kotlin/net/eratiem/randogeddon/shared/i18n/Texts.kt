@@ -85,6 +85,8 @@ interface FrameTexts {
   val pickOneOfYourSessions: String
   val connecting: String
   val reconnecting: String
+  val spoilerCompleting: String
+  val spoilerCompletingTip: String
   val finished: String
   val live: String
   val serverOffline: String

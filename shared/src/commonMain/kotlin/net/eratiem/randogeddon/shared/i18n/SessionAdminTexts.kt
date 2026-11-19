@@ -118,6 +118,12 @@ interface SessionAdminTexts {
   val generateAndStart: String
   val generatesSeed: String
   val generatesInBackground: String
+  val spoilerSection: String
+  val spoilerSectionSubtitle: String
+  fun spoilerLevel(level: Int): String
+  fun spoilerWorking(level: Int): String
+  val spoilerWaiting: String
+  fun spoilerStopped(level: Int, why: String): String
   fun generationTime(time: String): String
   val generationWorking: String
   fun generationWorkingCpu(cpu: Int): String
@@ -279,6 +285,17 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generatesInBackground =
     "It goes on without this page: you can close it, and find it here again until it is done."
   override fun generationTime(time: String) = "running for $time"
+  override val spoilerSection = "Spoiler log"
+  override val spoilerSectionSubtitle = "completed in the background, after the seed"
+  override fun spoilerLevel(level: Int) = when (level) {
+    1 -> "Level 1 of 3: the seed's spoiler log, without the playthrough"
+    2 -> "Level 2 of 3: with the playthrough (the spoiler log, the hints and the cheats are there)"
+    else -> "Level $level of 3: complete"
+  }
+  override fun spoilerWorking(level: Int) =
+    if (level == 2) "working out the playthrough (level 2)" else "working out the paths to every item (level $level)"
+  override val spoilerWaiting = "waiting for its turn (a new session's generation goes first)"
+  override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
   override val generationWorking = "working"
   override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
   override val generationWaitingTurn = "waiting for its turn"
@@ -463,6 +480,17 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generatesInBackground =
     "Es geht ohne diese Seite weiter: Du kannst sie schließen und findest es hier wieder, bis es fertig ist."
   override fun generationTime(time: String) = "läuft seit $time"
+  override val spoilerSection = "Spoiler-Log"
+  override val spoilerSectionSubtitle = "im Hintergrund vervollständigt, nach dem Seed"
+  override fun spoilerLevel(level: Int) = when (level) {
+    1 -> "Stufe 1 von 3: das Spoiler-Log des Seeds, ohne Lösungsweg"
+    2 -> "Stufe 2 von 3: mit Lösungsweg (Spoiler-Log, Hinweise und Cheats sind da)"
+    else -> "Stufe $level von 3: vollständig"
+  }
+  override fun spoilerWorking(level: Int) =
+    if (level == 2) "berechnet den Lösungsweg (Stufe 2)" else "berechnet die Wege zu jedem Item (Stufe $level)"
+  override val spoilerWaiting = "wartet, bis es dran ist (die Generierung einer neuen Session geht vor)"
+  override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
   override val generationWorking = "arbeitet"
   override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"
   override val generationWaitingTurn = "wartet, bis es dran ist"

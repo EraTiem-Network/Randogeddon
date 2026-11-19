@@ -808,7 +808,7 @@ generates didn't generate on the server, and an APWorld that loaded before was r
 - [x] It isn't stuck (asked for, 0.19.2): under the generation's bar how long it runs (each second) and what it does
       (*working* with Generate.py's share of a core, *waiting for its turn*, *no response* after a minute without
       CPU); the playthrough, not the fill, is named the longest part, and the bar's shares fit that
-- [ ] The spoiler log in stages, for every generation (decided, 0.19.3): the seed with a spoiler without playthrough
+- [x] The spoiler log in stages, for every generation (decided, 0.19.3): the seed with a spoiler without playthrough
       (level 1) first, so the session starts; then in the background `--spoiler_only` with the same `--seed` and
       inputs at level 2 (the playthrough: the spoiler page, the hints and the cheats wait for it) and level 3 (the
       paths: the full log). Tried (0.19.2, the demo's 1,934 locations): the same seed name and every placement the

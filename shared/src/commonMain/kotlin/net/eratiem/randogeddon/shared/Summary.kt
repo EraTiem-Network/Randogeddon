@@ -28,6 +28,8 @@ data class Summary(
   val errorRefused: Boolean = false,
   /** Its game server sleeps (nobody played for a while): it starts when a player connects; no connection problem. */
   val serverAsleep: Boolean = false,
+  /** Its spoiler log is still being completed after the seed (the playthrough, the paths): the top panel says so. */
+  val spoilerCompleting: Boolean = false,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,

@@ -441,7 +441,17 @@ finished session's don't start this way. An Administrator can keep a session's g
   automatically `SESSION_RETENTION_DAYS` after it finished (90 by default, `0`: never; the date shows in the lists).
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
   then. Someone who plays only in finished sessions can still log in and see those.
-- **Spoiler log:** the seed's spoiler log (from its zip), with the playthrough sphere by sphere and the whole log
+- **Spoiler log, in stages:** a seed is generated with a spoiler log without its playthrough (Archipelago's level 1),
+  so the session starts at once. The gateway then generates it once more in the background, with the same seed number
+  and inputs (its YAMLs and APWorlds are kept for that in the session's `generation/`), only its spoiler log
+  (`--spoiler_only`): level 2 with the playthrough, then level 3 with the paths to every item. A later level replaces
+  the earlier one only when it places every item the same as the seed (else it stays, and the panel says why). The
+  spoiler log, the hints and the cheats wait for level 2; meanwhile the session's top panel shows *spoiler log being
+  completed* (for everyone), and the panel's *Spoiler log* (Session-Managers, Administrators, support) how far it is,
+  the run going now and its log. One run at a time, and none while a new session waits for its generation (a level-3
+  run makes way for it, and for a change of the APWorlds, and starts over after). Sessions from before 0.19.3 have
+  their complete spoiler log already.
+- **Spoiler log:** the seed's spoiler log, with the playthrough sphere by sphere and the whole log
   (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
   log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a
   browser to show at once. Its search runs on the server (a moment after the last key; per user one search at a

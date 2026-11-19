@@ -74,7 +74,7 @@ fun Route.internalApi(
       }
     }
     route("/sessions") {
-      get { call.respond(sessions.list()) }
+      get { call.respond(sessions.list().let { it.copy(sessions = it.sessions.map { s -> s.copy(spoiler = generator.spoiler(s.id)) }) }) }
       route("/{id}") {
         // Takes as long as Generate.py does (up to minutes); the new seed's game server waits for a start
         post("/generate") {
@@ -100,6 +100,12 @@ fun Route.internalApi(
           val max = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
           generator.log(id, since, max)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
+        // Its spoiler log's background run: its lines after ?since=
+        get("/spoiler-run/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          generator.spoilerLog(id, since, 1000)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
         get("/generate/log.txt") {
           val id = sessionId() ?: return@get
           generator.logText(id)?.let { call.respondText(it) } ?: call.respond(HttpStatusCode.NotFound)
@@ -112,6 +118,7 @@ fun Route.internalApi(
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
+          generator.dropSpoiler(id)
           val purge = call.request.queryParameters["purge"] == "true"
           if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
         }

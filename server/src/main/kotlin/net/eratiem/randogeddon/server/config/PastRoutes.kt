@@ -131,6 +131,7 @@ private suspend fun RoutingContext.spoiler(
   val user = call.actor
   val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
   if (!helps && !live.finished) return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
+  if (!live.playthroughReady) return@session call.refuse(HttpStatusCode.Conflict, Refusal(Problem.PLAYTHROUGH_NOT_YET))
   try {
     val log = spoilers.of(live.id, live.seedName)
       ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))

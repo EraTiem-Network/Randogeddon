@@ -2112,6 +2112,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.SpoilerRunView",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SpoilerRunView$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.KeepRequest",
       "fields": [
         {
