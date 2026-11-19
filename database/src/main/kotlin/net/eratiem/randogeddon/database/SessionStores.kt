@@ -91,6 +91,13 @@ data class SessionRoleEntry(val role: String, val name: String, val deleted: Boo
   fun unavailable(now: Instant = Instant.now()): Boolean = deleted || block?.holds(now) == true
 }
 
+/**
+ * What an invited account is called in a session until its person signs up (then their own name, see
+ * `nameInRunningSessions`): the name suggested for it, else `Invited-` and its ID's start; nothing of its address.
+ */
+fun invitedName(id: Uuid, suggested: String?): String =
+  suggested?.trim()?.takeIf { it.isNotEmpty() } ?: "Invited-${id.toString().take(4)}"
+
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
   /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted slots. */
@@ -133,7 +140,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
 
   /**
    * What [users] are called in a new session: their name, or for an invited user the name the admin suggested (or
-   * their address's local part) until they sign up.
+   * [invitedName]: never anything of their address, which only Administrators see) until they sign up.
    */
   private fun names(users: List<Uuid>): Map<Uuid, String> {
     if (users.isEmpty()) return emptyMap()
@@ -141,7 +148,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       .associate { it[InvitationsTable.userId] to it[InvitationsTable.suggestedName] }
     return UsersTable.selectAll().where { UsersTable.id inList users }.associate { row ->
       val id = row[UsersTable.id]
-      id to (row[UsersTable.name] ?: suggested[id] ?: row[UsersTable.email]?.substringBefore('@') ?: id.toString().take(8))
+      id to (row[UsersTable.name] ?: invitedName(id, suggested[id]))
     }
   }
 

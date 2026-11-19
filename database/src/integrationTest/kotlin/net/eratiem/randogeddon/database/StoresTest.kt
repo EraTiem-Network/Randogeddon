@@ -274,6 +274,20 @@ class StoresTest {
   }
 
   @Test
+  fun `an invited player is in a session without anything of their address, then by their name`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val invited = users.invite("john.smith@example.org")
+    setups.create("quiet-heron", "seed-heron", "0.6.8", "{}", mapOf("John-HK" to listOf(invited.id)))
+    val before = setups.of("seed-heron")!!.worlds["John-HK"].orEmpty()
+    assertEquals(listOf("Invited-${invited.id.toString().take(4)}"), before)
+    assertTrue(before.none { "john" in it.lowercase() || "@" in it })
+    assertTrue(users.signUp(invited.id, "Johnny", "hash", "6m"))
+    assertEquals(listOf("Johnny"), setups.of("seed-heron")!!.worlds["John-HK"])
+    assertTrue(setups.delete("seed-heron"))
+  }
+
+  @Test
   fun `an invited user can't log in until they sign up, then by name or address`() = runBlocking {
     val users = UserStore(db)
     val invited = users.invite("Erin@example.org")
