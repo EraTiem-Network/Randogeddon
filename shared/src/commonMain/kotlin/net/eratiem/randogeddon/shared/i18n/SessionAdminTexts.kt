@@ -117,6 +117,12 @@ interface SessionAdminTexts {
   val generating: String
   val generateAndStart: String
   val generatesSeed: String
+  val generatesInBackground: String
+  val cancelGeneration: String
+  val generationCancelled: String
+  val generationLog: String
+  val downloadLog: String
+  val backToForm: String
   /** What the generation does now (its stage), for the bar while it runs. */
   fun generationStage(stage: GenerationStage): String
   fun generationStep(step: GenerationStep): String
@@ -265,6 +271,13 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generating = "Generating…"
   override val generateAndStart = "Generate and start"
   override val generatesSeed = "Archipelago generates the seed; that can take a minute."
+  override val generatesInBackground =
+    "It goes on without this page: you can close it, and find it here again until it is done."
+  override val cancelGeneration = "Cancel"
+  override val generationCancelled = "The generation was cancelled; the ID is free again."
+  override val generationLog = "Generate.py's output, newest on top"
+  override val downloadLog = "Download the log"
+  override val backToForm = "Back to the form"
   override fun generationStep(step: GenerationStep) = when (step) {
     GenerationStep.CHECK -> "Check"
     GenerationStep.GENERATE -> "Generate"
@@ -437,6 +450,13 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generating = "Wird generiert…"
   override val generateAndStart = "Generieren und starten"
   override val generatesSeed = "Archipelago generiert den Seed; das kann eine Minute dauern."
+  override val generatesInBackground =
+    "Es geht ohne diese Seite weiter: Du kannst sie schließen und findest es hier wieder, bis es fertig ist."
+  override val cancelGeneration = "Abbrechen"
+  override val generationCancelled = "Die Generierung wurde abgebrochen; die ID ist wieder frei."
+  override val generationLog = "Ausgabe von Generate.py, neueste oben"
+  override val downloadLog = "Log herunterladen"
+  override val backToForm = "Zurück zum Formular"
   override fun generationStep(step: GenerationStep) = when (step) {
     GenerationStep.CHECK -> "Prüfen"
     GenerationStep.GENERATE -> "Generieren"

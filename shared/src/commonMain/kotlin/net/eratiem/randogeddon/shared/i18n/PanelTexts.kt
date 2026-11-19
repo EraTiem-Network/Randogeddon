@@ -27,6 +27,8 @@ interface PanelTexts {
   val log: String
   val logSubtitle: String
   val nothingYet: String
+  val newerLines: String
+  val olderLines: String
   val console: String
   val consoleSubtitle: String
   val consoleTip: String
@@ -66,6 +68,8 @@ internal object EnglishPanel : PanelTexts {
   override val log = "Log"
   override val logSubtitle = "the game server's output, newest on top"
   override val nothingYet = "Nothing yet."
+  override val newerLines = "Newer lines"
+  override val olderLines = "Older lines"
   override val console = "Console"
   override val consoleSubtitle = "server commands, e.g. /players, /send <slot> <item>, /hint <slot> <item>"
   override val consoleTip =
@@ -111,6 +115,8 @@ internal object GermanPanel : PanelTexts {
   override val log = "Log"
   override val logSubtitle = "die Ausgabe des Spielservers, neueste oben"
   override val nothingYet = "Noch nichts."
+  override val newerLines = "Neuere Zeilen"
+  override val olderLines = "Ältere Zeilen"
   override val console = "Konsole"
   override val consoleSubtitle = "Server-Befehle, z. B. /players, /send <Slot> <Item>, /hint <Slot> <Item>"
   override val consoleTip =

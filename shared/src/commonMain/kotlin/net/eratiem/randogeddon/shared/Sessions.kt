@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.shared
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** A session's game server options, set when it is created (the defaults are those of `.env.example`). */
@@ -221,6 +222,8 @@ data class GenerateResult(
   val suspects: List<Suspect> = emptyList(),
   /** It took longer than the gateway allows and was stopped after this many minutes (the log is how far it got). */
   val stoppedAfterMinutes: Int? = null,
+  /** It was cancelled (by its creator or an Administrator) before it had a seed. */
+  val cancelled: Boolean = false,
 )
 
 /**
@@ -253,6 +256,33 @@ enum class GenerationStep { CHECK, GENERATE, SET_UP, START }
  */
 @Serializable
 data class GenerationProgress(val stage: GenerationStage, val percent: Int)
+
+/** Where a new session's creation is: generating (and setting up), done, failed or cancelled. */
+@Serializable
+enum class CreationState {
+  @SerialName("running") RUNNING,
+  @SerialName("done") DONE,
+  @SerialName("failed") FAILED,
+  @SerialName("cancelled") CANCELLED,
+}
+
+/**
+ * `POST /api/sessions`, `GET /api/sessions/new/creation[/{id}]`: a new session being created, in the background (its
+ * page can be closed meanwhile): how far it is ([progress]), and at its end the session ([created]) or why it failed
+ * ([error], Generate.py's output as its detail). Its log: `GET …/creation/{id}/log`, all of it as a file `…/log.txt`.
+ */
+@Serializable
+data class Creation(
+  val id: String,
+  val state: CreationState,
+  val progress: GenerationProgress? = null,
+  val created: CreateSessionResult? = null,
+  val error: ApiError? = null,
+  /** Who creates it (an Administrator sees others' too). */
+  val creator: String? = null,
+  /** Epoch ms. */
+  val startedAt: Long = 0,
+)
 
 /**
  * `GET /api/sessions/new`: what a new session can use: the releases, a free ID, the accounts to pick by name, and how
