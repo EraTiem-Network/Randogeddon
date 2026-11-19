@@ -62,12 +62,16 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
+import net.eratiem.randogeddon.shared.Creation
+import net.eratiem.randogeddon.shared.CreationState
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
+import net.eratiem.randogeddon.shared.LogLine
+import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionOptions
@@ -79,6 +83,8 @@ import net.eratiem.randogeddon.shared.i18n.text
 import net.eratiem.randogeddon.shared.i18n.texts
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.load
+import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
@@ -92,6 +98,7 @@ import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
@@ -216,16 +223,72 @@ private fun CreateSession(
   // The ID it was sent with: what the bar asks about and shows, whatever happens to the form's meanwhile
   var sentId by remember { mutableStateOf<String?>(null) }
   var error by remember { mutableStateOf<Answer.Failed?>(null) }
-  // How far the generation is while it runs (asked about three times a second)
+  // How far the generation is while it runs (asked about twice a second)
   var progress by remember { mutableStateOf<GenerationProgress?>(null) }
+  // Generate.py's output as it comes (and after a failure, with its download)
+  val log = remember { mutableStateListOf<LogLine>() }
+  var logLast by remember { mutableStateOf(0L) }
+  // The creation that failed (its log stays to be read and downloaded), and a cancelled one's note
+  var failedId by remember { mutableStateOf<String?>(null) }
+  var cancelledNote by remember { mutableStateOf(false) }
+  var cancelling by remember { mutableStateOf(false) }
+
+  suspend fun loadLog(creation: String) {
+    while (true) {
+      val part = load("api/sessions/new/creation/$creation/log?since=$logLast", LogLines.serializer()) ?: return
+      log.addAll(part.lines)
+      if (log.size > MAX_GENERATION_LOG) log.removeRange(0, log.size - MAX_GENERATION_LOG)
+      logLast = part.last
+      // The gateway answers a part at a time: ask on until it has no more
+      if (part.lines.size < 1000) return
+    }
+  }
+
+  /** The creation ended: the session, or why not (the log stays), or cancelled; it is forgotten once seen. */
+  suspend fun ended(creation: Creation) {
+    busy = false
+    cancelling = false
+    when (creation.state) {
+      CreationState.DONE -> {
+        post("api/sessions/new/creation/${creation.id}", null, method = "DELETE")
+        creation.created?.let(onCreated)
+      }
+      CreationState.FAILED -> {
+        val e = creation.error
+        error = Answer.Failed(e?.let { t.word(it) } ?: t.common.failed(500), e?.detail)
+        failedId = creation.id
+      }
+      CreationState.CANCELLED -> {
+        post("api/sessions/new/creation/${creation.id}", null, method = "DELETE")
+        cancelledNote = true
+      }
+      CreationState.RUNNING -> {}
+    }
+  }
+
+  // After a reload: the user's own creation that runs comes back (one that ended shows how)
+  LaunchedEffect(Unit) {
+    val own = (call("GET", "api/sessions/new/creation", null) {
+      if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
+    } as? Answer.Ok)?.value ?: return@LaunchedEffect
+    if (busy || failedId != null) return@LaunchedEffect
+    sentId = own.id
+    progress = own.progress
+    loadLog(own.id)
+    if (own.state == CreationState.RUNNING) busy = true else ended(own)
+  }
+
   LaunchedEffect(busy) {
     onBusy(busy)
-    progress = null
     while (busy) {
-      delay(300)
-      (call("GET", "api/sessions/new/progress/${sentId ?: id}", null) {
-        if (it.isBlank()) null else ApiJson.decodeFromString(GenerationProgress.serializer(), it)
-      } as? Answer.Ok)?.value?.let { progress = it }
+      delay(500)
+      val creation = sentId ?: break
+      val now = (call("GET", "api/sessions/new/creation/$creation", null) {
+        if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
+      } as? Answer.Ok)?.value
+      now?.progress?.let { progress = it }
+      loadLog(creation)
+      if (now != null && now.state != CreationState.RUNNING) ended(now)
     }
   }
   // The YAML to remove, asked once more; "": all of them
@@ -286,8 +349,41 @@ private fun CreateSession(
       }
     }
     ProgressBar(now.percent / 100f)
-    Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Txt("${t.sessionAdmin.generationStage(now.stage)} ${now.percent} %", size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
+      Button(t.sessionAdmin.cancelGeneration, enabled = !cancelling, danger = true) {
+        val creation = sentId ?: return@Button
+        cancelling = true
+        scope.launch {
+          post("api/sessions/new/creation/$creation", null, method = "DELETE")?.let { problem ->
+            error = Answer.Failed(problem)
+            cancelling = false
+          }
+        }
+      }
+    }
+    Txt(t.sessionAdmin.generatesInBackground, size = 12.sp, color = p.muted)
+    error?.let { Txt(it.message, size = 12.5.sp, color = p.trap) }
+    GenerationLog(log)
     return
+  }
+
+  // How the last generation ended, above the form (after a reload the form is empty): cancelled, or failed with why
+  // and its whole output, to read here or download (with the command that ran)
+  if (cancelledNote) Txt(t.sessionAdmin.generationCancelled, size = 12.5.sp, color = p.muted)
+  failedId?.let { failed ->
+    error?.let { GenerationError(it.message, it.detail) }
+    if (log.isNotEmpty()) GenerationLog(log)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(t.sessionAdmin.downloadLog) { Platform.download("api/sessions/new/creation/$failed/log.txt") }
+      Button(t.sessionAdmin.backToForm) {
+        failedId = null
+        error = null
+        log.clear()
+        logLast = 0
+        scope.launch { post("api/sessions/new/creation/$failed", null, method = "DELETE") }
+      }
+    }
   }
 
   Txt(t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
@@ -498,6 +594,11 @@ private fun CreateSession(
         busy = true
         sentId = id
         error = null
+        failedId = null
+        cancelledNote = false
+        log.clear()
+        logLast = 0
+        progress = null
         scope.launch {
           val request = CreateSessionRequest(
             id = id,
@@ -513,16 +614,35 @@ private fun CreateSession(
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          when (val answer = call("POST", "api/sessions", body, CreateSessionResult.serializer())) {
-            is Answer.Ok -> onCreated(answer.value)
-            is Answer.Failed -> error = answer
+          // Answered at once: it generates in the background, and the page asks how far it is
+          when (val answer = call("POST", "api/sessions", body, Creation.serializer())) {
+            is Answer.Ok -> progress = answer.value.progress
+            is Answer.Failed -> {
+              error = answer
+              busy = false
+            }
           }
-          busy = false
         }
       }
     }
-    error?.let { GenerationError(it.message, it.detail) }
+    // A refusal of the form: below it, where it was sent
+    if (failedId == null) error?.let { GenerationError(it.message, it.detail) }
   }
+}
+
+/** How many lines of a generation's output the page keeps (as many as the gateway). */
+private const val MAX_GENERATION_LOG = 20_000
+
+/** Generate.py's output, newest on top, a page at a time. */
+@Composable
+private fun GenerationLog(log: List<LogLine>) {
+  val t = LocalTexts.current
+  val p = LocalPalette.current
+  Txt(t.sessionAdmin.generationLog, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.muted)
+  // What ran and the gateway's own notes stand out from Generate.py's output
+  LogView(log, t.panel.nothingYet, height = 320.dp, color = { line ->
+    if (line.text.startsWith("[gateway]") || line.text.startsWith("$ ")) p.accent else null
+  })
 }
 
 /** A failed generation: why (the suspected games), Generate.py's output ([detail]) below in monospace. */
