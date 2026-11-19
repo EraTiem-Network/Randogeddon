@@ -63,8 +63,7 @@ class WatchRepository(private val scope: CoroutineScope, private val token: Stri
   }
 
   override suspend fun player(slot: Int): PlayerDetail? =
-    Platform.request("GET", "api/watch/$token/player/$slot")?.takeIf { it.status == 200 }
-      ?.let { runCatching { ApiJson.decodeFromString(PlayerDetail.serializer(), it.body) }.getOrNull() }
+    load("api/watch/$token/player/$slot", PlayerDetail.serializer())
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
 

@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.AdminOverview
-import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.LogLine
@@ -95,7 +94,7 @@ fun AdminView(
   var overview by remember { mutableStateOf<AdminOverview?>(null) }
   var loadProblem by remember { mutableStateOf<String?>(null) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/manage", null) { ApiJson.decodeFromString(AdminOverview.serializer(), it) }) {
+    when (val answer = call("GET", "api/manage", null, AdminOverview.serializer())) {
       is Answer.Ok -> {
         overview = answer.value
         loadProblem = null
@@ -118,7 +117,7 @@ fun AdminView(
   // session's form only once it is asked for)
   val page = when {
     picked == NEW_PAGE -> NEW_PAGE
-    picked != null && all.any { it.id == picked && it.status.running } -> picked!!
+    picked != null && all.any { it.id == picked && it.status.running } -> picked
     overview == null -> null
     else -> all.firstOrNull { it.status.running }?.id
   }

@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
-import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.BridgeKeyView
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
@@ -41,7 +40,7 @@ internal fun BridgeKeysSection() {
   var keys by remember { mutableStateOf<List<BridgeKeyView>>(emptyList()) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
-    when (val r = call("GET", "api/account/bridge-keys", null) { ApiJson.decodeFromString(ListSerializer(BridgeKeyView.serializer()), it) }) {
+    when (val r = call("GET", "api/account/bridge-keys", null, ListSerializer(BridgeKeyView.serializer()))) {
       is Answer.Ok -> keys = r.value
       is Answer.Failed -> problem = r.message
     }

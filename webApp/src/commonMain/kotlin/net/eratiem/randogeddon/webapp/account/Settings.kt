@@ -75,7 +75,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
   var account by remember { mutableStateOf<AccountView?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
-    when (val answer = call("GET", "api/account", null) { ApiJson.decodeFromString(AccountView.serializer(), it) }) {
+    when (val answer = call("GET", "api/account", null, AccountView.serializer())) {
       is Answer.Ok -> { account = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }

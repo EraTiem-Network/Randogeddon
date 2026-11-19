@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.AccountView
-import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.EmailRequest
 import net.eratiem.randogeddon.shared.NameRequest
@@ -120,7 +119,7 @@ fun ConfirmEmailView(token: String, onSettings: () -> Unit) {
   var result by remember { mutableStateOf<String?>(null) }
   var ok by remember { mutableStateOf(false) }
   LaunchedEffect(token) {
-    when (val r = call("POST", "api/email/confirm", body(TokenRequest(token))) { ApiJson.decodeFromString(EmailRequest.serializer(), it) }) {
+    when (val r = call("POST", "api/email/confirm", body(TokenRequest(token)), EmailRequest.serializer())) {
       is Answer.Ok -> { ok = true; result = acc.addressIsNow(r.value.email) }
       is Answer.Failed -> result = r.message
     }

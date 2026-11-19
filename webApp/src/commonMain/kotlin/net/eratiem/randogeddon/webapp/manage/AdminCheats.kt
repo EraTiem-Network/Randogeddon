@@ -94,7 +94,7 @@ fun CheatSection(
   var busy by remember { mutableStateOf(false) }
 
   fun load() = scope.launch {
-    when (val answer = call("GET", path, null) { ApiJson.decodeFromString(CheatView.serializer(), it) }) {
+    when (val answer = call("GET", path, null, CheatView.serializer())) {
       is Answer.Ok -> cache.cheats[id] = answer.value
       is Answer.Failed -> outcome = false to answer.message
     }
@@ -117,7 +117,7 @@ fun CheatSection(
   // Loaded again with the view (after each cheat, and every 10 s): a location checked meanwhile drops out
   LaunchedEffect(slot, view) {
     val s = slot ?: return@LaunchedEffect
-    val answer = call("GET", "$path/names?slot=${s.percentEncoded()}", null) { ApiJson.decodeFromString(CheatNames.serializer(), it) }
+    val answer = call("GET", "$path/names?slot=${s.percentEncoded()}", null, CheatNames.serializer())
     if (answer is Answer.Ok) {
       names = answer.value
       if (toSlot && action == CheatAction.LOCATION) {

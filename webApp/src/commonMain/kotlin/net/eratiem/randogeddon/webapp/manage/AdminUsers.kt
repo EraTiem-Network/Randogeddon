@@ -79,16 +79,16 @@ import net.eratiem.randogeddon.webapp.ui.scrolling
 /** Invites [email] (with a [suggestedName] for the sign-up page); the new account, or why not. */
 internal suspend fun invite(email: String, suggestedName: String? = null): Answer<AdminUser> = call(
   "POST", "api/admin/users",
-  ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), suggestedName?.trim()?.takeIf { it.isNotEmpty() })),
-) { ApiJson.decodeFromString(AdminUser.serializer(), it) }
+  ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), suggestedName?.trim()?.takeIf { it.isNotEmpty() })), AdminUser.serializer(),
+)
 
 /**
  * Invites [email] to play in a new session (anyone creating one): only an address without an account; the account as a
  * choice of the form, or why not.
  */
 internal suspend fun inviteForSession(email: String): Answer<UserRef> = call(
-  "POST", "api/sessions/new/invite", ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), null)),
-) { ApiJson.decodeFromString(UserRef.serializer(), it) }
+  "POST", "api/sessions/new/invite", ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), null)), UserRef.serializer(),
+)
 
 /**
  * The accounts: who signed up, who is invited (and until when the link works); invite someone by e-mail, send an
@@ -105,7 +105,7 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
   // The default of the sessions per user; null until it is loaded
   var default by remember { mutableStateOf<Int?>(null) }
   suspend fun load() {
-    when (val r = call("GET", "api/admin/users", null) { ApiJson.decodeFromString(ListSerializer(AdminUser.serializer()), it) }) {
+    when (val r = call("GET", "api/admin/users", null, ListSerializer(AdminUser.serializer()))) {
       is Answer.Ok -> { users = r.value; problem = null }
       is Answer.Failed -> problem = r.message
     }
@@ -449,7 +449,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   var idle by remember { mutableStateOf("") }
   var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   LaunchedEffect(Unit) {
-    when (val r = call("GET", "api/admin/settings", null) { ApiJson.decodeFromString(AppSettings.serializer(), it) }) {
+    when (val r = call("GET", "api/admin/settings", null, AppSettings.serializer())) {
       is Answer.Ok -> {
         saved = r.value
         perUser = r.value.sessionsPerUser.toString()
@@ -511,7 +511,7 @@ fun VersionsSection() {
   var versions by remember { mutableStateOf<Versions?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
   LaunchedEffect(Unit) {
-    when (val r = call("GET", "api/admin/versions", null) { ApiJson.decodeFromString(Versions.serializer(), it) }) {
+    when (val r = call("GET", "api/admin/versions", null, Versions.serializer())) {
       is Answer.Ok -> versions = r.value
       is Answer.Failed -> problem = r.message
     }
