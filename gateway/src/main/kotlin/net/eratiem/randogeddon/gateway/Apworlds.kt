@@ -5,7 +5,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import kotlin.io.path.absolutePathString
@@ -22,6 +24,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -65,22 +68,44 @@ class ApworldProblem(message: String) : Exception(message)
 class Apworlds(private val archipelago: Archipelago, private val library: Path, private val manual: Path?) {
   private val mutex = Mutex()
   /** The games per release, listed once and again after a change (listing loads every world: seconds). */
-  private val listed = mutableMapOf<String, ReleaseInfo>()
+  private val listed = ConcurrentHashMap<String, ReleaseInfo>()
+  /** How many Generate.py run with each release's `custom_worlds/` as it is. */
+  private val running = ConcurrentHashMap<String, AtomicInteger>()
 
   suspend fun info(): ArchipelagoInfo = ArchipelagoInfo(archipelago.versions().map { release(it) }, files())
 
-  suspend fun release(version: String): ReleaseInfo = mutex.withLock {
-    listed[version] ?: withContext(Dispatchers.IO) { list(version) }.also { listed[version] = it }
+  suspend fun release(version: String): ReleaseInfo {
+    // Listed already: no wait for the generations that run
+    listed[version]?.let { return it }
+    return alone { listed[version] ?: withContext(Dispatchers.IO) { list(version) }.also { listed[version] = it } }
   }
 
-  /** Runs [block] (Generate.py) with the release's `custom_worlds/` up to date; no change to it meanwhile. */
-  suspend fun <T> holding(version: String, block: suspend () -> T): T = mutex.withLock {
-    withContext(Dispatchers.IO) { sync(version) }
+  /**
+   * Runs [block] (Generate.py) with the release's `custom_worlds/` up to date and unchanged meanwhile. Several run at
+   * once, with it as it is (only the first brings it up to date: the others' Generate.py read it); a change of the
+   * library waits for them all, and holds off new ones until it is done ([alone]).
+   */
+  suspend fun <T> holding(version: String, block: suspend () -> T): T {
+    val count = running.computeIfAbsent(version) { AtomicInteger() }
+    mutex.withLock {
+      if (count.get() == 0) withContext(Dispatchers.IO) { sync(version) }
+      count.incrementAndGet()
+    }
+    try {
+      return block()
+    } finally {
+      count.decrementAndGet()
+    }
+  }
+
+  /** [block] changes the library or a release's `custom_worlds/`: alone, once no Generate.py runs with them. */
+  private suspend fun <T> alone(block: suspend () -> T): T = mutex.withLock {
+    while (running.values.any { it.get() > 0 }) delay(100)
     block()
   }
 
   /** Every release's `custom_worlds/` up to date (at the start, for MultiServer). */
-  suspend fun syncAll() = mutex.withLock {
+  suspend fun syncAll() = alone {
     withContext(Dispatchers.IO) {
       archipelago.versions().forEach { version ->
         runCatching { sync(version) }.onFailure { logger.warn("custom_worlds of {}: {}", version, it.message) }
@@ -200,14 +225,14 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     names.firstOrNull { !dir.resolve(it).exists() }?.let {
       throw ApworldProblem("$it is not in the library of Archipelago ${removal.release}")
     }
-    mutex.withLock {
+    alone {
       withContext(Dispatchers.IO) {
         names.forEach { name ->
           dir.resolve(name).deleteIfExists()
           dir.resolve("$name.from").deleteIfExists()
         }
-        listed.remove(removal.release)
-        sync(removal.release)
+        // Listed again at once (it brings `custom_worlds/` up to date): a generation needn't wait for that later
+        listed[removal.release] = list(removal.release)
       }
     }
     logger.info("Removed {} from the library of Archipelago {}", names.joinToString(", "), removal.release)
@@ -233,7 +258,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
    * can't list its games with it) is refused: what was there before (and the file it replaced) is put back, the
    * release is listed again without it, and its answer says why. One answer per change, in their order.
    */
-  private suspend fun change(release: String, changes: List<Change>): List<ApworldResult> = mutex.withLock {
+  private suspend fun change(release: String, changes: List<Change>): List<ApworldResult> = alone {
     withContext(Dispatchers.IO) {
       val dir = library.resolve(release).createDirectories()
       val saved = changes.map { c -> listOfNotNull(Saved(dir.resolve(c.name)), c.replacing?.let { Saved(dir.resolve(it)) }) }
