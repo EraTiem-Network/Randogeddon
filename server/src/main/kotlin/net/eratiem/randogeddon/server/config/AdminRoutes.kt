@@ -21,14 +21,15 @@ import net.eratiem.randogeddon.database.GAME_SERVERS
 import net.eratiem.randogeddon.database.IDLE_MINUTES
 import net.eratiem.randogeddon.database.MAX_GAME_SERVERS
 import net.eratiem.randogeddon.database.MAX_IDLE_MINUTES
-import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
@@ -172,6 +173,7 @@ fun Route.manageRoutes(
   list: SessionList,
   logins: LoginCheck,
   gameServers: GameServerLimit,
+  spoilerRuns: SpoilerRuns,
 ) {
   get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
@@ -199,6 +201,8 @@ fun Route.manageRoutes(
       call.respond(HttpStatusCode.NoContent)
     }
   }
+  // How its spoiler log is completed after the seed, and that run's log
+  spoilerRunRoutes(spoilerRuns)
   post("/keep") {
     val keep = call.receive<KeepRequest>().keep
     gatewayCall {
@@ -304,3 +308,12 @@ const val MAX_SESSIONS_PER_USER = 20
 
 /** How many running sessions one user (not an Administrator) may manage at once. */
 suspend fun sessionsPerUser(settings: AppSettingsStore): Int = settings.get(SESSIONS_PER_USER)?.toIntOrNull() ?: 1
+
+/** `…/spoiler-run`: how session `{id}`'s spoiler log is completed after its seed; `…/log?since=`: that run's log. */
+internal fun Route.spoilerRunRoutes(spoilerRuns: SpoilerRuns) {
+  get("/spoiler-run") { gatewayCall { call.respond(spoilerRuns.view(call.parameters["id"].orEmpty())) } }
+  get("/spoiler-run/log") {
+    val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+    gatewayCall { call.respond(spoilerRuns.log(call.parameters["id"].orEmpty(), since)) }
+  }
+}

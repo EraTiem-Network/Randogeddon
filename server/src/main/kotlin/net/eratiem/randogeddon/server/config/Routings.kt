@@ -1,6 +1,5 @@
 package net.eratiem.randogeddon.server.config
 
-import net.eratiem.randogeddon.server.admin.SessionLimit
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.server.application.Application
@@ -12,6 +11,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import java.io.File
 import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.BridgeKeys
@@ -26,9 +26,11 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
+import net.eratiem.randogeddon.server.admin.SessionLimit
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
 import net.eratiem.randogeddon.server.admin.SlotDownloads
+import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -37,7 +39,6 @@ import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.shared.SessionRole
 import org.koin.ktor.ext.inject
-import java.io.File
 
 private val HASHED = Regex("[0-9a-f]{16,}\\.wasm")
 
@@ -66,6 +67,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val attempts by inject<LoginAttempts>()
   val sessionLimit by inject<SessionLimit>()
   val gameServerLimit by inject<GameServerLimit>()
+  val spoilerRuns by inject<SpoilerRuns>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -83,7 +85,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads, spoilerSearches)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
-      supportRoutes(support, logins)
+      supportRoutes(support, spoilerRuns, logins)
       watcherRoutes(people, shareLinks, logins)
       // A session's management: its Session-Managers, and Administrators
       route("/sessions/{id}/manage") {
@@ -91,7 +93,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit, spoilerRuns)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)

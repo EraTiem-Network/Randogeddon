@@ -133,6 +133,16 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }
 
+  /** Session [id]'s spoiler log's background run: its log lines after [since]; `null`: none. */
+  suspend fun spoilerRunLog(id: String, since: Long): LogLines? {
+    val response = request { http.get("${session(id)}/spoiler-run/log?since=$since") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
   /** Ends session [id]'s generation; `false`: none runs there (not yet, or no more). */
   suspend fun cancelGeneration(id: String): Boolean {
     val response = request { http.delete("${session(id)}/generate") { auth() } }
