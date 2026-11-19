@@ -371,6 +371,9 @@ docker compose up -d
    (*Choose per slot*: tick the slots that start locked; *Random*: a number of slots picked at random start open,
    all others start locked; *Mixed*: each slot's switch says open, locked or left to chance, and the slider how many
    start open in all; at least one slot starts open, and a single slot can't be locked); the hint and release options;
+   the generation's settings: what the YAMLs may plan by hand (Archipelago's plando modules *bosses*, *connections*,
+   *texts*, *items*; its own default, all but the items, is ticked), *No progression balancing*, and *Race mode* (a
+   seed nobody can reproduce and no spoiler log, so nothing of it in the panel and no background runs);
    *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
    is; the gateway generates as many seeds at once as it has cores, less one (`GENERATIONS_AT_ONCE`), so a session
@@ -774,8 +777,10 @@ which the gateway writes before it starts the session's game server.
 - **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, progress, status
-  (not started / playing / locked / goal / released / complete), online dot, last activity, and for locked slots
-  the key: who found it, or where it was hinted. Without any players, every slot is its own card. Click a
+  (not started / playing / locked / goal / released / complete), online dot, last activity, how many game clients
+  are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
+  the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
+  own card. Click a
   player's name for their overview (totals, slots, open hints, combined connection log, recent activity). Click a slot
   for its received items (filterable), remaining locations, play time and connection log.
 - **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.

@@ -121,6 +121,25 @@ class SessionStateTest {
   }
 
   @Test
+  fun `a slot counts its game clients, and a tracker or text client leaving isn't one of them`() {
+    val s = makeState()
+    fun connections() = s.summary("t", null).players.first { it.slot == 1 }.connections
+    s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["AP"]}"""))
+    s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["AP","DeathLink"]}"""))
+    s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["TextOnly"]}"""))
+    assertEquals(2, connections())
+    // MultiServer's text for a client that doesn't play ends with its tags: not a game leaving
+    s.onPrintJson(json("""{"type":"Part","team":0,"slot":1,"data":[{"text":"Alice (Team #1) has stopped viewing the game. Client(0.6.8), ['TextOnly']."}]}"""))
+    s.onPrintJson(json("""{"type":"Part","team":0,"slot":1,"data":[{"text":"Alice (Team #1) has stopped tracking the game. Client(0.6.8), ['Tracker']."}]}"""))
+    assertEquals(2, connections())
+    s.onPrintJson(json("""{"type":"Part","team":0,"slot":1,"data":[{"text":"Alice (Team #1) has left the game. Client(0.6.8), ['AP', 'DeathLink']."}]}"""))
+    assertEquals(1, connections())
+    assertTrue(s.summary("t", null).players.first { it.slot == 1 }.online)
+    s.onPrintJson(json("""{"type":"Part","team":0,"slot":1,"data":[{"text":"Alice (Team #1) has left the game. Client(0.6.8), ['AP']."}]}"""))
+    assertEquals(0, connections())
+  }
+
+  @Test
   fun `join and part ignore trackers`() {
     val s = makeState()
     s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["Tracker"]}"""))

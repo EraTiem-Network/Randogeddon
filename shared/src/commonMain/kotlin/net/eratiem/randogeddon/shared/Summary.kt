@@ -116,7 +116,7 @@ data class HintSettings(
 data class PersonSummary(
   /** The name the person has in this session (the one of then, once it is finished). */
   val name: String,
-  /** Slots of [PlayerSummary.slot], in the order of `session.yaml`. */
+  /** Slots of [PlayerSummary.slot], by their names: always in the same order. */
   val slots: List<Int>,
   val checked: Int,
   val total: Int,
@@ -154,6 +154,8 @@ data class PlayerSummary(
   val status: PlayerStatus,
   /** A game client (not a tracker or text client) is connected to this slot. */
   val online: Boolean,
+  /** How many game clients are connected to it now (several can be: a slot played together, a second device). */
+  val connections: Int = 0,
   /** Epoch milliseconds of the last check, goal or join; `null` if nothing happened yet. */
   val lastActivity: Long? = null,
   val itemsReceived: Int,

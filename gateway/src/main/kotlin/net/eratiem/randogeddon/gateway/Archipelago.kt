@@ -159,6 +159,20 @@ class GenerationLog(val version: String) {
   }
 }
 
+/**
+ * Generate.py's arguments for [request]'s settings: the plando modules its YAMLs may use (always said, by their known
+ * names only: without it Generate.py takes its own default), and no progression balancing.
+ */
+internal fun generatorArguments(request: GenerateRequest): List<String> = buildList {
+  add("--plando")
+  add(request.plando.sortedBy { it.ordinal }.joinToString(", ") { it.argument })
+  if (request.skipBalancing) add("--skip_prog_balancing")
+}
+
+/** [command] as a shell would take it, for the log. */
+private fun shown(command: List<String>): String =
+  command.joinToString(" ") { if (it.isEmpty() || it.any(Char::isWhitespace)) "'$it'" else it }
+
 /** How much longer than a seed a spoiler log's background run may take. */
 private const val BACKGROUND_TIME_FACTOR = 4
 
@@ -406,9 +420,9 @@ class Generator(
       val command = listOf(
         archipelago.python, "Generate.py", "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
         "--outputpath", output.absolutePathString(), "--seed", state.seed.toString(), "--spoiler", level.toString(), "--spoiler_only",
-      )
+      ) + state.arguments
       log.lines.add("$ cd ${home.absolutePathString()}")
-      log.lines.add("$ ${command.joinToString(" ")}")
+      log.lines.add("$ ${shown(command)}")
       val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       processes[stageKey(id)] = proc
       if (run.yields) proc.destroyForcibly()
@@ -533,13 +547,16 @@ class Generator(
       // A seed number of its own, kept: its spoiler log's later levels are generated with it again. The seed itself only
       // with a spoiler without playthrough (level 1), so the session can start; the playthrough comes in the background
       val seed = seeds.nextLong() ushr 1
+      val settings = generatorArguments(request)
+      // Race mode: nobody can reproduce the seed, and it has no spoiler log (so nothing to complete after)
+      val spoiler = if (request.race) listOf("--race", "--spoiler", "0") else listOf("--spoiler", "1")
       val command = listOf(
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
-        "--outputpath", output.absolutePathString(), "--seed", seed.toString(), "--spoiler", "1",
-      )
+        "--outputpath", output.absolutePathString(), "--seed", seed.toString(),
+      ) + spoiler + settings
       // What ran, so it can be run again by hand
       log.lines.add("$ cd ${home.absolutePathString()}")
-      log.lines.add("$ ${command.joinToString(" ") { if (it.any(Char::isWhitespace)) "'$it'" else it }}")
+      log.lines.add("$ ${shown(command)}")
       log.lines.add("[gateway] YAMLs: ${players.listDirectoryEntries().map { it.name }.sorted().joinToString()}")
       val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       processes[id] = proc
@@ -590,10 +607,12 @@ class Generator(
       )
 
       Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
-      // What it was generated from, for its spoiler log's later levels
-      val kept = dirs.generationDir(id).resolve("players").createDirectories()
-      players.listDirectoryEntries().forEach { Files.copy(it, kept.resolve(it.name), StandardCopyOption.REPLACE_EXISTING) }
-      stages.save(id, SpoilerStages.State(seed, request.apVersion, level = 1, apworlds = apworldHashes))
+      // What it was generated from, for its spoiler log's later levels (a race has none)
+      if (!request.race) {
+        val kept = dirs.generationDir(id).resolve("players").createDirectories()
+        players.listDirectoryEntries().forEach { Files.copy(it, kept.resolve(it.name), StandardCopyOption.REPLACE_EXISTING) }
+        stages.save(id, SpoilerStages.State(seed, request.apVersion, level = 1, apworlds = apworldHashes, arguments = settings))
+      }
       val seedName = zip.name.removePrefix("AP_").removeSuffix(".zip")
       logger.info("Generated seed {}", seedName)
       log.lines.add("[gateway] Seed $seedName")

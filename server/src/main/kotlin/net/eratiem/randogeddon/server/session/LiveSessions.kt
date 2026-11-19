@@ -116,9 +116,12 @@ class LiveSession(
     if (!worlds.isNullOrEmpty() || hosted.isNotEmpty()) {
       val people = LinkedHashMap<String, MutableList<String>>()
       for ((slot, users) in worlds.orEmpty()) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+      // Always in the same order: the people by name, each one's slots by name
+      val ordered = LinkedHashMap<String, List<String>>()
+      for ((person, slots) in people.entries.sortedBy { it.key.lowercase() }) ordered[person] = slots.sortedBy { it.lowercase() }
       // The hosted slots together, as if one person played them (no account can be called so)
-      if (hosted.isNotEmpty()) people[UserNames.HOSTED] = hosted.sorted().toMutableList()
-      return people
+      if (hosted.isNotEmpty()) ordered[UserNames.HOSTED] = hosted.sortedBy { it.lowercase() }
+      return ordered
     }
     val s = archives.read(id)?.summary ?: return emptyMap()
     return s.people.associate { p -> p.name to p.slots.mapNotNull { slot -> s.players.firstOrNull { it.slot == slot }?.name } }

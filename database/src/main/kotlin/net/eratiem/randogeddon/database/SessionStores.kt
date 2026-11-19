@@ -62,7 +62,7 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
 
 /**
  * A session as the admin panel set it up: the Archipelago version, the options (JSON), and which users play which
- * world ([worlds]: slot name -> the names they have in this session, in the order they were given; [members]: user
+ * world ([worlds]: slot name -> the names they have in this session, both by name; [members]: user
  * ID -> that name; [deleted]: the members whose account is deleted; [roles]: who else has a role in it).
  */
 data class SessionSetup(
@@ -190,10 +190,13 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
 
   suspend fun of(seedName: String): SessionSetup? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
-    val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
-      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }.toList()
     // The name of then; rows from before V7 without one: the current name
     fun name(r: ResultRow) = r[SessionWorldsTable.userName] ?: r[UsersTable.name] ?: r[SessionWorldsTable.userId].toString().take(8)
+    // The database gives the rows in no order of its own (it changed from one read to the next, and the dashboard's
+    // slots with it): by slot, then by player
+    val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
+      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }.toList()
+      .sortedWith(compareBy({ it[SessionWorldsTable.slotName].lowercase() }, { it[SessionWorldsTable.slotName] }, { name(it).lowercase() }))
     val worlds = rows.groupBy({ it[SessionWorldsTable.slotName] }, ::name)
     val members = rows.associate { it[SessionWorldsTable.userId] to name(it) }
     val deleted = rows.filter { it[UsersTable.deletedAt] != null }.map { it[SessionWorldsTable.userId] }.toSet()

@@ -413,7 +413,13 @@ class SessionAdmin(
     logger.info("{} creates session {}: {} slots, {} players, Archipelago {}", admin, id, plans.size, people.size, version)
     val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
     return {
-      val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
+      val generated = gameServer.generate(
+        id,
+        GenerateRequest(
+          request.yamls, locked, request.options.earlyKeys, version, games,
+          plando = request.options.plando, skipBalancing = request.options.skipBalancing, race = request.options.race,
+        ),
+      )
       if (generated.cancelled) throw CreationCancelled()
       val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
       stages[id] = GenerationProgress(GenerationStage.SAVING, 93)

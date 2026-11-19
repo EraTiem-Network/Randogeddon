@@ -11,6 +11,28 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.5: The generation's settings per session
+- **In the new session's form**, with the options: *YAMLs may plan* (Archipelago's plando modules: *bosses*,
+  *connections*, *texts*, *items*; its own default, all but the items, is ticked), *No progression balancing*, and
+  *Race mode*. They are the session's options like the others, and go to `Generate.py` as arguments: `--plando` with
+  the modules' known names only (always said, also for none), `--skip_prog_balancing`, `--race`. No raw `host.yaml`,
+  and no file or program path comes from the form.
+- **A seed keeps its settings** for its spoiler log's later levels (`stages.json`), which are generated with them
+  again.
+- **Race mode** generates with a random source nobody can reproduce and without a spoiler log (`--spoiler 0`): its
+  session has none (the spoiler page says so), nothing runs in the background after it, and hints and cheats work
+  without it.
+- **A slot's connections on the dashboard**: a slot with more than one game client connected says how many
+  (*2 connections*); Archipelago, the gateway and the bridge all take several per slot. A tracker or text client
+  leaving a slot is no longer counted as a game leaving it (a `Part` has no tags, but its text ends with them).
+- **The slots stay where they are**: a session's slots and their players are read by name (the database gave them in
+  no order of its own, so a person's slots changed places from one look to the next), and the dashboard's *Sort*
+  orders each person's slots as it orders the people: by name, by progress or by last activity, equal ones by name.
+- Found on the way (in the TODO): why Skyward Sword HD doesn't generate here. Its APWorld wants the extracted game on
+  the generating machine and falls back to an item pool with one *Progressive Loftwing* where its logic needs two; a
+  bug of that APWorld, with a workaround in the YAML. And: no ROM is uploaded to the server (the plan to keep them
+  encrypted is dropped; undecided).
+
 ### 0.19.4: Generations at once
 - **Several generations run at once:** as many as the gateway has cores, less one (the server: three), or as many
   as `GENERATIONS_AT_ONCE` says. New sessions' seeds and the spoiler logs' later levels share these places; the

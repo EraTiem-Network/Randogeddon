@@ -25,6 +25,9 @@ interface SessionTips {
   val remainingChoices: List<Pair<String, String>>
   val releaseVersion: String
   val cheatHints: String
+  val plando: String
+  val skipBalancing: String
+  val raceMode: String
   val sessionId: String
   val dashboard: String
   val pause: String
@@ -88,6 +91,17 @@ internal object EnglishSessionTips : SessionTips {
     "it. Which games it has is listed under APWorlds."
   override val cheatHints = "Session-Managers may give free hints with the cheats (support always may). Every one is " +
     "logged and shown in the live feed. Giving items and checks works without this."
+  override val plando =
+    "What the YAMLs may set by hand instead of leaving it to chance (Archipelago's plando): which bosses, " +
+      "the connections between areas, in-game texts, where items go. A YAML that needs one that isn't ticked " +
+      "is refused; a plan it merely has is left out. Archipelago's own default is everything but the items."
+  override val skipBalancing =
+    "Archipelago leaves out its progression balancing: the step that moves progression items to earlier " +
+      "spheres for players who would wait long. Generating a big multiworld gets faster; some may wait " +
+      "longer for their items. The YAMLs' own progression_balancing doesn't count then."
+  override val raceMode =
+    "Archipelago's race mode: the seed can't be reproduced, games that can do it protect their patch, and " +
+      "there is no spoiler log (none in the panel either; hints and cheats work without it)."
   override val sessionId = "The session's name in the links, and its address for game clients (<ID>.<domain>). " +
     "Lowercase letters, digits and -, starting with a letter; it can't be changed later."
   override val dashboard = "The session's dashboard as its players see it (slot passwords only for your own slots)."
@@ -161,6 +175,18 @@ internal object GermanSessionTips : SessionTips {
     "bleibt dabei. Welche Spiele es hat, steht unter APWorlds."
   override val cheatHints = "Session-Manager dürfen mit den Cheats Gratis-Hinweise geben (Support darf das immer). " +
     "Jeder wird protokolliert und im Live-Feed gezeigt. Items und Checks geben geht auch ohne das."
+  override val plando =
+    "Was die YAMLs von Hand festlegen dürfen, statt es dem Zufall zu überlassen (Archipelagos Plando): welche " +
+      "Bosse, die Verbindungen zwischen Gebieten, Texte im Spiel, wo Items liegen. Eine YAML, die eines braucht, " +
+      "das nicht angehakt ist, wird abgelehnt; ein Plan, den sie nur enthält, bleibt weg. Archipelagos eigener " +
+      "Standard ist alles außer den Items."
+  override val skipBalancing =
+    "Archipelago lässt sein Progression-Balancing weg: den Schritt, der Progression-Items für Spieler, die lange " +
+      "warten würden, in frühere Sphären schiebt. Eine große Multiworld generiert schneller; manche warten " +
+      "länger auf ihre Items. Das progression_balancing der YAMLs zählt dann nicht."
+  override val raceMode =
+    "Archipelagos Race-Modus: Der Seed lässt sich nicht nachstellen, Spiele, die es können, schützen ihren " +
+      "Patch, und es gibt kein Spoiler-Log (auch nicht im Panel; Hinweise und Cheats funktionieren ohne)."
   override val sessionId = "Der Name der Session in den Links und ihre Adresse für Spiel-Clients (<ID>.<Domain>). " +
     "Kleinbuchstaben, Ziffern und -, mit einem Buchstaben am Anfang; später nicht mehr änderbar."
   override val dashboard = "Das Dashboard der Session, wie ihre Spieler es sehen (Slot-Passwörter nur für deine eigenen Slots)."

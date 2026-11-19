@@ -274,6 +274,26 @@ class StoresTest {
   }
 
   @Test
+  fun `a session's slots and their players come in one order, by name, whatever order they were stored in`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val zoe = users.create("zoe", "hash")
+    val adam = users.create("Adam", "hash")
+    val mia = users.create("Mia", "hash")
+    setups.create(
+      "sorted-heron", "seed-sorted", "0.6.8", "{}",
+      linkedMapOf("Zed-HK" to listOf(zoe.id, adam.id), "alpha-Yacht" to listOf(mia.id), "Mid-DLC" to listOf(zoe.id, mia.id, adam.id)),
+    )
+    repeat(3) {
+      val worlds = setups.of("seed-sorted")!!.worlds
+      assertEquals(listOf("alpha-Yacht", "Mid-DLC", "Zed-HK"), worlds.keys.toList())
+      assertEquals(listOf("Adam", "Mia", "zoe"), worlds["Mid-DLC"])
+      assertEquals(listOf("Adam", "zoe"), worlds["Zed-HK"])
+    }
+    assertTrue(setups.delete("seed-sorted"))
+  }
+
+  @Test
   fun `an invited player is in a session without anything of their address, then by their name`() = runBlocking {
     val users = UserStore(db)
     val setups = SessionSetupStore(db)

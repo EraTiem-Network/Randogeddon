@@ -77,12 +77,23 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
   val p = LocalPalette.current
   val d = LocalTexts.current.dashboard
   var sort by remember { mutableStateOf(PeopleSort.PLAYER) }
+  // By name first, so equal ones (the same progress, nothing done yet) always come in the same order
+  val byName = s.people.sortedBy { it.name.lowercase() }
   val people = when (sort) {
-    PeopleSort.PLAYER -> s.people.sortedBy { it.name.lowercase() }
-    PeopleSort.PROGRESS -> s.people.sortedByDescending { it.percent }
-    PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
+    PeopleSort.PLAYER -> byName
+    PeopleSort.PROGRESS -> byName.sortedByDescending { it.percent }
+    PeopleSort.ACTIVITY -> byName.sortedByDescending { it.lastActivity ?: 0 }
   }
   val worlds = s.players.associateBy { it.slot }
+  // A person's slots in the same order as the people: by name, by progress or by what happened last
+  fun slotsOf(person: PersonSummary): List<PlayerSummary> {
+    val own = person.slots.mapNotNull { worlds[it] }.sortedBy { it.name.lowercase() }
+    return when (sort) {
+      PeopleSort.PLAYER -> own
+      PeopleSort.PROGRESS -> own.sortedByDescending { it.percent }
+      PeopleSort.ACTIVITY -> own.sortedByDescending { it.lastActivity ?: 0 }
+    }
+  }
   Section(
     d.players, subtitle = d.playersSubtitle(s.people.size, s.players.size),
     actions = {
@@ -102,7 +113,7 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
       Grid(people.size, width, 330.dp) { i, modifier ->
-        PersonCard(people[i], people[i].slots.mapNotNull { worlds[it] }, now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
       }
     }
   }
@@ -264,6 +275,8 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
         Row(Modifier.fillMaxWidth()) {
           Txt(t.dashboard.slot(shortSlotName(world.name, world.person)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
           if (!locked && !world.online) Txt(t.ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
+          // More than one game client on it (played together, or a second device)
+          if (world.connections > 1) Txt(t.dashboard.connections(world.connections), size = 11.5.sp, maxLines = 1, color = p.ok)
         }
         Spacer(Modifier.height(6.dp))
         ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
