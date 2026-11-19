@@ -42,7 +42,31 @@ data class LogLines(val lines: List<LogLine>, val last: Long)
 
 /** Gateway → tracker: one session's game server, and the port MultiServer listens on while it runs. */
 @Serializable
-data class SessionServer(val id: String, val state: GameServerState, val port: Int? = null)
+data class SessionServer(
+  val id: String,
+  val state: GameServerState,
+  val port: Int? = null,
+  /** Its spoiler log while it is completed in the background (since 0.19.3); `null`: complete (or from before). */
+  val spoiler: SpoilerProgress? = null,
+)
+
+/**
+ * A session's spoiler log as the gateway completes it after the seed (with the same seed number and inputs, only the
+ * spoiler worked out again): [level] 1 the seed's (no playthrough), 2 with the playthrough (the spoiler page, the hints
+ * and the cheats wait for it), 3 with the paths to every item (complete). [running]: the level worked out now (`null`:
+ * waiting for its turn), with Generate.py's share of a core ([cpu]). [stopped]: why it stays at [level].
+ */
+/** `GET /api/sessions/{id}/manage/spoiler-run` (and `…/support/…`): how its spoiler log is completed; `null`: complete. */
+@Serializable
+data class SpoilerRunView(val progress: SpoilerProgress? = null)
+
+@Serializable
+data class SpoilerProgress(
+  val level: Int,
+  val running: Int? = null,
+  val cpu: Int? = null,
+  val stopped: String? = null,
+)
 
 /** `GET /internal/sessions`: every session the gateway has files of. */
 @Serializable

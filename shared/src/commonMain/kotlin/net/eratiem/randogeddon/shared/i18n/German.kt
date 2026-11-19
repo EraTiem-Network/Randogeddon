@@ -69,6 +69,10 @@ object German : Texts {
     override val pickOneOfYourSessions = "Wähle eine deiner Sessions"
     override val connecting = "Verbinde mit dem Tracker…"
     override val reconnecting = "verbinde neu…"
+    override val spoilerCompleting = "Spoiler-Log wird vervollständigt"
+    override val spoilerCompletingTip =
+      "Der Seed läuft. Sein Spoiler-Log wird im Hintergrund noch einmal berechnet: zuerst der Lösungsweg, dann die " +
+        "Wege zu jedem Item. Spoiler-Log, Hinweise und Cheats warten auf den Lösungsweg."
     override val finished = "beendet"
     override val live = "live"
     override val serverOffline = "Server offline"

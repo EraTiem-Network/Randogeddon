@@ -163,6 +163,7 @@ internal object EnglishProblems : ProblemTexts {
       GAME_SERVERS -> "Game servers at once: none (no limit) or 1 to ${a("max")}"
       IDLE_MINUTES -> "Sleep after: 0 (never) to ${a("max")} minutes"
       CANCEL_TOO_LATE -> "Too late to cancel: the seed is there and the session is being set up"
+      PLAYTHROUGH_NOT_YET -> "The spoiler log's playthrough is still being worked out: the spoiler log, the hints and the cheats are there once it is done"
       GENERATION_TOO_LONG -> "Generating took longer than ${a("minutes")} minutes and was stopped (a big multiworld fills " +
         "on one core): try again with fewer slots, or ask an Administrator for more time (GENERATION_MINUTES)."
       APWORLD_TOO_LARGE -> "Larger than 64 MB"
@@ -326,6 +327,7 @@ internal object GermanProblems : ProblemTexts {
       GAME_SERVERS -> "Spielserver gleichzeitig: keine Angabe (ohne Grenze) oder 1 bis ${a("max")}"
       IDLE_MINUTES -> "Schlafen nach: 0 (nie) bis ${a("max")} Minuten"
       CANCEL_TOO_LATE -> "Zu spät zum Abbrechen: Der Seed ist da und die Session wird eingerichtet"
+      PLAYTHROUGH_NOT_YET -> "Der Lösungsweg des Spoiler-Logs wird noch berechnet: Spoiler-Log, Hinweise und Cheats gibt es, sobald er fertig ist"
       GENERATION_TOO_LONG -> "Das Generieren hat länger als ${a("minutes")} Minuten gedauert und wurde abgebrochen (eine große " +
         "Multiworld wird auf einem Kern gefüllt): Versuche es mit weniger Slots, oder bitte einen Administrator um mehr " +
         "Zeit (GENERATION_MINUTES)."
