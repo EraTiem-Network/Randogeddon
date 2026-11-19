@@ -9,6 +9,18 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.15: Tips to copy, invited players' addresses kept to Administrators
+- **A tip's text can be selected and copied:** a tip is a window of its own with its own selection (and stays while
+  the pointer is on it, since 0.18.12), so its text can be marked and copied with Ctrl+C. A long message (an APWorld's
+  error on its pill: Archipelago's exception) has a *Copy* button above it.
+- **An invited player's address only for Administrators:** in a session an invited player was called by the part of
+  their address before the `@` until they signed up (shown on the dashboard and in the panel to everyone); now by the
+  name suggested for them, or `Invited-` and their account ID's start. Signing up gives them their own name in the
+  running sessions, as before. Sessions made before keep the old name until then.
+- A session's view in the Management panel listed every account, the invited ones with their address, also to its
+  Session-Managers; now only to Administrators (Session-Managers get the active accounts by name, as for a new
+  session).
+
 ### 0.18.14: The audit's leftovers
 - **One dialog frame:** a person's and a world's dialog on the dashboard, and an account's and a session person's panel
   in the Management panel, in one `DialogCard` (the card, its header with the close button, a divider, the body),

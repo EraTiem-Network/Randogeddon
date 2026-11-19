@@ -377,7 +377,8 @@ docker compose up -d
    background: the page can be closed, and shows it again (also after a reload) until it is done; *Cancel* ends it
    while it generates, and its ID is free again. Under the bar, Generate.py's output, newest on top, a page at a
    time and searchable; if it fails, the whole output can be downloaded, with the command that ran first. Every option has an ⓘ that says what it does; buttons with a tip show it on hover, or on a
-   long press on a phone. The gateway generates the seed with the chosen
+   long press on a phone; a tip stays while the pointer is on it, and its text can be selected and copied (a long
+   message, such as an APWorld's error, has a *Copy* button). The gateway generates the seed with the chosen
    Archipelago release and starts the game server on it. A generation that takes longer than `GENERATION_MINUTES`
    (default 60) is stopped, and the panel says so; Archipelago fills on one core, so a big multiworld (thousands of
    progression items) takes long. A file that isn't a player YAML (not `.yaml`/`.yml`, no
@@ -388,7 +389,8 @@ docker compose up -d
 3. **Players are added** per slot, from a dropdown with a search (a slot starts without players). **New players are
    invited** by e-mail right there (type their address: only one that has no account), or beforehand by an
    Administrator (*Users*): they get a link, valid for 7 days, and choose their name and password themselves. Until
-   they sign up, the session shows them by the suggested name. When a session ends, its invitations nobody accepted
+   they sign up, the session shows them by the suggested name (without one: `Invited-` and the start of their
+   account's ID; never anything of their address, which only Administrators see). When a session ends, its invitations nobody accepted
    go (unless another running session has them).
    **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
    Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
