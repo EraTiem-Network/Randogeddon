@@ -75,6 +75,7 @@ import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.PlandoModule
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionOptions
@@ -604,6 +605,23 @@ private fun CreateSession(
         }
         version != null -> Labeled(t.sessionAdmin.archipelagoVersion(version.orEmpty()), t.tips.releaseVersion) {}
       }
+    }
+    // The generation's settings: what the YAMLs may plan by hand, the balancing, race mode
+    FlowRow(
+      horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Txt(t.sessionAdmin.plando, size = 12.5.sp, color = p.muted)
+        InfoTip(t.tips.plando)
+      }
+      PlandoModule.entries.forEach { module ->
+        Check(t.sessionAdmin.plandoModule(module), module in options.plando) { on ->
+          options = options.copy(plando = if (on) options.plando + module else options.plando - module)
+        }
+      }
+      Check(t.sessionAdmin.skipBalancing, options.skipBalancing, t.tips.skipBalancing) { options = options.copy(skipBalancing = it) }
+      Check(t.sessionAdmin.raceMode, options.race, t.tips.raceMode) { options = options.copy(race = it) }
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
