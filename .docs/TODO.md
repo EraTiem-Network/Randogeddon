@@ -817,10 +817,13 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       inputs kept with the session (its YAMLs, the seed number, the APWorlds it was generated with), so a restart of
       the gateway goes on. A pill with a working symbol on the session's top panel for everyone while it completes;
       its state and the run's log in the Management panel for Session-Managers, Administrators and Support
-- [ ] Generations at once (decided, 0.19.4): as many as the gateway has cores less one (the server has 4: three). A
-      new session waits only for a level-2 run; a level-3 run is paused for it (`SIGSTOP`, `SIGCONT` once there is
-      room again; cancelled and started over if pausing doesn't hold). Each run with its own APWorld set (the release's
-      `custom_worlds/` is shared now), and memory in mind (one big generation needs gigabytes)
+- [x] Generations at once (decided, 0.19.4): as many as the gateway has cores less one (the server has 4: three;
+      `GENERATIONS_AT_ONCE`). A new session waits only for a level-2 run; a level-3 run is paused for it (`SIGSTOP`,
+      `SIGCONT` once there is room again; ended and started over if pausing doesn't hold). The runs share the
+      release's `custom_worlds/` as it is while they run (not a set of its own each: Archipelago reads it from its own
+      directory); a change of the library waits for them. Memory: each needs its own (a big one gigabytes; a paused one
+      keeps its), a killed one says "probably out of memory"
+- [x] No *Spoiler log* button and no *Cheats* section before the spoiler log has its playthrough (asked for, 0.19.4)
 - [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form race
       mode, plando options and skipping progression balancing, checked and passed as `Generate.py`'s arguments
       (`--race`, `--plando`, `--skip_prog_balancing`); file and program paths never come from the form. The spoiler

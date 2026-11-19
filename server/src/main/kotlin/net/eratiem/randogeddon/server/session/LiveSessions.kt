@@ -156,7 +156,7 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting, playthroughReady).hashCode().toLong().shl(16)
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
   val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
@@ -188,6 +188,7 @@ class LiveSession(
       // As the gateway said at its last look; connected again: awake (it woke for a player since)
       serverAsleep = asleep && !tracker.read { connected },
       spoilerCompleting = spoilerCompleting,
+      spoilerReady = playthroughReady,
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),

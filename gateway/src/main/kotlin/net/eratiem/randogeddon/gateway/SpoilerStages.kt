@@ -44,8 +44,8 @@ class SpoilerStages(private val dirs: SessionDirs) {
     Files.move(written, dir.resolve(FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
   }
 
-  /** The next spoiler log to complete: one still without its playthrough first, then one without its paths. */
-  fun next(): Pair<String, State>? = dirs.ids().filter { dirs.seed(it) != null }
+  /** The next spoiler log to complete ([running]: not those): one without its playthrough first, then one without its paths. */
+  fun next(running: Set<String> = emptySet()): Pair<String, State>? = dirs.ids().filter { it !in running && dirs.seed(it) != null }
     .mapNotNull { id -> read(id)?.let { id to it } }
     .filter { (_, state) -> state.level < COMPLETE && state.stopped == null }
     .minByOrNull { (id, state) -> "${state.level} $id" }

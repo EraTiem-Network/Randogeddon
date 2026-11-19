@@ -11,6 +11,23 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.4: Generations at once
+- **Several generations run at once:** as many as the gateway has cores, less one (the server: three), or as many
+  as `GENERATIONS_AT_ONCE` says. New sessions' seeds and the spoiler logs' later levels share these places; the
+  spoiler logs' runs leave one free for a new session (where there is more than one). A session beyond that waits,
+  as before.
+- **A spoiler's level-3 run is paused for a new session** when no place is free (`SIGSTOP`; the panel says
+  *paused*), and goes on where it was once there is room (`SIGCONT`); if pausing doesn't hold, it ends and starts
+  over later. A level-2 run is never paused: the new session waits for it. The time a run is paused doesn't count
+  towards its limit.
+- **The APWorlds while generations run:** they share the release's `custom_worlds/` as it is; a change of the library
+  (an upload, a removal) waits for the seeds and level-2 runs that are going, and holds off new ones until it is
+  done; level-3 runs end for it and start over after.
+- **Memory:** each generation needs its own (a big multiworld: gigabytes), and a paused one keeps its. One that is
+  killed (exit code 137) says so: "probably out of memory; fewer generations at once need less".
+- **No *Spoiler log* button and no *Cheats* (or support) section** for a session until its spoiler log has its
+  playthrough (they answered "still being worked out" before).
+
 ### 0.19.3: The spoiler log in stages
 - **A session starts sooner:** its seed is generated with a spoiler log without the playthrough (Archipelago's level
   1), which skips the longest part of a big multiworld's generation; the session's game server starts right after.

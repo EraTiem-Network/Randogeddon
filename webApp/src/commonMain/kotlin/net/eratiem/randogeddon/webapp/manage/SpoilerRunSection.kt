@@ -73,6 +73,7 @@ fun SpoilerRunSection(id: String, base: String) {
       val stopped = now.stopped
       when {
         stopped != null -> Txt(t.spoilerStopped(now.level, stopped), size = 12.5.sp, color = p.trap)
+        now.paused -> Txt(t.spoilerPaused, size = 12.5.sp, color = p.muted)
         now.running != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Working(p.ok)
           Txt(t.spoilerWorking(now.running!!), size = 12.5.sp)

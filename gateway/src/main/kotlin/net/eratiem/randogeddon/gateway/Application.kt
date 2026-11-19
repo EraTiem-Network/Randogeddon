@@ -78,6 +78,7 @@ data class GatewayConfig(
           customWorlds = Path.of(server("customWorlds")),
           adminPassword = server("adminPassword"),
           generationMinutes = server("generationMinutes").toInt(),
+          generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
         ),
       )
     }
@@ -94,6 +95,8 @@ data class GameServerSettings(
   val adminPassword: String,
   /** How long a generation may take before it is stopped. */
   val generationMinutes: Int,
+  /** How many Generate.py run at once (seeds and spoiler logs' later levels together). */
+  val generationsAtOnce: Int,
 )
 
 /**
@@ -189,15 +192,17 @@ fun main() {
     }
   }
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
-  val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes)
+  val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
   apworlds.beforeChange = generator::yieldBackground
   background.launch { generator.completeSpoilers() }
   val connections = ConnectionLimits()
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
-    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit), asleep after {} min without players (0: never)",
+    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit), asleep after {} min without players " +
+      "(0: never), {} generations at once",
     config.port, if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
     archipelago.versions().joinToString(), runBlocking { gameServers.get() }, runBlocking { idleMinutes.get() },
+    options.generationsAtOnce,
   )
 
   embeddedServer(

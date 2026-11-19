@@ -59,6 +59,7 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
     return SessionEntry(
       id = live.id,
       seedName = live.seedName,
+      spoilerReady = live.playthroughReady,
       title = s?.title ?: config.title,
       status = statusOf(finish, percent),
       createdAt = live.record.createdAt.toEpochMilli(),
