@@ -794,12 +794,17 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
       0.18.4), an empty `host.yaml` (Archipelago's defaults, as an untouched Launcher's, but nothing that asks for a
       file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
-      release 0.6.8
+      release 0.6.8, and Linux instead of Windows: file names are case-sensitive here, so an APWorld that imports
+      `.Items` for its `items.py` (or builds paths with `\`) works in the Launcher only
 - [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
       names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
       (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
-      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. First to check: how
-      Archipelago 0.6.8 names a zipped APWorld's requirements (or only a world folder's)
+      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. Checked (0.19.1): Archipelago
+      0.6.8 reads a `requirements.txt` only from a world folder under `worlds/`, never from a zipped APWorld, so the
+      Launcher installs nothing for one either (such APWorlds bring their packages inside); needed only if a refused
+      APWorld turns out to want a package
+- [x] Back to the generation's bar (asked for, 0.19.1): *Generate and start* is at the form's end; the form shrinks
+      to the bar, which left the page far below it. The page goes back up to it
 - [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form the
       spoiler level, race mode, plando options and skipping progression balancing, checked and passed as
       `Generate.py`'s arguments (`--spoiler`, `--race`, `--plando`, `--skip_prog_balancing`); file and program paths

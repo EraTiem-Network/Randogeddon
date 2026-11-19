@@ -7,6 +7,18 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 19: Generating Like the Launcher
+A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
+has that the gateway hasn't.
+
+### 0.19.1: Back to the generation's bar
+- *Generate and start* is at the new session form's end; the form shrinks to the generation's bar then, which left
+  the page far below it. Now the page goes back up to the bar (also when it comes back after a reload).
+- Found out: Archipelago 0.6.8 reads an APWorld's `requirements.txt` only from a world folder under `worlds/`, never
+  from a zipped `.apworld`, so the Launcher installs no packages for one either. And the gateway runs on Linux, whose
+  file names are case-sensitive: an APWorld that imports `.Items` for its `items.py` loads in the Launcher on Windows
+  only. Both in the TODO, for what the failed generation's log will tell.
+
 ## Phase 18: Code Optimization
 Measured first, then made leaner where it paid: the web files compressed when built, one look per session for all
 its streams, the gateway image 40 % smaller and the builds cached, the code split and merged along what belongs
