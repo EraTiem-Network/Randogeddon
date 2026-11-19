@@ -251,11 +251,12 @@ enum class GenerationStage {
 enum class GenerationStep { CHECK, GENERATE, SET_UP, START }
 
 /**
- * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all
- * (each stage has a share; filling the items takes the longest and reports nothing on its way). No content: none runs.
+ * How far a new session's generation is: its [stage], about [percent] in all (each stage has a share; the fill counts
+ * itself up, the playthrough reports nothing on its way). [cpu]: how much of one core Generate.py used since it was
+ * asked last (a working one keeps one busy; `null`: no process right now, as while it waits or the tracker works).
  */
 @Serializable
-data class GenerationProgress(val stage: GenerationStage, val percent: Int)
+data class GenerationProgress(val stage: GenerationStage, val percent: Int, val cpu: Int? = null)
 
 /** Where a new session's creation is: generating (and setting up), done, failed or cancelled. */
 @Serializable
