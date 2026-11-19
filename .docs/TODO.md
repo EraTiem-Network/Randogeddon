@@ -745,6 +745,10 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] the web app, what repeats (0.18.11): one request helper for the 53 places that decode an answer themselves,
           the doubled components merged, the page frame and the clock shared, the interop opt-in for the module; the
           browser's own menu on a right click instead of the app's (asked for later)
+    - [x] the audit's leftovers (0.18.14): `PersonDialog.kt` and `PlayerDialog.kt` with one dialog frame, the pills
+          and panels of people of `AdminUsers.kt` and `People.kt` shared, the lines `server/` and `gateway/`
+          `build.gradle.kts` repeat in one place, the two old `BasicTextField`s (the web app's last two warnings)
+          moved to the state-based one
 - [x] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
       without end and kept its place (counted as in use); after 5 crashes in a row, each within a minute of its start,
       it stays down (*gave up*) with its last exit code, and *Start* tries again
@@ -769,3 +773,36 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       `Generate.py` itself), and the gateway with every session asleep needs some 35 MB. How it fits together, with two
       diagrams, in the README (0.18.13: *Sessions and their game servers*)
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
+
+## Phase 19: Generating Like the Launcher
+
+*A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
+generates didn't generate on the server, and an APWorld that loaded before was refused).*
+
+- [ ] Find out why first: the failed generation's log (its download, with the command, since 0.18.12) and the refused
+      APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
+      0.18.4), an empty `host.yaml` (Archipelago's defaults, as an untouched Launcher's, but nothing that asks for a
+      file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
+      release 0.6.8
+- [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
+      names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
+      (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
+      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. First to check: how
+      Archipelago 0.6.8 names a zipped APWorld's requirements (or only a world folder's)
+- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form the
+      spoiler level, race mode, plando options and skipping progression balancing, checked and passed as
+      `Generate.py`'s arguments (`--spoiler`, `--race`, `--plando`, `--skip_prog_balancing`); file and program paths
+      never come from the form
+- [ ] ROMs and tools for the worlds that need them (decided: kept encrypted in the database): an Administrator uploads
+      a base ROM (or a tool such as EnemizerCLI) for a world; stored encrypted (AES-GCM, its key from the
+      environment, not in the database, so a database dump alone doesn't hold them), never downloadable, the panel
+      shows only what is there (world, file name, checksum, who, when). Decrypted for one generation only into its
+      own temp directory, named in a `host.yaml` made for that generation, deleted after; a tool only one a world
+      names, run as the gateway's user. Our own dumps only: they aren't shared
+- [ ] A session from a seed generated elsewhere (asked for later): instead of the YAMLs, the `AP_<seed>.zip` that
+      Archipelago's Launcher (or `Generate.py`) made, uploaded in the new session's form. Checked before anything of it
+      runs, since a zip and the `.archipelago` in it come from outside: its size and file names (no paths out of it),
+      only the files a seed has, the multidata read without running it (it is a pickle: only Archipelago's own
+      classes allowed, as MultiServer does), its release against the gateway's, its games against the release's
+      APWorlds; then its slots for the players and locks as with YAMLs (locks need the World Locks slot generated
+      in, so a seed from elsewhere has none)

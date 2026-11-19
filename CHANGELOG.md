@@ -9,6 +9,21 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.14: The audit's leftovers
+- **One dialog frame:** a person's and a world's dialog on the dashboard, and an account's and a session person's panel
+  in the Management panel, in one `DialogCard` (the card, its header with the close button, a divider, the body),
+  with `DialogSection` and `TwoColumns`; the panels now fit the window's height and scroll inside.
+- **One pill for people:** an account's pill (users) and a session person's (people) are one `AvatarPill`; the
+  people's is 1 dp taller now.
+- **The build files:** Java 25, the sources only in `src/main/kotlin` and the main class are set once in the root
+  build for the tracker, the gateway and the database module, not in each.
+- **The text fields:** `FilterField` and `NumberField` on the state-based `BasicTextField` (the old one is deprecated);
+  the number field takes only digits, as before. The web app's last two deprecation warnings are gone.
+- Screenshots of eight pages before and after: the same, pixel for pixel (but for a random session ID).
+- To do, asked for (Phase 19, *Generating Like the Launcher*): why a seed the Launcher generates didn't here, an
+  APWorld's packages installed on its upload, generator settings per session, ROMs and tools kept encrypted, a
+  session from a seed generated elsewhere.
+
 ### 0.18.13: How the sessions' game servers work, explained
 - The README's *Sessions and their game servers*: how a session is created (a diagram from the form to its game
   server: the tracker's checks, `Generate.py` in the gateway, one at a time, the setup, the start) and a game
