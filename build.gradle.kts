@@ -1,5 +1,6 @@
 import org.graalvm.buildtools.gradle.dsl.GraalVMExtension
 import org.graalvm.buildtools.gradle.dsl.GraalVMReachabilityMetadataRepositoryExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 plugins {
   alias(libs.plugins.kotlin.jvm) apply false
@@ -61,6 +62,19 @@ subprojects {
   logger.info("${projectPath}\n-> $group")
 
   pluginManager.withPlugin("org.graalvm.buildtools.native") { configureNativeImage() }
+  pluginManager.withPlugin("org.jetbrains.kotlin.jvm") { configureKotlinJvm() }
+  // The tracker's and the gateway's start (`run`, and what the native image starts)
+  pluginManager.withPlugin("application") {
+    extensions.configure<JavaApplication> { mainClass.set("$group.ApplicationKt") }
+  }
+}
+
+/** The JVM modules (tracker, gateway, database): Java 25, and their code only in `src/main/kotlin` (no Java). */
+fun Project.configureKotlinJvm() {
+  extensions.configure<KotlinJvmProjectExtension> { jvmToolchain(25) }
+  extensions.configure<SourceSetContainer> {
+    named("main") { java.setSrcDirs(emptyList<Any>()) }
+  }
 }
 
 /**
