@@ -63,7 +63,6 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
 import net.eratiem.randogeddon.shared.EmailAddresses
-import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
@@ -93,6 +92,7 @@ import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
@@ -235,7 +235,7 @@ private fun CreateSession(
 
   fun inspect(): Job = scope.launch {
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
-    when (val answer = call("POST", "api/sessions/new/inspect", body) { ApiJson.decodeFromString(InspectResult.serializer(), it) }) {
+    when (val answer = call("POST", "api/sessions/new/inspect", body, InspectResult.serializer())) {
       is Answer.Ok -> {
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
@@ -470,8 +470,8 @@ private fun CreateSession(
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       if (options.pointHints) {
-        NumberField(t.sessionAdmin.hintCost, options.hintCost, t.tips.hintCost) { options = options.copy(hintCost = it) }
-        NumberField(t.sessionAdmin.pointsPerCheck, options.locationCheckPoints, t.tips.checkPoints) { options = options.copy(locationCheckPoints = it) }
+        LabeledNumber(t.sessionAdmin.hintCost, options.hintCost, t.tips.hintCost) { options = options.copy(hintCost = it) }
+        LabeledNumber(t.sessionAdmin.pointsPerCheck, options.locationCheckPoints, t.tips.checkPoints) { options = options.copy(locationCheckPoints = it) }
       }
       Labeled(t.sessionAdmin.release, t.tips.release, t.tips.releaseChoices) { Select(RELEASE_MODES.map { it to it }, options.releaseMode, { options = options.copy(releaseMode = it) }, minHeight = FIELD_HEIGHT) }
       Labeled(t.sessionAdmin.collect, t.tips.collect, t.tips.collectChoices) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }, minHeight = FIELD_HEIGHT) }
@@ -513,7 +513,7 @@ private fun CreateSession(
             apVersion = version,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          when (val answer = call("POST", "api/sessions", body) { ApiJson.decodeFromString(CreateSessionResult.serializer(), it) }) {
+          when (val answer = call("POST", "api/sessions", body, CreateSessionResult.serializer())) {
             is Answer.Ok -> onCreated(answer.value)
             is Answer.Failed -> error = answer
           }
@@ -530,10 +530,10 @@ private fun CreateSession(
 private fun GenerationError(message: String, detail: String?) {
   val p = LocalPalette.current
   if (detail == null) {
-    Mono(message, p.trap)
+    Mono(message, color = p.trap)
   } else {
     Txt(message, size = 12.5.sp, color = p.trap)
-    Mono(detail, p.text)
+    Mono(detail)
   }
 }
 

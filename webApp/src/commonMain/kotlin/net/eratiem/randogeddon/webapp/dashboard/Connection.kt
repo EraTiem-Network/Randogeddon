@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeKey
 import net.eratiem.randogeddon.shared.Connection
@@ -45,10 +44,12 @@ import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
+import net.eratiem.randogeddon.webapp.ui.SmallHeading
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
 
@@ -141,7 +142,7 @@ fun ConnectionSection(
         }
         // The slot's files belong to it; a locked slot's wait for its key, like its password
         if ((mine || slot.hosted) && !slot.locked) {
-          SmallHeading(c.patchFiles)
+          SmallHeading(c.patchFiles, Modifier.padding(top = 2.dp))
           val own = files.filter { it.slotName == slot.name }
           if (own.isEmpty()) Txt(c.noPatchFiles, size = 12.5.sp, color = p.muted)
           own.forEach { file -> FileField(sessionId, file) }
@@ -189,12 +190,6 @@ internal object BridgeFold {
   }
 }
 
-/** A small heading inside the card: the slot's files, the bridge's downloads. */
-@Composable
-private fun SmallHeading(text: String) {
-  Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = Modifier.padding(top = 2.dp))
-}
-
 /**
  * Randogeddon Bridge: its heading with its ⓘ (what it is, what it does, how to use it, starting it on each system),
  * *Create key* and the fold button; open, the new key (shown once, like a password, until it is closed) and the
@@ -210,7 +205,7 @@ private fun BridgePart() {
   var key by remember { mutableStateOf<BridgeKey?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
   LaunchedEffect(Unit) {
-    (call("GET", "downloads/bridge", null) { ApiJson.decodeFromString(BridgeDownloads.serializer(), it) } as? Answer.Ok)
+    (call("GET", "downloads/bridge", null, BridgeDownloads.serializer()) as? Answer.Ok)
       ?.let { offered = it.value }
   }
   val open = BridgeFold.open
@@ -230,7 +225,7 @@ private fun BridgePart() {
     Spacer(Modifier.weight(1f))
     if (open) SmallButton(c.makeKey, {
       scope.launch {
-        when (val r = call("POST", "api/account/bridge-keys", null) { ApiJson.decodeFromString(BridgeKey.serializer(), it) }) {
+        when (val r = call("POST", "api/account/bridge-keys", null, BridgeKey.serializer())) {
           is Answer.Ok -> { key = r.value; problem = null }
           is Answer.Failed -> problem = r.message
         }
@@ -242,7 +237,7 @@ private fun BridgePart() {
   key?.let { made -> KeyField(made) { key = null } }
   problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
-    SmallHeading(c.downloads(offered?.version.orEmpty()))
+    SmallHeading(c.downloads(offered?.version.orEmpty()), Modifier.padding(top = 2.dp))
     // Windows, macOS, Linux; each with its architectures, x86 first
     SYSTEMS.forEach { os ->
       val builds = downloads.filter { it.os == os }.sortedBy { it.arch != "amd64" }
@@ -270,7 +265,7 @@ private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
   val c = t.connection
   var shown by remember(made.key) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Mono(if (shown) made.key else "•".repeat(12), Modifier.weight(1f))
+    Mono(if (shown) made.key else "•".repeat(12), Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
     SmallButton(if (shown) c.hide else c.show, { shown = !shown })
     SmallButton(t.common.copy, { Platform.copy(made.key) })
     IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp))
@@ -283,7 +278,7 @@ private fun PasswordField(slot: MySlot) {
   var shown by remember(slot.name) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(LocalTexts.current.connection.password)
-    Mono(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f))
+    Mono(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
     SmallButton(if (shown) LocalTexts.current.connection.hide else LocalTexts.current.connection.show, { shown = !shown })
     SmallButton(LocalTexts.current.common.copy, { Platform.copy(slot.password) })
   }
@@ -295,7 +290,7 @@ private fun PasswordField(slot: MySlot) {
 private fun FileField(sessionId: String, file: SlotFile) {
   val t = LocalTexts.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Mono(file.name, Modifier.weight(1f))
+    Mono(file.name, Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
     Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
     InfoTip(LocalTexts.current.connection.patchHowTo)
     SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
@@ -322,7 +317,7 @@ private fun archName(os: String, arch: String) = when {
 private fun Field(label: String, value: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(label)
-    Mono(value, Modifier.weight(1f))
+    Mono(value, Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
     SmallButton(LocalTexts.current.common.copy, { Platform.copy(value) })
   }
 }
@@ -333,10 +328,3 @@ private fun Label(text: String) {
   Txt(text, size = 12.sp, color = LocalPalette.current.muted, maxLines = 1, modifier = Modifier.width(62.dp))
 }
 
-/** Monospaced and selectable, so similar characters (l, 1, I) are told apart and can be copied by hand too. */
-@Composable
-private fun Mono(text: String, modifier: Modifier = Modifier) {
-  SelectionContainer(modifier.padding(end = 2.dp)) {
-    BasicText(text, style = TextStyle(color = LocalPalette.current.text, fontSize = 13.sp, fontFamily = FontFamily.Monospace))
-  }
-}

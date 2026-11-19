@@ -31,6 +31,7 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.NumberField
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.hand
 
@@ -59,26 +60,20 @@ internal fun Labeled(
   }
 }
 
+/** A whole number of 0 to 999 under its [label], with the arrows of [NumberField]; empty, it keeps the last one. */
 @Composable
-internal fun NumberField(label: String, value: Int, tip: String? = null, onChange: (Int) -> Unit) {
+internal fun LabeledNumber(label: String, value: Int, tip: String? = null, onChange: (Int) -> Unit) {
   var text by remember(value) { mutableStateOf(value.toString()) }
   Labeled(label, tip) {
-    FilterField(text, { typed ->
-      text = typed.filter { it.isDigit() }.take(3)
-      text.toIntOrNull()?.let(onChange)
-    }, "0", Modifier.width(56.dp), minHeight = FIELD_HEIGHT)
+    NumberField(text, { typed ->
+      text = typed
+      typed.toIntOrNull()?.let(onChange)
+    }, "0", 0..999, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
   }
 }
 
 /** The height of the form's text fields, dropdowns and player chips, so they line up. */
 internal val FIELD_HEIGHT = 34.dp
-
-@Composable
-internal fun Mono(text: String, color: Color, modifier: Modifier = Modifier) {
-  SelectionContainer(modifier) {
-    BasicText(text, style = TextStyle(color = color, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace))
-  }
-}
 
 @Composable
 internal fun Button(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {

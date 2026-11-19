@@ -64,6 +64,7 @@ import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
+import net.eratiem.randogeddon.webapp.ui.SmallHeading
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
@@ -92,7 +93,7 @@ fun ApworldsSection() {
   }
 
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/admin/apworlds", null) { ApiJson.decodeFromString(ArchipelagoInfo.serializer(), it) }) {
+    when (val answer = call("GET", "api/admin/apworlds", null, ArchipelagoInfo.serializer())) {
       is Answer.Ok -> { info = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
@@ -102,7 +103,7 @@ fun ApworldsSection() {
   /** A try: the release lists its games again, which takes a moment. */
   suspend fun change(label: String, path: String, body: String): Answer<ApworldResult> {
     busy = label
-    return call("POST", path, body) { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
+    return call("POST", path, body, ApworldResult.serializer())
   }
 
   fun line(r: ApworldResult): Pair<Boolean, String> =
@@ -116,7 +117,7 @@ fun ApworldsSection() {
       ApworldUpload.serializer(),
       ApworldUpload(release, files.map { ApworldUploadFile(it.fileName, it.content) }, replace),
     )
-    return call("POST", "api/admin/apworlds", body) { ApiJson.decodeFromString(ApworldResults.serializer(), it) }
+    return call("POST", "api/admin/apworlds", body, ApworldResults.serializer())
   }
 
   /** Whether [held] may replace what it would: the question, until it is answered. */
@@ -368,7 +369,7 @@ private fun ReleaseBlock(
 
   // The library: one bubble per file with the games it brings; uploaded ones can be removed (asked once more)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    SubHeading(texts.uploaded)
+    SmallHeading(texts.uploaded, Modifier.padding(top = 4.dp))
     InfoTip(
       texts.uploadedTip,
       options = listOf(
@@ -420,7 +421,7 @@ private fun ReleaseBlock(
     Txt(texts.didntLoad(failed.name, failed.reason), size = 12.sp, color = p.trap, maxLines = 4)
   }
   if (others.isNotEmpty()) {
-    SubHeading(texts.fromOtherReleases)
+    SmallHeading(texts.fromOtherReleases, Modifier.padding(top = 4.dp))
     others.forEach { file ->
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Txt(texts.fromRelease(file.file, file.release), size = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
@@ -432,7 +433,7 @@ private fun ReleaseBlock(
   // Everything the release can generate; the games of apworlds in their own colour
   if (release.games.isNotEmpty()) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      SubHeading(texts.supportedGames(release.games.size), Modifier.weight(1f))
+      SmallHeading(texts.supportedGames(release.games.size), Modifier.weight(1f).padding(top = 4.dp))
       FilterField(filter, { filter = it }, t.common.search, Modifier.width(180.dp))
     }
     // Click to show only those; again to show all
@@ -491,11 +492,6 @@ private fun ApworldChip(file: ApworldFile, games: List<String>, picked: Boolean?
     Txt(details.joinToString(" · "), size = 11.5.sp, color = color.copy(alpha = 0.8f), maxLines = 1)
     if (picked == true) DrawnIcon(Icon.CHECK, color, 12.dp)
   }
-}
-
-@Composable
-private fun SubHeading(text: String, modifier: Modifier = Modifier) {
-  Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = modifier.padding(top = 4.dp))
 }
 
 /** Several picked files go up in one request, up to this much base64 together (the tracker's limit for one). */

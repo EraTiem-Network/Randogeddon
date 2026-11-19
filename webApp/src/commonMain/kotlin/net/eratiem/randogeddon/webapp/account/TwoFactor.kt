@@ -40,9 +40,9 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.manage.Button
 import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
-import net.eratiem.randogeddon.webapp.manage.Mono
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
@@ -89,7 +89,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
         Txt(acc.recoveryCodes, size = 13.5.sp, weight = FontWeight.SemiBold)
         Txt(acc.recoveryCodesHint, size = 12.5.sp, color = p.muted)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          list.forEach { Mono(it, p.text) }
+          list.forEach { Mono(it) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           SmallButton(t.common.copy, { Platform.copy(list.joinToString("\n")) })
@@ -102,7 +102,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
         current != null -> {
           Txt(acc.scanThis, size = 12.5.sp)
           QrCode(current.rows, Modifier.size(200.dp))
-          Mono(current.secret.chunked(4).joinToString(" "), p.text)
+          Mono(current.secret.chunked(4).joinToString(" "))
           CodeRow(code, { code = it; state = null }, acc.turnItOn) { request("api/account/2fa/enable", onCodes = true) }
           SmallButton(t.common.cancel, { setup = null; code = "" })
         }
@@ -111,7 +111,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           Row {
             Button(acc.setItUp) {
               scope.launch {
-                when (val r = call("POST", "api/account/2fa/setup", null) { ApiJson.decodeFromString(TotpSetup.serializer(), it) }) {
+                when (val r = call("POST", "api/account/2fa/setup", null, TotpSetup.serializer())) {
                   is Answer.Ok -> { setup = r.value; state = null }
                   is Answer.Failed -> state = r.message
                 }

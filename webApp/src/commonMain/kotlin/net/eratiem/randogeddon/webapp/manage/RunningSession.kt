@@ -44,6 +44,7 @@ import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.dashboard.slotFilePath
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
@@ -75,7 +76,7 @@ fun SessionSection(
   var problem by remember { mutableStateOf<String?>(null) }
   var gone by remember { mutableStateOf(false) }
   fun load() = scope.launch {
-    when (val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }) {
+    when (val answer = call("GET", "api/sessions/$id/manage", null, AdminSessionView.serializer())) {
       is Answer.Ok -> { cache.views[id] = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
@@ -141,7 +142,7 @@ fun PatchFilesSection(id: String) {
   val t = LocalTexts.current
   var files by remember(id) { mutableStateOf<List<SlotFile>?>(null) }
   LaunchedEffect(id) {
-    (call("GET", "api/sessions/$id/files", null) { ApiJson.decodeFromString(SlotFiles.serializer(), it) } as? Answer.Ok)
+    (call("GET", "api/sessions/$id/files", null, SlotFiles.serializer()) as? Answer.Ok)
       ?.let { files = it.value.files }
   }
   val list = files.orEmpty()
@@ -154,7 +155,7 @@ fun PatchFilesSection(id: String) {
       list.forEach { file ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
-          Mono(file.name, p.text, Modifier.weight(1f))
+          Mono(file.name, Modifier.weight(1f))
           Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
           SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
         }
