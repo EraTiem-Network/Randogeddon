@@ -16,6 +16,8 @@ enum class GameServerStatus {
   @SerialName("crashed") CRASHED,
   /** Ended on its own again and again, each soon after its start: stays stopped until started again. */
   @SerialName("failed") FAILED,
+  /** Stopped while nobody played (or not started since the gateway's start): starts when a player connects. */
+  @SerialName("idle") IDLE,
 }
 
 @Serializable

@@ -38,7 +38,8 @@ fun Application.gameClientWebSockets() {
 
 /**
  * One game client's connection: its place among the [connections] (only so many of everyone aren't in a slot yet;
- * none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]).
+ * none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]). Once it is in a slot, [joined] hears of
+ * it; what that answers is called when it leaves (`null`: nothing to call, as for a hosted slot).
  */
 suspend fun DefaultWebSocketServerSession.serve(
   http: HttpClient,
@@ -46,6 +47,7 @@ suspend fun DefaultWebSocketServerSession.serve(
   passwords: suspend () -> Map<String, String>,
   locked: suspend () -> Set<String>,
   connections: ConnectionLimits,
+  joined: suspend (slot: String) -> (() -> Unit)? = { null },
 ) {
   val address = call.request.origin.remoteHost
   val ticket = connections.enter()
@@ -55,7 +57,7 @@ suspend fun DefaultWebSocketServerSession.serve(
     return
   }
   try {
-    relay(http, upstreamUrl, passwords, locked, ticket, connections.limits)
+    relay(http, upstreamUrl, passwords, locked, ticket, connections.limits, joined)
   } finally {
     ticket.leave()
   }
@@ -73,10 +75,13 @@ private suspend fun DefaultWebSocketServerSession.relay(
   locked: suspend () -> Set<String>,
   ticket: ConnectionLimits.Ticket,
   limits: Limits,
+  joined: suspend (slot: String) -> (() -> Unit)?,
 ) {
   val client = this
   val address = call.request.origin.remoteHost
   var framesBefore = 0
+  // In a slot: called when it leaves (or connects to another)
+  var leave: (() -> Unit)? = null
   try {
     http.webSocket(upstreamUrl) {
       val upstream = this
@@ -100,8 +105,10 @@ private suspend fun DefaultWebSocketServerSession.relay(
             when (frame) {
               is Frame.Text -> when (val verdict = checkClientFrame(frame.readText(), passwords, locked)) {
                 Verdict.Forward -> frame
-                Verdict.Join -> {
+                is Verdict.Join -> {
                   ticket.joined()
+                  leave?.invoke()
+                  leave = runCatching { joined(verdict.slot) }.getOrNull()
                   frame
                 }
                 is Verdict.Refuse -> {
@@ -141,6 +148,8 @@ private suspend fun DefaultWebSocketServerSession.relay(
   } catch (e: Exception) {
     logger.warn("MultiServer not reachable for {}: {}", address, e.message ?: e::class.simpleName)
     client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Game server not reachable"))
+  } finally {
+    leave?.invoke()
   }
 }
 

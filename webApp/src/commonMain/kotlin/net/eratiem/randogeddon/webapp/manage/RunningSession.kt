@@ -24,6 +24,7 @@ import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.KeepRequest
+import net.eratiem.randogeddon.shared.KeepRunningRequest
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionInfo
 import net.eratiem.randogeddon.shared.SlotFile
@@ -52,13 +53,15 @@ import net.eratiem.randogeddon.webapp.ui.card
 
 /**
  * Session [id] as the admin panel shows it: how it stands ([overview]: also how many game servers are in use), its
- * actions, its game server ([server]); who plays which slot below. Kept in [cache].
+ * actions, its game server ([server]); who plays which slot below. Kept in [cache]. An [administrator] can keep its
+ * game server running without players.
  */
 @Composable
 fun SessionSection(
   id: String,
   overview: AdminOverview?,
   cache: AdminCache,
+  administrator: Boolean,
   onChanged: () -> Unit,
   onSpoiler: (String) -> Unit,
   onDashboard: (String) -> Unit,
@@ -112,6 +115,16 @@ fun SessionSection(
           onCancelFinish = { act("finish/cancel") },
           onReopen = { act("reopen") },
           onKeep = { keep -> act("keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep))) },
+          onKeepRunning = if (!administrator) null else { keep ->
+            scope.launch {
+              val body = ApiJson.encodeToString(KeepRunningRequest.serializer(), KeepRunningRequest(keep))
+              problem = when (val r = call("PUT", "api/admin/sessions/$id/keep-running", body) { }) {
+                is Answer.Ok -> null
+                is Answer.Failed -> r.message
+              }
+              load()
+            }
+          },
           onSpoiler = { onSpoiler(id) },
           onDashboard = { onDashboard(id) },
         )
@@ -195,6 +208,8 @@ private fun SessionSummary(
   onCancelFinish: () -> Unit,
   onReopen: () -> Unit,
   onKeep: (Boolean) -> Unit,
+  /** Administrators: its game server keeps running without players (or sleeps); `null`: not theirs to choose. */
+  onKeepRunning: ((Boolean) -> Unit)?,
   onSpoiler: () -> Unit,
   onDashboard: () -> Unit,
 ) {
@@ -253,6 +268,9 @@ private fun SessionSummary(
         }
       }
       Button(t.sessionAdmin.deleteSession, danger = true) { pending = "delete" }
+      if (finishedAt == null && onKeepRunning != null) {
+        Check(t.sessionAdmin.keepRunning, session.keepRunning, t.sessionAdmin.keepRunningTip) { onKeepRunning(it) }
+      }
       Spacer(Modifier.weight(1f))
       if (finishedAt != null) {
         Tip(t.tips.keep) { SmallButton(if (session.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = "keep" }) }

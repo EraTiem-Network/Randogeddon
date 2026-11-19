@@ -2095,6 +2095,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.KeepRunningRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.KeepRunningRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.Summary",
       "fields": [
         {

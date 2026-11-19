@@ -146,7 +146,7 @@ fun AdminView(
           if (entry != null && supportOnly(entry, administrator)) {
             SupportedSession(entry, cache, onSpoiler = onSpoiler, onDashboard = onDashboard)
           } else {
-            SelectedSession(page, overview, cache, now, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
+            SelectedSession(page, overview, cache, now, administrator, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
           }
         }
       }
@@ -201,6 +201,7 @@ private fun SelectedSession(
   overview: AdminOverview?,
   cache: AdminCache,
   now: Long,
+  administrator: Boolean,
   onChanged: () -> Unit,
   onSpoiler: (String) -> Unit,
   onDashboard: (String) -> Unit,
@@ -223,7 +224,7 @@ private fun SelectedSession(
   // Until the stream's first state: the one of the sessions' list
   val server = state ?: overview?.sessions?.firstOrNull { it.id == id }?.server
   SessionSection(
-    id, overview, cache, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
+    id, overview, cache, administrator, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
   PeopleSection(id)
@@ -267,6 +268,7 @@ private fun ServerControls(
           GameServerStatus.RUNNING -> p.ok
           GameServerStatus.STARTING -> p.useful
           GameServerStatus.CRASHED, GameServerStatus.FAILED -> p.trap
+          GameServerStatus.IDLE -> p.muted
           GameServerStatus.STOPPED, GameServerStatus.NO_SEED, null -> if (problem != null) p.trap else p.muted
         },
       )

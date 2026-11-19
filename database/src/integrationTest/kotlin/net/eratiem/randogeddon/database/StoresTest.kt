@@ -9,6 +9,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -161,6 +162,36 @@ class StoresTest {
     assertNull(setups.of("seed1"))
     assertEquals(emptyMap(), SlotPasswordStore(db).passwords("seed1"))
     assertEquals(setOf("Alice", "Bob"), users.active().map { it.name }.toSet())
+  }
+
+  @Test
+  fun `the gateway's role reads whether a session sleeps (kept running, its hosted slots, the setting)`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val alice = users.create("Alice", "hash")
+    setups.create(
+      "sleepy-otter", "seed-sleepy", "0.6.8", "{}",
+      mapOf("Alice-HK" to listOf(alice.id), "Hosted-Game" to emptyList()), hosted = setOf("Hosted-Game"),
+    )
+    AppSettingsStore(db).set(IDLE_MINUTES, "45")
+    GatewayRole.ensure(db, "sleep_gateway", "sleep-password")
+    RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "sleep_gateway", "sleep-password"), migrate = false, poolSize = 1)
+      .use { gateway ->
+        val read = SessionSetupStore(gateway)
+        assertEquals(IdleRules(keepRunning = false, hosted = setOf("Hosted-Game")), read.idleRules("seed-sleepy"))
+        assertEquals(45, AppSettingsStore(gateway).idleMinutes())
+        assertTrue(setups.setKeepRunning("seed-sleepy", true))
+        assertEquals(true, read.idleRules("seed-sleepy")?.keepRunning)
+        assertNull(read.idleRules("nope"))
+        // It reads, it doesn't change
+        assertFailsWith<Exception> { read.setKeepRunning("seed-sleepy", false) }
+      }
+    assertEquals(true, setups.of("seed-sleepy")?.keepRunning)
+    assertFalse(setups.setKeepRunning("nope", true))
+    AppSettingsStore(db).set(IDLE_MINUTES, "9999")
+    // Out of range: the default
+    assertEquals(DEFAULT_IDLE_MINUTES, AppSettingsStore(db).idleMinutes())
+    assertTrue(setups.delete("seed-sleepy"))
   }
 
   @Test

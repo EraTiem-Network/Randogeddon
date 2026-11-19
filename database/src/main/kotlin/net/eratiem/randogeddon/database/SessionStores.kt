@@ -78,7 +78,12 @@ data class SessionSetup(
   val hosted: Set<String> = emptySet(),
   /** Who created it: it counts towards their limit while it runs. `null`: nobody known. */
   val createdBy: Uuid? = null,
+  /** Its game server keeps running without players (else it sleeps when idle). */
+  val keepRunning: Boolean = false,
 )
+
+/** What decides whether a session's game server may sleep: [keepRunning], and its [hosted] slots (they don't count). */
+data class IdleRules(val keepRunning: Boolean, val hosted: Set<String>)
 
 /** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
 data class SessionRoleEntry(val role: String, val name: String, val deleted: Boolean = false, val block: Block? = null) {
@@ -149,6 +154,22 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       ?.let { it[SessionsTable.apVersion] to it[SessionsTable.optionsJson] }
   }
 
+  /**
+   * Whether [seedName]'s game server may sleep without players, and which of its slots are hosted (their connections
+   * don't count as players); `null`: no such session. For the gateway, from `sessions` and `session_hosted_slots`.
+   */
+  suspend fun idleRules(seedName: String): IdleRules? = db.query {
+    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
+    val hosted = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }
+      .map { it[SessionHostedSlotsTable.slotName] }.toSet()
+    IdleRules(row[SessionsTable.keepRunning], hosted)
+  }
+
+  /** Lets [seedName]'s game server keep running without players, or sleep when idle; `false`: no such session. */
+  suspend fun setKeepRunning(seedName: String, keep: Boolean): Boolean = db.query {
+    SessionsTable.update({ SessionsTable.seedName eq seedName }) { it[keepRunning] = keep } > 0
+  }
+
   /** How many sessions that aren't finished each account created (for the limit per user); none: not in it. */
   suspend fun runningCreated(): Map<Uuid, Int> = db.query {
     SessionsTable.selectAll().where { SessionsTable.finishedAt.isNull() and SessionsTable.createdBy.isNotNull() }
@@ -182,7 +203,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       .map { it[SessionHostedSlotsTable.slotName] }.toSet()
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted, roles, hosted, row[SessionsTable.createdBy],
+      deleted, roles, hosted, row[SessionsTable.createdBy], row[SessionsTable.keepRunning],
     )
   }
 

@@ -95,4 +95,6 @@ data class AppSettings(
   val sessionsPerUser: Int = 1,
   /** How many game servers may run at once, of every session; 0: no limit. */
   val gameServers: Int = 8,
+  /** How many minutes a game server runs without a player before it sleeps; 0: never. */
+  val idleMinutes: Int = 30,
 )

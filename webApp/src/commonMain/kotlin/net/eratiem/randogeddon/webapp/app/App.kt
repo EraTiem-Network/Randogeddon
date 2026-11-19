@@ -335,7 +335,8 @@ private fun TrackerApp() {
             val mine = entry?.mySlots?.isNotEmpty() == true
             val role = entry?.myRole
             val error = s.error
-            if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
+            if (s.serverAsleep && s.finishedAt == null) Banner(t.dashboard.serverAsleep)
+            else if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
             // A Session-Manager is timed out, suspended or gone: who to turn to instead
             if (s.managerUnavailable) Banner(t.dashboard.managerUnavailable)
             FinishBanner(

@@ -161,6 +161,7 @@ internal object EnglishProblems : ProblemTexts {
       SUPPORT_CANT -> "Support can give items, check locations and give hints, but not: ${action(EnglishCheats, a("action"))}"
       SESSIONS_PER_USER -> "Sessions per user: 0 to ${a("max")}"
       GAME_SERVERS -> "Game servers at once: none (no limit) or 1 to ${a("max")}"
+      IDLE_MINUTES -> "Sleep after: 0 (never) to ${a("max")} minutes"
       GENERATION_TOO_LONG -> "Generating took longer than ${a("minutes")} minutes and was stopped (a big multiworld fills " +
         "on one core): try again with fewer slots, or ask an Administrator for more time (GENERATION_MINUTES)."
       APWORLD_TOO_LARGE -> "Larger than 64 MB"
@@ -322,6 +323,7 @@ internal object GermanProblems : ProblemTexts {
       SUPPORT_CANT -> "Support kann Items geben, Orte checken und Hinweise geben, aber nicht: ${action(GermanCheats, a("action"))}"
       SESSIONS_PER_USER -> "Sessions pro Benutzer: 0 bis ${a("max")}"
       GAME_SERVERS -> "Spielserver gleichzeitig: keine Angabe (ohne Grenze) oder 1 bis ${a("max")}"
+      IDLE_MINUTES -> "Schlafen nach: 0 (nie) bis ${a("max")} Minuten"
       GENERATION_TOO_LONG -> "Das Generieren hat länger als ${a("minutes")} Minuten gedauert und wurde abgebrochen (eine große " +
         "Multiworld wird auf einem Kern gefüllt): Versuche es mit weniger Slots, oder bitte einen Administrator um mehr " +
         "Zeit (GENERATION_MINUTES)."

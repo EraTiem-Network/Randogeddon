@@ -12,8 +12,8 @@ class ConnectCheckTest {
     fun connectWith(locked: Set<String>): Verdict =
       runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(connect("Alice-HK", "s3cr3t!"), { passwords }, { locked }) }
     assertEquals(Verdict.Refuse("Alice-HK", Verdict.Why.LOCKED), connectWith(setOf("Alice-HK")))
-    assertEquals(Verdict.Join, connectWith(setOf("Bob-Yacht")))
-    assertEquals(Verdict.Join, connectWith(emptySet()))
+    assertEquals(Verdict.Join("Alice-HK"), connectWith(setOf("Bob-Yacht")))
+    assertEquals(Verdict.Join("Alice-HK"), connectWith(emptySet()))
   }
 
   private val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "other")
@@ -27,7 +27,7 @@ class ConnectCheckTest {
 
   @Test
   fun `the right password passes`() {
-    assertEquals(Verdict.Join, checkClientFrame(connect("Alice-HK", "s3cr3t!"), passwords))
+    assertEquals(Verdict.Join("Alice-HK"), checkClientFrame(connect("Alice-HK", "s3cr3t!"), passwords))
   }
 
   @Test
@@ -111,7 +111,7 @@ class ConnectCheckTest {
       checkClientFrame("""[{"cmd":"Connect","name":"Alice-HK","password":"s3cr3t!","password":"x"}]""", passwords),
     )
     assertEquals(
-      Verdict.Join,
+      Verdict.Join("Alice-HK"),
       checkClientFrame("""[{"cmd":"Connect","name":"Alice-HK","password":"x","password":"s3cr3t!"}]""", passwords),
     )
   }

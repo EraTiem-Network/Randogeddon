@@ -181,6 +181,7 @@ class SessionAdmin(
       finishedAt = finishedAt?.toEpochMilli(),
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },
       keep = finish?.keep == true,
+      keepRunning = setup?.keepRunning == true,
       deletesAt = finishedAt?.let { deletesAt(it, finish.keep, config.sessionRetentionDays, finish.retainedSince)?.toEpochMilli() },
       percent = percent,
     )
@@ -374,6 +375,14 @@ class SessionAdmin(
     if (!finishes.setKeep(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     sessions.refresh()
     logger.info("{} {} the auto-deletion of {}", admin, if (keep) "disabled" else "enabled", id)
+  }
+
+  /** [keep]: its game server keeps running without players; else it sleeps when idle (the gateway decides). */
+  suspend fun setKeepRunning(id: String, keep: Boolean, admin: String) {
+    val live = session(id)
+    if (!setups.setKeepRunning(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+    sessions.refresh()
+    logger.info("{} let {} {}", admin, id, if (keep) "keep running without players" else "sleep when idle")
   }
 
   private fun session(id: String): LiveSession =

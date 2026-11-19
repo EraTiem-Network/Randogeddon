@@ -26,6 +26,8 @@ data class Summary(
   val error: String? = null,
   /** [error] came from the game server turning the tracker away (not from a broken connection). */
   val errorRefused: Boolean = false,
+  /** Its game server sleeps (nobody played for a while): it starts when a player connects; no connection problem. */
+  val serverAsleep: Boolean = false,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,

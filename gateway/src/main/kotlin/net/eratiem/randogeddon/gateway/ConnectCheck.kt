@@ -10,8 +10,8 @@ sealed interface Verdict {
   /** Passes on to MultiServer unchanged. */
   data object Forward : Verdict
 
-  /** A frame with a Connect that passed its checks: passes on unchanged, and the client is in a slot from here. */
-  data object Join : Verdict
+  /** A frame with a Connect that passed its checks: passes on unchanged, and the client is in [slot] from here. */
+  data class Join(val slot: String) : Verdict
 
   /** A Connect that doesn't pass ([why]): answered here, MultiServer never sees it. */
   data class Refuse(val slot: String?, val why: Why = Why.PASSWORD) : Verdict
@@ -57,7 +57,7 @@ suspend fun checkClientFrame(
 ): Verdict {
   val packets = runCatching { json.parseToJsonElement(text) }.getOrNull() as? JsonArray
     ?: return Verdict.Close("not a JSON array of packets")
-  var joins = false
+  var joins: String? = null
   for (packet in packets) {
     if (packet !is JsonObject || packet.string("cmd") != "Connect") continue
     val slot = packet.string("name")
@@ -67,9 +67,9 @@ suspend fun checkClientFrame(
     val expected = known[slot] ?: return Verdict.Refuse(slot, Verdict.Why.UNKNOWN)
     if (packet.string("password") != expected) return Verdict.Refuse(slot)
     if (slot in locked()) return Verdict.Refuse(slot, Verdict.Why.LOCKED)
-    joins = true
+    joins = slot
   }
-  return if (joins) Verdict.Join else Verdict.Forward
+  return joins?.let(Verdict::Join) ?: Verdict.Forward
 }
 
 /** A string field; `null` if missing or not a string (a number as password is never right). */
