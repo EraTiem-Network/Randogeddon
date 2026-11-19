@@ -140,6 +140,24 @@ class SessionStateTest {
   }
 
   @Test
+  fun `a death or trap link becomes a feed event, with its slot if the source is one`() {
+    val s = makeState()
+    val name = s.players[1]!!.name
+    s.onBounced(json("""{"cmd":"Bounced","tags":["DeathLink"],"data":{"time":1.5,"source":"$name","cause":"$name fell\u0007 into lava"}}"""))
+    s.onBounced(json("""{"cmd":"Bounced","tags":["TrapLink"],"data":{"time":2,"source":"Somebody else","trap_name":"Ice Trap"}}"""))
+    // Not a link the feed shows, and one without its data
+    s.onBounced(json("""{"cmd":"Bounced","tags":["RingLink"],"data":{"time":3,"source":7,"amount":1}}"""))
+    s.onBounced(json("""{"cmd":"Bounced","tags":["DeathLink"]}"""))
+    s.onBounced(json("""{"cmd":"Bounced","games":["Hollow Knight"],"data":{"source":"x"}}"""))
+    val links = s.events.filter { it.type == EventType.LINK }
+    assertEquals(listOf("DeathLink", "TrapLink"), links.map { it.link })
+    assertEquals(listOf(1, null), links.map { it.slot })
+    assertEquals(listOf(name, "Somebody else"), links.map { it.linkSource })
+    assertEquals(listOf("$name fell into lava", "Ice Trap"), links.map { it.message })
+    assertEquals(name, s.render(links[0]).playerName)
+  }
+
+  @Test
   fun `join and part ignore trackers`() {
     val s = makeState()
     s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["Tracker"]}"""))

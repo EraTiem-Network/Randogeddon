@@ -90,7 +90,7 @@ class RelayTest {
   @Test
   fun `an item link's group gets no further than the gateway`() = gateway { url, client ->
     client.webSocket(url) {
-      assertEquals("""[{"cmd":"RoomInfo"}]""", next())
+      assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next())
       // MultiServer would take this in: a group's name, no password, no game
       send(Frame.Text(connect("Everyone", "")))
       assertEquals(REFUSAL_UNKNOWN, next())
@@ -167,7 +167,7 @@ class RelayTest {
       send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
       assertEquals("""[{"cmd":"Connected"}]""", next())
       // In its slot, it makes room
-      client.webSocket(url) { assertEquals("""[{"cmd":"RoomInfo"}]""", next()) }
+      client.webSocket(url) { assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next()) }
     }
   }
 }

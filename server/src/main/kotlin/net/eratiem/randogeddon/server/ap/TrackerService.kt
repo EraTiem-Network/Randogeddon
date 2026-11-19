@@ -29,6 +29,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.server.state.LINK_TAGS
 import net.eratiem.randogeddon.server.state.SessionState
 import net.eratiem.randogeddon.server.util.array
 import net.eratiem.randogeddon.server.util.int
@@ -153,7 +154,8 @@ class TrackerService(
 
   private suspend fun primary(slotName: String, url: String) = http.webSocket(url) {
     val conn = ApConnection(this)
-    val (roomInfo, connected) = conn.handshake(slotName, listOf("Tracker"))
+    // The links' tags: MultiServer passes a Bounced packet on to the clients that have one of its tags
+    val (roomInfo, connected) = conn.handshake(slotName, listOf("Tracker") + LINK_TAGS)
     val games = roomInfo.array("games").orEmpty().map { it.jsonPrimitive.content }.toSet() + "Archipelago"
     conn.send(buildJsonObject {
       put("cmd", "GetDataPackage")
@@ -220,6 +222,7 @@ class TrackerService(
       "Connected" -> onConnected(slot, packet)
       else -> if (primary) when (packet.string("cmd")) {
         "PrintJSON" -> onPrintJson(packet)
+        "Bounced" -> onBounced(packet)
         "SetReply" -> onSetReply(packet.string("key")!!, packet["value"], live = true)
         "Retrieved" -> packet.obj("keys")?.forEach { (key, value) -> onSetReply(key, value) }
         "DataPackage" -> onDataPackage(packet)

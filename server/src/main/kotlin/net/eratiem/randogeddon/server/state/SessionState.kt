@@ -57,6 +57,9 @@ private fun nonGameLeft(packet: JsonObject): Boolean {
 }
 const val MAX_EVENTS = 500
 
+/** The links between games the feed shows: the tracker listens for their `Bounced` packets by these tags. */
+val LINK_TAGS = listOf("DeathLink", "TrapLink")
+
 private data class Group(val name: String, val game: String)
 
 private data class HintKey(val findingPlayer: Int, val location: Long)
@@ -360,6 +363,24 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       events.addLast(it)
       while (events.size > MAX_EVENTS) events.removeFirst()
     }
+    touch()
+  }
+
+  /**
+   * A link between games (a `Bounced` packet with one of [LINK_TAGS]): a death or a trap passed on to every game
+   * linked. Its texts are the sending client's own: cut, and without control characters.
+   */
+  fun onBounced(packet: JsonObject, now: Long = clock()) {
+    val tags = packet.array("tags").orEmpty().mapNotNull { tag -> (tag as? JsonPrimitive)?.takeIf { it.isString }?.content }
+    val link = LINK_TAGS.firstOrNull { it in tags } ?: return
+    val data = packet["data"] as? JsonObject ?: return
+    fun text(key: String, max: Int): String? = (data[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+      ?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
+    val source = text("source", 80)
+    val slot = source?.let { name -> players.values.firstOrNull { it.alias == name || it.name == name }?.slot }
+    val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
+    events.addLast(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
+    while (events.size > MAX_EVENTS) events.removeFirst()
     touch()
   }
 

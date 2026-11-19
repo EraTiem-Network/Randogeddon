@@ -11,6 +11,22 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.6: The room asks for the password
+- **Clients that send a password only when the room asks for one** (Brotato's sends an empty one otherwise) were
+  refused with `InvalidPassword`: MultiServer has no room password here, so its `RoomInfo` said `password: false`.
+  The gateway now says `password: true` in the `RoomInfo` it passes on to a client; every slot has a password, and
+  that field is where clients send it. Nothing else of the frame changes.
+- **Links in the live feed**: a DeathLink (who died, and the cause if their game says one) and a TrapLink (who set
+  off which trap). The tracker's connection has the two tags, so MultiServer passes those `Bounced` packets on to it;
+  the texts are the sending client's own, cut and without control characters. Who it came from is the slot if the
+  client names one. A new filter *Links*; RingLink isn't shown (one event per ring).
+- **The live feed in pages, with a search**: 50 events at a time, the arrows under them go to older and newer ones
+  (on the first page new events come in on top, on another one they stay put), and a search over the events' names
+  and texts beside the filters, which stay.
+- `scripts/deploy.sh --publish`: builds and pushes the images, and for a release the bridge's builds and the GitHub
+  release, without touching the server (nothing copied there, its running tag not switched). A merged version is
+  published this way from now on; the live server is updated only when asked for.
+
 ### 0.19.5: The generation's settings per session
 - **In the new session's form**, with the options: *YAMLs may plan* (Archipelago's plando modules: *bosses*,
   *connections*, *texts*, *items*; its own default, all but the items, is ticked), *No progression balancing*, and

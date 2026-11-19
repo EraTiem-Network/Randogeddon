@@ -333,6 +333,7 @@ but the compose file names the build's secret).
 
 ```sh
 ./scripts/deploy.sh             # build, push as <version> (or <commit>), dump, switch, check (healthz, schema)
+./scripts/deploy.sh --publish   # build and push only (and a release's bridge and GitHub release); the server isn't touched
 ./scripts/deploy.sh --rollback  # back to the previous tag (code only; a migration that ran needs its dump)
 ```
 
@@ -651,7 +652,8 @@ Nobody sees anything of the session without logging in, and nobody joins the gam
 - **Slot passwords:** every slot of a seed gets its own generated password when the tracker first sees the
   seed; they stay the same across restarts, a new seed gets new ones. The gateway compares the password of every
   client's `Connect` with the slot's, the same field clients already send the room password in, so no client needs
-  changes. A wrong one gets `InvalidPassword`, and a name that is no slot `InvalidSlot` from the gateway itself: only
+  changes. Some clients send it only when the room asks for one, so the gateway says so in the `RoomInfo` it passes
+  on (`password: true`; MultiServer itself has none here). A wrong one gets `InvalidPassword`, and a name that is no slot `InvalidSlot` from the gateway itself: only
   the slots with a password get to MultiServer at all (it would take a client in under an item link's group name
   without any password). There is no room password (`AP_PASSWORD` is gone).
 - **Before a client is in a slot** it gets little of the gateway: frames of at most 1 MiB (unpacked too; a client's
@@ -785,7 +787,9 @@ which the gateway writes before it starts the session's game server.
   for its received items (filterable), remaining locations, play time and connection log.
 - **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.
 - **Live feed:** item sends colour-coded by classification (purple = progression, blue = useful,
-  red = trap), hints, goals, releases, chat and joins. You can filter by player and kind.
+  red = trap), hints, goals, releases, chat and joins, and the links between games (a DeathLink: who died and of
+  what; a TrapLink: who set off which trap). You can filter by player and kind and search it; it shows 50 events at
+  a time, with arrows to older and newer ones.
 - **Hints:** every hint in the room, filterable by player, slot and state (not found, found, priority,
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's

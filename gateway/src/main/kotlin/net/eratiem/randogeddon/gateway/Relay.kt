@@ -86,7 +86,8 @@ private suspend fun DefaultWebSocketServerSession.relay(
     http.webSocket(upstreamUrl) {
       val upstream = this
       coroutineScope {
-        val down = launch { pump(from = upstream, to = client) { it } }
+        // The room asks for a password: the slot's (see askingForPassword)
+        val down = launch { pump(from = upstream, to = client) { if (it is Frame.Text) Frame.Text(askingForPassword(it.readText())) else it } }
         // A connection that never gets into a slot doesn't stay
         val waiting = launch {
           delay(limits.connectWithin)
