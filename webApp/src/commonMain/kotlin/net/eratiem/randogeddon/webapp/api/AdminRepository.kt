@@ -15,11 +15,7 @@ import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
-import net.eratiem.randogeddon.shared.i18n.texts
-import net.eratiem.randogeddon.webapp.app.HttpResult
-import net.eratiem.randogeddon.webapp.app.Languages
 import net.eratiem.randogeddon.webapp.app.Platform
-import net.eratiem.randogeddon.webapp.app.wordError
 
 private const val MAX_LOG_LINES = 2000
 
@@ -46,20 +42,10 @@ class AdminRepository(private val scope: CoroutineScope, private val id: String)
   }
 
   /** [action]: start, stop or restart; the error message, or `null`. */
-  suspend fun control(action: String): String? = answer(Platform.request("POST", "api/sessions/$id/manage/server/$action"))
+  suspend fun control(action: String): String? = post("api/sessions/$id/manage/server/$action")
 
-  suspend fun command(line: String): String? = answer(
-    Platform.request("POST", "api/sessions/$id/manage/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
-  )
-
-  private fun answer(result: HttpResult?): String? {
-    val common = texts(Languages.current).common
-    return when {
-      result == null -> common.serverUnreachable
-      result.status in 200..299 -> null
-      else -> texts(Languages.current).wordError(result.body) ?: common.failed(result.status)
-    }
-  }
+  suspend fun command(line: String): String? =
+    post("api/sessions/$id/manage/command", ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
 
   private fun onEvent(type: String, data: String) {
     when (type) {
@@ -102,11 +88,11 @@ class AdminCache(private val scope: CoroutineScope) {
     (repositories.keys - kept).forEach { repositories.remove(it)?.stop() }
     ids.forEach { id ->
       if (id !in views) scope.launch {
-        val answer = call("GET", "api/sessions/$id/manage", null) { ApiJson.decodeFromString(AdminSessionView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage", null, AdminSessionView.serializer())
         if (answer is Answer.Ok && id !in views) views[id] = answer.value
       }
       if (id !in cheats) scope.launch {
-        val answer = call("GET", "api/sessions/$id/manage/cheat", null) { ApiJson.decodeFromString(CheatView.serializer(), it) }
+        val answer = call("GET", "api/sessions/$id/manage/cheat", null, CheatView.serializer())
         if (answer is Answer.Ok && id !in cheats) cheats[id] = answer.value
       }
     }

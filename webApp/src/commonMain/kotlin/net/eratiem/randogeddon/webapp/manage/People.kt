@@ -66,6 +66,7 @@ import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
@@ -96,11 +97,11 @@ fun PeopleSection(id: String) {
   var choices by remember { mutableStateOf<List<UserRef>>(emptyList()) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
-    when (val r = call("GET", "api/sessions/$id/people", null) { ApiJson.decodeFromString(SessionPeople.serializer(), it) }) {
+    when (val r = call("GET", "api/sessions/$id/people", null, SessionPeople.serializer())) {
       is Answer.Ok -> { people = r.value.people; you = r.value; problem = null }
       is Answer.Failed -> problem = r.message
     }
-    (call("GET", "api/sessions/$id/people/choices", null) { ApiJson.decodeFromString(ListSerializer(UserRef.serializer()), it) } as? Answer.Ok)
+    (call("GET", "api/sessions/$id/people/choices", null, ListSerializer(UserRef.serializer())) as? Answer.Ok)
       ?.let { choices = it.value }
   }
   LaunchedEffect(id) { load() }
@@ -129,7 +130,7 @@ fun PeopleSection(id: String) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       AddPerson(GIVEN, choices) { role, userId, email ->
         val body = ApiJson.encodeToString(AddPersonRequest.serializer(), AddPersonRequest(role, userId, email))
-        when (val r = call("POST", "api/sessions/$id/people", body) { ApiJson.decodeFromString(SessionPerson.serializer(), it) }) {
+        when (val r = call("POST", "api/sessions/$id/people", body, SessionPerson.serializer())) {
           is Answer.Ok -> { load(); null }
           is Answer.Failed -> r.message
         }
@@ -160,11 +161,11 @@ fun WatchersSection(id: String) {
   var choices by remember { mutableStateOf<List<UserRef>>(emptyList()) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
-    when (val r = call("GET", "api/sessions/$id/watchers", null) { ApiJson.decodeFromString(SessionPeople.serializer(), it) }) {
+    when (val r = call("GET", "api/sessions/$id/watchers", null, SessionPeople.serializer())) {
       is Answer.Ok -> { watchers = r.value.people; problem = null }
       is Answer.Failed -> problem = r.message
     }
-    (call("GET", "api/sessions/$id/watchers/choices", null) { ApiJson.decodeFromString(ListSerializer(UserRef.serializer()), it) } as? Answer.Ok)
+    (call("GET", "api/sessions/$id/watchers/choices", null, ListSerializer(UserRef.serializer())) as? Answer.Ok)
       ?.let { choices = it.value }
   }
   LaunchedEffect(id) { load() }
@@ -176,7 +177,7 @@ fun WatchersSection(id: String) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       AddPerson(emptyList(), choices) { _, userId, email ->
         val body = ApiJson.encodeToString(WatcherRequest.serializer(), WatcherRequest(userId, email))
-        when (val r = call("POST", "api/sessions/$id/watchers", body) { ApiJson.decodeFromString(SessionPerson.serializer(), it) }) {
+        when (val r = call("POST", "api/sessions/$id/watchers", body, SessionPerson.serializer())) {
           is Answer.Ok -> { load(); null }
           is Answer.Failed -> r.message
         }
@@ -302,7 +303,7 @@ private fun PersonPanel(
   var busy by remember { mutableStateOf(false) }
   var confirm by remember(person.id) { mutableStateOf(false) }
   LaunchedEffect(id) {
-    (call("GET", "api/sessions/$id/state", null) { ApiJson.decodeFromString(Summary.serializer(), it) } as? Answer.Ok)
+    (call("GET", "api/sessions/$id/state", null, Summary.serializer()) as? Answer.Ok)
       ?.let { summary = it.value }
   }
   val now = Platform.now()
@@ -435,7 +436,7 @@ private fun ShareLinkPart(id: String) {
   var problem by remember { mutableStateOf<String?>(null) }
   var confirm by remember { mutableStateOf(false) }
   suspend fun load() {
-    when (val r = call("GET", "api/sessions/$id/share", null) { ApiJson.decodeFromString(ShareLinkView.serializer(), it) }) {
+    when (val r = call("GET", "api/sessions/$id/share", null, ShareLinkView.serializer())) {
       is Answer.Ok -> view = r.value
       is Answer.Failed -> problem = r.message
     }
@@ -456,7 +457,7 @@ private fun ShareLinkPart(id: String) {
       )
       Button(if (current?.on == true) t.people.newLink else t.people.makeLink) {
         scope.launch {
-          when (val r = call("POST", "api/sessions/$id/share", null) { ApiJson.decodeFromString(ShareLinkView.serializer(), it) }) {
+          when (val r = call("POST", "api/sessions/$id/share", null, ShareLinkView.serializer())) {
             is Answer.Ok -> { view = r.value; link = r.value.token?.let { Platform.pageUrl() + Route.Watch(it).hash }; problem = null }
             is Answer.Failed -> problem = r.message
           }
@@ -480,7 +481,7 @@ private fun ShareLinkPart(id: String) {
     }
     link?.let {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Mono(it, p.text, Modifier.weight(1f))
+        Mono(it, Modifier.weight(1f))
         SmallButton(t.common.copy, { Platform.copy(it) })
       }
       Txt(t.people.shownOnlyNow, size = 12.sp, color = p.muted)

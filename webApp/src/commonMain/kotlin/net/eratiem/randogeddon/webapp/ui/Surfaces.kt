@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -29,8 +30,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -242,3 +245,21 @@ fun GameChip(game: String, dimmed: Boolean = false, size: Dp = 34.dp) {
 
 /** Narrower than this (a phone): what sits side by side in a row goes one below the other. */
 internal val NARROW = 600.dp
+
+/**
+ * Monospaced and selectable, so similar characters (l, 1, I) are told apart and can be copied by hand too: keys,
+ * passwords, file names, a program's output. [color]: the text's colour if not given.
+ */
+@Composable
+fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, size: TextUnit = 12.5.sp) {
+  val shown = color.takeOrElse { LocalPalette.current.text }
+  SelectionContainer(modifier) {
+    BasicText(text, style = TextStyle(color = shown, fontSize = size, fontFamily = FontFamily.Monospace))
+  }
+}
+
+/** A small heading inside a card: a part of it (the slot's files, the bridge's downloads, the uploaded apworlds). */
+@Composable
+fun SmallHeading(text: String, modifier: Modifier = Modifier) {
+  Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = modifier)
+}

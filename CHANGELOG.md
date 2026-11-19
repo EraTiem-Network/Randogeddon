@@ -9,6 +9,27 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 
 ## Phase 18: Code Optimization
 
+### 0.18.11: The web app's shared helpers, and the browser's own menu
+- **One request helper:** the web app's requests go through `call` (with the answer's serializer instead of a decode
+  of its own at each of 56 places) and `load` (for what is shown when it is there: the session list, a player's
+  details, the connection, the slot files); the panel's game server actions use `post` instead of their own error
+  handling. The requests that look at a status themselves (a share link that is gone, the login's check, the spoiler
+  log) stay as they are.
+- **The page frame and the clock shared:** the dashboard and a share link's page use one `PageFrame` (the page
+  colour with the brand's tint, the scrolling column of at most 1400 dp, selectable text) and one `rememberNow` (the
+  time, moved on every 30 s and with new data).
+- **Components merged:** `Mono` (keys, passwords, file names, a program's output) and `SmallHeading` once in `ui`
+  instead of twice; the new session's number fields (hint cost, points per check) use `ui`'s `NumberField`, with its
+  arrows. The labels (`Labeled`, `Labelled`, `Label`) stay three: a row with a tip, a column that wraps on a phone, a
+  fixed width beside a value.
+- **The browser's own menu on a right click:** the app took the right click (Compose cancels the browser's menu to
+  show its own, which had only *Copy*); now the browser shows its menu everywhere, and the app none of its own, also
+  not as the toolbar over a selection. Ctrl+C still copies a selection.
+- The browser interop is opted into once for the module (`ExperimentalWasmJsInterop`, with `-Xexpect-actual-classes`):
+  the web app's 58 compiler warnings are 2 (the old `BasicTextField`, a migration of its own).
+- Screenshots of eight pages before and after: the same, pixel for pixel (but for a random session ID and a button's
+  fade).
+
 ### 0.18.10: Game servers that sleep
 - **A game server nobody plays on goes to sleep:** after *Sleep after (minutes)* without a player (a setting under
   *Users*, beside the game servers at once; default 30, 0: never) it saves and stops (*asleep* in the panel). Players

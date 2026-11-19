@@ -113,25 +113,20 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
   override suspend fun player(slot: Int): PlayerDetail? {
     val id = _selected.value ?: return null
-    return Platform.request("GET", "api/sessions/$id/player/$slot")
-      ?.takeIf { it.status == 200 }
-      ?.let { runCatching { ApiJson.decodeFromString(PlayerDetail.serializer(), it.body) }.getOrNull() }
+    return load("api/sessions/$id/player/$slot", PlayerDetail.serializer())
   }
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
 
   /** Who is logged in, again (after a rename in the settings). */
   suspend fun reloadMe() {
-    val result = Platform.request("GET", "api/me")?.takeIf { it.status == 200 } ?: return
-    runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()?.let { _me.value = it }
+    _me.value = load("api/me", Me.serializer()) ?: return
     refreshSessions()
   }
 
   /** The sessions again (one was created, finished or deleted); one that is gone stops being shown. */
   suspend fun refreshSessions() {
-    val list = Platform.request("GET", "api/sessions")?.takeIf { it.status == 200 }
-      ?.let { runCatching { ApiJson.decodeFromString(ListSerializer(SessionEntry.serializer()), it.body) }.getOrNull() }
-      ?: return
+    val list = load("api/sessions", ListSerializer(SessionEntry.serializer())) ?: return
     _sessions.value = list
     val current = _selected.value
     if (current != null && list.none { it.id == current }) select(null)
@@ -198,13 +193,11 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   }
 
   private suspend fun loadConnection(id: String) {
-    val connection = Platform.request("GET", "api/sessions/$id/connection")?.takeIf { it.status == 200 }
-      ?.let { runCatching { ApiJson.decodeFromString(Connection.serializer(), it.body) }.getOrNull() }
+    val connection = load("api/sessions/$id/connection", Connection.serializer())
     if (_selected.value == id) _connection.value = connection
     // Only the user's own slots here, also for a Session-Manager (the panel has every slot's)
     val mine = connection?.slots.orEmpty().map { it.name }.toSet()
-    val files = Platform.request("GET", "api/sessions/$id/files")?.takeIf { it.status == 200 }
-      ?.let { runCatching { ApiJson.decodeFromString(SlotFiles.serializer(), it.body).files }.getOrNull() }
+    val files = load("api/sessions/$id/files", SlotFiles.serializer())?.files
     if (_selected.value == id && files != null) _files.value = files.filter { it.slotName in mine }
   }
 

@@ -32,6 +32,13 @@ kotlin {
     binaries.executable()
   }
 
+  compilerOptions {
+    // The browser interop (wasmJsMain's glue, JS values in commonMain's callbacks) for the whole module, not at each
+    // of its 50-odd uses; the Platform object is an expect/actual one
+    optIn.add("kotlin.js.ExperimentalWasmJsInterop")
+    freeCompilerArgs.add("-Xexpect-actual-classes")
+  }
+
   sourceSets {
     commonMain.dependencies {
       implementation(project(":shared"))
