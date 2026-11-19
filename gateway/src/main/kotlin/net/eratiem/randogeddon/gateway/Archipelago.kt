@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
@@ -21,11 +22,15 @@ import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.streams.asSequence
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SessionSetupStore
@@ -154,9 +159,19 @@ class GenerationLog(val version: String) {
   }
 }
 
-/** How often the background looks for a spoiler log to complete, and how much longer than a seed one may take. */
-private const val STAGE_PAUSE_MS = 5_000L
+/** How much longer than a seed a spoiler log's background run may take. */
 private const val BACKGROUND_TIME_FACTOR = 4
+
+/**
+ * How many Generate.py run at once: [configured] (`GENERATIONS_AT_ONCE`), or without one as many as the machine has
+ * cores, less one for everything else (the game servers, the relay); at least one. Each needs a core and its memory.
+ */
+fun generationsAtOnce(configured: Int = 0, cores: Int = Runtime.getRuntime().availableProcessors()): Int =
+  if (configured > 0) configured.coerceAtMost(32) else (cores - 1).coerceAtLeast(1)
+
+/** Exit code 137: killed from outside, which on a server is mostly for its memory. */
+private fun killedHint(code: Int): String =
+  if (code == 137) " (killed: probably out of memory; fewer generations at once need less: GENERATIONS_AT_ONCE)" else ""
 
 /** [file]'s SHA-256, in hex. */
 internal fun sha256(file: Path): String =
@@ -178,8 +193,15 @@ class Generator(
   private val apworlds: Apworlds,
   /** How long one may take before it is stopped. */
   private val minutes: Int = 60,
+  /** How many Generate.py run at once: new sessions' seeds and the spoiler logs' later levels together. */
+  private val atOnce: Int = generationsAtOnce(),
+  /** How often the background looks for a spoiler log to complete (or a paused run to let go on). */
+  private val lookEvery: Duration = 5.seconds,
 ) {
-  private val mutex = Mutex()
+  /** A place for each Generate.py that runs. */
+  private val places = Semaphore(atOnce)
+  /** The spoiler logs' runs leave a place to new sessions, where there is more than one. */
+  private val backgroundPlaces = (atOnce - 1).coerceAtLeast(1)
   /** How far each running generation is, by session (from Generate.py's output as it comes). */
   private val progress = ConcurrentHashMap<String, GenerationProgress>()
 
@@ -194,14 +216,25 @@ class Generator(
 
   /** The spoiler logs completed after their seeds. */
   private val stages = SpoilerStages(dirs)
-  /** New sessions waiting for their generation: the background runs wait for them. */
+  /** New sessions waiting for a place: no background run starts (or goes on) meanwhile. */
   private val foregroundWaiting = AtomicInteger()
-  /** The background run going now: its session and the level it works out. */
-  @Volatile
-  private var background: Pair<String, Int>? = null
-  /** It is to make way (a new session, a change of the library): it ends and starts over later. */
-  private val backgroundYields = AtomicBoolean(false)
+  /** The background runs going now (paused ones too), by session. */
+  private val background = ConcurrentHashMap<String, BackgroundRun>()
   private val seeds = SecureRandom()
+
+  /** A spoiler log's run at [level]. */
+  private class BackgroundRun(val level: Int) {
+    /** It holds one of the places (not while it is paused). */
+    val place = AtomicBoolean(true)
+
+    /** Held (`SIGSTOP`) for a new session's generation; it goes on (`SIGCONT`) once there is room. */
+    @Volatile
+    var paused = false
+
+    /** It is to end and start over later: a change of the library, its session deleted, or pausing didn't hold. */
+    @Volatile
+    var yields = false
+  }
 
   /**
    * How far session [id]'s generation is; `null`: none runs. With Generate.py's share of one core since the last ask
@@ -227,48 +260,111 @@ class Generator(
   /** Session [id]'s spoiler log while it is completed in the background; `null`: complete (or from before 0.19.3). */
   fun spoiler(id: String): SpoilerProgress? {
     val state = stages.read(id)?.takeIf { it.level < SpoilerStages.COMPLETE } ?: return null
-    val running = background?.takeIf { it.first == id }?.second
-    return SpoilerProgress(state.level, running, running?.let { cpuShare(stageKey(id)) }, state.stopped)
+    val run = background[id]
+    val cpu = run?.takeIf { !it.paused }?.let { cpuShare(stageKey(id)) }
+    return SpoilerProgress(state.level, run?.level, cpu, state.stopped, paused = run?.paused == true)
   }
 
   /** The log of session [id]'s background spoiler run (the last one); `null`: none. */
   fun spoilerLog(id: String, since: Long, max: Int): LogLines? = logs[stageKey(id)]?.lines?.after(since, max)
 
-  /** A running level-3 run (the paths, the longest) makes way: it ends and starts over once nothing waits. */
+  /**
+   * The library is about to change: the level-3 runs (the paths, the longest; paused ones too) end and start over
+   * after, so the change doesn't wait for them. Level-2 runs and new sessions' generations are waited for.
+   */
   fun yieldBackground() {
-    val (id, level) = background ?: return
-    if (level < SpoilerStages.COMPLETE) return
-    backgroundYields.set(true)
-    processes[stageKey(id)]?.destroyForcibly()
+    background.forEach { (id, run) -> if (run.level >= SpoilerStages.COMPLETE) end(id, run) }
   }
 
   /** Session [id] goes (deleted): its background run ends. */
   fun dropSpoiler(id: String) {
-    if (background?.first != id) return
-    backgroundYields.set(true)
+    background[id]?.let { end(id, it) }
+  }
+
+  /** The run ends now, and starts over later (if its session is still there). */
+  private fun end(id: String, run: BackgroundRun) {
+    run.yields = true
     processes[stageKey(id)]?.destroyForcibly()
   }
 
+  /** No place is free for a new session: a spoiler's level-3 run (the paths) is paused and gives its place. */
+  private fun makeRoom() {
+    if (places.availablePermits > 0) return
+    val (id, run) = background.entries.firstOrNull { (_, r) -> r.level >= SpoilerStages.COMPLETE && !r.paused && !r.yields }
+      ?.toPair() ?: return
+    // Its place is given once; another new session's makeRoom finds it paused
+    if (!run.place.compareAndSet(true, false)) return
+    run.paused = true
+    if (signal(stageKey(id), "STOP")) {
+      logs[stageKey(id)]?.lines?.add("[gateway] Paused: a new session's generation goes first")
+      logger.info("Spoiler log of {}: its level {} run is paused for a new session", id, run.level)
+    } else {
+      // Pausing doesn't hold: it ends, and starts over later
+      end(id, run)
+    }
+    places.release()
+  }
+
+  /** A paused run goes on, if a place is free; `false`: not yet. */
+  private fun resume(id: String, run: BackgroundRun): Boolean {
+    if (!places.tryAcquire()) return false
+    run.place.set(true)
+    run.paused = false
+    if (signal(stageKey(id), "CONT")) {
+      logs[stageKey(id)]?.lines?.add("[gateway] Goes on")
+      logger.info("Spoiler log of {}: its level {} run goes on", id, run.level)
+    } else {
+      end(id, run)
+    }
+    return true
+  }
+
+  /** Sends [key]'s Generate.py a signal (`STOP` holds it, `CONT` lets it go on); `false`: it didn't get it. */
+  private fun signal(key: String, signal: String): Boolean {
+    val pid = processes[key]?.takeIf { it.isAlive }?.pid() ?: return false
+    return runCatching {
+      val kill = ProcessBuilder("sh", "-c", "kill -$signal $pid").redirectErrorStream(true).start()
+      kill.waitFor(5, TimeUnit.SECONDS) && kill.exitValue() == 0
+    }.getOrDefault(false)
+  }
+
+  private fun runningBackground() = background.values.count { !it.paused }
+
   /**
-   * Completes the spoiler logs of the seeds that have only a part of theirs, one run at a time and only while no new
-   * session waits for its generation: level 2 (the playthrough), then level 3 (the paths). Runs for as long as the
-   * gateway does; after a restart it goes on where the sessions' `stages.json` say.
+   * Completes the spoiler logs of the seeds that have only a part of theirs: level 2 (the playthrough), then level 3
+   * (the paths), as many at once as [backgroundPlaces], each in a place of its own, and none started while a new
+   * session waits for one. Runs for as long as the gateway does; after a restart it goes on where the sessions'
+   * `stages.json` say.
    */
-  suspend fun completeSpoilers() {
+  suspend fun completeSpoilers() = coroutineScope {
     while (true) {
-      delay(STAGE_PAUSE_MS)
+      delay(lookEvery)
       if (foregroundWaiting.get() > 0) continue
-      val (id, state) = stages.next() ?: continue
-      mutex.withLock {
-        if (foregroundWaiting.get() == 0) {
-          runCatching { completeOne(id, state) }.onFailure { logger.warn("Completing {}'s spoiler log: {}", id, it.message) }
+      // A paused one goes on before another starts
+      background.forEach { (id, run) -> if (run.paused && !run.yields && runningBackground() < backgroundPlaces) resume(id, run) }
+      while (foregroundWaiting.get() == 0 && runningBackground() < backgroundPlaces) {
+        val (id, state) = stages.next(background.keys.toSet()) ?: break
+        if (!places.tryAcquire()) break
+        val run = BackgroundRun(state.level + 1)
+        background[id] = run
+        launch {
+          try {
+            completeOne(id, state, run)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            logger.warn("Completing {}'s spoiler log: {}", id, e.message)
+          } finally {
+            background.remove(id)
+            if (run.place.getAndSet(false)) places.release()
+          }
         }
       }
     }
   }
 
-  private suspend fun completeOne(id: String, state: SpoilerStages.State) {
-    val level = state.level + 1
+  private suspend fun completeOne(id: String, state: SpoilerStages.State, run: BackgroundRun) {
+    val level = run.level
     val home = runCatching { archipelago.home(state.release) }.getOrElse {
       stages.save(id, state.copy(stopped = "Archipelago ${state.release} is gone from the gateway"))
       return
@@ -279,10 +375,8 @@ class Generator(
       return
     }
     val log = GenerationLog(state.release).also { logs[stageKey(id)] = it }
-    background = id to level
-    backgroundYields.set(false)
     try {
-      val text = apworlds.holding(state.release) { withContext(Dispatchers.IO) { runSpoiler(id, state, level, home, log) } }
+      val text = apworlds.holding(state.release) { withContext(Dispatchers.IO) { runSpoiler(id, state, run, home, log) } }
         ?: return
       val current = dirs.spoiler(id) ?: return
       if (placementsOf(text) != placementsOf(current)) {
@@ -298,15 +392,15 @@ class Generator(
       log.lines.add("[gateway] The spoiler log is at level $level now")
       logger.info("Spoiler log of {} at level {}", id, level)
     } finally {
-      background = null
       processes.remove(stageKey(id))
       cpuSeen.remove(stageKey(id))
       log.endedAt = System.currentTimeMillis()
     }
   }
 
-  /** Generate.py once more for session [id], only its spoiler log at [level]; its text, or `null` (made way, failed). */
-  private fun runSpoiler(id: String, state: SpoilerStages.State, level: Int, home: Path, log: GenerationLog): String? {
+  /** Generate.py once more for session [id], only its spoiler log at [run]'s level; its text, or `null` (ended, failed). */
+  private fun runSpoiler(id: String, state: SpoilerStages.State, run: BackgroundRun, home: Path, log: GenerationLog): String? {
+    val level = run.level
     val output = createTempDirectory("spoiler")
     try {
       val command = listOf(
@@ -317,24 +411,30 @@ class Generator(
       log.lines.add("$ ${command.joinToString(" ")}")
       val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
       processes[stageKey(id)] = proc
-      if (backgroundYields.get()) proc.destroyForcibly()
+      if (run.yields) proc.destroyForcibly()
       proc.outputStream.close()
       val limit = minutes.toLong() * BACKGROUND_TIME_FACTOR
       val stopped = AtomicBoolean(false)
       Thread {
-        if (!proc.waitFor(limit, TimeUnit.MINUTES)) {
-          stopped.set(true)
-          proc.destroyForcibly()
+        // Its time, without the time it is paused
+        var ran = 0L
+        while (!proc.waitFor(1, TimeUnit.SECONDS)) {
+          if (!run.paused) ran++
+          if (ran > limit * 60) {
+            stopped.set(true)
+            proc.destroyForcibly()
+            break
+          }
         }
       }.apply { isDaemon = true }.start()
       try {
         proc.inputStream.bufferedReader().useLines { lines -> lines.forEach { log.lines.add(it.take(MAX_LOG_LINE)) } }
       } catch (e: IOException) {
-        if (!backgroundYields.get() && !stopped.get()) throw e
+        if (!run.yields && !stopped.get()) throw e
       }
       val code = proc.waitFor()
-      if (backgroundYields.get()) {
-        log.lines.add("[gateway] Made way for a new session's generation (or a change of the APWorlds): it starts over later")
+      if (run.yields) {
+        log.lines.add("[gateway] Ended (a change of the APWorlds, or its session is gone): it starts over later")
         return null
       }
       if (stopped.get()) {
@@ -344,8 +444,8 @@ class Generator(
       }
       val spoiler = output.listDirectoryEntries("*_Spoiler.txt").firstOrNull()
       if (spoiler == null) {
-        log.lines.add("[gateway] Generate.py ended with exit code $code, without a spoiler log")
-        stages.save(id, state.copy(stopped = "Generate.py ended with exit code $code (see its log)"))
+        log.lines.add("[gateway] Generate.py ended with exit code $code, without a spoiler log${killedHint(code)}")
+        stages.save(id, state.copy(stopped = "Generate.py ended with exit code $code (see its log)${killedHint(code)}"))
         return null
       }
       return spoiler.readText()
@@ -377,14 +477,18 @@ class Generator(
     logs.entries.removeIf { (_, log) -> log.endedAt?.let { now - it > GENERATION_LOG_KEPT } == true }
     val log = GenerationLog(request.apVersion).also { logs[id] = it }
     cancelled -= id
-    // One at a time: until it is this one's turn, it says that it waits. A spoiler's paths in the background make way
+    // Until a place is free it says that it waits; a spoiler's level-3 run is paused to make one
     progress[id] = GenerationProgress(GenerationStage.WAITING, 0)
+    val waiting = AtomicBoolean(true)
     foregroundWaiting.incrementAndGet()
-    yieldBackground()
     return try {
-      mutex.withLock { generateNow(id, request, log) }
+      makeRoom()
+      places.withPermit {
+        if (waiting.getAndSet(false)) foregroundWaiting.decrementAndGet()
+        generateNow(id, request, log)
+      }
     } finally {
-      foregroundWaiting.decrementAndGet()
+      if (waiting.getAndSet(false)) foregroundWaiting.decrementAndGet()
       progress.remove(id)
       cpuSeen.remove(id)
       cancelled -= id
@@ -478,11 +582,11 @@ class Generator(
         return GenerateResult(log = lines.takeLast(20), stoppedAfterMinutes = minutes)
       }
       val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
-      if (zip == null) log.lines.add("[gateway] Generate.py ended with exit code $code, without a seed")
+      if (zip == null) log.lines.add("[gateway] Generate.py ended with exit code $code, without a seed${killedHint(code)}")
       zip ?: return GenerateResult(
         // The error from its traceback on, not the list of every world it prints first
-        log = lines.indexOfLast { it.startsWith("Traceback") }.let { if (it >= 0) lines.drop(it).take(60) else lines.takeLast(60) }
-          .ifEmpty { listOf("Generate.py ended without a seed") },
+        log = (lines.indexOfLast { it.startsWith("Traceback") }.let { if (it >= 0) lines.drop(it).take(60) else lines.takeLast(60) } +
+          listOfNotNull(killedHint(code).trim().ifEmpty { null })).ifEmpty { listOf("Generate.py ended without a seed") },
       )
 
       Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
