@@ -45,6 +45,10 @@ data class ApworldFile(
   /** Copied from the library of this release ("try with"): not tested with [release]. */
   val from: String? = null,
   val size: Long = 0,
+  /** From its `archipelago.json` (if it has one): its game, its own version, the oldest Archipelago release it needs. */
+  val game: String? = null,
+  val version: String? = null,
+  val minimumAp: String? = null,
 )
 
 /** One Archipelago release of the gateway: its games, and the apworlds that didn't load. */
