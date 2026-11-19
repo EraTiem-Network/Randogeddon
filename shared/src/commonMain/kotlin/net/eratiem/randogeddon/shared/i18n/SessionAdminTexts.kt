@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.shared.i18n
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
+import net.eratiem.randogeddon.shared.PlandoModule
 
 /** A session in the panel: its state and actions, its players, the past sessions, a new session's form. */
 interface SessionAdminTexts {
@@ -107,6 +108,10 @@ interface SessionAdminTexts {
   val automaticHintsCheck: String
   val keysEarly: String
   val cheatHints: String
+  val plando: String
+  fun plandoModule(module: PlandoModule): String
+  val skipBalancing: String
+  val raceMode: String
   val hintCost: String
   val pointsPerCheck: String
   val release: String
@@ -273,6 +278,15 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatic hints"
   override val keysEarly = "Keys early"
   override val cheatHints = "Cheat hints"
+  override val plando = "YAMLs may plan"
+  override fun plandoModule(module: PlandoModule) = when (module) {
+    PlandoModule.BOSSES -> "bosses"
+    PlandoModule.CONNECTIONS -> "connections"
+    PlandoModule.TEXTS -> "texts"
+    PlandoModule.ITEMS -> "items"
+  }
+  override val skipBalancing = "No progression balancing"
+  override val raceMode = "Race mode"
   override val hintCost = "Hint cost %"
   override val pointsPerCheck = "Points per check"
   override val release = "Release"
@@ -469,6 +483,15 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatische Hinweise"
   override val keysEarly = "Schlüssel früh"
   override val cheatHints = "Cheat-Hinweise"
+  override val plando = "YAMLs dürfen planen"
+  override fun plandoModule(module: PlandoModule) = when (module) {
+    PlandoModule.BOSSES -> "Bosse"
+    PlandoModule.CONNECTIONS -> "Verbindungen"
+    PlandoModule.TEXTS -> "Texte"
+    PlandoModule.ITEMS -> "Items"
+  }
+  override val skipBalancing = "Ohne Progression-Balancing"
+  override val raceMode = "Race-Modus"
   override val hintCost = "Hinweiskosten %"
   override val pointsPerCheck = "Punkte pro Check"
   override val release = "Release"

@@ -3,7 +3,30 @@ package net.eratiem.randogeddon.shared
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** A session's game server options, set when it is created (the defaults are those of `.env.example`). */
+/**
+ * Archipelago's plando modules: what a YAML may set by hand in the generation instead of leaving it to chance. Their
+ * names are Generate.py's (`--plando`); only these are ever passed to it.
+ */
+@Serializable
+enum class PlandoModule {
+  @SerialName("bosses") BOSSES,
+  @SerialName("connections") CONNECTIONS,
+  @SerialName("texts") TEXTS,
+  @SerialName("items") ITEMS;
+
+  /** As `--plando` names it. */
+  val argument: String get() = name.lowercase()
+
+  companion object {
+    /** Archipelago's own default: all but the items. */
+    val DEFAULT: Set<PlandoModule> = setOf(BOSSES, CONNECTIONS, TEXTS)
+  }
+}
+
+/**
+ * A session's options, set when it is created: its game server's (the defaults are those of `.env.example`) and its
+ * generation's ([plando], [skipBalancing], [race]).
+ */
 @Serializable
 data class SessionOptions(
   /** Players buy hints with points (`!hint`). */
@@ -27,6 +50,12 @@ data class SessionOptions(
   val openSlots: Int? = null,
   /** Admins may give free hints from the admin panel (cheats). */
   val cheatHints: Boolean = false,
+  /** The generation: the plando modules its YAMLs may use. */
+  val plando: Set<PlandoModule> = PlandoModule.DEFAULT,
+  /** The generation: without Archipelago's progression balancing. */
+  val skipBalancing: Boolean = false,
+  /** The generation: race mode (a seed nobody can reproduce, flagged as a race for the games, no spoiler log). */
+  val race: Boolean = false,
 )
 
 /** A player YAML as uploaded in the admin panel. */
@@ -209,6 +238,10 @@ data class GenerateRequest(
   val apVersion: String,
   /** The games of the YAMLs, to point at the one that failed. */
   val games: List<String> = emptyList(),
+  /** The generation's settings (see [SessionOptions]). */
+  val plando: Set<PlandoModule> = PlandoModule.DEFAULT,
+  val skipBalancing: Boolean = false,
+  val race: Boolean = false,
 )
 
 /**
