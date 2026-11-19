@@ -27,6 +27,8 @@ class SpoilerStages(private val dirs: SessionDirs) {
     val level: Int = 1,
     val apworlds: Map<String, String> = emptyMap(),
     val stopped: String? = null,
+    /** Generate.py's arguments for the seed's settings (the plando modules, no balancing): the later levels' too. */
+    val arguments: List<String> = emptyList(),
   )
 
   /** Session [id]'s state; `null`: it has none (generated before 0.19.3: its spoiler log is complete). */
