@@ -1,26 +1,27 @@
 package net.eratiem.randogeddon.server.admin
 
-import net.eratiem.randogeddon.shared.i18n.Language
-import net.eratiem.randogeddon.shared.Problem
-import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
+import java.lang.invoke.MethodHandles
+import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.database.invitedName
 import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.AddPersonRequest
+import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionPeople
 import net.eratiem.randogeddon.shared.SessionPerson
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WatcherRequest
+import net.eratiem.randogeddon.shared.i18n.Language
 import org.koin.core.annotation.Single
-import java.lang.invoke.MethodHandles
-import kotlin.uuid.Uuid
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
@@ -73,7 +74,7 @@ class SessionPeopleService(
       }
       request.email != null -> {
         val invited = inviteNew(request.email!!, request.suggestedName, by, language)
-        Uuid.parse(invited.id) to (invited.name ?: request.email!!.substringBefore('@'))
+        Uuid.parse(invited.id).let { it to (invited.name ?: invitedName(it, request.suggestedName)) }
       }
       else -> throw AccountProblem(HttpStatusCode.BadRequest, Problem.WHOM)
     }

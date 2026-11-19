@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,12 +44,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
+import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 
 /**
@@ -115,7 +118,9 @@ private const val TIP_GRACE_MS = 200L
 
 /**
  * What a tip says: the text, then each choice (name, meaning) and each part (heading, text) below a divider. [wide]:
- * as wide as the window allows (a long message, such as Archipelago's), else a narrow column.
+ * as wide as the window allows (a long message, such as Archipelago's), else a narrow column; such a message has a
+ * button that copies it. Its text can be selected (and copied) in it: the tip is a window of its own, with its own
+ * selection, and stays while the pointer is on it.
  */
 @Composable
 private fun TipCard(
@@ -125,13 +130,30 @@ private fun TipCard(
   wide: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
-  val p = LocalPalette.current
   val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+  SelectionContainer {
+    TipText(text, options, sections, wide, window, modifier)
+  }
+}
+
+@Composable
+private fun TipText(
+  text: String,
+  options: List<Pair<String, String>>,
+  sections: List<Pair<String, String>>,
+  wide: Boolean,
+  window: Dp,
+  modifier: Modifier,
+) {
+  val p = LocalPalette.current
   Column(
     modifier.widthIn(max = if (wide) (window - 32.dp).coerceAtLeast(340.dp) else 340.dp)
       .card(p, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
+    if (wide && text.isNotBlank()) {
+      DisableSelection { SmallButton(LocalTexts.current.common.copy, { Platform.copy(text) }) }
+    }
     if (text.isNotBlank()) Txt(text, size = 12.sp)
     sections.forEachIndexed { i, (heading, body) ->
       if (i > 0 || text.isNotBlank()) Box(Modifier.width(316.dp).height(1.dp).background(p.border.copy(alpha = 0.7f)))

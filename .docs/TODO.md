@@ -768,6 +768,13 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Tips that keep themselves open (asked for later, 0.18.12): one that came up under the pointer closed and opened
       again and again; a tip stays while the pointer is on it or its anchor. The APWorld pills' errors as wide as the
       window allows
+- [x] Tips that can be copied (asked for later, 0.18.15): a tip's text can be selected (and copied with Ctrl+C), and a
+      long message (an APWorld's error on its pill) has a *Copy* button
+- [x] An invited player's address seen only by Administrators (asked for later, 0.18.15): in a session an invited
+      player was called by the part of their address before the `@` until they signed up, on the dashboard and in the
+      panel; now the name suggested for them, or `Invited-` and their account's ID's start. A session's view in the
+      panel listed every account with the invited ones' addresses to its Session-Managers too; now only to
+      Administrators
 - [x] Game servers only while they are needed (asked for later; noted here first, wrongly, as "the gateway on
       demand"): that is 0.18.10's sleep and start on connect. Generating doesn't use a game server (the gateway runs
       `Generate.py` itself), and the gateway with every session asleep needs some 35 MB. How it fits together, with two

@@ -173,7 +173,7 @@ fun Route.manageRoutes(
   logins: LoginCheck,
   gameServers: GameServerLimit,
 ) {
-  get { gatewayCall { call.respond(admin.view(id())) } }
+  get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
     gatewayCall {
       admin.delete(id(), call.loggedIn.user.name)

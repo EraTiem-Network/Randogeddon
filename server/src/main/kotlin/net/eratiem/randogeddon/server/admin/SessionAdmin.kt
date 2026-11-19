@@ -197,7 +197,7 @@ class SessionAdmin(
   }
 
   /** One session as the admin panel shows it. */
-  suspend fun view(id: String): AdminSessionView {
+  suspend fun view(id: String, user: User): AdminSessionView {
     val live = session(id)
     val setup = live.setup
     val finish = live.finish
@@ -226,7 +226,8 @@ class SessionAdmin(
       session = info,
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = users.active().map { it.name }.sorted(),
-      people = people(),
+      // Invited accounts (by their address) only for Administrators, as for a new session
+      people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
     )
   }
 
