@@ -18,6 +18,21 @@ class ConnectCheckTest {
 
   private val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "other")
 
+  @Test
+  fun `the room asks for a password, so clients that send theirs only then do`() {
+    val roomInfo = """[{"cmd":"RoomInfo","password":false,"games":["Brotato"],"version":{"major":0,"minor":6,"build":8,"class":"Version"},"time":1763577600.1234567}]"""
+    assertEquals(
+      """[{"cmd":"RoomInfo","password":true,"games":["Brotato"],"version":{"major":0,"minor":6,"build":8,"class":"Version"},"time":1763577600.1234567}]""",
+      askingForPassword(roomInfo),
+    )
+    // Anything else as it is, also a text that only mentions it
+    val print = """[{"cmd":"PrintJSON","data":[{"text":"RoomInfo"}],"type":"Chat",  "slot":1}]"""
+    assertEquals(print, askingForPassword(print))
+    assertEquals("not json RoomInfo", askingForPassword("not json RoomInfo"))
+    val other = """[{"cmd":"Connected","slot":1}]"""
+    assertEquals(other, askingForPassword(other))
+  }
+
   /** The check with a fixed password map. */
   private fun checkClientFrame(text: String, passwords: Map<String, String>) =
     runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(text, { passwords }) }

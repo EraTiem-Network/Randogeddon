@@ -72,5 +72,19 @@ suspend fun checkClientFrame(
   return joins?.let(Verdict::Join) ?: Verdict.Forward
 }
 
+/**
+ * A text frame of MultiServer for a client, its `RoomInfo` saying that a password is needed: MultiServer has none of
+ * its own here (`password: false`), but every slot has one, checked above. Some clients send theirs only when the
+ * room asks for it and would be refused otherwise. Anything else passes as it is.
+ */
+fun askingForPassword(text: String): String {
+  if ("RoomInfo" !in text) return text
+  val packets = runCatching { json.parseToJsonElement(text) }.getOrNull() as? JsonArray ?: return text
+  if (packets.none { it is JsonObject && it.string("cmd") == "RoomInfo" }) return text
+  return JsonArray(
+    packets.map { if (it is JsonObject && it.string("cmd") == "RoomInfo") JsonObject(it + ("password" to JsonPrimitive(true))) else it },
+  ).toString()
+}
+
 /** A string field; `null` if missing or not a string (a number as password is never right). */
 private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
