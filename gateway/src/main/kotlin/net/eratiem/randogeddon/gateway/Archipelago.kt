@@ -4,10 +4,13 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
@@ -15,9 +18,11 @@ import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.streams.asSequence
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,6 +36,7 @@ import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SpoilerProgress
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Archipelago")
@@ -148,6 +154,14 @@ class GenerationLog(val version: String) {
   }
 }
 
+/** How often the background looks for a spoiler log to complete, and how much longer than a seed one may take. */
+private const val STAGE_PAUSE_MS = 5_000L
+private const val BACKGROUND_TIME_FACTOR = 4
+
+/** [file]'s SHA-256, in hex. */
+internal fun sha256(file: Path): String =
+  MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)).joinToString("") { "%02x".format(it) }
+
 /** How many lines of a generation's output are kept, and how long after its end. */
 private const val GENERATION_LOG_LINES = 20_000
 private const val GENERATION_LOG_KEPT = 60 * 60_000L
@@ -178,21 +192,169 @@ class Generator(
   /** The last look at each running Generate.py's CPU time: (its CPU time, when), both in nanoseconds. */
   private val cpuSeen = ConcurrentHashMap<String, Pair<Long, Long>>()
 
+  /** The spoiler logs completed after their seeds. */
+  private val stages = SpoilerStages(dirs)
+  /** New sessions waiting for their generation: the background runs wait for them. */
+  private val foregroundWaiting = AtomicInteger()
+  /** The background run going now: its session and the level it works out. */
+  @Volatile
+  private var background: Pair<String, Int>? = null
+  /** It is to make way (a new session, a change of the library): it ends and starts over later. */
+  private val backgroundYields = AtomicBoolean(false)
+  private val seeds = SecureRandom()
+
   /**
    * How far session [id]'s generation is; `null`: none runs. With Generate.py's share of one core since the last ask
    * (so the panel can tell a working one from a stuck one while it says nothing, as in the playthrough).
    */
   fun progress(id: String): GenerationProgress? {
     val now = progress[id] ?: return null
-    val handle = processes[id]?.toHandle() ?: return now.also { cpuSeen.remove(id) }
+    return now.copy(cpu = cpuShare(id))
+  }
+
+  /** The process under [key]'s share of one core since the last ask; `null`: none runs, or asked for the first time. */
+  private fun cpuShare(key: String): Int? {
+    val handle = processes[key]?.toHandle() ?: return null.also { cpuSeen.remove(key) }
     val cpu = (sequenceOf(handle) + handle.descendants().asSequence())
       .sumOf { it.info().totalCpuDuration().map { d -> d.toNanos() }.orElse(0L) }
     val at = System.nanoTime()
-    val before = cpuSeen.put(id, cpu to at) ?: return now
+    val before = cpuSeen.put(key, cpu to at) ?: return null
     val wall = at - before.second
-    if (wall <= 0) return now
-    return now.copy(cpu = ((cpu - before.first) * 100 / wall).toInt().coerceIn(0, 999))
+    if (wall <= 0) return null
+    return ((cpu - before.first) * 100 / wall).toInt().coerceIn(0, 999)
   }
+
+  /** Session [id]'s spoiler log while it is completed in the background; `null`: complete (or from before 0.19.3). */
+  fun spoiler(id: String): SpoilerProgress? {
+    val state = stages.read(id)?.takeIf { it.level < SpoilerStages.COMPLETE } ?: return null
+    val running = background?.takeIf { it.first == id }?.second
+    return SpoilerProgress(state.level, running, running?.let { cpuShare(stageKey(id)) }, state.stopped)
+  }
+
+  /** The log of session [id]'s background spoiler run (the last one); `null`: none. */
+  fun spoilerLog(id: String, since: Long, max: Int): LogLines? = logs[stageKey(id)]?.lines?.after(since, max)
+
+  /** A running level-3 run (the paths, the longest) makes way: it ends and starts over once nothing waits. */
+  fun yieldBackground() {
+    val (id, level) = background ?: return
+    if (level < SpoilerStages.COMPLETE) return
+    backgroundYields.set(true)
+    processes[stageKey(id)]?.destroyForcibly()
+  }
+
+  /** Session [id] goes (deleted): its background run ends. */
+  fun dropSpoiler(id: String) {
+    if (background?.first != id) return
+    backgroundYields.set(true)
+    processes[stageKey(id)]?.destroyForcibly()
+  }
+
+  /**
+   * Completes the spoiler logs of the seeds that have only a part of theirs, one run at a time and only while no new
+   * session waits for its generation: level 2 (the playthrough), then level 3 (the paths). Runs for as long as the
+   * gateway does; after a restart it goes on where the sessions' `stages.json` say.
+   */
+  suspend fun completeSpoilers() {
+    while (true) {
+      delay(STAGE_PAUSE_MS)
+      if (foregroundWaiting.get() > 0) continue
+      val (id, state) = stages.next() ?: continue
+      mutex.withLock {
+        if (foregroundWaiting.get() == 0) {
+          runCatching { completeOne(id, state) }.onFailure { logger.warn("Completing {}'s spoiler log: {}", id, it.message) }
+        }
+      }
+    }
+  }
+
+  private suspend fun completeOne(id: String, state: SpoilerStages.State) {
+    val level = state.level + 1
+    val home = runCatching { archipelago.home(state.release) }.getOrElse {
+      stages.save(id, state.copy(stopped = "Archipelago ${state.release} is gone from the gateway"))
+      return
+    }
+    // Only with the very APWorlds the seed was generated with: another version would place differently
+    state.apworlds.entries.firstOrNull { (file, hash) -> apworlds.fileOf(state.release, file)?.let(::sha256) != hash }?.let {
+      stages.save(id, state.copy(stopped = "${it.key} changed since the seed was generated"))
+      return
+    }
+    val log = GenerationLog(state.release).also { logs[stageKey(id)] = it }
+    background = id to level
+    backgroundYields.set(false)
+    try {
+      val text = apworlds.holding(state.release) { withContext(Dispatchers.IO) { runSpoiler(id, state, level, home, log) } }
+        ?: return
+      val current = dirs.spoiler(id) ?: return
+      if (placementsOf(text) != placementsOf(current)) {
+        log.lines.add("[gateway] Its placements differ from the seed's: the spoiler log stays at level ${state.level}")
+        stages.save(id, state.copy(stopped = "the placements differ from the seed's (an APWorld that doesn't place the same with the same seed)"))
+        return
+      }
+      val file = dirs.spoilerFile(id)
+      val written = file.resolveSibling("spoiler.txt.new")
+      written.writeText(text)
+      Files.move(written, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      stages.save(id, state.copy(level = level))
+      log.lines.add("[gateway] The spoiler log is at level $level now")
+      logger.info("Spoiler log of {} at level {}", id, level)
+    } finally {
+      background = null
+      processes.remove(stageKey(id))
+      cpuSeen.remove(stageKey(id))
+      log.endedAt = System.currentTimeMillis()
+    }
+  }
+
+  /** Generate.py once more for session [id], only its spoiler log at [level]; its text, or `null` (made way, failed). */
+  private fun runSpoiler(id: String, state: SpoilerStages.State, level: Int, home: Path, log: GenerationLog): String? {
+    val output = createTempDirectory("spoiler")
+    try {
+      val command = listOf(
+        archipelago.python, "Generate.py", "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
+        "--outputpath", output.absolutePathString(), "--seed", state.seed.toString(), "--spoiler", level.toString(), "--spoiler_only",
+      )
+      log.lines.add("$ cd ${home.absolutePathString()}")
+      log.lines.add("$ ${command.joinToString(" ")}")
+      val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+      processes[stageKey(id)] = proc
+      if (backgroundYields.get()) proc.destroyForcibly()
+      proc.outputStream.close()
+      val limit = minutes.toLong() * BACKGROUND_TIME_FACTOR
+      val stopped = AtomicBoolean(false)
+      Thread {
+        if (!proc.waitFor(limit, TimeUnit.MINUTES)) {
+          stopped.set(true)
+          proc.destroyForcibly()
+        }
+      }.apply { isDaemon = true }.start()
+      try {
+        proc.inputStream.bufferedReader().useLines { lines -> lines.forEach { log.lines.add(it.take(MAX_LOG_LINE)) } }
+      } catch (e: IOException) {
+        if (!backgroundYields.get() && !stopped.get()) throw e
+      }
+      val code = proc.waitFor()
+      if (backgroundYields.get()) {
+        log.lines.add("[gateway] Made way for a new session's generation (or a change of the APWorlds): it starts over later")
+        return null
+      }
+      if (stopped.get()) {
+        log.lines.add("[gateway] Stopped: it took longer than $limit minutes")
+        stages.save(id, state.copy(stopped = "it took longer than $limit minutes"))
+        return null
+      }
+      val spoiler = output.listDirectoryEntries("*_Spoiler.txt").firstOrNull()
+      if (spoiler == null) {
+        log.lines.add("[gateway] Generate.py ended with exit code $code, without a spoiler log")
+        stages.save(id, state.copy(stopped = "Generate.py ended with exit code $code (see its log)"))
+        return null
+      }
+      return spoiler.readText()
+    } finally {
+      output.toFile().deleteRecursively()
+    }
+  }
+
+  private fun stageKey(id: String) = "$id spoiler"
 
   /** Session [id]'s last generation's lines numbered above [since], at most [max]; `null`: none (or long ago). */
   fun log(id: String, since: Long, max: Int): LogLines? = logs[id]?.lines?.after(since, max)
@@ -215,11 +377,14 @@ class Generator(
     logs.entries.removeIf { (_, log) -> log.endedAt?.let { now - it > GENERATION_LOG_KEPT } == true }
     val log = GenerationLog(request.apVersion).also { logs[id] = it }
     cancelled -= id
-    // One at a time: until it is this one's turn, it says that it waits
+    // One at a time: until it is this one's turn, it says that it waits. A spoiler's paths in the background make way
     progress[id] = GenerationProgress(GenerationStage.WAITING, 0)
+    foregroundWaiting.incrementAndGet()
+    yieldBackground()
     return try {
       mutex.withLock { generateNow(id, request, log) }
     } finally {
+      foregroundWaiting.decrementAndGet()
       progress.remove(id)
       cpuSeen.remove(id)
       cancelled -= id
@@ -238,8 +403,11 @@ class Generator(
     }
     val release = apworlds.release(request.apVersion)
     progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
+    // The APWorlds of its games, kept by their checksum: the later runs of its spoiler need the very same
+    val used = release.games.filter { it.game in request.games }.mapNotNull { it.apworld }.toSet()
     val result = apworlds.holding(request.apVersion) {
-      withContext(Dispatchers.IO) { run(id, request, home, dirs.dir(id), log) { progress[id] = it } }
+      val hashes = withContext(Dispatchers.IO) { used.associateWith { file -> apworlds.fileOf(request.apVersion, file)?.let(::sha256).orEmpty() } }
+      withContext(Dispatchers.IO) { run(id, request, home, dirs.dir(id), log, hashes) { progress[id] = it } }
     }
     // Stopped for its time or cancelled: no game is to blame
     return if (result.seedName != null || result.stoppedAfterMinutes != null || result.cancelled) result
@@ -247,7 +415,8 @@ class Generator(
   }
 
   private fun run(
-    id: String, request: GenerateRequest, home: Path, target: Path, log: GenerationLog, onProgress: (GenerationProgress) -> Unit,
+    id: String, request: GenerateRequest, home: Path, target: Path, log: GenerationLog, apworldHashes: Map<String, String>,
+    onProgress: (GenerationProgress) -> Unit,
   ): GenerateResult {
     val work = createTempDirectory("generate")
     try {
@@ -257,9 +426,12 @@ class Generator(
       if (request.locked.isNotEmpty()) players.resolve("zz-world-locks.yaml").writeText(locksYaml(request.locked, request.earlyKeys))
 
       logger.info("Generating a seed from {} YAMLs with Archipelago {}", request.yamls.size, request.apVersion)
+      // A seed number of its own, kept: its spoiler log's later levels are generated with it again. The seed itself only
+      // with a spoiler without playthrough (level 1), so the session can start; the playthrough comes in the background
+      val seed = seeds.nextLong() ushr 1
       val command = listOf(
         archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
-        "--outputpath", output.absolutePathString(),
+        "--outputpath", output.absolutePathString(), "--seed", seed.toString(), "--spoiler", "1",
       )
       // What ran, so it can be run again by hand
       log.lines.add("$ cd ${home.absolutePathString()}")
@@ -314,6 +486,10 @@ class Generator(
       )
 
       Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
+      // What it was generated from, for its spoiler log's later levels
+      val kept = dirs.generationDir(id).resolve("players").createDirectories()
+      players.listDirectoryEntries().forEach { Files.copy(it, kept.resolve(it.name), StandardCopyOption.REPLACE_EXISTING) }
+      stages.save(id, SpoilerStages.State(seed, request.apVersion, level = 1, apworlds = apworldHashes))
       val seedName = zip.name.removePrefix("AP_").removeSuffix(".zip")
       logger.info("Generated seed {}", seedName)
       log.lines.add("[gateway] Seed $seedName")
