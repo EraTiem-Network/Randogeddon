@@ -703,14 +703,14 @@ The target of this project, phase by phase. Items within a phase are roughly in 
           stays reachable there): its pull requests start again at #1, the pre-releases were made again with their
           notes cleaned. The old history and the old pull requests are kept outside the repository
 
-## Phase 18: Code Optimization
+## Phase 18: Code Optimization (done)
 
 *The code made leaner and faster where it pays, without changing what it does.*
 
-- [ ] The code looked through for what can be simpler, shared or dropped (repeated code, unused code, files that
+- [x] The code looked through for what can be simpler, shared or dropped (repeated code, unused code, files that
       grew too big), and for what is slow or heavy (the web app's size and start, the native images, the database's
       queries, the work per update)
-- [ ] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
+- [x] Restructured where it helps the optimization: modules, packages and files cut along what belongs together
       (e.g. a big file split by its parts, shared code moved to where both sides use it), so the code is easier to
       change and builds faster; not for its own sake
     - Decided: all four areas (page load, server resources, images and build, code structure), measured first;
@@ -727,7 +727,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Images and build (0.18.4): the gateway image 725 MB instead of 1.2 GB (Archipelago built in a stage of its own,
       without its compilers); Gradle's build cache in the image build, so a change to the tracker builds in 149 s
       instead of 416 s. The tracker image stays (its 46 MB of bridge builds are downloads)
-- [ ] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
+- [x] Code structure, by module: the web app in packages by area, its big files split, the request-and-decode
       helper used everywhere (53 places), the doubled components and the page frame shared; `Api.kt`,
       `Accounts.kt`, `Stores.kt`, `SessionState.kt`, `LoginRoutes.kt` split; `GeneralTexts.kt` renamed; the compiler's
       warnings fixed, `SingleSignOn.createLink` removed
