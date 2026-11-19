@@ -128,7 +128,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
           val buttons: @Composable () -> Unit = {
             if (pending?.first != seed) {
               if (reopenable(past.reopenUntil)) Tip(t.tips.reopen) { SmallButton(t.sessionAdmin.reopen, { onReopen(seed) }) }
-              Tip(t.tips.spoiler) { SmallButton(t.finish.spoilerLog, { onSpoiler(seed) }) }
+              if (past.spoilerReady) Tip(t.tips.spoiler) { SmallButton(t.finish.spoilerLog, { onSpoiler(seed) }) }
               Tip(t.tips.keep) {
                 SmallButton(if (past.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = seed to "keep" })
               }

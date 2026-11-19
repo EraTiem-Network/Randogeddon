@@ -165,7 +165,7 @@ fun FinishBanner(
       }
     }
     if (finishedAt != null) {
-      SmallButton(f.spoilerLog, onSpoiler)
+      if (s.spoilerReady) SmallButton(f.spoilerLog, onSpoiler)
     } else if (admin) {
       SmallButton(f.endNow, onFinishNow)
       SmallButton(t.common.cancel, onCancel)
