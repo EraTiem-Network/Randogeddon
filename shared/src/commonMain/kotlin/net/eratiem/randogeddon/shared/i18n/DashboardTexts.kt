@@ -127,6 +127,17 @@ interface FeedTexts {
   val left: String
   /** After an item a client took with `!getitem`. */
   val cheatMark: String
+  val links: String
+  /** `{player} died`, after the link's name. */
+  val died: String
+  /** `{player} set off {item}`, after the link's name. */
+  val trapped: String
+  val trappedSome: String
+  val someone: String
+  val nothingFound: String
+  fun eventsOf(from: String, to: String, total: String): String
+  val newer: String
+  val older: String
 }
 
 /** Under the top card while a session finishes, and once it has. */
@@ -338,6 +349,15 @@ internal object EnglishFeed : FeedTexts {
   override val joined = "{player} joined"
   override val left = "{player} left"
   override val cheatMark = " · cheat"
+  override val links = "Links"
+  override val died = "{player} died"
+  override val trapped = "{player} set off {item}"
+  override val trappedSome = "{player} set off a trap"
+  override val someone = "Someone"
+  override val nothingFound = "Nothing found."
+  override fun eventsOf(from: String, to: String, total: String) = "Events $from–$to of $total"
+  override val newer = "Newer events"
+  override val older = "Older events"
 }
 
 internal object GermanFeed : FeedTexts {
@@ -368,6 +388,15 @@ internal object GermanFeed : FeedTexts {
   override val joined = "{player} ist beigetreten"
   override val left = "{player} ist gegangen"
   override val cheatMark = " · Cheat"
+  override val links = "Links"
+  override val died = "{player} ist gestorben"
+  override val trapped = "{player} hat {item} ausgelöst"
+  override val trappedSome = "{player} hat eine Falle ausgelöst"
+  override val someone = "Jemand"
+  override val nothingFound = "Nichts gefunden."
+  override fun eventsOf(from: String, to: String, total: String) = "Ereignisse $from–$to von $total"
+  override val newer = "Neuere Ereignisse"
+  override val older = "Ältere Ereignisse"
 }
 
 internal object EnglishFinish : FinishTexts {

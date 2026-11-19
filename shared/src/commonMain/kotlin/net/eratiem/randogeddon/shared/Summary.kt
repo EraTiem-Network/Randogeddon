@@ -204,6 +204,12 @@ enum class EventType {
   @SerialName("unlock") UNLOCK,
   /** An admin cheated from the admin panel; [FeedEvent.message] says who and what. */
   @SerialName("cheat") CHEAT,
+  /**
+   * A link between games: a death or a trap passed on to every game linked ([FeedEvent.link]: `DeathLink` or
+   * `TrapLink`). [FeedEvent.linkSource] is who it came from as their client says it, [FeedEvent.slot] their slot if
+   * that is a slot's name, [FeedEvent.message] the death's cause or the trap's name, if said.
+   */
+  @SerialName("link") LINK,
 }
 
 /**
@@ -237,6 +243,9 @@ data class FeedEvent(
   val cheatRole: String? = null,
   val cheatSlot: String? = null,
   val cheatValue: String? = null,
+  /** A link's tag (`DeathLink`, `TrapLink`) and who it came from, in their client's words. */
+  val link: String? = null,
+  val linkSource: String? = null,
   val playerName: String? = null,
   val senderName: String? = null,
   val receiverName: String? = null,
