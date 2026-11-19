@@ -742,8 +742,9 @@ The target of this project, phase by phase. Items within a phase are roughly in 
     - [x] the web app, its files (0.18.8): 26 files of one package as 45 in `app`, `ui`, `api`, `dashboard`, `manage`
           and `account`; `AdminSession.kt`, `Dashboard.kt`, `Components.kt`, `Settings.kt`, `Admin.kt` and `Watch.kt`
           split by part
-    - [ ] the web app, what repeats (0.18.11): one request helper for the 53 places that decode an answer themselves,
-          the doubled components merged, the page frame and the clock shared, the interop opt-in for the module
+    - [x] the web app, what repeats (0.18.11): one request helper for the 53 places that decode an answer themselves,
+          the doubled components merged, the page frame and the clock shared, the interop opt-in for the module; the
+          browser's own menu on a right click instead of the app's (asked for later)
 - [x] A game server that keeps crashing stops trying (asked for later, 0.18.9): it was started again every 30 s
       without end and kept its place (counted as in use); after 5 crashes in a row, each within a minute of its start,
       it stays down (*gave up*) with its last exit code, and *Start* tries again
@@ -753,4 +754,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 - [x] Game servers that sleep (asked for later, 0.18.10): one without players for a while stops (a setting, default
       30 minutes; hosted slots don't count; Administrators can keep a session running), and starts again when a player
       connects, if there is room; at the gateway's start every session sleeps
+- [ ] A generation in the background, and cancelling it (asked for later, 0.18.12): creating a session waits for its
+      whole generation in the page's request (up to `GENERATION_MINUTES`), so closing the page loses what comes after
+      it (the session's setup, its start); the tracker runs it as a job of its own instead, the panel shows one that
+      runs (after a reload too) and its end, and *Cancel* ends Generate.py on the gateway and frees the ID again
+- [ ] The gateway on demand (asked for later): its container runs all the time, also without a session that runs
+      (363 MiB with none, 0.18.1); it could start when it is needed (a generation, any session's game server to run,
+      a player connecting to a sleeping one) and stop again when no game server runs and nothing generates
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
