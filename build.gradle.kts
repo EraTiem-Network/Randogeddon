@@ -15,7 +15,7 @@ plugins {
 
 group = "net.eratiem.randogeddon"
 // 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its last commit before the merge the release (see README, versions)
-version = "0.18.12"
+version = "0.18.13-SNAPSHOT"
 
 // The Maven mirror if there is one, as in settings.gradle.kts
 val mirror = providers.gradleProperty("randogeddon.maven").orElse(providers.environmentVariable("RANDOGEDDON_MAVEN"))
