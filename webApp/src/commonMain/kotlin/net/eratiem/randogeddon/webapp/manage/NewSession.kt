@@ -103,6 +103,7 @@ import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Mono
+import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
@@ -245,6 +246,13 @@ private fun CreateSession(
   var logLast by remember { mutableStateOf(0L) }
   // The creation that failed (its log stays to be read and downloaded), and a cancelled one's note
   var failedId by remember { mutableStateOf<String?>(null) }
+  // When it started (the creation's), and since when Generate.py has used next to no CPU (null: it works)
+  var startedAt by remember { mutableStateOf<Long?>(null) }
+  var quietSince by remember { mutableStateOf<Long?>(null) }
+  fun seen(progress: GenerationProgress?) {
+    val cpu = progress?.cpu
+    quietSince = if (cpu != null && cpu < QUIET_CPU) quietSince ?: Platform.now() else null
+  }
   var cancelledNote by remember { mutableStateOf(false) }
   var cancelling by remember { mutableStateOf(false) }
 
@@ -289,6 +297,7 @@ private fun CreateSession(
     if (busy || failedId != null) return@LaunchedEffect
     sentId = own.id
     progress = own.progress
+    startedAt = own.startedAt.takeIf { it > 0 }
     loadLog(own.id)
     if (own.state == CreationState.RUNNING) busy = true else ended(own)
   }
@@ -301,7 +310,8 @@ private fun CreateSession(
       val now = (call("GET", "api/sessions/new/creation/$creation", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
       } as? Answer.Ok)?.value
-      now?.progress?.let { progress = it }
+      now?.progress?.let { progress = it; seen(it) }
+      now?.startedAt?.takeIf { it > 0 }?.let { startedAt = it }
       loadLog(creation)
       if (now != null && now.state != CreationState.RUNNING) ended(now)
     }
@@ -377,6 +387,7 @@ private fun CreateSession(
         }
       }
     }
+    GenerationLiveness(now, startedAt, quietSince)
     Txt(t.sessionAdmin.generatesInBackground, size = 12.sp, color = p.muted)
     error?.let { Txt(it.message, size = 12.5.sp, color = p.trap) }
     GenerationLog(log)
@@ -614,6 +625,8 @@ private fun CreateSession(
         log.clear()
         logLast = 0
         progress = null
+        startedAt = Platform.now()
+        quietSince = null
         scope.launch {
           val request = CreateSessionRequest(
             id = id,
@@ -642,6 +655,45 @@ private fun CreateSession(
     }
     // A refusal of the form: below it, where it was sent
     if (failedId == null) error?.let { GenerationError(it.message, it.detail) }
+  }
+}
+
+/** Below this share of one core, Generate.py does nothing; that long of it ([QUIET_FOR_MS]) is no response. */
+private const val QUIET_CPU = 5
+private const val QUIET_FOR_MS = 60_000L
+
+/** [ms] as a clock: `4:05`, `1:02:03`. */
+private fun clock(ms: Long): String {
+  val s = (ms / 1000).coerceAtLeast(0)
+  val (h, m, sec) = Triple(s / 3600, s / 60 % 60, s % 60)
+  fun two(n: Long) = n.toString().padStart(2, '0')
+  return if (h > 0) "$h:${two(m)}:${two(sec)}" else "$m:${two(sec)}"
+}
+
+/**
+ * That it isn't stuck, in two pills under the bar: how long it has run since its start (each second), and what it
+ * does: working (with Generate.py's share of one core: a working fill or playthrough keeps one busy), waiting for its
+ * turn, or no response once Generate.py has used next to no CPU for a minute.
+ */
+@Composable
+private fun GenerationLiveness(progress: GenerationProgress, startedAt: Long?, quietSince: Long?) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current.sessionAdmin
+  var now by remember { mutableLongStateOf(Platform.now()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(1000)
+      now = Platform.now()
+    }
+  }
+  val quiet = quietSince?.let { now - it }?.takeIf { it >= QUIET_FOR_MS }
+  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    startedAt?.let { Pill(t.generationTime(clock(now - it)), p.muted) }
+    when {
+      progress.stage == GenerationStage.WAITING -> Pill(t.generationWaitingTurn, p.muted)
+      quiet != null -> Pill(t.generationQuiet((quiet / 60_000).toInt()), p.trap)
+      else -> Pill(progress.cpu?.let(t::generationWorkingCpu) ?: t.generationWorking, p.ok)
+    }
   }
 }
 

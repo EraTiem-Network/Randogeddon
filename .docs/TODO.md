@@ -805,10 +805,26 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       APWorld turns out to want a package
 - [x] Back to the generation's bar (asked for, 0.19.1): *Generate and start* is at the form's end; the form shrinks
       to the bar, which left the page far below it. The page goes back up to it
-- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form the
-      spoiler level, race mode, plando options and skipping progression balancing, checked and passed as
-      `Generate.py`'s arguments (`--spoiler`, `--race`, `--plando`, `--skip_prog_balancing`); file and program paths
-      never come from the form
+- [x] It isn't stuck (asked for, 0.19.2): under the generation's bar how long it runs (each second) and what it does
+      (*working* with Generate.py's share of a core, *waiting for its turn*, *no response* after a minute without
+      CPU); the playthrough, not the fill, is named the longest part, and the bar's shares fit that
+- [ ] The spoiler log in stages, for every generation (decided, 0.19.3): the seed with a spoiler without playthrough
+      (level 1) first, so the session starts; then in the background `--spoiler_only` with the same `--seed` and
+      inputs at level 2 (the playthrough: the spoiler page, the hints and the cheats wait for it) and level 3 (the
+      paths: the full log). Tried (0.19.2, the demo's 1,934 locations): the same seed name and every placement the
+      same at all three levels. Each later spoiler replaces the earlier one only when its placements match the
+      seed's (an APWorld with an unseeded random source would differ); race mode can't (it reseeds at random). The
+      inputs kept with the session (its YAMLs, the seed number, the APWorlds it was generated with), so a restart of
+      the gateway goes on. A pill with a working symbol on the session's top panel for everyone while it completes;
+      its state and the run's log in the Management panel for Session-Managers, Administrators and Support
+- [ ] Generations at once (decided, 0.19.4): as many as the gateway has cores less one (the server has 4: three). A
+      new session waits only for a level-2 run; a level-3 run is paused for it (`SIGSTOP`, `SIGCONT` once there is
+      room again; cancelled and started over if pausing doesn't hold). Each run with its own APWorld set (the release's
+      `custom_worlds/` is shared now), and memory in mind (one big generation needs gigabytes)
+- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form race
+      mode, plando options and skipping progression balancing, checked and passed as `Generate.py`'s arguments
+      (`--race`, `--plando`, `--skip_prog_balancing`); file and program paths never come from the form. The spoiler
+      level isn't one of them (decided: every generation goes through all three, see above)
 - [ ] ROMs and tools for the worlds that need them (decided: kept encrypted in the database): an Administrator uploads
       a base ROM (or a tool such as EnemizerCLI) for a world; stored encrypted (AES-GCM, its key from the
       environment, not in the database, so a database dump alone doesn't hold them), never downloadable, the panel

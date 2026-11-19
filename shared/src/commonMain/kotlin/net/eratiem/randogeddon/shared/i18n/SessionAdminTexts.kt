@@ -118,6 +118,11 @@ interface SessionAdminTexts {
   val generateAndStart: String
   val generatesSeed: String
   val generatesInBackground: String
+  fun generationTime(time: String): String
+  val generationWorking: String
+  fun generationWorkingCpu(cpu: Int): String
+  val generationWaitingTurn: String
+  fun generationQuiet(minutes: Int): String
   val cancelGeneration: String
   val generationCancelled: String
   val generationLog: String
@@ -273,6 +278,11 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generatesSeed = "Archipelago generates the seed; that can take a minute."
   override val generatesInBackground =
     "It goes on without this page: you can close it, and find it here again until it is done."
+  override fun generationTime(time: String) = "running for $time"
+  override val generationWorking = "working"
+  override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
+  override val generationWaitingTurn = "waiting for its turn"
+  override fun generationQuiet(minutes: Int) = "no response for ${if (minutes < 1) "a minute" else "$minutes min"}"
   override val cancelGeneration = "Cancel"
   override val generationCancelled = "The generation was cancelled; the ID is free again."
   override val generationLog = "Generate.py's output, newest on top"
@@ -293,11 +303,11 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     GenerationStage.RULES -> "Working out the rules…"
     GenerationStage.PLANDO -> "Placing the planned items…"
     GenerationStage.PREFILL -> "Placing the worlds' own items…"
-    GenerationStage.FILLING -> "Filling the items (this takes the longest)…"
+    GenerationStage.FILLING -> "Filling the items…"
     GenerationStage.BALANCING -> "Balancing the progression…"
     GenerationStage.PREOUTPUT -> "Getting ready to write…"
     GenerationStage.OUTPUT -> "Writing the files…"
-    GenerationStage.PLAYTHROUGH -> "Working out the playthrough…"
+    GenerationStage.PLAYTHROUGH -> "Working out the playthrough (in a big multiworld the longest part; Archipelago says nothing meanwhile)…"
     GenerationStage.ARCHIVE -> "Packing the seed…"
     GenerationStage.DONE -> "The seed is done…"
     GenerationStage.SAVING -> "Setting up the slots, players and passwords…"
@@ -452,6 +462,11 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generatesSeed = "Archipelago generiert den Seed; das kann eine Minute dauern."
   override val generatesInBackground =
     "Es geht ohne diese Seite weiter: Du kannst sie schließen und findest es hier wieder, bis es fertig ist."
+  override fun generationTime(time: String) = "läuft seit $time"
+  override val generationWorking = "arbeitet"
+  override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"
+  override val generationWaitingTurn = "wartet, bis es dran ist"
+  override fun generationQuiet(minutes: Int) = "keine Reaktion seit ${if (minutes < 1) "einer Minute" else "$minutes min"}"
   override val cancelGeneration = "Abbrechen"
   override val generationCancelled = "Die Generierung wurde abgebrochen; die ID ist wieder frei."
   override val generationLog = "Ausgabe von Generate.py, neueste oben"
@@ -472,11 +487,11 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     GenerationStage.RULES -> "Berechnet die Regeln…"
     GenerationStage.PLANDO -> "Platziert die geplanten Items…"
     GenerationStage.PREFILL -> "Platziert die eigenen Items der Welten…"
-    GenerationStage.FILLING -> "Verteilt die Items (das dauert am längsten)…"
+    GenerationStage.FILLING -> "Verteilt die Items…"
     GenerationStage.BALANCING -> "Balanciert die Progression…"
     GenerationStage.PREOUTPUT -> "Bereitet das Schreiben vor…"
     GenerationStage.OUTPUT -> "Schreibt die Dateien…"
-    GenerationStage.PLAYTHROUGH -> "Berechnet den Lösungsweg…"
+    GenerationStage.PLAYTHROUGH -> "Berechnet den Lösungsweg (in einer großen Multiworld der längste Teil; Archipelago meldet währenddessen nichts)…"
     GenerationStage.ARCHIVE -> "Packt den Seed…"
     GenerationStage.DONE -> "Der Seed ist fertig…"
     GenerationStage.SAVING -> "Richtet Slots, Spieler und Passwörter ein…"
