@@ -16,12 +16,19 @@ the **game** is just its title, e.g. Hollow Knight.
 
 ```mermaid
 flowchart TB
-  clients["players' game clients"] -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  subgraph pc ["a player's PC"]
+    clients["game clients that do TLS"]
+    plain["game client without TLS"] -- "ws://localhost:#lt;port#gt;" --> bridge["Randogeddon Bridge"]
+    browser
+  end
+  clients -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443" --> traefik
+  bridge -- "wss://#lt;session-id#gt;.randogeddon.eratiem.net:443 (fills in the slot's password)" --> traefik
+  bridge -. "https: its key, the slots" .-> traefik
   browser -- "https://randogeddon.eratiem.net" --> traefik
   traefik[Traefik] --> gateway
   traefik --> tracker
   subgraph gateway ["gateway (Ktor): checks each Connect's slot password"]
-    multiserver["MultiServer per session (a free port)"]
+    multiserver["MultiServer per running session (a free port)"]
   end
   tracker["tracker (Ktor): login, API, SSE, the panel, Wasm app"]
   tracker -- "internal API :8001 (control)" --> gateway
@@ -38,6 +45,68 @@ a few hundred MB of the gateway's memory. One nobody plays on for a while sleeps
 default 30 minutes) and starts again when a player connects. The gateway relays each game client to its session's MultiServer: by the host name it
 connected to (`<session-id>.<BASE_DOMAIN>`), or locally by the path (`ws://localhost:38281/<session-id>`). A tracker
 restart or update doesn't drop the players.
+
+### Sessions and their game servers
+
+A new session's seed isn't made by a game server: the gateway runs Archipelago's `Generate.py` itself, one generation
+at a time, and puts the seed into `data/sessions/<id>/`. The tracker runs the creation in the background, so the page
+can be closed meanwhile; only once the seed is there and the session is set up does its game server start.
+
+```mermaid
+sequenceDiagram
+  actor Creator as Creator (panel)
+  participant Tracker
+  participant Gateway
+  participant Server as Game server (MultiServer)
+  Creator->>Tracker: Generate and start (the form)
+  Tracker->>Tracker: checks the form, the limits, the ID
+  Tracker-->>Creator: 202: it runs (or why not, at once)
+  Tracker->>Gateway: generate (the YAMLs, the locks, the release)
+  Note over Gateway: Generate.py, one at a time (others wait their turn), its log starts with the command that ran
+  loop until it ends
+    Creator->>Tracker: how far? the log since …
+    Tracker->>Gateway: progress, log
+  end
+  opt Cancel (while it generates)
+    Creator->>Tracker: cancel
+    Tracker->>Gateway: end Generate.py
+  end
+  Gateway-->>Tracker: the seed in the session's directory, data/sessions/ID (or the failure, with the log to download)
+  Tracker->>Tracker: the session, its slot passwords, its locks, its Session-Manager
+  Tracker->>Gateway: start its game server
+  Gateway->>Server: start (a free port)
+  Creator->>Tracker: how far?
+  Tracker-->>Creator: done: the logins
+```
+
+Each session has its game server: one MultiServer, run only while it is needed. One nobody plays on sleeps, and the
+first player who connects starts it again (if fewer run than may at once; they wait a moment meanwhile).
+
+```mermaid
+stateDiagram-v2
+  [*] --> Starting: created
+  Asleep --> Starting: a player connects (if there is room)
+  Starting --> Running: MultiServer listens
+  Running --> Asleep: nobody played for "Sleep after" (unless kept running)
+  Running --> Crashed: MultiServer ended on its own
+  Crashed --> Starting: again after a pause (1 s, doubling up to 30 s)
+  Crashed --> GaveUp: 5 times in a row, each within a minute of its start
+  Running --> Stopped: Stop (in the panel)
+  Asleep --> Stopped: Stop (in the panel)
+  Stopped --> Starting: Start (in the panel)
+  GaveUp --> Starting: Start (in the panel)
+  Running --> Stopped: the session finished (until it is reopened)
+  GaveUp: Gave up
+```
+
+- **At the gateway's start** (a deploy, a reboot) none starts: every session sleeps until its first player, a
+  finished one stays stopped.
+- **Game servers at once** (*Users*, default 8) counts *Starting*, *Running* and *Crashed*: those hold a MultiServer
+  (a few hundred MB each). Asleep, stopped, given up and finished sessions don't; with all of them asleep the gateway
+  itself needs some 35 MB.
+- A player can't wake one that was stopped by hand, gave up or is finished; the panel can start it.
+- *Keep running without players* (an Administrator's switch in a session's *State and Control*) keeps it from
+  sleeping; *Sleep after* `0` keeps them all running.
 
 | Path | What it is |
 |---|---|
