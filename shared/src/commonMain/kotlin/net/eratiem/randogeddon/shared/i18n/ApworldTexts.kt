@@ -29,10 +29,9 @@ interface ApworldTexts {
   fun relisting(what: String): String
   val listing: String
   val noRelease: String
-  fun release(version: String): String
   val upload: String
-  val uploaded: String
   val uploadedTip: String
+  val supportedVersions: String
   val gold: String
   val goldMeaning: String
   val orange: String
@@ -63,8 +62,8 @@ interface ApworldTexts {
 }
 
 internal object EnglishApworlds : ApworldTexts {
-  override val title = "APWorlds"
-  override val subtitle = "the games of each Archipelago release"
+  override val title = "Archipelago"
+  override val subtitle = "the releases the gateway runs, and their games"
   override val tip = "The games each Archipelago release of the gateway can generate and serve: the bundled ones, plus " +
     "APWorlds. APWorlds uploaded here are kept per release; ones put into the server's custom_worlds/ count for every " +
     "release. An APWorld uploaded for another release can be tried with this one; it may or may not work."
@@ -87,10 +86,10 @@ internal object EnglishApworlds : ApworldTexts {
   override fun relisting(what: String) = "$what Archipelago lists its games again; that takes a moment."
   override val listing = "Listing the games of each release…"
   override val noRelease = "The gateway reports no Archipelago release."
-  override fun release(version: String) = "Archipelago $version"
-  override val upload = "Upload APWorld…"
-  override val uploaded = "Uploaded APWorlds"
-  override val uploadedTip = "Each file with the games it brings."
+  override val upload = "upload apworld"
+  override val uploadedTip =
+    "The bundled games, and the custom ones: each APWorld with its game and version; its tip says its file name and size."
+  override val supportedVersions = "Supported versions"
   override val gold = "gold"
   override val goldMeaning = "Loaded with this release."
   override val orange = "orange"
@@ -103,7 +102,7 @@ internal object EnglishApworlds : ApworldTexts {
   override fun removeQuestion(files: String, release: String) =
     "Remove $files? Their games can't be used for new sessions of Archipelago $release then."
   override val yesRemove = "Yes, remove"
-  override val removeSome = "Remove…"
+  override val removeSome = "remove"
   override val pickToRemove = "Pick the files to remove (grey ones were placed by hand and can't be removed here)."
   override fun removeCount(n: Int) = "Remove ($n)"
   override val selectAll = "Select all"
@@ -114,15 +113,15 @@ internal object EnglishApworlds : ApworldTexts {
   override fun tryWith(release: String) = "Try with $release"
   override fun supportedGames(n: Int) = "Supported games ($n)"
   override val bundled = "bundled"
-  override val fromApworld = "from an APWorld"
+  override val fromApworld = "custom games"
   override val noGame = "no game"
   override fun from(release: String) = "from $release"
   override fun needsAp(version: String) = "needs Archipelago $version or newer"
 }
 
 internal object GermanApworlds : ApworldTexts {
-  override val title = "APWorlds"
-  override val subtitle = "die Spiele jedes Archipelago-Release"
+  override val title = "Archipelago"
+  override val subtitle = "die Releases, die das Gateway ausführt, und ihre Spiele"
   override val tip = "Die Spiele, die jedes Archipelago-Release des Gateways generieren und bereitstellen kann: die " +
     "mitgelieferten, dazu APWorlds. Hier hochgeladene APWorlds gelten je Release; die im Ordner custom_worlds/ des " +
     "Servers gelten für jedes Release. Eine für ein anderes Release hochgeladene APWorld kann mit diesem ausprobiert " +
@@ -147,10 +146,10 @@ internal object GermanApworlds : ApworldTexts {
   override fun relisting(what: String) = "$what Archipelago listet seine Spiele neu auf; das dauert einen Moment."
   override val listing = "Die Spiele jedes Release werden aufgelistet…"
   override val noRelease = "Das Gateway meldet kein Archipelago-Release."
-  override fun release(version: String) = "Archipelago $version"
-  override val upload = "APWorld hochladen…"
-  override val uploaded = "Hochgeladene APWorlds"
-  override val uploadedTip = "Jede Datei mit den Spielen, die sie mitbringt."
+  override val upload = "apworld hochladen"
+  override val uploadedTip =
+    "Die mitgelieferten Spiele und die eigenen: jede APWorld mit ihrem Spiel und ihrer Version; ihr Tipp nennt Dateiname und Größe."
+  override val supportedVersions = "Unterstützte Versionen"
   override val gold = "gold"
   override val goldMeaning = "Mit diesem Release geladen."
   override val orange = "orange"
@@ -163,7 +162,7 @@ internal object GermanApworlds : ApworldTexts {
   override fun removeQuestion(files: String, release: String) =
     "$files entfernen? Ihre Spiele sind dann für neue Sessions mit Archipelago $release nicht mehr nutzbar."
   override val yesRemove = "Ja, entfernen"
-  override val removeSome = "Entfernen…"
+  override val removeSome = "entfernen"
   override val pickToRemove = "Wähle die Dateien zum Entfernen (graue wurden von Hand abgelegt und lassen sich hier nicht entfernen)."
   override fun removeCount(n: Int) = "Entfernen ($n)"
   override val selectAll = "Alle auswählen"
@@ -174,7 +173,7 @@ internal object GermanApworlds : ApworldTexts {
   override fun tryWith(release: String) = "Mit $release ausprobieren"
   override fun supportedGames(n: Int) = "Unterstützte Spiele ($n)"
   override val bundled = "mitgeliefert"
-  override val fromApworld = "aus einer APWorld"
+  override val fromApworld = "eigene Spiele"
   override val noGame = "kein Spiel"
   override fun from(release: String) = "aus $release"
   override fun needsAp(version: String) = "braucht Archipelago $version oder neuer"
