@@ -31,6 +31,7 @@ import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionServer
@@ -155,7 +156,10 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable()).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep).hashCode().toLong().shl(16)
+
+  /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
+  val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
 
   /** A Session-Manager of it can't act for it now (kept out by an Administrator, or gone), while it runs. */
   fun managerUnavailable(): Boolean = !finished &&
@@ -165,12 +169,15 @@ class LiveSession(
   suspend fun build(): Summary {
     val people = people()
     val options = options ?: SessionOptions()
-    val error = tracker.lastError
+    val asleep = asleep
+    val error = tracker.lastError.takeUnless { asleep }
     val time = time
     val finish = finish
     return tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }.copy(
       sessionId = id,
       errorRefused = error != null && tracker.lastErrorRefused,
+      // As the gateway said at its last look; connected again: awake (it woke for a player since)
+      serverAsleep = asleep && !tracker.read { connected },
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),
