@@ -1,5 +1,22 @@
 package net.eratiem.randogeddon.gateway
 
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.io.path.absolutePathString
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
+import kotlin.io.path.writeText
+import kotlin.streams.asSequence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -9,28 +26,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
-import java.util.concurrent.ConcurrentHashMap
-import net.eratiem.randogeddon.shared.GenerateResult
+import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SessionOptions
 import org.slf4j.LoggerFactory
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.io.path.absolutePathString
-import kotlin.io.path.createDirectories
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.exists
-import kotlin.io.path.isDirectory
-import kotlin.io.path.listDirectoryEntries
-import net.eratiem.randogeddon.shared.LogLines
-import java.io.IOException
-import java.time.Instant
-import kotlin.io.path.name
-import kotlin.io.path.writeText
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Archipelago")
 
@@ -174,8 +175,24 @@ class Generator(
   private val processes = ConcurrentHashMap<String, Process>()
   private val cancelled = ConcurrentHashMap.newKeySet<String>()
 
-  /** How far session [id]'s generation is; `null`: none runs. */
-  fun progress(id: String): GenerationProgress? = progress[id]
+  /** The last look at each running Generate.py's CPU time: (its CPU time, when), both in nanoseconds. */
+  private val cpuSeen = ConcurrentHashMap<String, Pair<Long, Long>>()
+
+  /**
+   * How far session [id]'s generation is; `null`: none runs. With Generate.py's share of one core since the last ask
+   * (so the panel can tell a working one from a stuck one while it says nothing, as in the playthrough).
+   */
+  fun progress(id: String): GenerationProgress? {
+    val now = progress[id] ?: return null
+    val handle = processes[id]?.toHandle() ?: return now.also { cpuSeen.remove(id) }
+    val cpu = (sequenceOf(handle) + handle.descendants().asSequence())
+      .sumOf { it.info().totalCpuDuration().map { d -> d.toNanos() }.orElse(0L) }
+    val at = System.nanoTime()
+    val before = cpuSeen.put(id, cpu to at) ?: return now
+    val wall = at - before.second
+    if (wall <= 0) return now
+    return now.copy(cpu = ((cpu - before.first) * 100 / wall).toInt().coerceIn(0, 999))
+  }
 
   /** Session [id]'s last generation's lines numbered above [since], at most [max]; `null`: none (or long ago). */
   fun log(id: String, since: Long, max: Int): LogLines? = logs[id]?.lines?.after(since, max)
@@ -204,6 +221,7 @@ class Generator(
       mutex.withLock { generateNow(id, request, log) }
     } finally {
       progress.remove(id)
+      cpuSeen.remove(id)
       cancelled -= id
       log.endedAt = System.currentTimeMillis()
     }
@@ -333,12 +351,12 @@ private val STAGES = listOf(
   "Calculating Access Rules." to GenerationProgress(GenerationStage.RULES, 15),
   "Running Item Plando." to GenerationProgress(GenerationStage.PLANDO, 25),
   "Running Pre Main Fill." to GenerationProgress(GenerationStage.PREFILL, 30),
-  "Filling the multiworld" to GenerationProgress(GenerationStage.FILLING, 35),
-  "Balancing multiworld progression" to GenerationProgress(GenerationStage.BALANCING, 66),
-  "Progression balancing skipped." to GenerationProgress(GenerationStage.BALANCING, 68),
-  "Running pre-output steps." to GenerationProgress(GenerationStage.PREOUTPUT, 70),
-  "Beginning output" to GenerationProgress(GenerationStage.OUTPUT, 75),
-  "Calculating playthrough." to GenerationProgress(GenerationStage.PLAYTHROUGH, 90),
+  "Filling the multiworld" to GenerationProgress(GenerationStage.FILLING, 30),
+  "Balancing multiworld progression" to GenerationProgress(GenerationStage.BALANCING, 52),
+  "Progression balancing skipped." to GenerationProgress(GenerationStage.BALANCING, 54),
+  "Running pre-output steps." to GenerationProgress(GenerationStage.PREOUTPUT, 56),
+  "Beginning output" to GenerationProgress(GenerationStage.OUTPUT, 58),
+  "Calculating playthrough." to GenerationProgress(GenerationStage.PLAYTHROUGH, 66),
   "Creating final archive" to GenerationProgress(GenerationStage.ARCHIVE, 97),
   "Done." to GenerationProgress(GenerationStage.DONE, 100),
 )
@@ -352,14 +370,16 @@ private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items p
 
 /**
  * The stage a line of Generate.py's output starts, if it starts one. The output files count themselves up, and so
- * does the fill (35 to 65 %; it only logs every 1000 items, so a small multiworld waits at its start).
+ * does the fill (30 to 50 %; it only logs every 1000 items, so a small multiworld waits at its start). The playthrough
+ * (66 to 97 %) says nothing until it is done: with Archipelago's spoiler level 3 (paths to every item) it can take
+ * longer than all the rest.
  */
 internal fun generationProgress(line: String): GenerationProgress? {
   FILL_STEP.find(line)?.destructured?.let { (placed, all) ->
-    return GenerationProgress(GenerationStage.FILLING, 35 + 30 * placed.toInt() / all.toInt().coerceAtLeast(1))
+    return GenerationProgress(GenerationStage.FILLING, 30 + 20 * placed.toInt() / all.toInt().coerceAtLeast(1))
   }
   OUTPUT_FILES.find(line)?.destructured?.let { (done, all) ->
-    return GenerationProgress(GenerationStage.OUTPUT, 75 + 15 * done.toInt() / all.toInt().coerceAtLeast(1))
+    return GenerationProgress(GenerationStage.OUTPUT, 58 + 8 * done.toInt() / all.toInt().coerceAtLeast(1))
   }
   return STAGES.firstOrNull { (marker, _) -> marker in line }?.second
 }
