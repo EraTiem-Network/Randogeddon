@@ -156,10 +156,19 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting).hashCode().toLong().shl(16)
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
   val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
+
+  /**
+   * Its spoiler log has its playthrough (completed after the seed, since 0.19.3): the spoiler page, the hints and the
+   * cheats wait for it. Also when completing it stopped (they go on with the seed's own), or the gateway hasn't said.
+   */
+  val playthroughReady: Boolean get() = server?.spoiler?.let { it.level >= 2 || it.stopped != null } ?: true
+
+  /** Its spoiler log is being completed after the seed (and nothing stopped that). */
+  val spoilerCompleting: Boolean get() = server?.spoiler?.let { it.stopped == null } == true
 
   /** A Session-Manager of it can't act for it now (kept out by an Administrator, or gone), while it runs. */
   fun managerUnavailable(): Boolean = !finished &&
@@ -178,6 +187,7 @@ class LiveSession(
       errorRefused = error != null && tracker.lastErrorRefused,
       // As the gateway said at its last look; connected again: awake (it woke for a player since)
       serverAsleep = asleep && !tracker.read { connected },
+      spoilerCompleting = spoilerCompleting,
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),

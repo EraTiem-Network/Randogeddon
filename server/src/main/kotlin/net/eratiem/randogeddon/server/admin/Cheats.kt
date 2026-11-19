@@ -104,7 +104,7 @@ class Cheats(
   private val spoilers: Spoilers,
 ) {
   suspend fun view(id: String): CheatView {
-    val session = session(id)
+    val session = session(id).withPlaythrough()
     val tracker = session.tracker
     val running = runCatching { gameServer.state(id).status == GameServerStatus.RUNNING }.getOrDefault(false)
     return CheatView(
@@ -123,6 +123,7 @@ class Cheats(
    * spoiler log's placements, if it has them; checking one of those sends the item to the slot).
    */
   suspend fun names(id: String, slot: String): CheatNames {
+    session(id).withPlaythrough()
     val session = session(id)
     val found = session.tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
     val hinted = session.tracker.read { hintedLocations() }
@@ -151,7 +152,7 @@ class Cheats(
    * session's cheat hints (support gives them).
    */
   suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator", freeHints: Boolean = false) {
-    val session = session(id)
+    val session = session(id).withPlaythrough()
     val tracker = session.tracker
     val seed = session.seedName
     if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, Problem.SESSION_FINISHED)
@@ -219,6 +220,10 @@ class Cheats(
 
   /** Which copy a hint names. */
   private val random: Random = SecureRandom().asKotlinRandom()
+
+  /** The cheats (hints among them) wait for the spoiler log's playthrough, completed after the seed. */
+  private fun LiveSession.withPlaythrough(): LiveSession =
+    takeIf { it.playthroughReady } ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
 
   private fun session(id: String): LiveSession =
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
