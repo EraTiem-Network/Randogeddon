@@ -11,6 +11,17 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.12: Checks and progression, apart
+- **Two bars instead of one** in every slot row, on the person card and in the slot and person dialogs: *Checks* (the
+  locations checked in its own world, x / y) and *Progression* (the progression items received of those meant for
+  it in the whole multiworld, x / y). Before, the line "64 / 100 · 2 progression" put two different things side by
+  side. The goal's time below the bars goes (it is beside the state since 0.19.11).
+- **Each slot's progression total**: every tracker connection to a slot scouts its own locations
+  (`LocationScouts`, `create_as_hint` 0: no hints are made); together that is every placement, counted per slot it
+  is meant for. Only the counts reach the dashboard. Until every slot is scouted the bar says how many were received
+  so far. The starting inventory isn't counted on either side (received progression now leaves it out).
+- The first of the slot and player panels' rework, planned with the user (they stay cards).
+
 ### 0.19.11: The dashboard's states and tiles
 - **A slot's state in a new order**, the first that applies: *released* (before its goal, or by hand after it),
   *complete* (every location checked; the automatic release at the goal, release mode `auto`, counts as complete:

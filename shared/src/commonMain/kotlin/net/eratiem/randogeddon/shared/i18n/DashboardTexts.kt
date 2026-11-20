@@ -49,8 +49,12 @@ interface DashboardTexts {
   /** Beside a slot's state: how long ago its last check was. */
   fun lastCheck(ago: String): String
   fun slot(name: String): String
-  fun progress(checked: Int, total: Int, progression: Int): String
-  fun doneAt(time: String): String
+  /** The two bars: checks in its own world, progression items received of those meant for it. */
+  val checksBar: String
+  val progressionBar: String
+  /** Progression received while its total isn't known yet. */
+  fun progressionSoFar(n: String): String
+  val noProgression: String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
@@ -216,8 +220,10 @@ internal object EnglishDashboard : DashboardTexts {
   }
   override fun lastCheck(ago: String) = "last check $ago"
   override fun slot(name: String) = "Slot: $name"
-  override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression progression"
-  override fun doneAt(time: String) = "done $time"
+  override val checksBar = "Checks"
+  override val progressionBar = "Progression"
+  override fun progressionSoFar(n: String) = "$n received"
+  override val noProgression = "none meant for it"
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -309,8 +315,10 @@ internal object GermanDashboard : DashboardTexts {
   }
   override fun lastCheck(ago: String) = "letzter Check $ago"
   override fun slot(name: String) = "Slot: $name"
-  override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression Progression"
-  override fun doneAt(time: String) = "fertig $time"
+  override val checksBar = "Checks"
+  override val progressionBar = "Progression"
+  override fun progressionSoFar(n: String) = "$n erhalten"
+  override val noProgression = "keine dafür vorgesehen"
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"

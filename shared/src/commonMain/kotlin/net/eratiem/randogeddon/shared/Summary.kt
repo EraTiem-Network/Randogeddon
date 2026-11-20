@@ -183,7 +183,13 @@ data class PlayerSummary(
   /** Epoch milliseconds of the last check, goal or join; `null` if nothing happened yet. */
   val lastActivity: Long? = null,
   val itemsReceived: Int,
+  /** Progression items it received from a location (its own world's too; not the starting inventory). */
   val progressionReceived: Int,
+  /**
+   * Progression items meant for it at every location of the multiworld (from scouting each slot's own locations);
+   * `null` while not every slot has been scouted, or in an archive of before.
+   */
+  val progressionTotal: Int? = null,
   val hintPoints: Int? = null,
   /** Points one hint costs in this world (0 = free); `hintPoints / hintCost` hints can be bought now. */
   val hintCost: Int? = null,
@@ -310,6 +316,9 @@ data class PlayerDetail(
   val missing: List<String>,
   val checked: Int,
   val total: Int,
+  /** As [PlayerSummary.progressionReceived] and [PlayerSummary.progressionTotal]. */
+  val progressionReceived: Int = 0,
+  val progressionTotal: Int? = null,
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,

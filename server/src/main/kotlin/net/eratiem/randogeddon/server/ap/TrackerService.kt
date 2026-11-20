@@ -36,6 +36,7 @@ import net.eratiem.randogeddon.server.state.LINK_TAGS
 import net.eratiem.randogeddon.server.state.SessionState
 import net.eratiem.randogeddon.server.util.array
 import net.eratiem.randogeddon.server.util.int
+import net.eratiem.randogeddon.server.util.longs
 import net.eratiem.randogeddon.server.util.obj
 import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.server.util.logger
@@ -232,6 +233,7 @@ class TrackerService(
     })
     val mySlot = connected.int("slot")!!
     val team = connected.int("team")!!
+    conn.scout(mySlot, connected)
     val others = mutex.withLock {
       if (state.onRoomInfo(roomInfo)) logger.info("Seed {}", state.seedName)
       state.onConnected(mySlot, connected)
@@ -273,6 +275,7 @@ class TrackerService(
           val conn = ApConnection(this)
           val (_, connected) = conn.handshake(slotName, listOf("Tracker", "NoText"))
           update { onConnected(slot, connected) }
+          conn.scout(slot, connected)
           backoff = 1
           while (true) dispatch(slot, conn.next(), primary = false)
         }
@@ -291,6 +294,7 @@ class TrackerService(
       "ReceivedItems" -> onReceivedItems(slot, packet)
       "RoomUpdate" -> onRoomUpdate(slot, packet)
       "Connected" -> onConnected(slot, packet)
+      "LocationInfo" -> onLocationInfo(slot, packet)
       else -> if (primary) when (packet.string("cmd")) {
         // With the gateway's events: taken from those, not heard a second time here
         "PrintJSON" -> if (events == null) onPrintJson(packet)
@@ -325,6 +329,20 @@ class TrackerService(
 
     suspend fun send(vararg packets: JsonObject) {
       session.send(Frame.Text(JsonArray(packets.toList()).toString()))
+    }
+
+    /**
+     * Asks what lies at every location of [slot] (its `Connected` lists them), without making hints of it: for the
+     * progression meant for each slot. The answer (`LocationInfo`) comes like any packet.
+     */
+    suspend fun scout(slot: Int, connected: JsonObject) {
+      val locations = (connected.longs("checked_locations") + connected.longs("missing_locations")).distinct()
+      if (locations.isEmpty()) return update { onNothingToScout(slot) }
+      send(buildJsonObject {
+        put("cmd", "LocationScouts")
+        putJsonArray("locations") { locations.forEach { add(it) } }
+        put("create_as_hint", 0)
+      })
     }
 
     /** Waits for RoomInfo, sends Connect and returns (RoomInfo, Connected). Later packets stay buffered. */

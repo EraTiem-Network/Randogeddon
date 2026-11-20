@@ -47,10 +47,10 @@ import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.ago
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.shared.i18n.texts
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
-import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.ui.AppPopup
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.Dot
@@ -58,6 +58,7 @@ import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.HoverRow
 import net.eratiem.randogeddon.webapp.ui.Icon
+import net.eratiem.randogeddon.webapp.ui.LabeledBar
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Panel
 import net.eratiem.randogeddon.webapp.ui.Pill
@@ -176,7 +177,12 @@ private fun PersonCard(
       Txt("${t.decimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
      }
     }
-    ProgressBar((person.percent / 100).toFloat(), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
+    Bars(
+      worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionReceived },
+      // Known once it is for every slot of the person
+      worlds.map { it.progressionTotal }.takeIf { totals -> totals.none { it == null } }?.sumOf { it ?: 0 },
+      Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp,
+    )
     worlds.forEach { WorldRow(it, now, hintsByPoints, onOpen) }
   }
 }
@@ -291,22 +297,44 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
           if (world.connections > 1) Txt(t.dashboard.connections(world.connections), size = 11.5.sp, maxLines = 1, color = p.ok)
         }
         Spacer(Modifier.height(6.dp))
-        ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-          Txt(t.dashboard.progress(world.checked, world.total, world.progressionReceived), size = 11.5.sp,
-            color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          val played = playTime(world, now)
-          if (played > 0 || world.goalAt != null) {
-            Txt(
-              listOfNotNull(
-                t.dashboard.played(t.duration(played)).takeIf { played > 0 },
-                world.goalAt?.let { t.dashboard.doneAt(t.clock(it)) },
-              ).joinToString(" · "),
-              size = 11.5.sp, color = p.muted, maxLines = 1,
-            )
-          }
+        Bars(world.checked, world.total, world.progressionReceived, world.progressionTotal, dimmed = locked)
+        // The goal's time is beside the state already
+        val played = playTime(world, now)
+        if (played > 0) {
+          Txt(t.dashboard.played(t.duration(played)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
         }
       }
+    }
+  }
+}
+
+/**
+ * Checks and progression as two bars: the locations checked in its own world, and the progression items received
+ * of those meant for it in the whole multiworld ([progressionTotal] `null`: not known yet, only how many so far).
+ */
+@Composable
+internal fun Bars(
+  checked: Int,
+  total: Int,
+  progression: Int,
+  progressionTotal: Int?,
+  modifier: Modifier = Modifier,
+  height: Dp = 5.dp,
+  dimmed: Boolean = false,
+) {
+  val t = LocalTexts.current
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    LabeledBar(
+      t.dashboard.checksBar, if (total > 0) checked.toFloat() / total else 0f, "${t.number(checked)} / ${t.number(total)}",
+      height = height, dimmed = dimmed,
+    )
+    when {
+      progressionTotal == null -> LabeledBar(t.dashboard.progressionBar, null, t.dashboard.progressionSoFar(t.number(progression)))
+      progressionTotal == 0 -> LabeledBar(t.dashboard.progressionBar, null, t.dashboard.noProgression)
+      else -> LabeledBar(
+        t.dashboard.progressionBar, progression.toFloat() / progressionTotal,
+        "${t.number(progression)} / ${t.number(progressionTotal)}", height = height, dimmed = dimmed,
+      )
     }
   }
 }

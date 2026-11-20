@@ -303,6 +303,26 @@ class SessionStateTest {
   }
 
   @Test
+  fun `each slot's progression total comes from scouting every slot's own locations, once all are`() {
+    val s = makeState()
+    fun totals() = s.summary("t", null).players.map { it.progressionTotal }
+    // Alice's world: two progression items for Bob, one for herself, a filler; Bob's: one progression item for Alice
+    s.onLocationInfo(1, json("""{"cmd":"LocationInfo","locations":[${item(100, 10, 2, 1)},${item(101, 11, 2, 1)},${item(100, 12, 1, 1)},${item(102, 13, 1, 0)}]}"""))
+    assertEquals(listOf(null, null), totals()) // Bob's world isn't scouted yet
+    s.onLocationInfo(2, json("""{"cmd":"LocationInfo","locations":[${item(100, 20, 1, 1)},${item(103, 21, 2, 4)}]}"""))
+    assertEquals(listOf(2, 2), totals())
+    // Received from a location counts, the starting inventory doesn't
+    s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 12, 1, 1)},${item(100, -2, 0, 1)}]}"""))
+    assertEquals(1, s.summary("t", null).players[0].progressionReceived)
+    assertEquals(1 to 2, s.playerDetail(1)!!.let { it.progressionReceived to it.progressionTotal })
+    // A slot without locations is scouted at once
+    val t = makeState()
+    t.onLocationInfo(1, json("""{"cmd":"LocationInfo","locations":[${item(100, 10, 2, 1)}]}"""))
+    t.onNothingToScout(2)
+    assertEquals(listOf(0, 1), t.summary("t", null).players.map { it.progressionTotal })
+  }
+
+  @Test
   fun `an archive of before reads playing as online`() {
     assertEquals(PlayerStatus.ONLINE, ApiJson.decodeFromString(PlayerStatus.serializer(), "\"playing\""))
     assertEquals("\"online\"", ApiJson.encodeToString(PlayerStatus.serializer(), PlayerStatus.ONLINE))
