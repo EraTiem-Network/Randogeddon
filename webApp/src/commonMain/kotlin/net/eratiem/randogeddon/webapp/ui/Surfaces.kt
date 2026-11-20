@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -167,16 +169,41 @@ fun Section(
 ) {
   val p = LocalPalette.current
   Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Row(
+    // The title with its actions at the right; where they don't fit beside the whole title, the actions go below it
+    // (beside it they squeezed it, on a phone "Hints" into two lines)
+    Layout(
+      contents = listOf(
+        { Txt(title, size = 17.sp, weight = FontWeight.Bold, maxLines = 1) },
+        { if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1) },
+        { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
+      ),
       Modifier.heightIn(min = 34.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Column(Modifier.weight(1f)) {
-        Txt(title, size = 17.sp, weight = FontWeight.Bold)
-        if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1)
+    ) { (titles, subtitles, actionRows), constraints ->
+      val loose = constraints.copy(minWidth = 0, minHeight = 0)
+      val gap = 8.dp.roundToPx()
+      val row = actionRows.first().measure(loose)
+      val needed = titles.first().maxIntrinsicWidth(Constraints.Infinity)
+      val width = if (constraints.hasBoundedWidth) constraints.maxWidth else needed + gap + row.width
+      val below = row.width > 0 && needed + gap + row.width > width
+      val textWidth = if (below) width else (width - row.width - gap).coerceAtLeast(0)
+      val heading = titles.first().measure(loose.copy(maxWidth = textWidth))
+      val sub = subtitles.firstOrNull()?.measure(loose.copy(maxWidth = textWidth))
+      val text = heading.height + (sub?.height ?: 0)
+      if (below) {
+        val top = maxOf(text, constraints.minHeight)
+        layout(width, top + gap + row.height) {
+          heading.place(0, (top - text) / 2)
+          sub?.place(0, (top - text) / 2 + heading.height)
+          row.place(0, top + gap)
+        }
+      } else {
+        val height = maxOf(text, row.height, constraints.minHeight)
+        layout(width, height) {
+          heading.place(0, (height - text) / 2)
+          sub?.place(0, (height - text) / 2 + heading.height)
+          row.place(width - row.width, (height - row.height) / 2)
+        }
       }
-      actions()
     }
     content()
   }
@@ -246,7 +273,8 @@ fun Pill(text: String, color: Color, icon: Icon? = null) {
     horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     if (icon != null) DrawnIcon(icon, color, 11.dp)
-    Txt(text, size = 11.5.sp, color = color, weight = FontWeight.SemiBold, maxLines = 1)
+    // Without a text: the icon alone
+    if (text.isNotEmpty()) Txt(text, size = 11.5.sp, color = color, weight = FontWeight.SemiBold, maxLines = 1)
   }
 }
 
