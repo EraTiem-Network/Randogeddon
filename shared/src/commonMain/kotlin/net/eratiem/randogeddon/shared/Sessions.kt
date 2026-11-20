@@ -110,6 +110,11 @@ data class CreateSessionRequest(
   val options: SessionOptions = SessionOptions(),
   /** `null`: the gateway's newest Archipelago release. */
   val apVersion: String? = null,
+  /**
+   * Instead of [yamls]: the token of a seed generated elsewhere that this Administrator uploaded before
+   * ([SeedInfo.token]). Its slots are the seed's; it has no locks, and nothing is generated.
+   */
+  val seed: String? = null,
 )
 
 @Serializable

@@ -164,6 +164,10 @@ internal object EnglishProblems : ProblemTexts {
       IDLE_MINUTES -> "Sleep after: 0 (never) to ${a("max")} minutes"
       CANCEL_TOO_LATE -> "Too late to cancel: the seed is there and the session is being set up"
       PLAYTHROUGH_NOT_YET -> "The spoiler log's playthrough is still being worked out: the spoiler log, the hints and the cheats are there once it is done"
+      ONLY_ADMINISTRATORS_SEED -> "Only Administrators make a session from a seed generated elsewhere"
+      SEED_TOO_LARGE -> "Larger than 64 MB"
+      SEED_GONE -> "The uploaded seed isn't kept any more: choose its file again"
+      SEED_IN_USE -> "This seed has a session already"
       GENERATION_TOO_LONG -> "Generating took longer than ${a("minutes")} minutes and was stopped (a big multiworld fills " +
         "on one core): try again with fewer slots, or ask an Administrator for more time (GENERATION_MINUTES)."
       APWORLD_TOO_LARGE -> "Larger than 64 MB"
@@ -328,6 +332,10 @@ internal object GermanProblems : ProblemTexts {
       IDLE_MINUTES -> "Schlafen nach: 0 (nie) bis ${a("max")} Minuten"
       CANCEL_TOO_LATE -> "Zu spät zum Abbrechen: Der Seed ist da und die Session wird eingerichtet"
       PLAYTHROUGH_NOT_YET -> "Der Lösungsweg des Spoiler-Logs wird noch berechnet: Spoiler-Log, Hinweise und Cheats gibt es, sobald er fertig ist"
+      ONLY_ADMINISTRATORS_SEED -> "Nur Administratoren erstellen eine Session aus einem woanders generierten Seed"
+      SEED_TOO_LARGE -> "Größer als 64 MB"
+      SEED_GONE -> "Der hochgeladene Seed liegt nicht mehr vor: wähle seine Datei erneut"
+      SEED_IN_USE -> "Zu diesem Seed gibt es schon eine Session"
       GENERATION_TOO_LONG -> "Das Generieren hat länger als ${a("minutes")} Minuten gedauert und wurde abgebrochen (eine große " +
         "Multiworld wird auf einem Kern gefüllt): Versuche es mit weniger Slots, oder bitte einen Administrator um mehr " +
         "Zeit (GENERATION_MINUTES)."
