@@ -791,11 +791,12 @@ which the gateway writes before it starts the session's game server.
   downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Top card:** overall completion with "x of y checks done".
-- **Overview:** each tile with its icon and its parts as pills. *Finished* (slots done of all; below how many are
+- **Overview:** each tile with its icon and its parts as pills, each an icon and a number, what it is as its tooltip
+  (one word: *Complete*, *Goal*, *Released*, *Idle*, *Not started*, *Open*, *Progression*, *Traps*, *Deaths*, *Uptime*). *Finished* (slots done of all; below how many are
   complete, at their goal (not shown with release mode `auto`, where a goal becomes complete) and released), *Slots* (online of all; below idle and not started),
   *Unlocked* (locked slots opened), *Hints*, *Items* (sent so far; below progression and traps), *Links* (deaths and
   traps shared by DeathLink and TrapLink, from the first one on), *Play time*, *Session* (its age, the date it was
-  made as a tooltip; below the game server's running time).
+  made as a tooltip; below a power sign, green while the game server runs, and its *Uptime* for this seed).
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
   progression items it got; *sent*: the progression items found in its world for other slots; play time; counts
