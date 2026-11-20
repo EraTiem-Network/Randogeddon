@@ -88,7 +88,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
     val open = d.sessions.lastOrNull()?.takeIf { it.end == null }
     val played = d.sessions.sumOf { (it.end ?: now) - it.start }
     Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-      ProgressBar((percent / 100).toFloat())
+      Bars(d.checked, d.total, d.progressionReceived, d.progressionTotal, height = 8.dp)
       // Time facts of this world
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Fact(t.dialogs.played, t.duration(played))

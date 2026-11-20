@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -202,6 +204,29 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 8.d
       }
       Box(Modifier.fillMaxWidth(animated).height(height).clip(CircleShape).background(fill))
     }
+  }
+}
+
+/**
+ * A labelled bar: [label] at the start (as wide as [labelWidth], so bars below each other line up), the bar, and
+ * [value] at the end; [fraction] `null`: no bar, only [value].
+ */
+@Composable
+fun LabeledBar(
+  label: String,
+  fraction: Float?,
+  value: String,
+  modifier: Modifier = Modifier,
+  labelWidth: Dp = 78.dp,
+  height: Dp = 5.dp,
+  dimmed: Boolean = false,
+) {
+  val p = LocalPalette.current
+  Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.width(labelWidth))
+    if (fraction != null) ProgressBar(fraction, Modifier.weight(1f), height = height, dimmed = dimmed)
+    else Spacer(Modifier.weight(1f))
+    Txt(value, size = 11.5.sp, color = p.muted, maxLines = 1)
   }
 }
 

@@ -111,7 +111,10 @@ fun PersonDialog(
       }) { available ->
         val twoColumns = available >= 760.dp
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-          ProgressBar((person.percent / 100).toFloat())
+          Bars(
+            worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionReceived },
+            worlds.map { it.progressionTotal }.takeIf { totals -> totals.none { it == null } }?.sumOf { it ?: 0 }, height = 8.dp,
+          )
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Fact(t.dialogs.played, t.duration(played))
             Fact(t.dialogs.goals, "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
@@ -136,7 +139,7 @@ fun PersonDialog(
                       size = 11.5.sp, color = p.muted, maxLines = 1,
                     )
                     Spacer(Modifier.height(4.dp))
-                    ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
+                    Bars(w.checked, w.total, w.progressionReceived, w.progressionTotal, height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                   }
                 }
               }
