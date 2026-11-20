@@ -38,8 +38,12 @@ import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.i18n.Language
 import net.eratiem.randogeddon.shared.palettes
 
-/** A build of the bridge: `randogeddon-bridge-<os>-<arch>`, `.exe` on Windows. */
-private val BRIDGE_FILE = Regex("randogeddon-bridge-(windows|linux|macos)-(amd64|arm64)(\\.exe)?")
+/**
+ * A build of the bridge: `randogeddon-bridge-<version>-<os>-<arch>`, `.exe` on Windows (the version since 0.19.7, so
+ * a downloaded file says which one it is; `dev` for a build without one). Without the version it is the name a
+ * bridge from before asks for when it updates: the build for that system is served for it.
+ */
+private val BRIDGE_FILE = Regex("randogeddon-bridge-(?:(?:[0-9][0-9A-Za-z.]*(?:-SNAPSHOT)?|dev)-)?(windows|linux|macos)-(amd64|arm64)(\\.exe)?")
 
 /** The builds in [dir] and their version (its `VERSION` file); none if it isn't there (a build without the bridge). */
 fun bridgeDownloads(dir: Path): BridgeDownloads {
@@ -103,7 +107,12 @@ fun Route.bridgeRoutes(
       call.respondText(checksums.value, ContentType.Text.Plain)
     }
     get("/{file}") {
-      val name = call.parameters["file"].orEmpty()
+      val asked = call.parameters["file"].orEmpty()
+      // A build asked for by another name than it has here (without its version, or with another one): the build
+      // for the same system
+      val name = BRIDGE_FILE.matchEntire(asked)?.takeIf { !config.bridgeDir.resolve(asked).isRegularFile() }?.let { match ->
+        bridgeDownloads(config.bridgeDir).downloads.firstOrNull { it.os == match.groupValues[1] && it.arch == match.groupValues[2] }?.file
+      } ?: asked
       val file = config.bridgeDir.resolve(name)
       if ((!BRIDGE_FILE.matches(name) && name !in CHECK_FILES) || !file.isRegularFile()) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_FILE))
       call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, name).toString())
