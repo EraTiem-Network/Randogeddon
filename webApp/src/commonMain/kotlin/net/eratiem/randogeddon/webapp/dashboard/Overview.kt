@@ -35,6 +35,7 @@ import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
@@ -81,7 +82,16 @@ internal fun Grid(
   }
 }
 
-private data class Tile(val label: String, val value: String, val sub: String, val color: Color, val icon: Icon?, val tip: String? = null)
+/** A tile: [label], [value], below it [pills] (each with its colour), or [sub] where there are none. */
+private data class Tile(
+  val label: String,
+  val value: String,
+  val sub: String,
+  val color: Color,
+  val icon: Icon,
+  val tip: String? = null,
+  val pills: List<Pair<String, Color>> = emptyList(),
+)
 
 @Composable
 internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
@@ -97,39 +107,55 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
     // Done: complete, at the goal, released; with release mode auto a goal becomes complete (said only if there is one)
     val done = s.players.count { it.status.done }
     val parts = listOfNotNull(
-      d.partComplete(count(PlayerStatus.COMPLETE)),
-      count(PlayerStatus.GOAL).takeIf { s.releaseMode != "auto" || it > 0 }?.let(d::partGoal),
-      count(PlayerStatus.RELEASED).takeIf { it > 0 }?.let(d::partReleased),
+      d.partComplete(count(PlayerStatus.COMPLETE)) to p.ok,
+      count(PlayerStatus.GOAL).takeIf { s.releaseMode != "auto" || it > 0 }?.let { d.partGoal(it) to p.ok },
+      count(PlayerStatus.RELEASED).takeIf { it > 0 }?.let { d.partReleased(it) to p.progression },
     )
-    add(Tile(d.finished, "$done / ${s.players.size}", parts.joinToString(" · ").ifEmpty { d.slotsFinished }, p.ok, Icon.FLAG))
+    add(Tile(d.finished, "$done / ${s.players.size}", d.slotsFinished, p.ok, Icon.FLAG, pills = parts))
     val online = s.players.count { it.online }
     val waiting = listOfNotNull(
-      count(PlayerStatus.IDLE).takeIf { it > 0 }?.let(d::partIdle),
-      count(PlayerStatus.NOT_STARTED).takeIf { it > 0 }?.let(d::partNotStarted),
+      count(PlayerStatus.IDLE).takeIf { it > 0 }?.let { d.partIdle(it) to p.muted },
+      count(PlayerStatus.NOT_STARTED).takeIf { it > 0 }?.let { d.partNotStarted(it) to p.muted },
     )
-    add(Tile(d.slots, "$online / ${s.players.size}", waiting.joinToString(" · ").ifEmpty { d.everyoneOnline }, p.useful, null))
+    add(Tile(d.slots, "$online / ${s.players.size}", d.everyoneOnline, p.useful, Icon.USER, pills = waiting))
     if (totals.lockable > 0) {
       add(Tile(d.unlocked, "${totals.lockable - totals.locked} / ${totals.lockable}", d.slotsOpened, p.key, Icon.KEY))
     }
-    if (showHints(s)) add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, null))
+    if (showHints(s)) {
+      add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, Icon.BULB, pills = listOf(d.notFoundYet(open) to p.warn)))
+    }
     // Items sent; an archive from before has its slots' received items only
     val sent = totals.itemsSent.takeIf { it > 0 } ?: s.players.sumOf { it.itemsReceived }
     val progression = totals.progressionSent.takeIf { totals.itemsSent > 0 } ?: s.players.sumOf { it.progressionReceived }
     if (sent > 0) {
-      add(Tile(d.items, t.number(sent), d.itemsOf(t.number(progression), t.number(totals.trapsSent)), p.progression, null))
+      add(
+        Tile(
+          d.items, t.number(sent), d.itemsOf(t.number(progression), t.number(totals.trapsSent)), p.progression, Icon.GIFT,
+          pills = listOf(d.partProgression(t.number(progression)) to p.progression, d.partTraps(t.number(totals.trapsSent)) to p.trap),
+        )
+      )
     }
     // Links from the first one on
     val links = totals.deaths + totals.trapLinks
-    if (links > 0) add(Tile(d.links, t.number(links), d.linksOf(t.number(totals.deaths), t.number(totals.trapLinks)), p.trap, null))
-    add(Tile(d.playTime, t.duration(s.players.sumOf { playTime(it, now) }), d.allSlotsTogether, p.useful, null))
+    if (links > 0) {
+      add(
+        Tile(
+          d.links, t.number(links), d.linksOf(t.number(totals.deaths), t.number(totals.trapLinks)), p.trap, Icon.LINK,
+          pills = listOf(d.partDeaths(t.number(totals.deaths)) to p.trap, d.partTraps(t.number(totals.trapLinks)) to p.warn),
+        )
+      )
+    }
+    add(Tile(d.playTime, t.duration(s.players.sumOf { playTime(it, now) }), d.allSlotsTogether, p.useful, Icon.CLOCK))
     // Its age; below the game server's running time for this seed, without the times it was stopped
     val since = s.sessionRunningSince
     val ran = t.duration(s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0)
     val created = s.createdAt
     add(
       Tile(
-        d.session, if (created != null) t.age(now - created) else ran, d.serverTime(ran, since != null), p.brandStart, null,
+        d.session, if (created != null) t.age(now - created) else ran, d.serverTime(ran, since != null), p.brandStart, Icon.HOURGLASS,
         tip = created?.let { d.madeOn(t.date(it)) },
+        // The game server's state, then how long it ran for this seed
+        pills = listOf((if (since != null) d.serverOn to p.ok else d.serverOff to p.muted), ran to p.useful),
       )
     )
   }
@@ -151,15 +177,22 @@ private fun StatTile(tile: Tile, modifier: Modifier) {
       Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(tile.color.copy(alpha = 0.15f)),
       contentAlignment = Alignment.Center,
     ) {
-      if (tile.icon != null) DrawnIcon(tile.icon, tile.color, 16.dp) else Dot(tile.color, 10.dp)
+      DrawnIcon(tile.icon, tile.color, 16.dp)
     }
     Column {
       Txt(tile.label, size = 12.sp, color = p.muted, weight = FontWeight.Medium)
       val tip = tile.tip
       if (tip != null) Tip(tip) { Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1) }
       else Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
-      // Two lines where the tile is narrow: its parts (complete · goal · released) aren't cut off
-      Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 2)
+      if (tile.pills.isEmpty()) {
+        Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 2)
+      } else {
+        // Its parts as pills, one below the other: the tiles of a row take the tallest one's height, measured from
+        // their content, which a wrapping row of pills would come short of (its last pill cut off)
+        Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          tile.pills.forEach { (text, color) -> Pill(text, color) }
+        }
+      }
     }
   }
 }
