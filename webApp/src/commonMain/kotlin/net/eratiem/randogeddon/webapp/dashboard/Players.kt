@@ -186,13 +186,28 @@ internal fun statusColor(status: PlayerStatus): Color = LocalPalette.current.let
   when (status) {
     PlayerStatus.GOAL, PlayerStatus.COMPLETE -> p.ok
     PlayerStatus.RELEASED -> p.progression
-    PlayerStatus.PLAYING -> p.useful
+    PlayerStatus.ONLINE -> p.useful
     PlayerStatus.LOCKED -> p.locked
-    PlayerStatus.IDLE -> p.muted
+    PlayerStatus.IDLE, PlayerStatus.NOT_STARTED -> p.muted
   }
 }
 
-internal fun statusLabel(t: Texts, world: PlayerSummary): String = t.dashboard.status(world.status, started = world.checked > 0)
+internal fun statusLabel(t: Texts, world: PlayerSummary): String = t.dashboard.status(world.status)
+
+/**
+ * The time beside a slot's state: since it was complete or released; since its goal and its last check; for one that
+ * is idle or online, its last check. `null`: nothing to say (not started, locked, or an archive of before 0.19.11).
+ */
+internal fun stateTime(t: Texts, world: PlayerSummary, now: Long): String? {
+  val lastCheck = world.lastCheckAt?.let { t.dashboard.lastCheck(t.ago(it, now)) }
+  return when (world.status) {
+    PlayerStatus.COMPLETE -> world.completedAt?.let { t.ago(it, now) }
+    PlayerStatus.RELEASED -> world.releasedAt?.let { t.ago(it, now) }
+    PlayerStatus.GOAL -> listOfNotNull(world.goalAt?.let { t.ago(it, now) }, lastCheck).joinToString(" · ").ifEmpty { null }
+    PlayerStatus.IDLE, PlayerStatus.ONLINE -> lastCheck
+    PlayerStatus.LOCKED, PlayerStatus.NOT_STARTED -> null
+  }
+}
 
 /**
  * For worlds that start locked, under the game icon, as wide and down to the end of the world's texts: a key once it
@@ -263,18 +278,15 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
           Txt(world.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1,
             modifier = Modifier.weight(1f).dimmedIf(locked))
           hintBubble(t, world, hintsByPoints)?.let { Pill(it, p.progression) }
-          // "playing" in colour while a game client is connected, grey otherwise
-          val playing = world.status == PlayerStatus.PLAYING || world.online && world.status == PlayerStatus.IDLE
           // Locked: the badge under the game icon says it
           if (!locked) Pill(
-            if (playing) t.dashboard.playing else statusLabel(t, world),
-            if (playing && !world.online) p.muted else statusColor(if (playing) PlayerStatus.PLAYING else world.status),
+            statusLabel(t, world), statusColor(world.status),
             icon = if (world.status == PlayerStatus.GOAL) Icon.FLAG else null,
           )
         }
         Row(Modifier.fillMaxWidth()) {
           Txt(t.dashboard.slot(shortSlotName(world.name, world.person)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          if (!locked && !world.online) Txt(t.ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
+          stateTime(t, world, now)?.let { Txt(it, size = 11.5.sp, maxLines = 1, color = p.muted) }
           // More than one game client on it (played together, or a second device)
           if (world.connections > 1) Txt(t.dashboard.connections(world.connections), size = 11.5.sp, maxLines = 1, color = p.ok)
         }

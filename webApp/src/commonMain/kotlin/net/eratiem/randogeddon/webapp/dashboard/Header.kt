@@ -225,7 +225,7 @@ internal fun Hero(
       Row(verticalAlignment = Alignment.Bottom) {
         Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
         Txt(
-          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
+          "  " + t.frame.ofChecksDone(t.number(totals.checked), t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
           modifier = Modifier.padding(bottom = 7.dp),
         )
       }
