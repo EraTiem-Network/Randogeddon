@@ -79,6 +79,8 @@ import net.eratiem.randogeddon.shared.PlandoModule
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SeedInfo
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
@@ -220,6 +222,10 @@ private fun CreateSession(
   val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
+  // A seed generated elsewhere instead of YAMLs (Administrators): what the gateway found in the uploaded zip
+  var seed by remember { mutableStateOf<SeedInfo?>(null) }
+  var seedFile by remember { mutableStateOf("") }
+  var seedChecking by remember { mutableStateOf(false) }
   var worlds by remember { mutableStateOf<List<YamlWorld>>(emptyList()) }
   var problems by remember { mutableStateOf<List<ApiError>>(emptyList()) }
   // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
@@ -413,9 +419,9 @@ private fun CreateSession(
     }
   }
 
-  Txt(t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
+  Txt(if (seed != null) t.sessionAdmin.stepSeed else t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Button(t.sessionAdmin.addYamls) {
+    if (seed == null) Button(t.sessionAdmin.addYamls) {
       Platform.pickFiles(".yaml,.yml") { json ->
         val picked = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
         // Choosing again adds files; one with the same name replaces the earlier one
@@ -425,6 +431,41 @@ private fun CreateSession(
       }
     }
     if (yamls.isNotEmpty() && removing == null) Button(t.sessionAdmin.clearAll, danger = true) { removing = "" }
+    // Or the zip Archipelago made elsewhere: checked by the gateway, which keeps it for the session
+    if (administrator && yamls.isEmpty() && seed == null) Button(t.sessionAdmin.useSeed, enabled = !seedChecking) {
+      Platform.pickFiles(".zip", binary = true) { json ->
+        val file = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
+          .firstOrNull() ?: return@pickFiles
+        seedChecking = true
+        refused = emptyList()
+        problems = emptyList()
+        scope.launch {
+          val body = ApiJson.encodeToString(SeedUpload.serializer(), SeedUpload(file.fileName, file.content, version))
+          when (val answer = call("POST", "api/sessions/new/seed", body, SeedInfo.serializer())) {
+            is Answer.Ok -> {
+              seed = answer.value
+              seedFile = file.fileName
+              version = answer.value.release
+              worlds = answer.value.slots.map { YamlWorld(file.fileName, it.name, it.game) }
+              users.clear(); hosted.clear(); locked.clear(); choices.clear()
+            }
+            is Answer.Failed -> problems = listOf(ApiError(listOfNotNull(answer.message, answer.detail).joinToString(": ")))
+          }
+          seedChecking = false
+        }
+      }
+    }
+  }
+  if (seedChecking) Txt(t.sessionAdmin.seedChecking, size = 12.5.sp, color = p.muted)
+  seed?.let { info ->
+    YamlChip(seedFile, emptyList()) {
+      scope.launch { post("api/sessions/new/seed/${info.token}", null, method = "DELETE") }
+      seed = null
+      worlds = emptyList(); problems = emptyList(); users.clear(); hosted.clear()
+    }
+    Txt(t.sessionAdmin.seedFound(info.seedName, info.generatedWith, info.slots.size, info.files), size = 12.5.sp)
+    Txt(t.sessionAdmin.seedNotes, size = 12.sp, color = p.muted)
+    if (!info.spoiler) Txt(t.sessionAdmin.seedNoSpoiler, size = 12.sp, color = p.warn)
   }
   // Asked once more: removing all of them right below their buttons, one of them below the YAMLs
   @Composable
@@ -478,7 +519,8 @@ private fun CreateSession(
   if (usable.isNotEmpty()) {
     // A single slot can't be locked; otherwise at least one slot starts open
     val n = usable.size
-    val lockable = n > 1
+    // A seed from elsewhere has no locks: they are generated in
+    val lockable = n > 1 && seed == null
     val mode = if (lockable) lockMode else LockMode.CHOOSE
     // A switch left to chance whose outcome is already given by the others shows that outcome: e.g. of two slots,
     // one open, the other has to be locked
@@ -600,14 +642,15 @@ private fun CreateSession(
       Labeled(t.sessionAdmin.collect, t.tips.collect, t.tips.collectChoices) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }, minHeight = FIELD_HEIGHT) }
       Labeled(t.sessionAdmin.remaining, t.tips.remaining, t.tips.remainingChoices) { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }, minHeight = FIELD_HEIGHT) }
       when {
-        view.apVersions.size > 1 -> Labeled(t.sessionAdmin.archipelago, t.tips.releaseVersion) {
+        view.apVersions.size > 1 && seed == null -> Labeled(t.sessionAdmin.archipelago, t.tips.releaseVersion) {
           Select(view.apVersions.map { it to it }, version ?: "", { version = it }, minHeight = FIELD_HEIGHT)
         }
         version != null -> Labeled(t.sessionAdmin.archipelagoVersion(version.orEmpty()), t.tips.releaseVersion) {}
       }
     }
-    // The generation's settings: what the YAMLs may plan by hand, the balancing, race mode
-    FlowRow(
+    // The generation's settings: what the YAMLs may plan by hand, the balancing, race mode (not for a seed that is
+    // there already)
+    if (seed == null) FlowRow(
       horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
       itemVerticalAlignment = Alignment.CenterVertically,
     ) {
@@ -631,7 +674,7 @@ private fun CreateSession(
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
-        t.sessionAdmin.generateAndStart,
+        if (seed != null) t.sessionAdmin.startWithSeed else t.sessionAdmin.generateAndStart,
         enabled = ready && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
           unplayed.isEmpty(),
       ) {
@@ -648,7 +691,7 @@ private fun CreateSession(
         scope.launch {
           val request = CreateSessionRequest(
             id = id,
-            yamls = yamls.filter { it.fileName !in waitingFiles },
+            yamls = if (seed != null) emptyList() else yamls.filter { it.fileName !in waitingFiles },
             worlds = usable.map {
               WorldPlan(
                 it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
@@ -658,6 +701,7 @@ private fun CreateSession(
             },
             options = options.copy(openSlots = open),
             apVersion = version,
+            seed = seed?.token,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
           // Answered at once: it generates in the background, and the page asks how far it is
