@@ -1,12 +1,5 @@
 package net.eratiem.randogeddon.server.state
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import kotlin.io.path.createDirectories
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 import kotlin.math.round
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -17,6 +10,8 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.eratiem.randogeddon.database.SessionEventStore
+import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatNames
@@ -75,7 +70,10 @@ private data class Hint(
   val status: Int,
 )
 
-/** What survives a tracker restart: the feed and the last activity, for one seed. */
+/**
+ * What the tracker kept of a seed in its history file until 0.19.10 (the feed, the last activity, the connection
+ * logs): read once more as the baseline its events are replayed onto.
+ */
 @Serializable
 private data class SavedState(
   val seedName: String?,
@@ -89,6 +87,17 @@ private data class SavedState(
   val savedAt: Long? = null,
   /** Up to which of the gateway's events of the game server (by their IDs) this was heard. */
   val serverCursor: Long = 0,
+)
+
+/** A cheat's feed line as it is kept among the game server's events (written by the tracker, kind `cheat`). */
+@Serializable
+data class CheatLine(
+  val message: String,
+  val action: CheatAction? = null,
+  val by: String? = null,
+  val role: String? = null,
+  val slot: String? = null,
+  val value: String? = null,
 )
 
 /**
@@ -157,6 +166,21 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
+  /**
+   * The seed and its slots from the game server's `room.json`, before any connection: the events are replayed onto
+   * them, and the first connection's `RoomInfo` finds the same seed (and keeps what is here). Another seed than the
+   * one known: nothing.
+   */
+  fun prepare(room: Room) {
+    if (room.seedName == null || (seedName != null && seedName != room.seedName)) return
+    seedName = room.seedName
+    for (slot in room.slots) when (slot.type) {
+      SlotType.GROUP -> groups.getOrPut(slot.slot) { Group(slot.name, slot.game) }
+      SlotType.PLAYER -> players.getOrPut(slot.slot) { Player(slot.slot, slot.name, slot.game) }
+    }
+    touch()
+  }
+
   // ------------------------------------------------------------------------------------------------------- packets
 
   /** @return whether this is another seed than before; the state was reset then. */
@@ -220,19 +244,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /**
-   * A data storage value from `Retrieved` or `SetReply`. [live]: a change that just happened (SetReply), not the
-   * replay after connecting; a live status change of a world means a game client is connected to it.
+   * A data storage value from `Retrieved` or `SetReply`. Who is connected comes from the joins and leaves the gateway
+   * hears (every one since 0.19.9), not from a status change here.
    */
-  fun onSetReply(key: String, value: JsonElement?, live: Boolean = false, now: Long = clock()) {
+  fun onSetReply(key: String, value: JsonElement?) {
     when {
       key.startsWith("_read_client_status_") -> {
         val player = players[key.substringAfterLast('_').toInt()]
         val status = (value as? JsonPrimitive)?.intOrNull
-        // Only the status: this is also the replay after every (re)connect, not an activity
-        if (player != null && status != null) {
-          if (live && status >= ClientStatus.READY && status != player.status) seenPlaying(player, now)
-          player.status = status
-        }
+        if (player != null && status != null) player.status = status
       }
 
       key.startsWith("_read_slot_data_") -> (value as? JsonObject)?.obj("locks")?.forEach { (item, world) ->
@@ -269,51 +289,35 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /**
-   * One of the game server's events as the gateway heard and kept it ([id]: its place in their order, [at]: when):
-   * a packet for the feed and the slots' presence, or the game server's start or end, after which nobody is
-   * connected.
+   * One of the session's events as they are kept ([id]: its place in their order, [at]: when, [kind] and its JSON
+   * [payload]): a packet of the game server for the feed and the slots' presence, the game server's start or end
+   * (after which nobody is connected), or a cheat's feed line. Replayed in their order, they bring back everything
+   * of it; one already taken ([serverCursor]) isn't taken twice.
    */
-  fun onServerEvent(id: Long, at: Long, started: Boolean, packet: JsonObject?) {
+  fun onServerEvent(id: Long, at: Long, kind: String, payload: String) {
     if (id <= serverCursor) return
-    if (packet == null) {
-      // A new start: whoever was connected before isn't; an end: nobody is
-      players.values.forEach {
+    when (kind) {
+      SessionEventStore.START, SessionEventStore.STOP -> players.values.forEach {
+        // A new start: whoever was connected before isn't; an end: nobody is
         it.online = 0
-        it.goOffline(at, cut = started)
+        it.goOffline(at, cut = kind == SessionEventStore.START)
       }
-    } else when (packet.string("cmd")) {
-      "PrintJSON" -> onPrintJson(packet, at)
-      "Bounced" -> onBounced(packet, at)
+      SessionEventStore.PACKET -> json(payload)?.let { packet ->
+        when (packet.string("cmd")) {
+          "PrintJSON" -> onPrintJson(packet, at)
+          "Bounced" -> onBounced(packet, at)
+        }
+      }
+      SessionEventStore.CHEAT -> runCatching { ApiJson.decodeFromString(CheatLine.serializer(), payload) }.getOrNull()?.let {
+        onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at)
+      }
     }
     serverCursor = id
     touch()
   }
 
-  /**
-   * Who is connected, from what was heard before this tracker started: the joins and leaves ([packets], in their
-   * order) since the game server's last start. No feed events: those were made when they were heard.
-   */
-  fun restorePresence(packets: List<JsonObject>, now: Long = clock()) {
-    val connected = mutableMapOf<Int, Int>()
-    for (packet in packets) {
-      if (packet.string("cmd") != "PrintJSON") continue
-      val slot = packet.int("slot") ?: continue
-      when (packet.string("type")) {
-        "Join" -> {
-          val tags = packet.array("tags").orEmpty().map { it.jsonPrimitive.content }
-          if (tags.none { it in NON_GAME_TAGS }) connected[slot] = (connected[slot] ?: 0) + 1
-        }
-        "Part" -> if (!nonGameLeft(packet)) connected[slot] = ((connected[slot] ?: 0) - 1).coerceAtLeast(0)
-      }
-    }
-    connected.filterValues { it > 0 }.forEach { (slot, count) ->
-      players[slot]?.let {
-        it.online = count
-        it.goOnline(now, implicit = false)
-      }
-    }
-    touch()
-  }
+  private fun json(text: String): JsonObject? =
+    runCatching { ApiJson.parseToJsonElement(text) as? JsonObject }.getOrNull()
 
   /** The tracker's own connection is gone; who plays is known from the gateway's events, not from it. */
   fun onTrackerDisconnected() {
@@ -702,33 +706,33 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     )
   }.sortedWith(compareBy<HintView> { it.found }.thenBy { it.receiverName }.thenBy { it.itemName })
 
-  // -------------------------------------------------------------------------------------------------- persistence
+  // ------------------------------------------------------------------------------------------------------ baseline
 
-  /** Written atomically (temporary file + move), so a crash never leaves a half-written file. */
-  fun save(path: Path) {
-    val data = SavedState(
+  /**
+   * What the tracker's history file of before held ([text], the baseline), as it wrote it every 15 s until 0.19.10;
+   * a test makes one so. The events after its [serverCursor] are replayed onto it.
+   */
+  internal fun historyJson(): String = ApiJson.encodeToString(
+    SavedState.serializer(),
+    SavedState(
       seedName, eventSeq, events.toList(), serverCursor = serverCursor,
       lastActivity = players.mapNotNull { (s, p) -> p.lastActivity?.let { s to it } }.toMap(),
       sessions = players.filterValues { it.sessions.isNotEmpty() }.mapValues { it.value.sessions.toList() },
       firstCheckAt = players.mapNotNull { (s, p) -> p.firstCheckAt?.let { s to it } }.toMap(),
       goalAt = players.mapNotNull { (s, p) -> p.goalAt?.let { s to it } }.toMap(),
       savedAt = clock(),
-    )
-    path.toAbsolutePath().parent.createDirectories()
-    val tmp = Files.createTempFile(path.toAbsolutePath().parent, ".tracker-", ".json")
-    tmp.writeText(ApiJson.encodeToString(SavedState.serializer(), data))
-    Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-  }
+    ),
+  )
 
-  /** Reads what [save] wrote; it is only applied by [applySaved], once the seed is known to match. */
-  fun load(path: Path) {
-    saved = runCatching {
-      if (path.exists()) ApiJson.decodeFromString(SavedState.serializer(), path.readText()) else null
-    }.getOrNull()
+  /** Reads the baseline ([historyJson]); it is only applied by [applySaved], once the seed is known to match. */
+  fun loadSaved(text: String?) {
+    saved = text?.let { runCatching { ApiJson.decodeFromString(SavedState.serializer(), it) }.getOrNull() }
   }
 
   fun applySaved() {
     val data = saved ?: return
+    // The seed isn't known yet (no room.json, no connection): it stays for when it is
+    if (seedName == null) return
     saved = null
     if (data.seedName != seedName) return
     // Events that arrived before the history was restored come after it
