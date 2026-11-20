@@ -53,6 +53,11 @@ internal fun Grid(
   gap: Dp = GAP,
   balanced: Boolean = false,
   fillHeight: Boolean = false,
+  /**
+   * Cells of a row as tall as the tallest one. That height comes from the cells' measured minimum, which content
+   * that wraps (a line of pills) can underestimate: there the cells' ends would be cut off, so they keep their own.
+   */
+  equalHeight: Boolean = true,
   cell: @Composable (Int, Modifier) -> Unit,
 ) {
   val fitting = ((width + gap) / (minWidth + gap)).toInt().coerceIn(1, count.coerceAtLeast(1))
@@ -60,12 +65,16 @@ internal fun Grid(
   val columns = if (balanced && rowCount > 0) (count + rowCount - 1) / rowCount else fitting
   Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
     (0 until count).chunked(columns).forEach { row ->
-      // Cells of a row share the height of the tallest one
+      // Cells of a row share the height of the tallest one (unless they keep their own)
       Row(
-        if (fillHeight) Modifier.weight(1f) else Modifier.height(IntrinsicSize.Min),
+        when {
+          fillHeight -> Modifier.weight(1f)
+          equalHeight -> Modifier.height(IntrinsicSize.Min)
+          else -> Modifier
+        },
         horizontalArrangement = Arrangement.spacedBy(gap),
       ) {
-        row.forEach { cell(it, Modifier.weight(1f).fillMaxHeight()) }
+        row.forEach { cell(it, if (equalHeight || fillHeight) Modifier.weight(1f).fillMaxHeight() else Modifier.weight(1f)) }
         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
       }
     }

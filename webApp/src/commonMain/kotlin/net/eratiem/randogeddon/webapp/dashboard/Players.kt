@@ -115,7 +115,7 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
     if (people.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
-      Grid(people.size, width, 330.dp) { i, modifier ->
+      Grid(people.size, width, 330.dp, equalHeight = false) { i, modifier ->
         PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
       }
     }
@@ -270,11 +270,11 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
   val t = LocalTexts.current
   val locked = world.status == PlayerStatus.LOCKED
   HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-    // As tall as the texts, so the lock badge under the game icon ends with them
-    Row(Modifier.height(IntrinsicSize.Min).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // Its own height (one taken from the content's measured minimum cut off its last lines when its pills wrapped)
+    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
-        world.lock?.let { LockBadge(it, now, Modifier.weight(1f)) }
+        world.lock?.let { LockBadge(it, now, Modifier.height(36.dp)) }
       }
       Column(Modifier.weight(1f)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -350,12 +350,13 @@ internal fun Bars(progress: Progress, modifier: Modifier = Modifier, height: Dp 
   Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
     LabeledBar(
       t.dashboard.checksBar, fraction(progress.checked, progress.total),
-      "${t.number(progress.checked)} / ${t.number(progress.total)}", height = height, dimmed = dimmed,
+      "${t.number(progress.checked)} / ${t.number(progress.total)}", height = height, dimmed = dimmed, icon = Icon.CHECK,
     )
     val checks = progress.progressionChecks
     LabeledBar(
       t.dashboard.progressionChecksBar, checks?.let { fraction(progress.progressionChecked, it) },
-      if (checks == null) "…" else "${t.number(progress.progressionChecked)} / ${t.number(checks)}", height = height, dimmed = dimmed,
+      if (checks == null) "…" else "${t.number(progress.progressionChecked)} / ${t.number(checks)}", height = height,
+      dimmed = dimmed, icon = Icon.STAR,
     )
   }
 }
