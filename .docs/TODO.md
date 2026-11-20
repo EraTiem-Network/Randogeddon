@@ -785,10 +785,11 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       diagrams, in the README (0.18.13: *Sessions and their game servers*)
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
 
-## Phase 19: Generating Like the Launcher
+## Phase 19: Generating, Keeping, Showing
 
 *A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
-generates didn't generate on the server, and an APWorld that loaded before was refused).*
+generates didn't generate on the server, and an APWorld that loaded before was refused); then a session's state kept
+in the database, and how the dashboard shows it. Renamed from "Generating Like the Launcher" with 0.19.15.*
 
 - [x] Find out why first (closed with 0.19.7): the failed generation's log (its download, with the command, since 0.18.12) and the refused
       APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
@@ -870,8 +871,9 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       the Session's age) and "x of y checks done" in the top card
 - [ ] The slot / player panels themselves (asked for; the cards stay, reworked step by step, each step its own PR so
       it can be taken back): 0.19.12 checks and progression as two bars; 0.19.13 progression checks as the second
-      bar, received and sent as pills, the person header as pills; 0.19.14 nothing cut off, icons on the bars; more to
-      come from the user
+      bar, received and sent as pills, the person header as pills; 0.19.14 nothing cut off, icons on the bars; 0.19.15
+      received and sent without totals (the players aren't to learn how much is missing), slots and done in one pill,
+      icons and pills in the Overview; more to come from the user
 
 ## Phase 20: Hosted Minecraft Dig (planned)
 
