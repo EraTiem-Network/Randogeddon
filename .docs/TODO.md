@@ -869,7 +869,8 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       released, goal; the last check), the Overview's tiles (Finished with its parts, Slots with online, Items, Links,
       the Session's age) and "x of y checks done" in the top card
 - [ ] The slot / player panels themselves (asked for; the cards stay, reworked step by step, each step its own PR so
-      it can be taken back): 0.19.12 checks and progression as two bars; more to come from the user
+      it can be taken back): 0.19.12 checks and progression as two bars; 0.19.13 progression checks as the second
+      bar, received and sent as pills, the person header as pills; more to come from the user
 
 ## Phase 20: Hosted Minecraft Dig (planned)
 
