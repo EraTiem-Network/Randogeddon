@@ -40,6 +40,12 @@ fun Texts.duration(millis: Long): String {
   }
 }
 
+/** An age: "3d 4h" from a day on, else as [duration] ("4h 12m", "12m"). */
+fun Texts.age(millis: Long): String {
+  val hours = (millis / 3_600_000).coerceAtLeast(0)
+  return if (hours >= 24) format.daysHours(hours / 24, hours % 24) else duration(millis)
+}
+
 /** A file's size: `840 B`, `88.5 KB`, `4.2 MB` (`88,5 KB` in German). */
 fun Texts.fileSize(bytes: Long): String = when {
   bytes < 1024 -> "$bytes B"
