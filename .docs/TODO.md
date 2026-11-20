@@ -843,7 +843,8 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       through all three, see above)
 - ROMs for the worlds that need them: undecided, thought about later. No ROM is uploaded to the server (said after
       0.19.4; the earlier plan to keep them encrypted in the database is dropped)
-- [ ] A session from a seed generated elsewhere (asked for later): instead of the YAMLs, the `AP_<seed>.zip` that
+- [x] A session from a seed generated elsewhere (asked for later; 0.19.8, Administrators only, its files for the
+      players kept as they are: both decided): instead of the YAMLs, the `AP_<seed>.zip` that
       Archipelago's Launcher (or `Generate.py`) made, uploaded in the new session's form. Checked before anything of it
       runs, since a zip and the `.archipelago` in it come from outside: its size and file names (no paths out of it),
       only the files a seed has, the multidata read without running it (it is a pickle: only Archipelago's own

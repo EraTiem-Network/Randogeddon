@@ -34,6 +34,9 @@ import net.eratiem.randogeddon.shared.ArchipelagoInfo
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.SeedInfo
+import net.eratiem.randogeddon.shared.SeedInstall
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SessionServers
@@ -129,6 +132,37 @@ class GameServerClient(private val config: TrackerConfig) {
     return when {
       response.status == HttpStatusCode.NotFound -> null
       response.status.isSuccess() -> response.bodyAsText()
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** A seed generated elsewhere: the gateway checks it and keeps it for its session (its refusal says why not). */
+  suspend fun uploadSeed(upload: SeedUpload): SeedInfo = library {
+    http.post("${config.gameServerApi}/internal/seeds") {
+      auth()
+      timeout { requestTimeoutMillis = 5 * 60_000 }
+      contentType(ContentType.Application.Json)
+      setBody(ApiJson.encodeToString(SeedUpload.serializer(), upload))
+    }
+  }.let { ApiJson.decodeFromString(SeedInfo.serializer(), it) }
+
+  /** The uploaded seed kept under [token] won't become a session: the gateway deletes it (if it still has it). */
+  suspend fun dropSeed(token: String) {
+    request { http.delete("${config.gameServerApi}/internal/seeds/$token") { auth() } }
+  }
+
+  /** The uploaded seed kept under [token] becomes session [id]'s; `null`: the gateway has no such one (any more). */
+  suspend fun installSeed(id: String, token: String): SeedInfo? {
+    val response = request {
+      http.post("${session(id)}/seed") {
+        auth()
+        contentType(ContentType.Application.Json)
+        setBody(ApiJson.encodeToString(SeedInstall.serializer(), SeedInstall(token)))
+      }
+    }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(SeedInfo.serializer(), response.bodyAsText())
       else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
     }
   }

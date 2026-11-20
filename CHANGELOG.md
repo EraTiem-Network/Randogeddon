@@ -11,6 +11,24 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.8: A session from a seed generated elsewhere
+- **An Administrator makes a session from a seed Archipelago's Launcher (or `Generate.py`) made**: *Use a generated
+  seed…* in the new session's form takes its `AP_<seed>.zip` (up to 64 MB) instead of YAMLs. The slots are assigned
+  as with YAMLs; nothing is generated, and the session starts with the seed as it is.
+- **Checked before anything of it is used**, since it comes from outside: only files named as a seed's (`AP_…`, no
+  folders, each name once), one `.archipelago`, at most one spoiler log, 1,000 files and 512 MB unpacked. The gateway
+  writes the zip anew from what it read (what is kept is what was checked), and reads the multidata with
+  Archipelago's own restricted loader (`archipelago/seed_info.py`: as MultiServer reads it, no code of the file
+  runs, and its unpacked size is bounded first), which also says whether the release can serve it. A refusal names
+  the reason in the form.
+- **What such a session doesn't have**: locks (they are generated in; a seed with a World Locks slot is refused), the
+  spoiler log's later levels (it has the log the zip brings, or none and then no spoiler page), and a second
+  session of the same seed. Its files for the players are the zip's, unchecked: they come from whoever generated it.
+- The upload waits in the gateway for an hour for its session (`data/seed-uploads/`, at most eight at once), under a
+  token only the Administrator who uploaded it can use.
+- Routes: `POST /api/sessions/new/seed` (the upload, answered with what was found), `CreateSessionRequest.seed` (its
+  token instead of YAMLs).
+
 ### 0.19.7: A playthrough that doesn't give up
 - **A spoiler log's playthrough when Archipelago can't reduce it.** Archipelago works the playthrough out as the
   spheres every progression item is collected in, then reduces them to the items the goals need. That second step

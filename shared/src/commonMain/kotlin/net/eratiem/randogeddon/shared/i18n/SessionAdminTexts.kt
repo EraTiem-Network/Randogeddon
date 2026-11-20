@@ -131,6 +131,13 @@ interface SessionAdminTexts {
   val spoilerPaused: String
   fun spoilerStopped(level: Int, why: String): String
   val spoilerRetry: String
+  val useSeed: String
+  val stepSeed: String
+  val seedChecking: String
+  fun seedFound(name: String, version: String, slots: Int, files: Int): String
+  val seedNotes: String
+  val seedNoSpoiler: String
+  val startWithSeed: String
   fun generationTime(time: String): String
   val generationWorking: String
   fun generationWorkingCpu(cpu: Int): String
@@ -314,6 +321,15 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val spoilerPaused = "paused: a new session's generation goes first; it goes on after, where it was"
   override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
   override val spoilerRetry = "Try again"
+  override val useSeed = "Use a generated seed…"
+  override val stepSeed = "1. The seed"
+  override val seedChecking = "Checking the seed…"
+  override fun seedFound(name: String, version: String, slots: Int, files: Int) =
+    "Seed $name, generated with Archipelago $version: $slots slots, $files files for the players"
+  override val seedNotes = "A seed generated elsewhere is used as it is: nothing is generated, and it has no locks. " +
+    "Its files for the players come from whoever generated it."
+  override val seedNoSpoiler = "It brings no spoiler log, so the session has no spoiler page and no cheats that need one."
+  override val startWithSeed = "Start with this seed"
   override val generationWorking = "working"
   override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
   override val generationWaitingTurn = "waiting for its turn"
@@ -520,6 +536,15 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val spoilerPaused = "pausiert: Die Generierung einer neuen Session geht vor; danach geht es dort weiter, wo es war"
   override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
   override val spoilerRetry = "Erneut versuchen"
+  override val useSeed = "Generierten Seed verwenden…"
+  override val stepSeed = "1. Der Seed"
+  override val seedChecking = "Seed wird geprüft…"
+  override fun seedFound(name: String, version: String, slots: Int, files: Int) =
+    "Seed $name, generiert mit Archipelago $version: $slots Slots, $files Dateien für die Spieler"
+  override val seedNotes = "Ein woanders generierter Seed wird so verwendet, wie er ist: nichts wird generiert, und er hat " +
+    "keine Sperren. Seine Dateien für die Spieler stammen von dem, der ihn generiert hat."
+  override val seedNoSpoiler = "Er bringt kein Spoiler-Log mit, die Session hat also keine Spoiler-Seite und keine Cheats, die eins brauchen."
+  override val startWithSeed = "Mit diesem Seed starten"
   override val generationWorking = "arbeitet"
   override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"
   override val generationWaitingTurn = "wartet, bis es dran ist"
