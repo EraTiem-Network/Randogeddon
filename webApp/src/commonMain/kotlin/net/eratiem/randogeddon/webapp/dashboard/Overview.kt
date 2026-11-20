@@ -82,7 +82,7 @@ internal fun Grid(
   }
 }
 
-/** A tile: [label], [value], below it [pills] (each with its colour), or [sub] where there are none. */
+/** A tile: [label], [value], below it [pills], or [sub] where there are none. */
 private data class Tile(
   val label: String,
   val value: String,
@@ -90,8 +90,11 @@ private data class Tile(
   val color: Color,
   val icon: Icon,
   val tip: String? = null,
-  val pills: List<Pair<String, Color>> = emptyList(),
+  val pills: List<TilePill> = emptyList(),
 )
+
+/** A part of a tile: its [icon] and [text] (a number; empty: the icon alone), what it is as its [tip]. */
+private data class TilePill(val icon: Icon, val text: String, val tip: String, val color: Color)
 
 @Composable
 internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
@@ -106,23 +109,26 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
     val d = t.dashboard
     // Done: complete, at the goal, released; with release mode auto a goal becomes complete (said only if there is one)
     val done = s.players.count { it.status.done }
+    // A state's pill, its name as the tip
+    fun state(status: PlayerStatus, icon: Icon, color: Color) =
+      TilePill(icon, "${count(status)}", d.status(status).replaceFirstChar { it.uppercase() }, color)
     val parts = listOfNotNull(
-      d.partComplete(count(PlayerStatus.COMPLETE)) to p.ok,
-      count(PlayerStatus.GOAL).takeIf { s.releaseMode != "auto" || it > 0 }?.let { d.partGoal(it) to p.ok },
-      count(PlayerStatus.RELEASED).takeIf { it > 0 }?.let { d.partReleased(it) to p.progression },
+      state(PlayerStatus.COMPLETE, Icon.CHECK, p.ok),
+      state(PlayerStatus.GOAL, Icon.FLAG, p.ok).takeIf { s.releaseMode != "auto" || count(PlayerStatus.GOAL) > 0 },
+      state(PlayerStatus.RELEASED, Icon.RELEASE, p.progression).takeIf { count(PlayerStatus.RELEASED) > 0 },
     )
     add(Tile(d.finished, "$done / ${s.players.size}", d.slotsFinished, p.ok, Icon.FLAG, pills = parts))
     val online = s.players.count { it.online }
     val waiting = listOfNotNull(
-      count(PlayerStatus.IDLE).takeIf { it > 0 }?.let { d.partIdle(it) to p.muted },
-      count(PlayerStatus.NOT_STARTED).takeIf { it > 0 }?.let { d.partNotStarted(it) to p.muted },
+      state(PlayerStatus.IDLE, Icon.PAUSE, p.muted).takeIf { count(PlayerStatus.IDLE) > 0 },
+      state(PlayerStatus.NOT_STARTED, Icon.CIRCLE, p.muted).takeIf { count(PlayerStatus.NOT_STARTED) > 0 },
     )
     add(Tile(d.slots, "$online / ${s.players.size}", d.everyoneOnline, p.useful, Icon.USER, pills = waiting))
     if (totals.lockable > 0) {
       add(Tile(d.unlocked, "${totals.lockable - totals.locked} / ${totals.lockable}", d.slotsOpened, p.key, Icon.KEY))
     }
     if (showHints(s)) {
-      add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, Icon.BULB, pills = listOf(d.notFoundYet(open) to p.warn)))
+      add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, Icon.BULB, pills = listOf(TilePill(Icon.SEARCH, "$open", d.tipOpen, p.warn))))
     }
     // Items sent; an archive from before has its slots' received items only
     val sent = totals.itemsSent.takeIf { it > 0 } ?: s.players.sumOf { it.itemsReceived }
@@ -131,7 +137,10 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
       add(
         Tile(
           d.items, t.number(sent), d.itemsOf(t.number(progression), t.number(totals.trapsSent)), p.progression, Icon.GIFT,
-          pills = listOf(d.partProgression(t.number(progression)) to p.progression, d.partTraps(t.number(totals.trapsSent)) to p.trap),
+          pills = listOf(
+            TilePill(Icon.STAR, t.number(progression), d.tipProgression, p.progression),
+            TilePill(Icon.TRAP, t.number(totals.trapsSent), d.tipTraps, p.trap),
+          ),
         )
       )
     }
@@ -141,7 +150,10 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
       add(
         Tile(
           d.links, t.number(links), d.linksOf(t.number(totals.deaths), t.number(totals.trapLinks)), p.trap, Icon.LINK,
-          pills = listOf(d.partDeaths(t.number(totals.deaths)) to p.trap, d.partTraps(t.number(totals.trapLinks)) to p.warn),
+          pills = listOf(
+            TilePill(Icon.SKULL, t.number(totals.deaths), d.tipDeaths, p.trap),
+            TilePill(Icon.TRAP, t.number(totals.trapLinks), d.tipTraps, p.warn),
+          ),
         )
       )
     }
@@ -154,8 +166,11 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
       Tile(
         d.session, if (created != null) t.age(now - created) else ran, d.serverTime(ran, since != null), p.brandStart, Icon.HOURGLASS,
         tip = created?.let { d.madeOn(t.date(it)) },
-        // The game server's state, then how long it ran for this seed
-        pills = listOf((if (since != null) d.serverOn to p.ok else d.serverOff to p.muted), ran to p.useful),
+        // The game server's state (the icon alone), then how long it ran for this seed
+        pills = listOf(
+          if (since != null) TilePill(Icon.POWER, "", d.serverOn, p.ok) else TilePill(Icon.POWER, "", d.serverOff, p.muted),
+          TilePill(Icon.SERVER, ran, d.tipUptime, p.useful),
+        ),
       )
     )
   }
@@ -190,7 +205,7 @@ private fun StatTile(tile: Tile, modifier: Modifier) {
         // Its parts as pills, one below the other: the tiles of a row take the tallest one's height, measured from
         // their content, which a wrapping row of pills would come short of (its last pill cut off)
         Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          tile.pills.forEach { (text, color) -> Pill(text, color) }
+          tile.pills.forEach { pill -> Tip(pill.tip) { Pill(pill.text, pill.color, pill.icon) } }
         }
       }
     }
