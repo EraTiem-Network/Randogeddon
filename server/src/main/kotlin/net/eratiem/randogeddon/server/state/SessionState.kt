@@ -257,21 +257,14 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
-  /** Progression items meant for each slot at every location; `null` until every slot is scouted. */
-  private fun progressionTotals(): Map<Int, Int>? {
-    if (players.isEmpty() || !scouted.containsAll(players.keys)) return null
-    return placements.values.filter { (_, flags) -> flags and ItemFlags.PROGRESSION != 0 }.groupingBy { it.first }.eachCount()
-  }
+  /** [p]'s own progression locations, the checked ones, and of those the ones meant for others; `null` until scouted. */
+  private data class ProgressionChecks(val locations: Int, val checked: Int, val sent: Int)
 
-  /**
-   * [slot]'s own locations that hold a progression item: (all of them, the checked ones), and of those the ones meant
-   * for others: (all, sent so far); `null` until [slot] is scouted.
-   */
-  private fun progressionChecks(p: Player): Pair<Pair<Int, Int>, Pair<Int, Int>>? {
+  private fun progressionChecks(p: Player): ProgressionChecks? {
     if (p.slot !in scouted) return null
     val own = placements.filter { (key, value) -> key.first == p.slot && value.second and ItemFlags.PROGRESSION != 0 }
-    val forOthers = own.filter { (_, value) -> value.first != p.slot }
-    return (own.size to own.keys.count { it.second in p.checked }) to (forOthers.size to forOthers.keys.count { it.second in p.checked })
+    val checked = own.filterKeys { it.second in p.checked }
+    return ProgressionChecks(own.size, checked.size, checked.count { (_, value) -> value.first != p.slot })
   }
 
   /** Progression items [p] received from a location (not the starting inventory, not a cheat's). */
@@ -624,7 +617,6 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val costPercent = hintCost ?: 0
     val lockSlots = lockSlots()
     val personOf = people.flatMap { (person, worlds) -> worlds.map { it to person } }.toMap()
-    val progressionTotals = progressionTotals()
     val list = players.values.filter { it.slot !in lockSlots }.map { p ->
       val total = p.total
       val lock = lockOf(p.slot)
@@ -642,11 +634,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         lastActivity = p.lastActivity,
         itemsReceived = p.items.size,
         progressionReceived = progressionReceived(p),
-        progressionTotal = progressionTotals?.let { it[p.slot] ?: 0 },
-        progressionChecks = checks?.first?.first,
-        progressionChecked = checks?.first?.second ?: 0,
-        sentTotal = checks?.second?.first,
-        sent = checks?.second?.second ?: 0,
+        progressionChecks = checks?.locations,
+        progressionChecked = checks?.checked ?: 0,
+        sent = checks?.sent,
         hintPoints = p.hintPoints,
         // As MultiServer's Context.get_hint_cost
         hintCost = if (costPercent == 0) 0 else maxOf(1, (costPercent * 0.01 * total).toInt()),
@@ -717,11 +707,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       checked = p.checked.size,
       total = p.total,
       progressionReceived = progressionReceived(p),
-      progressionTotal = progressionTotals()?.let { it[slot] ?: 0 },
-      progressionChecks = checks?.first?.first,
-      progressionChecked = checks?.first?.second ?: 0,
-      sentTotal = checks?.second?.first,
-      sent = checks?.second?.second ?: 0,
+      progressionChecks = checks?.locations,
+      progressionChecked = checks?.checked ?: 0,
+      sent = checks?.sent,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
     )

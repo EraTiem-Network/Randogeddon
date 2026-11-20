@@ -7,9 +7,22 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
-## Phase 19: Generating Like the Launcher
-A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
-has that the gateway hasn't.
+## Phase 19: Generating, Keeping, Showing
+It began with generating like the Launcher (a seed that the Launcher generates is to generate here too: first why one
+didn't, then what the Launcher has that the gateway hasn't), went on to keeping a session's state (nothing lost while
+the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
+states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
+
+### 0.19.15: No totals for the players; icons in the Overview
+- **Received and sent without totals**: the pills say how many progression items a slot (or person) received and
+  sent, not of how many: its players would learn how much is still missing. The tracker doesn't send those totals
+  any more either (0.19.12 and 0.19.13 did). The *Progression checks* bar keeps its own world's x / y.
+- **Slots and done in one pill** on the person card: "1 / 3 done" (green once one is).
+- **Icons and pills in the Overview**: every tile has its icon (new: a bulb for hints, a gift for items, a chain link
+  for links, a clock for play time, an hourglass for the session), and its parts are pills (complete, goal,
+  released; idle, not started; not found yet; progression, traps; deaths, traps; running or stopped, and how long).
+  The pills stand one below the other, so a tile's height comes out right (a wrapping line of them was cut off).
+- Phase 19 renamed to *Generating, Keeping, Showing*.
 
 ### 0.19.14: Nothing cut off
 - **The person cards and slot rows were cut off at their end**: the last slot of a card showed only its first bar,

@@ -303,30 +303,26 @@ class SessionStateTest {
   }
 
   @Test
-  fun `each slot's progression total comes from scouting every slot's own locations, once all are`() {
+  fun `a slot's progression checks and what it sent come from scouting its own locations, without totals for its players`() {
     val s = makeState()
-    fun totals() = s.summary("t", null).players.map { it.progressionTotal }
     // Alice's world: two progression items for Bob, one for herself, a filler; Bob's: one progression item for Alice
     s.onLocationInfo(1, json("""{"cmd":"LocationInfo","locations":[${item(100, 10, 2, 1)},${item(101, 11, 2, 1)},${item(100, 12, 1, 1)},${item(102, 13, 1, 0)}]}"""))
-    assertEquals(listOf(null, null), totals()) // Bob's world isn't scouted yet
-    // Alice's own world is: three progression locations (she checked one), two of them for others (one sent)
+    // Alice's own world: three progression locations (she checked one, which was for Bob: sent)
     fun own(slot: Int) = s.summary("t", null).players.first { it.slot == slot }
-      .let { listOf(it.progressionChecks, it.progressionChecked, it.sentTotal, it.sent) }
-    assertEquals(listOf(3, 1, 2, 1), own(1))
-    assertEquals(listOf(null, 0, null, 0), own(2))
+      .let { listOf(it.progressionChecks, it.progressionChecked, it.sent) }
+    assertEquals(listOf(3, 1, 1), own(1))
+    assertEquals(listOf(null, 0, null), own(2)) // Bob's world isn't scouted yet
     s.onLocationInfo(2, json("""{"cmd":"LocationInfo","locations":[${item(100, 20, 1, 1)},${item(103, 21, 2, 4)}]}"""))
-    assertEquals(listOf(2, 2), totals())
-    assertEquals(listOf(1, 0, 1, 0), own(2))
-    assertEquals(listOf(3, 1, 2, 1), s.playerDetail(1)!!.let { listOf(it.progressionChecks, it.progressionChecked, it.sentTotal, it.sent) })
+    assertEquals(listOf(1, 0, 0), own(2))
+    assertEquals(listOf(3, 1, 1), s.playerDetail(1)!!.let { listOf(it.progressionChecks, it.progressionChecked, it.sent) })
     // Received from a location counts, the starting inventory doesn't
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 12, 1, 1)},${item(100, -2, 0, 1)}]}"""))
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
-    assertEquals(1 to 2, s.playerDetail(1)!!.let { it.progressionReceived to it.progressionTotal })
+    assertEquals(1, s.playerDetail(1)!!.progressionReceived)
     // A slot without locations is scouted at once
     val t = makeState()
-    t.onLocationInfo(1, json("""{"cmd":"LocationInfo","locations":[${item(100, 10, 2, 1)}]}"""))
     t.onNothingToScout(2)
-    assertEquals(listOf(0, 1), t.summary("t", null).players.map { it.progressionTotal })
+    assertEquals(0, t.summary("t", null).players[1].progressionChecks)
   }
 
   @Test

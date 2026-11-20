@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -45,7 +46,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 }
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
-enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR }
+enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -145,6 +146,42 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawCircle(color, radius = w * .17f, center = Offset(w / 2, w * .33f), style = Stroke(stroke))
         drawArc(color, 200f, 140f, useCenter = false, topLeft = Offset(w * .16f, w * .58f), size = Size(w * .68f, w * .6f),
           style = Stroke(stroke, cap = StrokeCap.Round))
+      }
+
+      // A light bulb: hints
+      Icon.BULB -> {
+        drawCircle(color, radius = w * .26f, center = Offset(w * .5f, w * .38f), style = Stroke(stroke))
+        drawLine(color, Offset(w * .38f, w * .74f), Offset(w * .62f, w * .74f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * .42f, w * .88f), Offset(w * .58f, w * .88f), stroke, StrokeCap.Round)
+      }
+
+      // A gift: items
+      Icon.GIFT -> {
+        drawRect(color, Offset(w * .16f, w * .42f), Size(w * .68f, w * .44f), style = Stroke(stroke))
+        drawLine(color, Offset(w * .1f, w * .42f), Offset(w * .9f, w * .42f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * .5f, w * .28f), Offset(w * .5f, w * .86f), stroke)
+        drawArc(color, 180f, 180f, useCenter = false, topLeft = Offset(w * .3f, w * .18f), size = Size(w * .2f, w * .2f), style = Stroke(stroke))
+        drawArc(color, 180f, 180f, useCenter = false, topLeft = Offset(w * .5f, w * .18f), size = Size(w * .2f, w * .2f), style = Stroke(stroke))
+      }
+
+      // Two chain links: links between games
+      Icon.LINK -> {
+        drawRoundRect(color, Offset(w * .08f, w * .34f), Size(w * .5f, w * .32f), CornerRadius(w * .16f), style = Stroke(stroke))
+        drawRoundRect(color, Offset(w * .42f, w * .34f), Size(w * .5f, w * .32f), CornerRadius(w * .16f), style = Stroke(stroke))
+      }
+
+      // A clock: play time
+      Icon.CLOCK -> {
+        drawCircle(color, radius = w * .4f, center = Offset(w / 2, w / 2), style = Stroke(stroke))
+        drawLine(color, Offset(w * .5f, w * .5f), Offset(w * .5f, w * .26f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * .5f, w * .5f), Offset(w * .68f, w * .6f), stroke, StrokeCap.Round)
+      }
+
+      // An hourglass: the session's age
+      Icon.HOURGLASS -> {
+        drawPath(Path().apply {
+          moveTo(w * .22f, w * .1f); lineTo(w * .78f, w * .1f); lineTo(w * .22f, w * .9f); lineTo(w * .78f, w * .9f); close()
+        }, color, style = Stroke(stroke, join = StrokeJoin.Round))
       }
 
       // A five-pointed star: progression

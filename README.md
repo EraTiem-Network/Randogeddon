@@ -791,17 +791,17 @@ which the gateway writes before it starts the session's game server.
   downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Top card:** overall completion with "x of y checks done".
-- **Overview:** *Finished* (slots done of all; below how many are complete, at their goal (not shown with release
-  mode `auto`, where a goal becomes complete) and released), *Slots* (online of all; below idle and not started),
+- **Overview:** each tile with its icon and its parts as pills. *Finished* (slots done of all; below how many are
+  complete, at their goal (not shown with release mode `auto`, where a goal becomes complete) and released), *Slots* (online of all; below idle and not started),
   *Unlocked* (locked slots opened), *Hints*, *Items* (sent so far; below progression and traps), *Links* (deaths and
   traps shared by DeathLink and TrapLink, from the first one on), *Play time*, *Session* (its age, the date it was
   made as a tooltip; below the game server's running time).
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
-  progression items it got of those meant for it in the whole multiworld; *sent*: the progression items found in its
-  world for other slots, of all such; play time), two bars (a check mark: the locations checked in its own world; a
+  progression items it got; *sent*: the progression items found in its world for other slots; play time; counts
+  only, so its players don't learn how much is still missing), two bars (a check mark: the locations checked in its own world; a
   star: those of them that hold a progression item, the progression checks). The person card has the same, summed over their
-  slots, with their slots, done and play time as pills under the name. How many game clients
+  slots, with "x / y done" and play time as pills under the name. How many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
@@ -813,11 +813,11 @@ which the gateway writes before it starts the session's game server.
   connected now; whether someone really plays can't be known), *idle* (connected before and has checks), *not
   started*. Beside it: how long ago it was complete or released; for a goal, its goal and its last check; for idle and
   online, its last check.
-- **Progression totals:** each of the tracker's slot connections asks what lies at that slot's own locations
+- **Progression counts:** each of the tracker's slot connections asks what lies at that slot's own locations
   (`LocationScouts`, without making hints); together that is every placement, of which only the counts per slot
-  reach the dashboard (never which item is where). A slot's own counts (progression checks, sent) are there once it
-  is scouted, its received total once every slot is (until then: how many so far). The starting inventory isn't
-  counted on either side.
+  reach the dashboard (never which item is where), and of those only a slot's own world's (its progression checks,
+  what it sent): how many progression items are meant for a slot isn't said, its players would learn how much is
+  still missing. They are there once the slot is scouted. The starting inventory isn't counted.
 - **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.
 - **Live feed:** item sends colour-coded by classification (purple = progression, blue = useful,
   red = trap), hints, goals, releases, chat and joins, and the links between games (a DeathLink: who died and of
