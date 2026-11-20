@@ -23,11 +23,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.LockInfo
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.PlayerStatus
@@ -320,13 +323,15 @@ internal data class Progress(
   val progressionChecks: Int?,
   val received: Int,
   val sent: Int?,
+  /** Its checks available now (the session's logic counts them); `null`: not known. */
+  val available: Int? = null,
 ) {
   companion object {
     fun of(w: PlayerSummary) =
-      Progress(w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent)
+      Progress(w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent, w.available)
 
     fun of(d: PlayerDetail) =
-      Progress(d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent)
+      Progress(d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent, d.available)
 
     /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
     fun sum(worlds: List<PlayerSummary>): Progress {
@@ -334,6 +339,8 @@ internal data class Progress(
       return Progress(
         worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionChecked }, known { it.progressionChecks },
         worlds.sumOf { it.progressionReceived }, known { it.sent },
+        // Those of its slots that are known (a slot the logic has no answer for adds none)
+        worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
       )
     }
   }
@@ -358,13 +365,30 @@ internal fun Bars(progress: Progress, modifier: Modifier = Modifier, height: Dp 
   }
 }
 
-/** Progression received, and sent to others (once scouted), as pills: counts only. */
+/** Whether the session's logic runs now: the available checks are current, else the last known ones. */
+internal val LocalLogicRunning = staticCompositionLocalOf { true }
+
+/** [content] with the logic's state of [s] ([LocalLogicRunning]). */
+@Composable
+internal fun WithLogic(s: Summary?, content: @Composable () -> Unit) =
+  CompositionLocalProvider(LocalLogicRunning provides (s?.logic?.status == LogicStatus.RUNNING), content = content)
+
+/**
+ * Progression received, and sent to others (once scouted), as pills: counts only. Then the checks available now (once
+ * the logic counted them), greyed out with the last known count while it doesn't run.
+ */
 @Composable
 internal fun ProgressPills(progress: Progress) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   Pill(t.dashboard.received(t.number(progress.received)), p.progression)
   progress.sent?.let { Pill(t.dashboard.sent(t.number(it)), p.useful) }
+  progress.available?.let { available ->
+    val running = LocalLogicRunning.current
+    Tip(if (running) t.dashboard.availableTip else t.dashboard.availableLastKnown) {
+      Pill(t.dashboard.available(t.number(available)), if (running) p.ok else p.muted, Icon.TARGET)
+    }
+  }
 }
 
 /** Connected time of [world] so far, including the running session. */

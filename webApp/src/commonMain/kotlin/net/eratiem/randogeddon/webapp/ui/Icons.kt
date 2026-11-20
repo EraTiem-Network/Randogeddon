@@ -48,7 +48,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
 enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
-  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER }
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, TARGET }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -245,6 +245,13 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawArc(color, -60f, 300f, useCenter = false, topLeft = Offset(w * .16f, w * .2f), size = Size(w * .68f, w * .68f),
           style = Stroke(stroke * 1.2f, cap = StrokeCap.Round))
         drawLine(color, Offset(w * .5f, w * .08f), Offset(w * .5f, w * .48f), stroke * 1.2f, StrokeCap.Round)
+      }
+
+      // A target, rings round a dot: the checks available now
+      Icon.TARGET -> {
+        drawCircle(color, radius = w * .38f, center = Offset(w / 2, w / 2), style = Stroke(stroke))
+        drawCircle(color, radius = w * .2f, center = Offset(w / 2, w / 2), style = Stroke(stroke))
+        drawCircle(color, radius = w * .07f, center = Offset(w / 2, w / 2))
       }
 
       // Two stacked server units: how long the game server ran

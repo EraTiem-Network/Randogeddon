@@ -43,6 +43,7 @@ import net.eratiem.randogeddon.webapp.api.TrackerRepository
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.dashboard.Banner
+import net.eratiem.randogeddon.webapp.dashboard.WithLogic
 import net.eratiem.randogeddon.webapp.dashboard.BridgeFold
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_NARROW
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_TWO_COLUMNS
@@ -354,7 +355,7 @@ private fun TrackerApp() {
           sideWidth = FEED_WIDTH,
           main = {
             Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
-              People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+              WithLogic(s) { People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
               if (showHints(s)) Hints(s, compact = false)
             }
           },
@@ -362,7 +363,7 @@ private fun TrackerApp() {
         )
       } else {
         // Narrow screens: left/right means right after the players, "below" at the very end
-        People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
+        WithLogic(s) { People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
         if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
         if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
         if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
@@ -373,11 +374,11 @@ private fun TrackerApp() {
     }
     detailPerson?.let { name ->
       summary?.let { s ->
-        PersonDialog(name, s, now, repository, onClose = { detailPerson = null })
+        WithLogic(s) { PersonDialog(name, s, now, repository, onClose = { detailPerson = null }) }
       }
     }
     detailSlot?.let { slot ->
-      PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null })
+      WithLogic(summary) { PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null }) }
     }
   }
 }
