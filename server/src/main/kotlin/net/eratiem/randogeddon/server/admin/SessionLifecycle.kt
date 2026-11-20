@@ -182,8 +182,7 @@ class SessionLifecycle(
       players = worlds, people = people, totals = live.totals.copy(online = 0),
       finishedAt = ms, finishesAt = null, sessionTimeMs = time, sessionRunningSince = null,
     )
-    val details = session.tracker.read { players.values.filter { it.game != WORLD_LOCKS_GAME }.mapNotNull { playerDetail(it.slot) } }
-      .map { d -> d.copy(sessions = d.sessions.map { if (it.end == null) it.copy(end = ms) else it }) }
+    val details = session.details().map { d -> d.copy(sessions = d.sessions.map { if (it.end == null) it.copy(end = ms) else it }) }
     archives.write(session.id, ArchivedSession(summary, details, by))
     finishes.finish(session.seedName, by, now)
     session.disconnect()
