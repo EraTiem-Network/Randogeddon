@@ -319,7 +319,7 @@ from a registry (Artifact Keeper). Its machines, addresses and accounts are writ
 |---|---|
 | `.env`, `docker-compose.yml`, `docker-compose.proxy.yml` | `/srv/randogeddon/` (`COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml`) |
 | `data/` (sessions, `old/`, the APWorld library), `custom_worlds/` | `/srv/randogeddon/` |
-| the database, the tracker's archives and TOTP key file | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
+| the database (with the sessions' events, snapshots and archives); the TOTP key file without `TOTP_KEY`, and the tracker's files of before 0.19.10 | the volumes `randogeddon_postgres-data`, `randogeddon_tracker-state` |
 | dumps (each update's, a daily one kept 14 days; for root only) | `/srv/backups/` |
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the VM's own backup) |
 
@@ -450,7 +450,8 @@ finished session's don't start this way. An Administrator can keep a session's g
 - **Reopening:** within 14 days of the finish (*Reopen*), unless the session was completed (100 %), and while a game
   server is free. Its history goes on from where it was.
 - **Finished sessions** keep their files (`data/sessions/<id>/`) and what the dashboard showed when they finished
-  (`/state/sessions/<id>/archive.json` in the tracker's volume). Their players see them under *Other sessions* on the
+  (their archive, in the database's `session_snapshots`, so in the daily dump; until 0.19.10 a file in the tracker's
+  volume, imported once). Their players see them under *Other sessions* on the
   dashboard, Administrators see all; a finished session is kept until it is deleted in the panel, or
   automatically `SESSION_RETENTION_DAYS` after it finished (90 by default, `0`: never; the date shows in the lists).
   *Disable auto-deletion* (asked once more) keeps it until it is deleted by hand; enabled again, the days count from
@@ -820,13 +821,24 @@ Known limitations:
   and trap links) is heard by the gateway, which starts every game server: one connection each from the moment the
   server accepts clients, written into the database (`session_events`) with the server's starts and ends. A player
   is let in once the gateway listens (it waits 3 s at most). The tracker reads the events from there about once a
-  second, in their order, and remembers how far it is: nothing is lost while it isn't connected (it restarts; a
-  player wakes a sleeping session and is in before it), and after its restart it knows who is connected from the
-  joins and leaves since the game server's start. A session's events go when it is deleted. What a slot has checked
-  and received still comes from the tracker's own connections, which bring all of it at every connect.
-- A slot can also count as online when it does something although no join was heard (it finds its own item, chats,
-  changes status): such sessions are marked "seen playing" in the slot's connection log.
-- The event history keeps the last 500 events per session, stored in the `tracker-state` volume.
+  second, in their order. They are its history: at its start it sets a session's slots up from `room.json` and
+  replays every one of its events (the feed, the connection logs, first check, goal and last activity come back);
+  a cheat's feed line is written there by the tracker itself. So nothing is lost while it isn't running or isn't
+  connected (a crash, a restart, a player waking a sleeping session before it), and nothing waits for a save. A
+  session's events go when it is deleted. What a slot has checked and received still comes from the tracker's own
+  connections, which bring all of it at every connect.
+- **What a session's dashboard shows is kept** in the database (`session_snapshots`: the summary and every slot's
+  details) when the tracker's connection to its game server ends (it sleeps or stops), when the tracker stops, and
+  while connected at most every 5 minutes. Until the tracker has been connected since its start, the dashboard
+  shows that (with who is connected from the replayed events): after a deploy every game server sleeps until a player
+  comes, and the dashboards aren't empty meanwhile. Nothing in the game changes while its game server doesn't run.
+- A slot can also count as online when it does something although no join was heard (it finds its own item or
+  chats; only events from before 0.19.9, when not every join was heard): such sessions are marked "seen playing" in
+  the slot's connection log.
+- The feed shows the last 500 events of a session; all of them stay in the database until it is deleted.
+- Until 0.19.10 the tracker kept each session's history in a file (`/state/sessions/<id>/tracker.json`, written
+  every 15 s) and finished sessions' archives as files: both are brought into the database once (the history as the
+  base its newer events are replayed onto) and then not read any more; the files are left where they are.
 
 API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
 two-factor login answers `{"next": "code"|"setup", "pending": …}` for `POST /api/login/code` or
