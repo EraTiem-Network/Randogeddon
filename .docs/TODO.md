@@ -875,7 +875,7 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       received and sent without totals (the players aren't to learn how much is missing), slots and done in one pill,
       icons and pills in the Overview; 0.19.16 the Overview's pills as icons with a one-word tooltip, the game
       server's uptime said as such; more to come from the user
-- [ ] Available checks per slot and person (asked for after 0.19.15; 0.19.17): a pill with how many of a slot's
+- [x] Available checks per slot and person (asked for after 0.19.15; 0.19.17): a pill with how many of a slot's
       locations can be checked now, by its world's logic with the items it has (as a Universal Tracker shows them),
       summed on the person card. The logic exists only in a generated multiworld (the seed's `.archipelago` has the
       placements, not the rules): a logic process generates the seed again from its kept inputs (as the spoiler levels

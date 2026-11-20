@@ -474,6 +474,19 @@ finished session's don't start this way. An Administrator can keep a session's g
   would end without any spoiler log), the playthrough lists every progression item in the order it can be collected
   instead, and the spoiler page says so (`archipelago/spoiler_run.py` wraps that one step; the seed is the same). A
   run that stopped (it failed, or took too long) is tried again with *Try again* in the panel, after a fix.
+- **Logic, the available checks:** how many of a slot's locations its game's logic reaches now with the items it has
+  (as a Universal Tracker shows them). The rules exist only while Archipelago generates (the seed's multidata has the
+  placements, not the rules), so the gateway generates the seed once more with its number and inputs, as for the
+  spoiler log, but only up to the fill (`archipelago/logic_run.py`: the worlds, their rules, events and locked items;
+  a few seconds, for a big seed a minute), and keeps that process to answer. It starts with the session's game server
+  and ends as long after that one went to sleep as the game servers wait before they sleep (at least 10 min). The
+  tracker asks it whenever a slot's items or checks change; each count goes into the slot's state, and with it into
+  the kept dashboard (the database), so the last known counts show while it doesn't run. A slot whose locations
+  differ from the seed's (an APWorld that doesn't build the same with the same seed) gets no count. Not for seeds from
+  elsewhere, races and sessions from before 0.19.3 (no inputs kept), nor with an APWorld changed since the seed. The
+  top panel shows its state beside the game server's (*Logic*: a working symbol while it is built, a dot when it
+  runs, grey when it doesn't, red when its build failed; what that means as the tooltip); the panel's *Logic* section
+  (Session-Managers, Administrators) shows its state and *Build again*, and to Administrators its log (pages, search).
 - **Spoiler log:** the seed's spoiler log, with the playthrough sphere by sphere and the whole log
   (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
   log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a
@@ -790,7 +803,8 @@ which the gateway writes before it starts the session's game server.
   slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
   downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
-- **Top card:** overall completion with "x of y checks done".
+- **Top card:** overall completion with "x of y checks done"; beside the game server's state the logic's (see the
+  available checks above).
 - **Overview:** each tile with its icon and its parts as pills, each an icon and a number, what it is as its tooltip
   (one word: *Complete*, *Goal*, *Released*, *Idle*, *Not started*, *Open*, *Progression*, *Traps*, *Deaths*, *Uptime*). *Finished* (slots done of all; below how many are
   complete, at their goal (not shown with release mode `auto`, where a goal becomes complete) and released), *Slots* (online of all; below idle and not started),
@@ -800,7 +814,8 @@ which the gateway writes before it starts the session's game server.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
   progression items it got; *sent*: the progression items found in its world for other slots; play time; counts
-  only, so its players don't learn how much is still missing), two bars (a check mark: the locations checked in its own world; a
+  only, so its players don't learn how much is still missing; *available*: the checks it can make now, by its
+  game's logic, grey with the last known count while the logic doesn't run), two bars (a check mark: the locations checked in its own world; a
   star: those of them that hold a progression item, the progression checks). The person card has the same, summed over their
   slots, with "x / y done" and play time as pills under the name. How many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders

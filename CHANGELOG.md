@@ -13,6 +13,26 @@ didn't, then what the Launcher has that the gateway hasn't), went on to keeping 
 the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
 states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
 
+### 0.19.17: Available checks
+- **How many checks a slot can make now**, as a pill on each slot ("12 available"), summed on the person card and in
+  the dialogs: its unchecked locations its game's logic reaches with the items it has (as a Universal Tracker shows
+  them). Grey with the last known count while the logic doesn't run.
+- **The session's logic**: the gateway generates the seed once more with its number and inputs (as for the spoiler
+  log), but only up to the fill (`archipelago/logic_run.py`): its worlds with their rules, events and locked items,
+  in seconds; where the items lie comes from the seed. That process answers the tracker whenever a slot's items or
+  checks change. It starts with the game server and ends as long after it went to sleep as the game servers wait
+  before they sleep (at least 10 min). Tried on the server: 10 slots and 2,868 locations built in 2.6 s and 195 MB,
+  every slot counted in 0.27 s. Freezing it with CRIU while the game server sleeps worked too, but needs rights close
+  to root: not used.
+- **Its state in the top panel**, beside the game server's (*Logic*: being built, running, not running, failed; what
+  that means as the tooltip). The panel's new *Logic* section: its state and *Build again* (Session-Managers and
+  Administrators), its log with pages and search (Administrators).
+- **The counts are kept** with the rest of the dashboard in the database (0.19.10), shown while the logic doesn't run
+  and after a restart.
+- Not for seeds from elsewhere, races and sessions from before 0.19.3 (their inputs aren't kept), nor after one of
+  the seed's APWorlds changed. A slot whose locations differ from the seed's gets no count.
+- The top panel's controls wrap onto a second line on a phone, where they don't fit beside each other.
+
 ### 0.19.16: Icons in the Overview's pills
 - **The Overview's pills are an icon and a number**, what they are as their tooltip in one word: complete (a check
   mark), goal (a flag), released (an arrow out of a box), idle (two bars), not started (an empty ring), hints not
