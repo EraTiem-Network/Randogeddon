@@ -4,6 +4,7 @@ package net.eratiem.randogeddon.shared.i18n
 interface SpoilerTexts {
   val title: String
   fun spheres(n: Int): String
+  val unreduced: String
   val everySlot: String
   val foldAll: String
   val unfoldAll: String
@@ -37,6 +38,8 @@ interface SpoilerTexts {
 internal object EnglishSpoiler : SpoilerTexts {
   override val title = "Spoiler log"
   override fun spheres(n: Int) = if (n == 1) "1 sphere" else "$n spheres"
+  override val unreduced = "This playthrough lists every progression item in the order it can be collected, not only " +
+    "the ones needed: Archipelago couldn't reduce it, because a game's logic contradicts itself. That game's steps may be off."
   override fun linesOf(from: String, to: String, total: String) = "Lines $from–$to of $total"
   override val earlierLines = "Earlier lines"
   override val laterLines = "Later lines"
@@ -65,6 +68,9 @@ internal object EnglishSpoiler : SpoilerTexts {
 internal object GermanSpoiler : SpoilerTexts {
   override val title = "Spoiler-Log"
   override fun spheres(n: Int) = if (n == 1) "1 Sphäre" else "$n Sphären"
+  override val unreduced = "Dieser Lösungsweg nennt jedes Fortschritts-Item in der Reihenfolge, in der es erreichbar ist, " +
+    "nicht nur die nötigen: Archipelago konnte ihn nicht kürzen, weil sich die Logik eines Spiels widerspricht. " +
+    "Die Schritte dieses Spiels können abweichen."
   override fun linesOf(from: String, to: String, total: String) = "Zeilen $from–$to von $total"
   override val earlierLines = "Frühere Zeilen"
   override val laterLines = "Spätere Zeilen"

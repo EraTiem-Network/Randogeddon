@@ -130,6 +130,7 @@ interface SessionAdminTexts {
   val spoilerWaiting: String
   val spoilerPaused: String
   fun spoilerStopped(level: Int, why: String): String
+  val spoilerRetry: String
   fun generationTime(time: String): String
   val generationWorking: String
   fun generationWorkingCpu(cpu: Int): String
@@ -312,6 +313,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val spoilerWaiting = "waiting for its turn (a new session's generation goes first)"
   override val spoilerPaused = "paused: a new session's generation goes first; it goes on after, where it was"
   override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
+  override val spoilerRetry = "Try again"
   override val generationWorking = "working"
   override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
   override val generationWaitingTurn = "waiting for its turn"
@@ -517,6 +519,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val spoilerWaiting = "wartet, bis es dran ist (die Generierung einer neuen Session geht vor)"
   override val spoilerPaused = "pausiert: Die Generierung einer neuen Session geht vor; danach geht es dort weiter, wo es war"
   override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
+  override val spoilerRetry = "Erneut versuchen"
   override val generationWorking = "arbeitet"
   override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"
   override val generationWaitingTurn = "wartet, bis es dran ist"

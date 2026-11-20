@@ -133,6 +133,16 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }
 
+  /** Session [id]'s stopped spoiler log is tried again; `false`: it didn't stop (or goes on already). */
+  suspend fun retrySpoilerRun(id: String): Boolean {
+    val response = request { http.post("${session(id)}/spoiler-run/retry") { auth() } }
+    return when {
+      response.status == HttpStatusCode.Conflict || response.status == HttpStatusCode.NotFound -> false
+      response.status.isSuccess() -> true
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
   /** Session [id]'s spoiler log's background run: its log lines after [since]; `null`: none. */
   suspend fun spoilerRunLog(id: String, since: Long): LogLines? {
     val response = request { http.get("${session(id)}/spoiler-run/log?since=$since") { auth() } }

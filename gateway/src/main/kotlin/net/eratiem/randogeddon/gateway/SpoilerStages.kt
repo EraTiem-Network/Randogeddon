@@ -54,6 +54,8 @@ class SpoilerStages(private val dirs: SessionDirs) {
 
   companion object {
     const val FILE = "stages.json"
+    /** Generate.py for the later levels, with a playthrough that falls back instead of failing (`archipelago/`). */
+    const val SPOILER_RUN = "spoiler_run.py"
     /** Level 3: with the paths, the spoiler log is complete. */
     const val COMPLETE = 3
   }

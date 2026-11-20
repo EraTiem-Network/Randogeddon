@@ -17,6 +17,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
@@ -290,6 +291,17 @@ class Generator(
     background.forEach { (id, run) -> if (run.level >= SpoilerStages.COMPLETE) end(id, run) }
   }
 
+  /**
+   * Session [id]'s spoiler log is tried again from where it stopped (a run that failed or took too long; the
+   * gateway may run something else now than then); `false`: it didn't stop.
+   */
+  fun retrySpoiler(id: String): Boolean {
+    val state = stages.read(id)?.takeIf { it.stopped != null && it.level < SpoilerStages.COMPLETE } ?: return false
+    stages.save(id, state.copy(stopped = null))
+    logger.info("Spoiler log of {}: tried again from level {}", id, state.level)
+    return true
+  }
+
   /** Session [id] goes (deleted): its background run ends. */
   fun dropSpoiler(id: String) {
     background[id]?.let { end(id, it) }
@@ -417,8 +429,10 @@ class Generator(
     val level = run.level
     val output = createTempDirectory("spoiler")
     try {
+      // Generate.py with a playthrough that doesn't give up (spoiler_run.py, next to it in the image)
+      val script = SpoilerStages.SPOILER_RUN.takeIf { home.resolve(it).isRegularFile() } ?: "Generate.py"
       val command = listOf(
-        archipelago.python, "Generate.py", "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
+        archipelago.python, script, "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
         "--outputpath", output.absolutePathString(), "--seed", state.seed.toString(), "--spoiler", level.toString(), "--spoiler_only",
       ) + state.arguments
       log.lines.add("$ cd ${home.absolutePathString()}")

@@ -17,6 +17,11 @@ class SpoilerRuns(private val gameServer: GameServerClient, private val sessions
 
   suspend fun log(id: String, since: Long): LogLines = gameServer.spoilerRunLog(live(id).id, since) ?: LogLines(emptyList(), since)
 
+  /** A stopped run is tried again (after a new version of the gateway or of an APWorld's fix). */
+  suspend fun retry(id: String) {
+    gameServer.retrySpoilerRun(live(id).id)
+  }
+
   private fun live(id: String) =
     sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }

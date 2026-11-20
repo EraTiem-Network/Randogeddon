@@ -16,10 +16,14 @@ private val SPHERE_START = Regex("^(\\d+): \\{$")
  * and needs. Archipelago writes it as `Playthrough:`, then `<n>: {`, one `Location (Slot): Item (Slot)` per line, `}`.
  * Without that section (an older format, or generated without a playthrough) only the text is there.
  */
+internal const val PLAYTHROUGH_NOT_REDUCED = "Randogeddon: the playthrough is not reduced to the required items"
+
 internal fun parseSpoiler(seed: String, text: String): Spoiler {
   val lines = text.lines()
   val start = lines.indexOfFirst { it.trim() == "Playthrough:" }
   if (start < 0) return Spoiler(seed, lines = lines.size)
+  // The gateway's spoiler_run.py says so in the log's last line when Archipelago couldn't reduce the playthrough
+  val unreduced = lines.takeLast(3).any { it.trim() == PLAYTHROUGH_NOT_REDUCED }
   val spheres = mutableListOf<Sphere>()
   var number: Int? = null
   var entries = mutableListOf<String>()
@@ -43,7 +47,7 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
       entries += t
     }
   }
-  return Spoiler(seed, spheres, lines.size)
+  return Spoiler(seed, spheres, lines.size, unreduced)
 }
 
 /** A session's spoiler log as it was read: its [text], line by line ([lines]), and its playthrough ([spoiler]). */

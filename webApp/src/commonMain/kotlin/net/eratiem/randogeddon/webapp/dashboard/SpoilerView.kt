@@ -114,6 +114,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
         if (problem == null) Txt(t.dialogs.loading, color = p.muted)
         return@Column
       }
+      if (s.unreduced) Txt(t.spoiler.unreduced, size = 12.5.sp, color = p.warn)
       if (s.spheres.isNotEmpty()) Playthrough(s.spheres, narrow)
       FullLog(id, s.lines, narrow)
     }

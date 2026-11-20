@@ -11,6 +11,23 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.7: A playthrough that doesn't give up
+- **A spoiler log's playthrough when Archipelago can't reduce it.** Archipelago works the playthrough out as the
+  spheres every progression item is collected in, then reduces them to the items the goals need. That second step
+  ends with "Not all required items reachable" when a world's logic contradicts itself, and no spoiler log was
+  written: the session stayed at level 1. `Generate.py` has no option for it. The later levels now run through
+  `archipelago/spoiler_run.py`, which wraps that one function while it runs (none of Archipelago's files change) and
+  falls back to the unreduced spheres: every progression item in the order it can be collected, with the paths at
+  level 3. The seed was beatable before (Archipelago checks that when it generates) and stays as it is.
+- **The spoiler page says so** above such a playthrough (the log's last line marks it; that game's steps may be off),
+  and the run's log names Archipelago's error.
+- **A stopped spoiler run is tried again** with *Try again* under its reason (Session-Managers and Administrators;
+  `POST …/manage/spoiler-run/retry`): after a new version of the gateway, as here, or of an APWorld.
+- **Randogeddon Bridge's files say their version**: `randogeddon-bridge-<version>-<os>-<arch>` (`.exe` on Windows),
+  so a downloaded file tells which one it is; the checksums name the same files. A bridge from before asks for its
+  update by the old name and gets the build for its system.
+- Planned (in the TODO): Phase 20, a hosted Minecraft Dig server reached through the bridge.
+
 ### 0.19.6: The room asks for the password
 - **Clients that send a password only when the room asks for one** (Brotato's sends an empty one otherwise) were
   refused with `InvalidPassword`: MultiServer has no room password here, so its `RoomInfo` said `password: false`.
