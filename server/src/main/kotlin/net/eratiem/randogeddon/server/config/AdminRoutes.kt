@@ -29,6 +29,7 @@ import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.admin.LogicRuns
 import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -174,6 +175,7 @@ fun Route.manageRoutes(
   logins: LoginCheck,
   gameServers: GameServerLimit,
   spoilerRuns: SpoilerRuns,
+  logicRuns: LogicRuns,
 ) {
   get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
@@ -203,6 +205,20 @@ fun Route.manageRoutes(
   }
   // How its spoiler log is completed after the seed, and that run's log
   spoilerRunRoutes(spoilerRuns)
+  // Its logic (the available checks): its state, built again; its log only for Administrators
+  get("/logic") { gatewayCall { call.respond(logicRuns.view(id())) } }
+  post("/logic/rebuild") {
+    gatewayCall {
+      val built = logicRuns.rebuild(id())
+      if (built) logger.info("{}'s logic is built again by {}", id(), call.loggedIn.user.name)
+      call.respond(if (built) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
+  }
+  get("/logic/log") {
+    if (!call.loggedIn.user.administrator) return@get call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.ONLY_ADMINISTRATORS))
+    val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+    gatewayCall { call.respond(logicRuns.log(id(), since)) }
+  }
   post("/keep") {
     val keep = call.receive<KeepRequest>().keep
     gatewayCall {
