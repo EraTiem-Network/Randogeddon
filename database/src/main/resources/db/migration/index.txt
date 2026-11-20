@@ -23,3 +23,4 @@ V21__session_limit.sql
 V22__email_verified_by_provider.sql
 V23__keep_running.sql
 V24__session_events.sql
+V25__session_snapshots.sql

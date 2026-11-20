@@ -212,3 +212,16 @@ object SessionEventsTable : Table("session_events") {
   val packet = text("packet")
   override val primaryKey = PrimaryKey(id)
 }
+
+/**
+ * What a session's dashboard shows, kept by the tracker (V25): while it runs the last it knew, once it finished its
+ * archive ([final]); and once the tracker's history file from before ([baseline]). By the session's public ID.
+ */
+object SessionSnapshotsTable : Table("session_snapshots") {
+  val session = varchar("session", 40)
+  val atMs = long("at_ms")
+  val final = bool("final").default(false)
+  val snapshot = text("snapshot").nullable()
+  val baseline = text("baseline").nullable()
+  override val primaryKey = PrimaryKey(session)
+}

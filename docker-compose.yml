@@ -192,7 +192,7 @@ services:
       OIDC_NAME: ${OIDC_NAME:-Authentik}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
-      - tracker-state:/state         # each session's event history and archive survive restarts
+      - tracker-state:/state         # the TOTP key file (without TOTP_KEY); session files of before 0.19.10, imported once
 
 volumes:
   tracker-state:

@@ -8,7 +8,6 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.Totals
-import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -160,47 +159,70 @@ class SessionStateTest {
   @Test
   fun `the gateway's events are taken in their order, each once, with their own times`() {
     val s = makeState()
-    val join = json("""{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}""")
-    s.onServerEvent(5, 1_000, started = true, packet = null)
-    s.onServerEvent(6, 2_000, started = false, packet = join)
-    s.onServerEvent(7, 3_000, started = false, packet = json("""{"cmd":"PrintJSON","type":"Release","team":0,"slot":2}"""))
-    s.onServerEvent(8, 4_000, started = false, packet = json("""{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"x","cause":"fell"}}"""))
+    val join = """{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}"""
+    s.onServerEvent(5, 1_000, "start", "")
+    s.onServerEvent(6, 2_000, "packet", join)
+    s.onServerEvent(7, 3_000, "packet", """{"cmd":"PrintJSON","type":"Release","team":0,"slot":2}""")
+    s.onServerEvent(8, 4_000, "packet", """{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"x","cause":"fell"}}""")
     // Heard again (the same ID, or an older one): not taken twice
-    s.onServerEvent(6, 9_000, started = false, packet = join)
+    s.onServerEvent(6, 9_000, "packet", join)
     assertEquals(8, s.serverCursor)
     assertEquals(listOf(EventType.JOIN to 2_000L, EventType.RELEASE to 3_000L, EventType.LINK to 4_000L), s.events.map { it.type to it.ts })
     assertEquals(1, s.players[1]!!.online)
     assertEquals(2_000L, s.playerDetail(1)!!.sessions.single().start)
     // The game server ends: nobody is connected, the session ended then; its next start changes nothing more
-    s.onServerEvent(9, 60_000, started = false, packet = null)
+    s.onServerEvent(9, 60_000, "stop", "")
     assertEquals(0, s.players[1]!!.online)
     assertEquals(60_000L, s.playerDetail(1)!!.sessions.single().end)
-    s.onServerEvent(10, 70_000, started = true, packet = null)
+    s.onServerEvent(10, 70_000, "start", "")
     assertEquals(60_000L, s.playerDetail(1)!!.sessions.single().end)
     // The tracker's own connection going away doesn't say who plays
-    s.onServerEvent(11, 80_000, started = false, packet = join)
+    s.onServerEvent(11, 80_000, "packet", join)
     s.onTrackerDisconnected()
     assertEquals(1, s.players[1]!!.online)
   }
 
   @Test
-  fun `who is connected is known again from the joins and leaves since the game server's start`() {
-    val s = makeState()
-    fun join(slot: Int, tag: String) = json("""{"cmd":"PrintJSON","type":"Join","team":0,"slot":$slot,"tags":["$tag"]}""")
-    fun part(slot: Int, tags: String) = json("""{"cmd":"PrintJSON","type":"Part","team":0,"slot":$slot,"data":[{"text":"X (Team #1) has left the game. Client(0.6.8), [$tags]."}]}""")
-    s.restorePresence(
-      listOf(
-        join(1, "AP"), join(1, "AP"), join(1, "Tracker"), part(1, "'Tracker'"), part(1, "'AP'"),
-        join(2, "AP"), part(2, "'AP'"), part(2, "'AP'"),
-        json("""{"cmd":"PrintJSON","type":"Chat","team":0,"slot":2,"message":"hi"}"""),
-      ),
-      now = 5_000,
+  fun `a session comes back from room json and its events alone, before any connection, the same as heard live`() {
+    fun join(slot: Int) = """{"cmd":"PrintJSON","type":"Join","team":0,"slot":$slot,"tags":["AP"]}"""
+    fun part(slot: Int) = """{"cmd":"PrintJSON","type":"Part","team":0,"slot":$slot,"data":[{"text":"X (Team #1) has left the game. Client(0.6.8), ['AP']."}]}"""
+    val events = listOf(
+      "start" to "",
+      "packet" to join(1), "packet" to join(1), "packet" to join(2),
+      "packet" to """{"cmd":"PrintJSON","type":"ItemSend","receiving":2,"item":${item(100, 11, 1, 1)}}""",
+      "packet" to """{"cmd":"PrintJSON","type":"Goal","team":0,"slot":2}""",
+      "packet" to part(2), "packet" to part(1),
+      "cheat" to """{"message":"Alice gave Sword to Bob","action":"item","by":"Alice","role":"administrator","slot":"Bob","value":"Sword"}""",
     )
+    val room = net.eratiem.randogeddon.server.session.Room(
+      "1234",
+      listOf(
+        net.eratiem.randogeddon.server.session.RoomSlot(1, "Alice", "APQuest", 1),
+        net.eratiem.randogeddon.server.session.RoomSlot(2, "Bob", "APQuest", 1),
+        net.eratiem.randogeddon.server.session.RoomSlot(3, "Link", "APQuest", 2),
+      ),
+    )
+    val s = SessionState { 0L }
+    s.prepare(room)
+    events.forEachIndexed { i, (kind, payload) -> s.onServerEvent(i + 1L, (i + 1) * 1_000L, kind, payload) }
+    assertEquals(listOf(1, 0), listOf(s.players[1]!!.online, s.players[2]!!.online))
+    assertEquals(4_000L, s.playerDetail(2)!!.sessions.single().start)
+    assertEquals(6_000L, s.players[2]!!.goalAt)
+    assertEquals(5_000L, s.players[1]!!.firstCheckAt)
+    assertEquals(
+      listOf(EventType.JOIN, EventType.JOIN, EventType.JOIN, EventType.ITEM, EventType.GOAL, EventType.PART, EventType.PART, EventType.CHEAT),
+      s.events.map { it.type },
+    )
+    assertEquals("Alice gave Sword to Bob" to 9_000L, s.events.last().let { it.message to it.ts })
+    // The first connection finds the same seed: nothing it brought back is lost, and its own data is added
+    assertFalse(s.onRoomInfo(roomInfo))
+    s.onConnected(1, connected(1, listOf(10), listOf(11, 12, 13)))
     assertEquals(1, s.players[1]!!.online)
-    assertEquals(0, s.players[2]!!.online)
-    // No feed events of it: those were made when it was heard
-    assertTrue(s.events.isEmpty())
-    assertEquals(5_000L, s.playerDetail(1)!!.sessions.single().start)
+    assertEquals(8, s.events.size)
+    assertEquals(4, s.summary("t", null).players[0].total)
+    // A slot not in room.json, or room.json of another seed: nothing
+    s.prepare(net.eratiem.randogeddon.server.session.Room("other", listOf(net.eratiem.randogeddon.server.session.RoomSlot(9, "X", "APQuest", 1))))
+    assertEquals(null, s.players[9])
   }
 
   @Test
@@ -257,13 +279,12 @@ class SessionStateTest {
 
   @Test
   fun `history survives a restart for the same seed only`() {
-    val path = Files.createTempDirectory("tracker").resolve("tracker.json")
     val s = makeState()
     s.onPrintJson(json("""{"type":"Goal","team":0,"slot":1}"""), now = 100)
-    s.save(path)
+    val saved = s.historyJson()
 
     val t = SessionState { 0L }
-    t.load(path)
+    t.loadSaved(saved)
     t.onRoomInfo(roomInfo)
     t.onConnected(1, connected(1, listOf(10), listOf(11, 12, 13)))
     t.onPrintJson(json("""{"type":"Chat","team":0,"slot":1,"message":"hi"}"""), now = 200)
@@ -273,7 +294,7 @@ class SessionStateTest {
     assertEquals(100L, t.players[1]!!.lastActivity) // restored; chat is not "activity"
 
     val u = SessionState { 0L }
-    u.load(path)
+    u.loadSaved(saved)
     u.onRoomInfo(json(roomInfo.toString().replace("\"1234\"", "\"other\"")))
     u.applySaved()
     assertTrue(u.events.isEmpty()) // history of another seed is ignored
@@ -356,10 +377,9 @@ class SessionStateTest {
     assertEquals(listOf(false, true), s.playerDetail(1)!!.sessions.map { it.implicit })
 
     // Saved while online: after a restart, the open session ends at the time of the save
-    val path = Files.createTempDirectory("tracker").resolve("tracker.json")
-    s.save(path)
+    val saved = s.historyJson()
     val t = SessionState { 0L }
-    t.load(path)
+    t.loadSaved(saved)
     t.onRoomInfo(roomInfo)
     t.onConnected(1, connected(1, listOf(10), listOf(11, 12, 13)))
     t.applySaved()
@@ -372,12 +392,11 @@ class SessionStateTest {
     val s = makeState { clock }
     s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["AP"]}"""), now = 1_000)
     clock = 50_000
-    val path = Files.createTempDirectory("tracker").resolve("tracker.json")
-    s.save(path) // the tracker stops here
+    val saved = s.historyJson() // the tracker stops here
 
     clock = 90_000
     val t = SessionState { clock }
-    t.load(path)
+    t.loadSaved(saved)
     t.onRoomInfo(roomInfo)
     t.onConnected(1, connected(1, listOf(10), listOf(11, 12, 13)))
     t.applySaved()

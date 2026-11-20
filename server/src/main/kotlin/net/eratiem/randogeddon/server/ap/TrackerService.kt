@@ -29,7 +29,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import net.eratiem.randogeddon.database.SessionEventStore
+import net.eratiem.randogeddon.database.SessionSnapshotStore
 import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.server.state.CheatLine
 import net.eratiem.randogeddon.server.state.LINK_TAGS
 import net.eratiem.randogeddon.server.state.SessionState
 import net.eratiem.randogeddon.server.util.array
@@ -40,6 +42,8 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import java.lang.invoke.MethodHandles
 import java.nio.file.Path
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -56,20 +60,26 @@ class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToStrin
  * One *primary* connection (tag `Tracker`) gets the room-wide information: RoomInfo, the data package and the data
  * storage keys of the hints and client status of all slots. What is said to everyone (every PrintJSON event: the
  * feed, who joins and leaves) it doesn't take from there: the gateway hears that from the game server's start and
- * keeps it in the database, and [follow] reads it in order, so nothing is lost while this tracker isn't connected. It then starts one *secondary*
- * connection per other slot (tags `Tracker`, `NoText`), only to learn that slot's checked locations and received items,
- * which the server sends to the slot's own connections only.
+ * keeps it in the database, and [follow] reads it in order. It then starts one *secondary* connection per other slot
+ * (tags `Tracker`, `NoText`), only to learn that slot's checked locations and received items, which the server sends
+ * to the slot's own connections only.
+ *
+ * Its history is those events: at its start the slots are set up from [roomJson] and every event of the session is
+ * replayed (onto the history file of before, [history], kept once in the database as the baseline), so nothing is
+ * lost while this tracker isn't running, and nothing it knew waits for a save. A cheat's feed line is written there
+ * too.
  *
  * All access to [SessionState] goes through [read] and the private `update`, so the connections and the web layer
- * never see it half-updated. One per session: its history goes to [statePath], its slots come from [roomJson], and
- * [serverUrl] is where its MultiServer runs (`null` while it doesn't).
+ * never see it half-updated. [serverUrl] is where its MultiServer runs (`null` while it doesn't).
  */
 class TrackerService(
-  private val statePath: Path,
+  /** The history file of before 0.19.10: imported once as the baseline, then not read any more. */
+  private val history: Path,
   private val roomJson: Path,
-  /** The session's ID and where the gateway keeps what it hears on its game server; `null`: heard here only. */
+  /** The session's ID and where its events and its baseline are kept; `null`: heard here only, nothing kept. */
   private val sessionId: String = "",
   private val events: SessionEventStore? = null,
+  private val snapshots: SessionSnapshotStore? = null,
   private val serverUrl: () -> String?,
 ) {
   private val state = SessionState()
@@ -94,13 +104,12 @@ class TrackerService(
 
   private suspend fun update(block: SessionState.() -> Unit) = mutex.withLock { state.block() }
 
-  /** Loads the history once, then connects and stays connected until the job is cancelled. */
+  /** Brings its history back once (the slots, the baseline), follows its events, and stays connected until cancelled. */
   fun start(scope: CoroutineScope): Job = scope.launch {
-    if (!loaded) {
-      update { load(statePath) }
-      loaded = true
+    if (!prepared) {
+      prepare()
+      prepared = true
     }
-    launch { autosave() }
     events?.let { launch { follow(it) } }
     var backoff = 1L
     while (isActive) {
@@ -129,53 +138,79 @@ class TrackerService(
   }
 
   /**
-   * Reads what the gateway heard on the game server, in its order, about once a second; first, once the saved
-   * history is back (the first connection brings it), who is connected now from the joins and leaves before.
+   * The slots from `room.json` (the gateway writes it before each start of the game server), then the baseline: the
+   * history file of before, imported into the database once.
+   */
+  private suspend fun prepare() {
+    Room.read(roomJson)?.let { room -> update { prepare(room) } }
+    val store = snapshots ?: return
+    val baseline = runCatching { store.baseline(sessionId) ?: importHistory(store) }
+      .onFailure { logger.warn("Could not read {}'s history from before: {}", sessionId, it.message) }.getOrNull()
+    if (baseline != null) update {
+      loadSaved(baseline)
+      applySaved()
+    }
+  }
+
+  /** The history file of before 0.19.10, into the database (once); it is left where it is. `null`: there is none. */
+  private suspend fun importHistory(store: SessionSnapshotStore): String? {
+    if (!history.exists()) return null
+    val text = history.readText()
+    store.importBaseline(sessionId, System.currentTimeMillis(), text)
+    logger.info("Imported {}'s history file into the database", sessionId)
+    return text
+  }
+
+  /**
+   * Replays every event of the session, in its order (from the baseline's end on), then reads the new ones about
+   * once a second. Slots not known yet (no `room.json` at the start: the game server hadn't run) are taken from it as
+   * soon as it is there, before an event needs them.
    */
   private suspend fun follow(events: SessionEventStore) {
-    while (!restored) delay(1.seconds)
-    runCatching {
-      val before = events.sinceLastStart(sessionId, read { serverCursor })
-      update { restorePresence(before.mapNotNull { packetOf(it.packet) }) }
-    }.onFailure { logger.warn("Could not read who is connected to {}: {}", sessionId, it.message) }
     while (true) {
+      // The baseline first, then the events after it (none of them twice)
+      if (read { players.isEmpty() }) Room.read(roomJson)?.let { room ->
+        update {
+          prepare(room)
+          applySaved()
+        }
+      }
       val next = runCatching { events.after(sessionId, read { serverCursor }) }
         .onFailure { logger.warn("Could not read {}'s events: {}", sessionId, it.message) }.getOrDefault(emptyList())
-      if (next.isNotEmpty()) {
-        update { next.forEach { onServerEvent(it.id, it.atMs, it.kind == SessionEventStore.START, packetOf(it.packet)) } }
-      }
+      if (next.isNotEmpty()) update { next.forEach { onServerEvent(it.id, it.atMs, it.kind, it.packet) } }
       if (next.size < 1000) delay(1.seconds)
     }
   }
 
-  private fun packetOf(json: String): JsonObject? =
-    json.takeIf { it.isNotEmpty() }?.let { runCatching { ApiJson.parseToJsonElement(it).jsonObject }.getOrNull() }
-
-  /** The saved history was applied (the first connection knows the seed it belongs to). */
+  /** Its slots and history were brought back (by the first [start]). */
   @Volatile
-  private var restored = false
+  private var prepared = false
 
-  /** The history file was read (by the first [start]). */
+  /** It has been connected to the game server since its start: what it knows is the game server's, not the kept. */
   @Volatile
-  private var loaded = false
+  var connectedOnce = false
+    private set
 
-  /** The session was deleted: its state goes, the history file too, so a restart doesn't bring it back. */
+  /** The session was deleted: its state goes. */
   suspend fun clear() {
     update { clear() }
-    runCatching { statePath.toFile().delete() }
   }
 
-  /** Writes the history file now (a session finishes and is archived). */
-  suspend fun saveNow() = mutex.withLock { save() }
-
-  /** A cheat from the admin panel, for the live feed. */
-  /** A cheat for the live feed: [message] in English, and its parts. */
-  suspend fun cheat(message: String, action: CheatAction, by: String, role: String, slot: String, value: String?) =
-    update { onCheat(message, action, by, role, slot, value) }
+  /**
+   * A cheat for the live feed: [message] in English, and its parts. Kept among the session's events (and taken from
+   * there, as every event); without them, or if that fails, straight into the feed.
+   */
+  suspend fun cheat(message: String, action: CheatAction, by: String, role: String, slot: String, value: String?) {
+    val store = events
+    val written = store != null && runCatching {
+      store.append(sessionId, System.currentTimeMillis(), SessionEventStore.CHEAT,
+        ApiJson.encodeToString(CheatLine.serializer(), CheatLine(message, action, by, role, slot, value)))
+    }.onFailure { logger.warn("Could not keep {}'s cheat: {}", sessionId, it.message) }.isSuccess
+    if (!written) update { onCheat(message, action, by, role, slot, value) }
+  }
 
   fun close() {
     http.close()
-    save()
   }
 
   private fun error(detail: String, refused: Boolean) {
@@ -200,12 +235,13 @@ class TrackerService(
     val others = mutex.withLock {
       if (state.onRoomInfo(roomInfo)) logger.info("Seed {}", state.seedName)
       state.onConnected(mySlot, connected)
+      // Without a baseline before (the seed wasn't known then): now it is
       state.applySaved()
-      restored = true
       state.connected = true
       state.players.filterKeys { it != mySlot }.mapValues { it.value.name }
     }
     lastError = null
+    connectedOnce = true
     logger.info("Connected as tracker for {} ({} players)", slotName, others.size + 1)
 
     val slots = others.keys + mySlot
@@ -259,36 +295,12 @@ class TrackerService(
         // With the gateway's events: taken from those, not heard a second time here
         "PrintJSON" -> if (events == null) onPrintJson(packet)
         "Bounced" -> if (events == null) onBounced(packet)
-        "SetReply" -> onSetReply(packet.string("key")!!, packet["value"], live = true)
+        "SetReply" -> onSetReply(packet.string("key")!!, packet["value"])
         "Retrieved" -> packet.obj("keys")?.forEach { (key, value) -> onSetReply(key, value) }
         "DataPackage" -> onDataPackage(packet)
         "RoomInfo" -> onRoomInfo(packet)
       }
     }
-  }
-
-  // -------------------------------------------------------------------------------------------------- persistence
-
-  private suspend fun autosave() {
-    var savedVersion = -1L
-    while (true) {
-      delay(15.seconds)
-      val version = read { version }
-      if (version != savedVersion) {
-        savedVersion = version
-        save()
-      }
-    }
-  }
-
-  private fun save() {
-    // Called from close() too, so not through the mutex; a save is a snapshot of plain collections
-    runCatching {
-      if (state.seedName != null) {
-        statePath.parent?.toFile()?.mkdirs()
-        state.save(statePath)
-      }
-    }.onFailure { logger.warn("Could not save the tracker state to {}: {}", statePath, it.message) }
   }
 
   // ----------------------------------------------------------------------------------------------------- protocol

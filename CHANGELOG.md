@@ -11,6 +11,23 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.10: A session's state in the database
+- **The dashboard isn't empty while a game server sleeps.** The tracker learnt a session's slots only from its
+  connection to the game server, and every game server sleeps after the gateway starts (since 0.18.10): after each
+  deploy every dashboard was empty until a player came. Now what a dashboard shows (the summary and every slot's
+  details) is kept in the database (`session_snapshots`, V25) when the tracker's connection ends, when the tracker
+  stops, and at most every 5 minutes while connected; until the tracker has been connected since its start, that is
+  shown, with who is connected from the events.
+- **The history is the events.** No history file any more (`tracker.json`, written every 15 s: a crash lost up to
+  15 s, and it wasn't backed up). At its start the tracker sets a session's slots up from `room.json` and replays
+  every event the gateway kept (since 0.19.9), so the feed, the connection logs, first check, goal and last
+  activity come back from the database. A cheat's feed line is written there too. The history files of before are
+  imported once as the base the newer events are replayed onto.
+- **Finished sessions' archives are in the database** (the final snapshot), so in the daily dump; the files of
+  before are imported once at the tracker's start and left where they are. Reopening makes it live again.
+- A slot's status reply no longer counts as "seen playing" (every join is heard since 0.19.9).
+- The tracker's state volume holds no session data any more (only the TOTP key file, without `TOTP_KEY`).
+
 ### 0.19.9: Nothing is lost while the tracker isn't connected
 - **The gateway hears what happens on each game server and keeps it.** It starts every game server and is there
   whenever one runs: from the moment the server accepts clients it listens (a connection like the tracker's) and
