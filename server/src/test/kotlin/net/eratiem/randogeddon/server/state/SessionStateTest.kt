@@ -309,8 +309,15 @@ class SessionStateTest {
     // Alice's world: two progression items for Bob, one for herself, a filler; Bob's: one progression item for Alice
     s.onLocationInfo(1, json("""{"cmd":"LocationInfo","locations":[${item(100, 10, 2, 1)},${item(101, 11, 2, 1)},${item(100, 12, 1, 1)},${item(102, 13, 1, 0)}]}"""))
     assertEquals(listOf(null, null), totals()) // Bob's world isn't scouted yet
+    // Alice's own world is: three progression locations (she checked one), two of them for others (one sent)
+    fun own(slot: Int) = s.summary("t", null).players.first { it.slot == slot }
+      .let { listOf(it.progressionChecks, it.progressionChecked, it.sentTotal, it.sent) }
+    assertEquals(listOf(3, 1, 2, 1), own(1))
+    assertEquals(listOf(null, 0, null, 0), own(2))
     s.onLocationInfo(2, json("""{"cmd":"LocationInfo","locations":[${item(100, 20, 1, 1)},${item(103, 21, 2, 4)}]}"""))
     assertEquals(listOf(2, 2), totals())
+    assertEquals(listOf(1, 0, 1, 0), own(2))
+    assertEquals(listOf(3, 1, 2, 1), s.playerDetail(1)!!.let { listOf(it.progressionChecks, it.progressionChecked, it.sentTotal, it.sent) })
     // Received from a location counts, the starting inventory doesn't
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 12, 1, 1)},${item(100, -2, 0, 1)}]}"""))
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
