@@ -158,6 +158,52 @@ class SessionStateTest {
   }
 
   @Test
+  fun `the gateway's events are taken in their order, each once, with their own times`() {
+    val s = makeState()
+    val join = json("""{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}""")
+    s.onServerEvent(5, 1_000, started = true, packet = null)
+    s.onServerEvent(6, 2_000, started = false, packet = join)
+    s.onServerEvent(7, 3_000, started = false, packet = json("""{"cmd":"PrintJSON","type":"Release","team":0,"slot":2}"""))
+    s.onServerEvent(8, 4_000, started = false, packet = json("""{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"x","cause":"fell"}}"""))
+    // Heard again (the same ID, or an older one): not taken twice
+    s.onServerEvent(6, 9_000, started = false, packet = join)
+    assertEquals(8, s.serverCursor)
+    assertEquals(listOf(EventType.JOIN to 2_000L, EventType.RELEASE to 3_000L, EventType.LINK to 4_000L), s.events.map { it.type to it.ts })
+    assertEquals(1, s.players[1]!!.online)
+    assertEquals(2_000L, s.playerDetail(1)!!.sessions.single().start)
+    // The game server ends: nobody is connected, the session ended then; its next start changes nothing more
+    s.onServerEvent(9, 60_000, started = false, packet = null)
+    assertEquals(0, s.players[1]!!.online)
+    assertEquals(60_000L, s.playerDetail(1)!!.sessions.single().end)
+    s.onServerEvent(10, 70_000, started = true, packet = null)
+    assertEquals(60_000L, s.playerDetail(1)!!.sessions.single().end)
+    // The tracker's own connection going away doesn't say who plays
+    s.onServerEvent(11, 80_000, started = false, packet = join)
+    s.onTrackerDisconnected()
+    assertEquals(1, s.players[1]!!.online)
+  }
+
+  @Test
+  fun `who is connected is known again from the joins and leaves since the game server's start`() {
+    val s = makeState()
+    fun join(slot: Int, tag: String) = json("""{"cmd":"PrintJSON","type":"Join","team":0,"slot":$slot,"tags":["$tag"]}""")
+    fun part(slot: Int, tags: String) = json("""{"cmd":"PrintJSON","type":"Part","team":0,"slot":$slot,"data":[{"text":"X (Team #1) has left the game. Client(0.6.8), [$tags]."}]}""")
+    s.restorePresence(
+      listOf(
+        join(1, "AP"), join(1, "AP"), join(1, "Tracker"), part(1, "'Tracker'"), part(1, "'AP'"),
+        join(2, "AP"), part(2, "'AP'"), part(2, "'AP'"),
+        json("""{"cmd":"PrintJSON","type":"Chat","team":0,"slot":2,"message":"hi"}"""),
+      ),
+      now = 5_000,
+    )
+    assertEquals(1, s.players[1]!!.online)
+    assertEquals(0, s.players[2]!!.online)
+    // No feed events of it: those were made when it was heard
+    assertTrue(s.events.isEmpty())
+    assertEquals(5_000L, s.playerDetail(1)!!.sessions.single().start)
+  }
+
+  @Test
   fun `join and part ignore trackers`() {
     val s = makeState()
     s.onPrintJson(json("""{"type":"Join","team":0,"slot":1,"tags":["Tracker"]}"""))
