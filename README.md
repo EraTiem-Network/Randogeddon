@@ -460,6 +460,10 @@ finished session's don't start this way. An Administrator can keep a session's g
   seeds and level-2 runs that are going; level-3 runs end for it and start over after. Until its spoiler log has its
   playthrough, a session shows no *Spoiler log* button and no *Cheats* (or support) section. Sessions from before
   0.19.3 have their complete spoiler log already.
+  When Archipelago can't reduce a playthrough to the items the goals need (a world's logic contradicts itself; it
+  would end without any spoiler log), the playthrough lists every progression item in the order it can be collected
+  instead, and the spoiler page says so (`archipelago/spoiler_run.py` wraps that one step; the seed is the same). A
+  run that stopped (it failed, or took too long) is tried again with *Try again* in the panel, after a fix.
 - **Spoiler log:** the seed's spoiler log, with the playthrough sphere by sphere and the whole log
   (the search marks and counts the findings; the arrows, or Enter and Shift+Enter, jump between them). The full
   log shows 300 lines at a time, with arrows to the lines before and after: a big seed's log is too long for a

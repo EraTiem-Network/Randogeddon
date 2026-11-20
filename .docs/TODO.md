@@ -790,7 +790,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
 *A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
 generates didn't generate on the server, and an APWorld that loaded before was refused).*
 
-- [ ] Find out why first: the failed generation's log (its download, with the command, since 0.18.12) and the refused
+- [x] Find out why first (closed with 0.19.7): the failed generation's log (its download, with the command, since 0.18.12) and the refused
       APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
       0.18.4), an empty `host.yaml` (Archipelago's defaults, as an untouched Launcher's, but nothing that asks for a
       file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
@@ -801,8 +801,13 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       where the logic needs two for *Spiral Charge*, so four locations can't be reached (`FillError` with
       `accessibility: full`). A bug of the APWorld (one line: `"Progressive Loftwing": 2` in its fallback
       `POOL_ITEM_COUNTS`); until it is fixed, `start_inventory: {Progressive Loftwing: 2}` in the YAML generates here.
-      Reproduced with the gateway's image, both ways tried. The refused APWorld's message is still to come
-- [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
+      Reproduced with the gateway's image, both ways tried
+    - The refused APWorld: not a fault here. Its version had been changed by hand (a `-patched` at its end)
+    - Found on the way (0.19.7): a playthrough Archipelago can't reduce left a session without its later spoiler
+      levels; they run through `archipelago/spoiler_run.py` now, which falls back to the unreduced spheres
+- [x] An APWorld's Python packages installed on its upload: not built, not needed (closed with 0.19.7; no refused
+      APWorld wanted a package, and the Launcher installs none for a zipped APWorld either). As it was planned
+      (decided: not while it runs): an Administrator's upload
       names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
       (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
       `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. Checked (0.19.1): Archipelago
@@ -845,3 +850,29 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       classes allowed, as MultiServer does), its release against the gateway's, its games against the release's
       APWorlds; then its slots for the players and locks as with YAMLs (locks need the World Locks slot generated
       in, so a seed from elsewhere has none)
+
+## Phase 20: Hosted Minecraft Dig (planned)
+
+Decided on 2026-11-19: Randogeddon hosts the Minecraft server a *Minecraft Dig* slot needs, and its players reach it
+through Randogeddon Bridge only.
+
+- Known (the mod's README and its versions file, APWorld 0.0.11): Minecraft 1.19.4, Forge 1.19.4-45.3.15, Java 17,
+  the mod `aprandomizer-MC1.19.4-0.0.11.jar` (on the server only, never in the players' clients); one server per
+  patch file (`.apmcdig`, into the server's `APData`), and several players can join the same slot's server; in the
+  game a player connects it to Archipelago with `/connect <address> <port> <password>` and begins with `/start`;
+  the players need Minecraft Java 1.19.4
+- [ ] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
+      (the `archipelago.json` the APWorld's client extracts for an auto-connect), so no player types `/connect` or
+      sees a password; how much memory a server needs, and how much the live machine has to spare
+- [ ] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
+      third-party mod, with memory of its own), from an image that has Java, Forge and the mod; the slot's `.apmcdig`
+      from the seed goes into it. The operator accepts Mojang's EULA once (a setting), or nothing is hosted
+- [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
+      bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
+- [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
+      `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
+      container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
+      Minecraft port is open to the internet. A relay of its own kind (binary, uncompressed, its own limits)
+- [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
+      server sees every connection coming from the gateway, so limits and bans by address mean nothing)
+- [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
