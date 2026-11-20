@@ -244,7 +244,8 @@ gateway's role with it: take the lines out before rolling back that far.
 **The gateway's own database login:** the gateway runs Archipelago's Python next to itself (Generate.py, the game
 servers, the APWorlds), which must not reach the accounts. With `GATEWAY_DB_USER` and `GATEWAY_DB_PASSWORD` in `.env`
 (`openssl rand -hex 32`), the tracker makes that role at each start with only the gateway's rights (the sessions and
-the slot passwords to read, the session time to count), and the gateway's container gets only this login; without
+the slot passwords to read, the session time to count, what it hears on the game servers to add), and the gateway's
+container gets only this login; without
 them it uses the tracker's. Archipelago's processes get nothing of the gateway's environment either way, and the
 gateway's container is limited to 5 GB of memory (`GATEWAY_MEMORY`): a seed too large for it ends there.
 
@@ -815,9 +816,16 @@ Known limitations:
 
 - Each tracker connection makes the server post "X tracking … has joined" to the chat. That happens
   once per slot whenever the tracker (re)connects.
-- "Online" comes from join/leave messages. After a tracker restart a slot counts as online again as soon as it
-  does something (finds its own item, chats, changes status); such sessions are marked "seen playing" in the
-  slot's connection log, since their real start is unknown.
+- What is said to everyone on a game server (item sends, hints, goals, releases, who joins and leaves, chat, death
+  and trap links) is heard by the gateway, which starts every game server: one connection each from the moment the
+  server accepts clients, written into the database (`session_events`) with the server's starts and ends. A player
+  is let in once the gateway listens (it waits 3 s at most). The tracker reads the events from there about once a
+  second, in their order, and remembers how far it is: nothing is lost while it isn't connected (it restarts; a
+  player wakes a sleeping session and is in before it), and after its restart it knows who is connected from the
+  joins and leaves since the game server's start. A session's events go when it is deleted. What a slot has checked
+  and received still comes from the tracker's own connections, which bring all of it at every connect.
+- A slot can also count as online when it does something although no join was heard (it finds its own item, chats,
+  changes status): such sessions are marked "seen playing" in the slot's connection log.
 - The event history keeps the last 500 events per session, stored in the `tracker-state` volume.
 
 API: `POST /api/login` (JSON with `username`, a name or an e-mail address, and `password`; sets the cookie, or with
