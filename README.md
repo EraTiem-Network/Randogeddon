@@ -797,9 +797,11 @@ which the gateway writes before it starts the session's game server.
   traps shared by DeathLink and TrapLink, from the first one on), *Play time*, *Session* (its age, the date it was
   made as a tooltip; below the game server's running time).
 - **Players:** one card per player of the session with their slots (a slot played together
-  shows on each of its players' cards): game, state, online dot, the time beside its state, two bars (*Checks*: the
-  locations checked in its own world; *Progression*: the progression items received of those meant for it in the whole
-  multiworld, the person card's summed over their slots), how many game clients
+  shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
+  progression items it got of those meant for it in the whole multiworld; *sent*: the progression items found in its
+  world for other slots, of all such; play time), two bars (*Checks*: the locations checked in its own world;
+  *Progression checks*: those of them that hold a progression item). The person card has the same, summed over their
+  slots, with their slots, done and play time as pills under the name. How many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
@@ -813,8 +815,9 @@ which the gateway writes before it starts the session's game server.
   online, its last check.
 - **Progression totals:** each of the tracker's slot connections asks what lies at that slot's own locations
   (`LocationScouts`, without making hints); together that is every placement, of which only the counts per slot
-  reach the dashboard (never which item is where). Until every slot is scouted, a slot shows how many it received so
-  far. The starting inventory isn't counted on either side.
+  reach the dashboard (never which item is where). A slot's own counts (progression checks, sent) are there once it
+  is scouted, its received total once every slot is (until then: how many so far). The starting inventory isn't
+  counted on either side.
 - **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.
 - **Live feed:** item sends colour-coded by classification (purple = progression, blue = useful,
   red = trap), hints, goals, releases, chat and joins, and the links between games (a DeathLink: who died and of

@@ -11,6 +11,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.13: Progression checks, received and sent
+- **The second bar is the slot's progression checks**: of the locations in its own world, those that hold a
+  progression item (for anyone), how many it checked. 0.19.12's second bar (progression received) becomes a pill.
+- **Pills for received and sent**: *received x / y* (progression items it got of those meant for it) and *sent x / y*
+  (progression items found in its world for other slots, of all such), in a new line between the slot line and the
+  bars, with its play time. The same in the slot and person dialogs.
+- **The person header as pills**: slots, locked, done, play time, received and sent, in the line under the name
+  (was one grey line); the person's two bars below.
+- A slot's own counts are known once it is scouted (its received total once every slot is).
+
 ### 0.19.12: Checks and progression, apart
 - **Two bars instead of one** in every slot row, on the person card and in the slot and person dialogs: *Checks* (the
   locations checked in its own world, x / y) and *Progression* (the progression items received of those meant for

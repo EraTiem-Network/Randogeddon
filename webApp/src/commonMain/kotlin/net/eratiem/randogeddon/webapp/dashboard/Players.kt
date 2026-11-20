@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.LockInfo
 import net.eratiem.randogeddon.shared.PersonSummary
+import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.Summary
@@ -163,26 +165,21 @@ private fun PersonCard(
           }
         }
       }
-      Column(Modifier.weight(1f)) {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         PersonName(person.name, person.userId, person.deleted, size = 16.sp)
         val played = worlds.sumOf { playTime(it, now) }
-        val parts = listOfNotNull(
-          t.sessions.slots(worlds.size),
-          locked.takeIf { it > 0 }?.let { t.dashboard.locked(it) },
-          if (person.goals > 0) t.dashboard.done(person.goals) else null,
-          if (played > 0) t.dashboard.played(t.duration(played)) else null,
-        )
-        Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 1)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Pill(t.sessions.slots(worlds.size), p.muted)
+          if (locked > 0) Pill(t.dashboard.locked(locked), p.locked)
+          if (person.goals > 0) Pill(t.dashboard.done(person.goals), p.ok)
+          if (played > 0) Pill(t.dashboard.played(t.duration(played)), p.useful)
+          ProgressPills(Progress.sum(worlds))
+        }
       }
       Txt("${t.decimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
      }
     }
-    Bars(
-      worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionReceived },
-      // Known once it is for every slot of the person
-      worlds.map { it.progressionTotal }.takeIf { totals -> totals.none { it == null } }?.sumOf { it ?: 0 },
-      Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp,
-    )
+    Bars(Progress.sum(worlds), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
     worlds.forEach { WorldRow(it, now, hintsByPoints, onOpen) }
   }
 }
@@ -296,47 +293,80 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
           // More than one game client on it (played together, or a second device)
           if (world.connections > 1) Txt(t.dashboard.connections(world.connections), size = 11.5.sp, maxLines = 1, color = p.ok)
         }
-        Spacer(Modifier.height(6.dp))
-        Bars(world.checked, world.total, world.progressionReceived, world.progressionTotal, dimmed = locked)
-        // The goal's time is beside the state already
+        val progress = Progress.of(world)
         val played = playTime(world, now)
-        if (played > 0) {
-          Txt(t.dashboard.played(t.duration(played)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+        FlowRow(
+          Modifier.padding(top = 5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          ProgressPills(progress)
+          if (played > 0) Pill(t.dashboard.played(t.duration(played)), p.useful)
         }
+        Spacer(Modifier.height(6.dp))
+        Bars(progress, dimmed = locked)
       }
     }
   }
 }
 
 /**
- * Checks and progression as two bars: the locations checked in its own world, and the progression items received
- * of those meant for it in the whole multiworld ([progressionTotal] `null`: not known yet, only how many so far).
+ * A slot's (or several slots' together) numbers: checked of its locations, and of the progression locations among
+ * them (`null` until scouted); progression received of what is meant for it, and sent of what is meant for others.
  */
-@Composable
-internal fun Bars(
-  checked: Int,
-  total: Int,
-  progression: Int,
-  progressionTotal: Int?,
-  modifier: Modifier = Modifier,
-  height: Dp = 5.dp,
-  dimmed: Boolean = false,
+internal data class Progress(
+  val checked: Int,
+  val total: Int,
+  val progressionChecked: Int,
+  val progressionChecks: Int?,
+  val received: Int,
+  val receivedTotal: Int?,
+  val sent: Int,
+  val sentTotal: Int?,
 ) {
-  val t = LocalTexts.current
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-    LabeledBar(
-      t.dashboard.checksBar, if (total > 0) checked.toFloat() / total else 0f, "${t.number(checked)} / ${t.number(total)}",
-      height = height, dimmed = dimmed,
+  companion object {
+    fun of(w: PlayerSummary) = Progress(
+      w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.progressionTotal, w.sent, w.sentTotal,
     )
-    when {
-      progressionTotal == null -> LabeledBar(t.dashboard.progressionBar, null, t.dashboard.progressionSoFar(t.number(progression)))
-      progressionTotal == 0 -> LabeledBar(t.dashboard.progressionBar, null, t.dashboard.noProgression)
-      else -> LabeledBar(
-        t.dashboard.progressionBar, progression.toFloat() / progressionTotal,
-        "${t.number(progression)} / ${t.number(progressionTotal)}", height = height, dimmed = dimmed,
+
+    fun of(d: PlayerDetail) = Progress(
+      d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.progressionTotal, d.sent, d.sentTotal,
+    )
+
+    /** Summed over [worlds]; a total only if it is known for each of them. */
+    fun sum(worlds: List<PlayerSummary>): Progress {
+      fun known(of: (PlayerSummary) -> Int?) = worlds.map(of).takeIf { all -> all.none { it == null } }?.sumOf { it ?: 0 }
+      return Progress(
+        worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionChecked }, known { it.progressionChecks },
+        worlds.sumOf { it.progressionReceived }, known { it.progressionTotal }, worlds.sumOf { it.sent }, known { it.sentTotal },
       )
     }
   }
+}
+
+/** The two bars: the locations checked in its own world, and those of them that hold a progression item. */
+@Composable
+internal fun Bars(progress: Progress, modifier: Modifier = Modifier, height: Dp = 5.dp, dimmed: Boolean = false) {
+  val t = LocalTexts.current
+  fun fraction(part: Int, whole: Int) = if (whole > 0) part.toFloat() / whole else 0f
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    LabeledBar(
+      t.dashboard.checksBar, fraction(progress.checked, progress.total),
+      "${t.number(progress.checked)} / ${t.number(progress.total)}", height = height, dimmed = dimmed,
+    )
+    val checks = progress.progressionChecks
+    LabeledBar(
+      t.dashboard.progressionChecksBar, checks?.let { fraction(progress.progressionChecked, it) },
+      if (checks == null) "…" else "${t.number(progress.progressionChecked)} / ${t.number(checks)}", height = height, dimmed = dimmed,
+    )
+  }
+}
+
+/** Progression received of what is meant for it, and sent of what is meant for others (once scouted), as pills. */
+@Composable
+internal fun ProgressPills(progress: Progress) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  Pill(t.dashboard.received(t.number(progress.received), progress.receivedTotal?.let { t.number(it) }), p.progression)
+  progress.sentTotal?.let { Pill(t.dashboard.sent(t.number(progress.sent), t.number(it)), p.useful) }
 }
 
 /** Connected time of [world] so far, including the running session. */

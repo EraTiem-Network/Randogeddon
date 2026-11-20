@@ -190,6 +190,12 @@ data class PlayerSummary(
    * `null` while not every slot has been scouted, or in an archive of before.
    */
   val progressionTotal: Int? = null,
+  /** Its own locations that hold a progression item (for anyone), and how many of them it checked. */
+  val progressionChecks: Int? = null,
+  val progressionChecked: Int = 0,
+  /** Of those, the ones meant for other slots: how many it sent so far, of all. */
+  val sentTotal: Int? = null,
+  val sent: Int = 0,
   val hintPoints: Int? = null,
   /** Points one hint costs in this world (0 = free); `hintPoints / hintCost` hints can be bought now. */
   val hintCost: Int? = null,
@@ -316,9 +322,13 @@ data class PlayerDetail(
   val missing: List<String>,
   val checked: Int,
   val total: Int,
-  /** As [PlayerSummary.progressionReceived] and [PlayerSummary.progressionTotal]. */
+  /** As [PlayerSummary.progressionReceived], [PlayerSummary.progressionTotal] and the progression checks and sent. */
   val progressionReceived: Int = 0,
   val progressionTotal: Int? = null,
+  val progressionChecks: Int? = null,
+  val progressionChecked: Int = 0,
+  val sentTotal: Int? = null,
+  val sent: Int = 0,
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,
