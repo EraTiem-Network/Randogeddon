@@ -217,7 +217,7 @@ fun LabeledBar(
   fraction: Float?,
   value: String,
   modifier: Modifier = Modifier,
-  labelWidth: Dp = 78.dp,
+  labelWidth: Dp = 112.dp,
   height: Dp = 5.dp,
   dimmed: Boolean = false,
 ) {

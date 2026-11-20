@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.webapp.dashboard
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -88,7 +89,10 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
     val open = d.sessions.lastOrNull()?.takeIf { it.end == null }
     val played = d.sessions.sumOf { (it.end ?: now) - it.start }
     Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-      Bars(d.checked, d.total, d.progressionReceived, d.progressionTotal, height = 8.dp)
+      Bars(Progress.of(d), height = 8.dp)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ProgressPills(Progress.of(d))
+      }
       // Time facts of this world
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Fact(t.dialogs.played, t.duration(played))
