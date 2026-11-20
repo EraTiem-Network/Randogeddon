@@ -49,12 +49,12 @@ interface DashboardTexts {
   /** Beside a slot's state: how long ago its last check was. */
   fun lastCheck(ago: String): String
   fun slot(name: String): String
-  /** The two bars: checks in its own world, progression items received of those meant for it. */
+  /** The two bars: checks in its own world, and those of them that hold a progression item. */
   val checksBar: String
-  val progressionBar: String
-  /** Progression received while its total isn't known yet. */
-  fun progressionSoFar(n: String): String
-  val noProgression: String
+  val progressionChecksBar: String
+  /** Progression received of what is meant for it ([total] `null`: not known yet), and sent to others. */
+  fun received(n: String, total: String?): String
+  fun sent(n: String, total: String): String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
@@ -221,9 +221,9 @@ internal object EnglishDashboard : DashboardTexts {
   override fun lastCheck(ago: String) = "last check $ago"
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
-  override val progressionBar = "Progression"
-  override fun progressionSoFar(n: String) = "$n received"
-  override val noProgression = "none meant for it"
+  override val progressionChecksBar = "Progression checks"
+  override fun received(n: String, total: String?) = if (total == null) "received $n" else "received $n / $total"
+  override fun sent(n: String, total: String) = "sent $n / $total"
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -316,9 +316,9 @@ internal object GermanDashboard : DashboardTexts {
   override fun lastCheck(ago: String) = "letzter Check $ago"
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
-  override val progressionBar = "Progression"
-  override fun progressionSoFar(n: String) = "$n erhalten"
-  override val noProgression = "keine dafür vorgesehen"
+  override val progressionChecksBar = "Progressions-Checks"
+  override fun received(n: String, total: String?) = if (total == null) "erhalten $n" else "erhalten $n / $total"
+  override fun sent(n: String, total: String) = "gesendet $n / $total"
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
