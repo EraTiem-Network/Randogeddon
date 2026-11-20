@@ -195,6 +195,40 @@ class StoresTest {
   }
 
   @Test
+  fun `a game server's events are kept in their order per session, added by the gateway's role, and go with the session`() = runBlocking {
+    val events = SessionEventStore(db)
+    GatewayRole.ensure(db, "events_gateway", "events-password")
+    RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "events_gateway", "events-password"), migrate = false, poolSize = 1)
+      .use { gateway ->
+        val heard = SessionEventStore(gateway)
+        heard.append("loud-otter", 1_000, SessionEventStore.START)
+        heard.append("loud-otter", 2_000, SessionEventStore.PACKET, "{\"cmd\":\"PrintJSON\",\"type\":\"Join\"}")
+        heard.append("calm-heron", 2_500, SessionEventStore.START)
+        heard.append("loud-otter", 3_000, SessionEventStore.PACKET, "{\"cmd\":\"PrintJSON\",\"type\":\"Part\"}")
+        heard.append("loud-otter", 4_000, SessionEventStore.STOP)
+        heard.append("loud-otter", 5_000, SessionEventStore.START)
+        heard.append("loud-otter", 6_000, SessionEventStore.PACKET, "{\"cmd\":\"PrintJSON\",\"type\":\"Join\"}")
+        // It adds; it doesn't read or take away
+        assertFailsWith<Exception> { heard.after("loud-otter", 0) }
+        assertFailsWith<Exception> { heard.delete("loud-otter") }
+      }
+    val all = events.after("loud-otter", 0)
+    assertEquals(listOf(1_000L, 2_000L, 3_000L, 4_000L, 5_000L, 6_000L), all.map { it.atMs })
+    assertEquals(listOf("start", "packet", "packet", "stop", "start", "packet"), all.map { it.kind })
+    assertTrue(all.zipWithNext().all { (a, b) -> a.id < b.id })
+    assertEquals(listOf(3_000L, 4_000L), events.after("loud-otter", all[1].id, limit = 2).map { it.atMs })
+    assertEquals(emptyList(), events.after("loud-otter", all.last().id))
+    // Since the last start up to an event: what says who is connected then
+    assertEquals(listOf(5_000L, 6_000L), events.sinceLastStart("loud-otter", all.last().id).map { it.atMs })
+    assertEquals(listOf(1_000L, 2_000L, 3_000L), events.sinceLastStart("loud-otter", all[2].id).map { it.atMs })
+    assertEquals(emptyList(), events.sinceLastStart("loud-otter", 0))
+    events.delete("loud-otter")
+    assertEquals(emptyList(), events.after("loud-otter", 0))
+    assertEquals(1, events.after("calm-heron", 0).size)
+    events.delete("calm-heron")
+  }
+
+  @Test
   fun `a session finishes, is listed as finished, and can be reopened`() = runBlocking {
     val finishes = SessionFinishStore(db)
     val t0 = Instant.parse("2026-11-13T20:00:00Z")
