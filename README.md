@@ -375,6 +375,14 @@ docker compose up -d
    the generation's settings: what the YAMLs may plan by hand (Archipelago's plando modules *bosses*, *connections*,
    *texts*, *items*; its own default, all but the items, is ticked), *No progression balancing*, and *Race mode* (a
    seed nobody can reproduce and no spoiler log, so nothing of it in the panel and no background runs);
+   an Administrator can use a **seed generated elsewhere** instead of YAMLs (*Use a generated seed…*: the
+   `AP_<seed>.zip` of Archipelago's Launcher, up to 64 MB). The gateway checks it before anything of it is used: only
+   files named as a seed's (`AP_…`, no folders, each once), one `.archipelago`, at most 1,000 files and 512 MB
+   unpacked; it writes the zip anew from what it read, and reads the multidata with Archipelago's own restricted
+   loader (as MultiServer does: no code of the file runs), which also says whether the release can serve it. Its
+   slots are then assigned as with YAMLs. Such a session has no locks (they are generated in; a seed with a World
+   Locks slot is refused), nothing is generated, its spoiler log is the one the zip brings (none: no spoiler page),
+   and its files for the players are the zip's, unchecked: they come from whoever generated it;
    *Generate and start* (once every slot has a player or is hosted; while the session is made, the form makes room
    for its ID, its four steps (*Check*, *Generate*, *Set up*, *Start*) and a bar with the stage and about how far it
    is; the gateway generates as many seeds at once as it has cores, less one (`GENERATIONS_AT_ONCE`), so a session
