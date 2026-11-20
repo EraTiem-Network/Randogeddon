@@ -132,6 +132,13 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private val locationNames = mutableMapOf<String, Map<Long, String>>()
   private var eventSeq = 0L
 
+  /**
+   * What lies at every location, from scouting each slot's own ones (`LocationScouts`): (the slot, its location) ->
+   * (the slot it is meant for, its flags). Only counted, never shown; [scouted]: the slots done.
+   */
+  private val placements = mutableMapOf<Pair<Int, Long>, Pair<Int, Int>>()
+  private val scouted = mutableSetOf<Int>()
+
   /** Deaths passed on by DeathLink and traps by TrapLink, over every event of the session. */
   private var deaths = 0
   private var trapLinks = 0
@@ -159,6 +166,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     eventSeq = 0
     deaths = 0
     trapLinks = 0
+    placements.clear()
+    scouted.clear()
   }
 
   private fun touch() {
@@ -234,6 +243,28 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
     touch()
   }
+
+  /** What lies at [slot]'s own locations (`LocationInfo`, the answer to its scouting). */
+  fun onLocationInfo(slot: Int, packet: JsonObject) {
+    packet.array("locations").orEmpty().map(::networkItem).forEach { placements[slot to it.location] = it.player to it.flags }
+    scouted += slot
+    touch()
+  }
+
+  /** [slot] has no locations to scout. */
+  fun onNothingToScout(slot: Int) {
+    scouted += slot
+    touch()
+  }
+
+  /** Progression items meant for each slot at every location; `null` until every slot is scouted. */
+  private fun progressionTotals(): Map<Int, Int>? {
+    if (players.isEmpty() || !scouted.containsAll(players.keys)) return null
+    return placements.values.filter { (_, flags) -> flags and ItemFlags.PROGRESSION != 0 }.groupingBy { it.first }.eachCount()
+  }
+
+  /** Progression items [p] received from a location (not the starting inventory, not a cheat's). */
+  private fun progressionReceived(p: Player): Int = p.items.count { it.location >= 0 && it.flags and ItemFlags.PROGRESSION != 0 }
 
   fun onRoomUpdate(slot: Int, packet: JsonObject) {
     players[slot]?.let { player ->
@@ -582,6 +613,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val costPercent = hintCost ?: 0
     val lockSlots = lockSlots()
     val personOf = people.flatMap { (person, worlds) -> worlds.map { it to person } }.toMap()
+    val progressionTotals = progressionTotals()
     val list = players.values.filter { it.slot !in lockSlots }.map { p ->
       val total = p.total
       val lock = lockOf(p.slot)
@@ -597,7 +629,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         connections = p.online,
         lastActivity = p.lastActivity,
         itemsReceived = p.items.size,
-        progressionReceived = p.items.count { it.flags and ItemFlags.PROGRESSION != 0 },
+        progressionReceived = progressionReceived(p),
+        progressionTotal = progressionTotals?.let { it[p.slot] ?: 0 },
         hintPoints = p.hintPoints,
         // As MultiServer's Context.get_hint_cost
         hintCost = if (costPercent == 0) 0 else maxOf(1, (costPercent * 0.01 * total).toInt()),
@@ -666,6 +699,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       missing = p.missing.map { locationName(it, slot) }.sorted(),
       checked = p.checked.size,
       total = p.total,
+      progressionReceived = progressionReceived(p),
+      progressionTotal = progressionTotals()?.let { it[slot] ?: 0 },
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
     )
