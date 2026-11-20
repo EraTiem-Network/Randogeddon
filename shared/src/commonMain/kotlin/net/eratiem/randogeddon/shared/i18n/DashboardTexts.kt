@@ -22,6 +22,13 @@ interface DashboardTexts {
   fun itemsOf(progression: String, traps: String): String
   val links: String
   fun linksOf(deaths: String, traps: String): String
+  /** The Overview's pills. */
+  fun partProgression(n: String): String
+  fun partTraps(n: String): String
+  fun partDeaths(n: String): String
+  /** The game server's state in the Session tile, its running time beside it. */
+  val serverOn: String
+  val serverOff: String
   val unlocked: String
   val slotsOpened: String
   val hints: String
@@ -43,7 +50,8 @@ interface DashboardTexts {
   fun account(id: String, deleted: Boolean): String
   fun locked(n: Int): String
   fun connections(n: Int): String
-  fun done(n: Int): String
+  /** A person's slots done of all, as one pill. */
+  fun slotsDone(done: Int, slots: Int): String
   fun played(duration: String): String
   fun status(status: PlayerStatus): String
   /** Beside a slot's state: how long ago its last check was. */
@@ -52,9 +60,9 @@ interface DashboardTexts {
   /** The two bars: checks in its own world, and those of them that hold a progression item. */
   val checksBar: String
   val progressionChecksBar: String
-  /** Progression received of what is meant for it ([total] `null`: not known yet), and sent to others. */
-  fun received(n: String, total: String?): String
-  fun sent(n: String, total: String): String
+  /** Progression received, and sent to others (counts only: no totals for the players). */
+  fun received(n: String): String
+  fun sent(n: String): String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
@@ -186,6 +194,11 @@ internal object EnglishDashboard : DashboardTexts {
   override fun itemsOf(progression: String, traps: String) = "$progression progression · $traps traps"
   override val links = "Links"
   override fun linksOf(deaths: String, traps: String) = "$deaths deaths · $traps traps"
+  override fun partProgression(n: String) = "$n progression"
+  override fun partTraps(n: String) = "$n traps"
+  override fun partDeaths(n: String) = "$n deaths"
+  override val serverOn = "running"
+  override val serverOff = "stopped"
   override val unlocked = "Unlocked"
   override val slotsOpened = "slots opened"
   override val hints = "Hints"
@@ -207,7 +220,7 @@ internal object EnglishDashboard : DashboardTexts {
   override fun account(id: String, deleted: Boolean) = "Account $id${if (deleted) " (deleted)" else ""}"
   override fun locked(n: Int) = "$n locked"
   override fun connections(n: Int) = "$n connections"
-  override fun done(n: Int) = "$n done"
+  override fun slotsDone(done: Int, slots: Int) = "$done / $slots done"
   override fun played(duration: String) = "$duration played"
   override fun status(status: PlayerStatus) = when (status) {
     PlayerStatus.NOT_STARTED -> "not started"
@@ -222,8 +235,8 @@ internal object EnglishDashboard : DashboardTexts {
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
   override val progressionChecksBar = "Progression checks"
-  override fun received(n: String, total: String?) = if (total == null) "received $n" else "received $n / $total"
-  override fun sent(n: String, total: String) = "sent $n / $total"
+  override fun received(n: String) = "received $n"
+  override fun sent(n: String) = "sent $n"
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -282,6 +295,11 @@ internal object GermanDashboard : DashboardTexts {
   override fun itemsOf(progression: String, traps: String) = "$progression Progression · $traps Fallen"
   override val links = "Links"
   override fun linksOf(deaths: String, traps: String) = "$deaths Tode · $traps Fallen"
+  override fun partProgression(n: String) = "$n Progression"
+  override fun partTraps(n: String) = "$n Fallen"
+  override fun partDeaths(n: String) = "$n Tode"
+  override val serverOn = "läuft"
+  override val serverOff = "gestoppt"
   override val unlocked = "Entsperrt"
   override val slotsOpened = "Slots geöffnet"
   override val hints = "Hinweise"
@@ -302,7 +320,7 @@ internal object GermanDashboard : DashboardTexts {
   override fun account(id: String, deleted: Boolean) = "Konto $id${if (deleted) " (gelöscht)" else ""}"
   override fun locked(n: Int) = "$n gesperrt"
   override fun connections(n: Int) = "$n Verbindungen"
-  override fun done(n: Int) = "$n fertig"
+  override fun slotsDone(done: Int, slots: Int) = "$done / $slots fertig"
   override fun played(duration: String) = "$duration gespielt"
   override fun status(status: PlayerStatus) = when (status) {
     PlayerStatus.NOT_STARTED -> "nicht gestartet"
@@ -317,8 +335,8 @@ internal object GermanDashboard : DashboardTexts {
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
   override val progressionChecksBar = "Progressions-Checks"
-  override fun received(n: String, total: String?) = if (total == null) "erhalten $n" else "erhalten $n / $total"
-  override fun sent(n: String, total: String) = "gesendet $n / $total"
+  override fun received(n: String) = "erhalten $n"
+  override fun sent(n: String) = "gesendet $n"
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
