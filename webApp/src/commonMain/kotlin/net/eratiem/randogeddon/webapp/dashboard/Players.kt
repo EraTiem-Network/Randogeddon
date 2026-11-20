@@ -169,9 +169,9 @@ private fun PersonCard(
         PersonName(person.name, person.userId, person.deleted, size = 16.sp)
         val played = worlds.sumOf { playTime(it, now) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          Pill(t.sessions.slots(worlds.size), p.muted)
+          // Its slots and how many are done, in one
+          Pill(t.dashboard.slotsDone(person.goals, worlds.size), if (person.goals > 0) p.ok else p.muted)
           if (locked > 0) Pill(t.dashboard.locked(locked), p.locked)
-          if (person.goals > 0) Pill(t.dashboard.done(person.goals), p.ok)
           if (played > 0) Pill(t.dashboard.played(t.duration(played)), p.useful)
           ProgressPills(Progress.sum(worlds))
         }
@@ -310,7 +310,8 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
 
 /**
  * A slot's (or several slots' together) numbers: checked of its locations, and of the progression locations among
- * them (`null` until scouted); progression received of what is meant for it, and sent of what is meant for others.
+ * them (`null` until scouted); progression received, and sent to others (no totals: its players would learn how much
+ * is still missing).
  */
 internal data class Progress(
   val checked: Int,
@@ -318,25 +319,21 @@ internal data class Progress(
   val progressionChecked: Int,
   val progressionChecks: Int?,
   val received: Int,
-  val receivedTotal: Int?,
-  val sent: Int,
-  val sentTotal: Int?,
+  val sent: Int?,
 ) {
   companion object {
-    fun of(w: PlayerSummary) = Progress(
-      w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.progressionTotal, w.sent, w.sentTotal,
-    )
+    fun of(w: PlayerSummary) =
+      Progress(w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent)
 
-    fun of(d: PlayerDetail) = Progress(
-      d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.progressionTotal, d.sent, d.sentTotal,
-    )
+    fun of(d: PlayerDetail) =
+      Progress(d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent)
 
-    /** Summed over [worlds]; a total only if it is known for each of them. */
+    /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
     fun sum(worlds: List<PlayerSummary>): Progress {
       fun known(of: (PlayerSummary) -> Int?) = worlds.map(of).takeIf { all -> all.none { it == null } }?.sumOf { it ?: 0 }
       return Progress(
         worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionChecked }, known { it.progressionChecks },
-        worlds.sumOf { it.progressionReceived }, known { it.progressionTotal }, worlds.sumOf { it.sent }, known { it.sentTotal },
+        worlds.sumOf { it.progressionReceived }, known { it.sent },
       )
     }
   }
@@ -361,13 +358,13 @@ internal fun Bars(progress: Progress, modifier: Modifier = Modifier, height: Dp 
   }
 }
 
-/** Progression received of what is meant for it, and sent of what is meant for others (once scouted), as pills. */
+/** Progression received, and sent to others (once scouted), as pills: counts only. */
 @Composable
 internal fun ProgressPills(progress: Progress) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  Pill(t.dashboard.received(t.number(progress.received), progress.receivedTotal?.let { t.number(it) }), p.progression)
-  progress.sentTotal?.let { Pill(t.dashboard.sent(t.number(progress.sent), t.number(it)), p.useful) }
+  Pill(t.dashboard.received(t.number(progress.received)), p.progression)
+  progress.sent?.let { Pill(t.dashboard.sent(t.number(it)), p.useful) }
 }
 
 /** Connected time of [world] so far, including the running session. */
