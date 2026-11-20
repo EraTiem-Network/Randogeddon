@@ -29,6 +29,9 @@ const val MAX_SESSIONS = 200
 /** A session cut by a tracker restart continues if the world is seen again within this time. */
 const val SESSION_MERGE_GAP_MS = 5 * 60_000L
 
+/** The location of an item in the starting inventory, as MultiServer sends it. */
+const val STARTING_INVENTORY = -2L
+
 /** One `NetworkItem`: the item, the location it was found at, the player it came from (or went to) and its flags. */
 data class NetworkItem(val item: Long, val location: Long, val player: Int, val flags: Int)
 
@@ -52,6 +55,10 @@ class Player(val slot: Int, val name: String, val game: String) {
   var sessions: MutableList<ConnectionSession> = mutableListOf()
   var firstCheckAt: Long? = null
   var goalAt: Long? = null
+  /** Its checks available now, as the session's logic last counted them; `null`: not known. */
+  var available: Int? = null
+  /** Its received items and checks when the logic was last asked about it (asked again once they change). */
+  var availableAsked: Pair<Int, Int>? = null
 
   val openSession: ConnectionSession? get() = sessions.lastOrNull()?.takeIf { it.end == null }
 

@@ -39,6 +39,8 @@ import net.eratiem.randogeddon.shared.SeedInstall
 import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.AvailableAnswer
+import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.SessionServers
 import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
@@ -180,6 +182,42 @@ class GameServerClient(private val config: TrackerConfig) {
   /** Session [id]'s spoiler log's background run: its log lines after [since]; `null`: none. */
   suspend fun spoilerRunLog(id: String, since: Long): LogLines? {
     val response = request { http.get("${session(id)}/spoiler-run/log?since=$since") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s logic: each asked slot's available checks; `null`: it isn't running. */
+  suspend fun available(id: String, request: AvailableRequest): AvailableAnswer? {
+    val response = request {
+      http.post("${session(id)}/logic/available") {
+        auth()
+        contentType(ContentType.Application.Json)
+        setBody(ApiJson.encodeToString(AvailableRequest.serializer(), request))
+      }
+    }
+    return when {
+      response.status == HttpStatusCode.NoContent -> null
+      response.status.isSuccess() -> ApiJson.decodeFromString(AvailableAnswer.serializer(), response.bodyAsText())
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s logic is built again from the start; `false`: it can have none. */
+  suspend fun rebuildLogic(id: String): Boolean {
+    val response = request { http.post("${session(id)}/logic/rebuild") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> false
+      response.status.isSuccess() -> true
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s logic's log lines after [since]; `null`: none. */
+  suspend fun logicLog(id: String, since: Long): LogLines? {
+    val response = request { http.get("${session(id)}/logic/log?since=$since") { auth() } }
     return when {
       response.status == HttpStatusCode.NotFound -> null
       response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())

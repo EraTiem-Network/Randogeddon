@@ -41,6 +41,8 @@ import net.eratiem.randogeddon.server.util.obj
 import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AvailableAnswer
+import net.eratiem.randogeddon.shared.AvailableSlot
 import java.lang.invoke.MethodHandles
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -104,6 +106,12 @@ class TrackerService(
   suspend fun <T> read(block: SessionState.() -> T): T = mutex.withLock { state.block() }
 
   private suspend fun update(block: SessionState.() -> Unit) = mutex.withLock { state.block() }
+
+  /** The session logic's answer about the slots in [asked] (see [SessionState.onAvailable]). */
+  suspend fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer) = update { onAvailable(asked, answer) }
+
+  /** Its logic was built again: every slot is asked anew. */
+  suspend fun forgetAvailableAsks() = update { forgetAvailableAsks() }
 
   /** Brings its history back once (the slots, the baseline), follows its events, and stays connected until cancelled. */
   fun start(scope: CoroutineScope): Job = scope.launch {
