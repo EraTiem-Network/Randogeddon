@@ -309,9 +309,18 @@ const val MAX_SESSIONS_PER_USER = 20
 /** How many running sessions one user (not an Administrator) may manage at once. */
 suspend fun sessionsPerUser(settings: AppSettingsStore): Int = settings.get(SESSIONS_PER_USER)?.toIntOrNull() ?: 1
 
-/** `…/spoiler-run`: how session `{id}`'s spoiler log is completed after its seed; `…/log?since=`: that run's log. */
+/**
+ * `…/spoiler-run`: how session `{id}`'s spoiler log is completed after its seed; `…/log?since=`: that run's log;
+ * `POST …/retry`: a stopped one is tried again.
+ */
 internal fun Route.spoilerRunRoutes(spoilerRuns: SpoilerRuns) {
   get("/spoiler-run") { gatewayCall { call.respond(spoilerRuns.view(call.parameters["id"].orEmpty())) } }
+  post("/spoiler-run/retry") {
+    gatewayCall {
+      spoilerRuns.retry(call.parameters["id"].orEmpty())
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
   get("/spoiler-run/log") {
     val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
     gatewayCall { call.respond(spoilerRuns.log(call.parameters["id"].orEmpty(), since)) }

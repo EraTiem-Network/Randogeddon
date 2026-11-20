@@ -23,6 +23,14 @@ class SpoilerTest {
   }
 
   @Test
+  fun `a playthrough that couldn't be reduced says so, by the log's last line`() {
+    assertEquals(false, parseSpoiler("123", sample).unreduced)
+    val unreduced = parseSpoiler("123", sample.trimEnd() + "\n\n" + PLAYTHROUGH_NOT_REDUCED + "\n")
+    assertTrue(unreduced.unreduced)
+    assertEquals(listOf(0, 1, 2), unreduced.spheres.map { it.number })
+  }
+
+  @Test
   fun `the slots are named by their numbers, with their games`() {
     // As Archipelago 0.6.8 writes the options part (shortened)
     val text = "Archipelago Version 0.6.8  -  Seed: 1\n\nPlayers:                         3\n\n" +
