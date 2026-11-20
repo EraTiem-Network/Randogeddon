@@ -13,6 +13,8 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
@@ -21,6 +23,8 @@ import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.SeedInstall
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SlotFiles
 import java.security.MessageDigest
@@ -55,6 +59,7 @@ fun Route.internalApi(
   generator: Generator,
   apworlds: Apworlds,
   dirs: SessionDirs,
+  seeds: UploadedSeeds,
 ) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
@@ -73,6 +78,19 @@ fun Route.internalApi(
         }
       }
     }
+    // A seed generated elsewhere, uploaded for a new session: checked, then kept under a token until its session is
+    // made (POST /sessions/{id}/seed) or an hour has passed
+    post("/seeds") {
+      val upload = call.receive<SeedUpload>()
+      try {
+        call.respond(withContext(Dispatchers.IO) { seeds.take(upload) })
+      } catch (e: SeedProblem) {
+        call.respond(HttpStatusCode.BadRequest, ApiError(e.message ?: "Not taken"))
+      }
+    }
+    delete("/seeds/{token}") {
+      call.respond(if (seeds.drop(call.parameters["token"].orEmpty())) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
     route("/sessions") {
       get { call.respond(sessions.list().let { it.copy(sessions = it.sessions.map { s -> s.copy(spoiler = generator.spoiler(s.id)) }) }) }
       route("/{id}") {
@@ -87,6 +105,18 @@ fun Route.internalApi(
           }
           if (result.seedName != null) sessions.added(id)
           call.respond(result)
+        }
+        // An uploaded seed becomes its seed; its game server waits for a start, as after a generation
+        post("/seed") {
+          val id = sessionId() ?: return@post
+          val install = call.receive<SeedInstall>()
+          val info = try {
+            withContext(Dispatchers.IO) { seeds.install(id, install.token) }
+          } catch (e: IllegalStateException) {
+            return@post call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "It has a seed already"))
+          } ?: return@post call.respond(HttpStatusCode.NotFound, ApiError("No such uploaded seed (any more)"))
+          sessions.added(id)
+          call.respond(info)
         }
         // How far its generation is, while it runs (no content: none runs)
         get("/progress") {

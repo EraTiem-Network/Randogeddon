@@ -193,6 +193,7 @@ fun main() {
   }
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
+  val uploadedSeeds = UploadedSeeds(archipelago, dirs, options.dataDir)
   apworlds.beforeChange = generator::yieldBackground
   background.launch { generator.completeSpoilers() }
   val connections = ConnectionLimits()
@@ -256,7 +257,7 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs)
+        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds)
       }
     }
     monitor.subscribe(ApplicationStopping) {
