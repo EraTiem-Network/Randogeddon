@@ -6,11 +6,15 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.greaterEq
+import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
+import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -529,4 +533,61 @@ class ShareLinkStore(private val db: RandogeddonDatabase) {
 
   private fun sessionOf(publicId: String): Uuid? =
     SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
+}
+
+/** One of a session's game server events: when (epoch milliseconds), what [kind], and for a packet its JSON. */
+data class SessionEvent(val id: Long, val atMs: Long, val kind: String, val packet: String)
+
+/**
+ * What happens on the sessions' game servers: the gateway writes it as it hears it ([append]), the tracker reads it
+ * in order ([after]) and so misses nothing while it isn't connected.
+ */
+class SessionEventStore(private val db: RandogeddonDatabase) {
+  suspend fun append(session: String, atMs: Long, kind: String, packet: String = "") = db.query {
+    // Without asking for the new row back: the gateway's role may add rows, not read them (an insert that returns
+    // its row needs it readable)
+    SessionEventsTable.batchInsert(listOf(packet), shouldReturnGeneratedValues = false) {
+      this[SessionEventsTable.session] = session
+      this[SessionEventsTable.atMs] = atMs
+      this[SessionEventsTable.kind] = kind
+      this[SessionEventsTable.packet] = it
+    }
+    Unit
+  }
+
+  /** [session]'s events after the one with ID [after], oldest first, [limit] at most. */
+  suspend fun after(session: String, after: Long, limit: Int = 1000): List<SessionEvent> = db.query {
+    SessionEventsTable.selectAll()
+      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.id greater after) }
+      .orderBy(SessionEventsTable.id).limit(limit).map(::event)
+  }
+
+  /**
+   * [session]'s events since its game server's last start, up to the one with ID [upTo] (both ends in): who joined
+   * and left since then says who is connected at [upTo]. Empty: no start up to there.
+   */
+  suspend fun sinceLastStart(session: String, upTo: Long): List<SessionEvent> = db.query {
+    val start = SessionEventsTable.select(SessionEventsTable.id)
+      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.kind eq START) and (SessionEventsTable.id lessEq upTo) }
+      .orderBy(SessionEventsTable.id, SortOrder.DESC).limit(1).singleOrNull()?.get(SessionEventsTable.id)
+      ?: return@query emptyList()
+    SessionEventsTable.selectAll()
+      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.id greaterEq start) and (SessionEventsTable.id lessEq upTo) }
+      .orderBy(SessionEventsTable.id).map(::event)
+  }
+
+  /** [session] is deleted (its ID may be given to a new one). */
+  suspend fun delete(session: String) = db.query {
+    SessionEventsTable.deleteWhere { SessionEventsTable.session eq session }
+    Unit
+  }
+
+  private fun event(row: ResultRow) =
+    SessionEvent(row[SessionEventsTable.id], row[SessionEventsTable.atMs], row[SessionEventsTable.kind], row[SessionEventsTable.packet])
+
+  companion object {
+    const val PACKET = "packet"
+    const val START = "start"
+    const val STOP = "stop"
+  }
 }

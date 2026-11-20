@@ -851,7 +851,8 @@ generates didn't generate on the server, and an APWorld that loaded before was r
       classes allowed, as MultiServer does), its release against the gateway's, its games against the release's
       APWorlds; then its slots for the players and locks as with YAMLs (locks need the World Locks slot generated
       in, so a seed from elsewhere has none)
-- [ ] What the tracker misses while it isn't connected (asked for): it hears of joins, releases, goals and chat only
+- [x] What the tracker misses while it isn't connected (asked for; 0.19.9, as proposed: the gateway listens and
+      writes into the database, the tracker reads it there). As it was: it hears of joins, releases, goals and chat only
       from the messages that come while its connection to the game server is up. Seen: a slot released early wasn't
       in the live feed, and the player whose connection wakes a sleeping session isn't shown as online (the game
       server is up and takes the player in about two seconds before the tracker is back). Proposed, to be decided:

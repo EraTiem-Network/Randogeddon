@@ -11,6 +11,21 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.9: Nothing is lost while the tracker isn't connected
+- **The gateway hears what happens on each game server and keeps it.** It starts every game server and is there
+  whenever one runs: from the moment the server accepts clients it listens (a connection like the tracker's) and
+  writes what is said to everyone into the database (`session_events`, V24): item sends, hints, goals, releases,
+  who joins and leaves, chat, death and trap links, and the game server's starts and ends.
+- **The tracker reads it from there**, about once a second, in its order, and saves how far it is with its history.
+  So a slot released while the tracker restarted is in the live feed, with the time it happened, and after a restart
+  the tracker knows who is connected from the joins and leaves since the game server's start (before: nobody, until
+  they did something).
+- **Whoever wakes a sleeping session is seen**: a player is let in once the gateway listens (3 s at most), so the
+  join isn't said before anyone hears it. Before, the tracker was back about two seconds after the player and showed
+  them as offline.
+- The gateway's database role may add rows to `session_events`, nothing else of it (not read, not delete); a
+  session's events go when it is deleted.
+
 ### 0.19.8: A session from a seed generated elsewhere
 - **An Administrator makes a session from a seed Archipelago's Launcher (or `Generate.py`) made**: *Use a generated
   seed…* in the new session's form takes its `AP_<seed>.zip` (up to 64 MB) instead of YAMLs. The slots are assigned

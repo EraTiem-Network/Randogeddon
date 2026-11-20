@@ -87,6 +87,8 @@ private data class SavedState(
   val goalAt: Map<Int, Long> = emptyMap(),
   /** Open sessions end here at the latest: the tracker can't know how long they went on after it stopped. */
   val savedAt: Long? = null,
+  /** Up to which of the gateway's events of the game server (by their IDs) this was heard. */
+  val serverCursor: Long = 0,
 )
 
 /**
@@ -120,6 +122,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private val itemNames = mutableMapOf<String, Map<Long, String>>()
   private val locationNames = mutableMapOf<String, Map<Long, String>>()
   private var eventSeq = 0L
+
+  /** Up to which of the gateway's events of the game server (their IDs in the database) this state has heard. */
+  var serverCursor = 0L
+    private set
   private var saved: SavedState? = null
 
   /** Key item name -> slot name of the world it unlocks, from the World Locks slot data. */
@@ -260,6 +266,58 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         o.obj("location_name_to_id").orEmpty().entries.associate { (k, v) -> v.jsonPrimitive.long to k }
     }
     touch()
+  }
+
+  /**
+   * One of the game server's events as the gateway heard and kept it ([id]: its place in their order, [at]: when):
+   * a packet for the feed and the slots' presence, or the game server's start or end, after which nobody is
+   * connected.
+   */
+  fun onServerEvent(id: Long, at: Long, started: Boolean, packet: JsonObject?) {
+    if (id <= serverCursor) return
+    if (packet == null) {
+      // A new start: whoever was connected before isn't; an end: nobody is
+      players.values.forEach {
+        it.online = 0
+        it.goOffline(at, cut = started)
+      }
+    } else when (packet.string("cmd")) {
+      "PrintJSON" -> onPrintJson(packet, at)
+      "Bounced" -> onBounced(packet, at)
+    }
+    serverCursor = id
+    touch()
+  }
+
+  /**
+   * Who is connected, from what was heard before this tracker started: the joins and leaves ([packets], in their
+   * order) since the game server's last start. No feed events: those were made when they were heard.
+   */
+  fun restorePresence(packets: List<JsonObject>, now: Long = clock()) {
+    val connected = mutableMapOf<Int, Int>()
+    for (packet in packets) {
+      if (packet.string("cmd") != "PrintJSON") continue
+      val slot = packet.int("slot") ?: continue
+      when (packet.string("type")) {
+        "Join" -> {
+          val tags = packet.array("tags").orEmpty().map { it.jsonPrimitive.content }
+          if (tags.none { it in NON_GAME_TAGS }) connected[slot] = (connected[slot] ?: 0) + 1
+        }
+        "Part" -> if (!nonGameLeft(packet)) connected[slot] = ((connected[slot] ?: 0) - 1).coerceAtLeast(0)
+      }
+    }
+    connected.filterValues { it > 0 }.forEach { (slot, count) ->
+      players[slot]?.let {
+        it.online = count
+        it.goOnline(now, implicit = false)
+      }
+    }
+    touch()
+  }
+
+  /** The tracker's own connection is gone; who plays is known from the gateway's events, not from it. */
+  fun onTrackerDisconnected() {
+    connected = false
   }
 
   /** Nobody is known to be online after the connection to the server was lost. */
@@ -649,7 +707,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   /** Written atomically (temporary file + move), so a crash never leaves a half-written file. */
   fun save(path: Path) {
     val data = SavedState(
-      seedName, eventSeq, events.toList(),
+      seedName, eventSeq, events.toList(), serverCursor = serverCursor,
       lastActivity = players.mapNotNull { (s, p) -> p.lastActivity?.let { s to it } }.toMap(),
       sessions = players.filterValues { it.sessions.isNotEmpty() }.mapValues { it.value.sessions.toList() },
       firstCheckAt = players.mapNotNull { (s, p) -> p.firstCheckAt?.let { s to it } }.toMap(),
@@ -679,6 +737,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     events.addAll(data.events + current)
     while (events.size > MAX_EVENTS) events.removeFirst()
     eventSeq += data.eventSeq
+    serverCursor = maxOf(serverCursor, data.serverCursor)
     data.lastActivity.forEach { (s, ts) ->
       players[s]?.let { p -> if (p.lastActivity.let { it == null || ts > it }) p.lastActivity = ts }
     }

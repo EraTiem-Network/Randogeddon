@@ -35,6 +35,7 @@ import net.eratiem.randogeddon.database.DEFAULT_GAME_SERVERS
 import net.eratiem.randogeddon.database.DEFAULT_IDLE_MINUTES
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
@@ -146,9 +147,11 @@ fun main() {
   suspend fun rulesOf(session: SessionGameServer): SleepRules =
     readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
       ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
+  // What happens on the game servers, heard here and kept for the tracker
+  val events = SessionEvents(SessionEventStore(database), http, background)
   val sessions = Sessions(
     dirs, gameServers::get,
-    create = { _, dir, port ->
+    create = { id, dir, port ->
       val roomJson = dir.resolve("room.json")
       GameServer(
         GameServerConfig(
@@ -156,8 +159,14 @@ fun main() {
           launch = { seed -> launcher.launch(seed, roomJson, port()) },
           prepare = { seed -> launcher.prepare(seed, roomJson) },
           // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
-          onRunning = { _ -> readSeedName(roomJson)?.let { seed -> count { times.started(seed) } } },
-          onEnded = { _ -> readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } } },
+          onRunning = { _ ->
+            readSeedName(roomJson)?.let { seed -> count { times.started(seed) } }
+            events.started(id, port(), roomJson)
+          },
+          onEnded = { _ ->
+            readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } }
+            events.ended(id)
+          },
           // A finished session stays stopped, also after a gateway restart, until it is reopened
           refuse = { seed ->
             runBlocking { finishes.of(seedNameOf(seed)) }?.finishedAt?.let { "its session is finished (reopen it in the admin panel)" }
@@ -249,6 +258,8 @@ fun main() {
             close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
             return@webSocket
           }
+          // The gateway listens before a player is in, so the tracker hears of this one too
+          events.awaitListening(session.id)
           // A player keeps it awake; a hosted slot's connection doesn't
           serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections) { slot ->
             if (slot in rulesOf(session).hosted) null else session.joined()

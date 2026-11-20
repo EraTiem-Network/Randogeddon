@@ -26,6 +26,7 @@ import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.SessionSetupStore
@@ -72,6 +73,7 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { SessionTimeStore(get()) }
       single { SessionSetupStore(get()) }
       single { SessionFinishStore(get()) }
+      single { SessionEventStore(get()) }
       single { CheatLogStore(get()) }
       single { SessionStore(get()) }
       single { InvitationStore(get()) }
