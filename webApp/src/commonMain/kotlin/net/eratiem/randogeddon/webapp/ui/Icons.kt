@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -46,7 +47,8 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 }
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
-enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS }
+enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -186,6 +188,70 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
 
       // A five-pointed star: progression
       Icon.STAR -> drawPath(Path().apply { moveTo(w * 0.5f, w * 0.07f); lineTo(w * 0.618f, w * 0.368f); lineTo(w * 0.937f, w * 0.388f); lineTo(w * 0.69f, w * 0.592f); lineTo(w * 0.77f, w * 0.902f); lineTo(w * 0.5f, w * 0.73f); lineTo(w * 0.23f, w * 0.902f); lineTo(w * 0.31f, w * 0.592f); lineTo(w * 0.063f, w * 0.388f); lineTo(w * 0.382f, w * 0.368f); close() }, color)
+
+      // An arrow up out of an open box: released
+      Icon.RELEASE -> {
+        drawPath(Path().apply {
+          moveTo(w * .3f, w * .45f); lineTo(w * .15f, w * .45f); lineTo(w * .15f, w * .88f); lineTo(w * .85f, w * .88f)
+          lineTo(w * .85f, w * .45f); lineTo(w * .7f, w * .45f)
+        }, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
+        drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
+          color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+      }
+
+      // Two bars: idle
+      Icon.PAUSE -> {
+        drawRoundRect(color, Offset(w * .24f, w * .18f), Size(w * .17f, w * .64f), CornerRadius(w * .05f))
+        drawRoundRect(color, Offset(w * .59f, w * .18f), Size(w * .17f, w * .64f), CornerRadius(w * .05f))
+      }
+
+      // An empty ring: not started
+      Icon.CIRCLE -> drawCircle(color, radius = w * .34f, center = Offset(w / 2, w / 2), style = Stroke(stroke * 1.2f))
+
+      // A magnifying glass: not found yet
+      Icon.SEARCH -> {
+        drawCircle(color, radius = w * .26f, center = Offset(w * .42f, w * .42f), style = Stroke(stroke * 1.2f))
+        drawLine(color, Offset(w * .62f, w * .62f), Offset(w * .88f, w * .88f), stroke * 1.4f, StrokeCap.Round)
+      }
+
+      // A warning triangle with its mark: traps
+      Icon.TRAP -> {
+        drawPath(Path().apply { moveTo(w * .5f, w * .1f); lineTo(w * .92f, w * .86f); lineTo(w * .08f, w * .86f); close() },
+          color, style = Stroke(stroke, join = StrokeJoin.Round))
+        drawLine(color, Offset(w * .5f, w * .4f), Offset(w * .5f, w * .6f), stroke, StrokeCap.Round)
+        drawCircle(color, radius = stroke * .7f, center = Offset(w * .5f, w * .73f))
+      }
+
+      // A skull, its eyes cut out: deaths
+      Icon.SKULL -> drawPath(
+        Path.combine(
+          PathOperation.Difference,
+          Path().apply {
+            addOval(Rect(Offset(w * .5f, w * .44f), w * .36f))
+            addRoundRect(RoundRect(w * .3f, w * .6f, w * .7f, w * .9f, CornerRadius(w * .06f)))
+          },
+          Path().apply {
+            addOval(Rect(Offset(w * .36f, w * .46f), w * .1f))
+            addOval(Rect(Offset(w * .64f, w * .46f), w * .1f))
+            addRect(Rect(w * .47f, w * .78f, w * .53f, w * .9f))
+          },
+        ),
+        color,
+      )
+
+      // A power sign: the game server's state
+      Icon.POWER -> {
+        drawArc(color, -60f, 300f, useCenter = false, topLeft = Offset(w * .16f, w * .2f), size = Size(w * .68f, w * .68f),
+          style = Stroke(stroke * 1.2f, cap = StrokeCap.Round))
+        drawLine(color, Offset(w * .5f, w * .08f), Offset(w * .5f, w * .48f), stroke * 1.2f, StrokeCap.Round)
+      }
+
+      // Two stacked server units: how long the game server ran
+      Icon.SERVER -> listOf(.12f, .54f).forEach { y ->
+        drawRoundRect(color, Offset(w * .12f, w * y), Size(w * .76f, w * .34f), CornerRadius(w * .08f), style = Stroke(stroke))
+        drawCircle(color, radius = stroke * .8f, center = Offset(w * .3f, w * (y + .17f)))
+      }
 
       // A door frame open to the right, an arrow leaving through it
       Icon.LOGOUT -> {

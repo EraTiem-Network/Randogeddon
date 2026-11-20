@@ -873,7 +873,24 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       it can be taken back): 0.19.12 checks and progression as two bars; 0.19.13 progression checks as the second
       bar, received and sent as pills, the person header as pills; 0.19.14 nothing cut off, icons on the bars; 0.19.15
       received and sent without totals (the players aren't to learn how much is missing), slots and done in one pill,
-      icons and pills in the Overview; more to come from the user
+      icons and pills in the Overview; 0.19.16 the Overview's pills as icons with a one-word tooltip, the game
+      server's uptime said as such; more to come from the user
+- [ ] Available checks per slot and person (asked for after 0.19.15; 0.19.17): a pill with how many of a slot's
+      locations can be checked now, by its world's logic with the items it has (as a Universal Tracker shows them),
+      summed on the person card. The logic exists only in a generated multiworld (the seed's `.archipelago` has the
+      placements, not the rules): a logic process generates the seed again from its kept inputs (as the spoiler levels
+      do), but only up to the fill (the worlds, their rules, events and locked items; where the items lie comes from
+      the seed), then answers. Measured on the server (10 slots, 2,868 locations, one core): 2.6 s and 195 MB up to the
+      fill against 15.7 s for the whole generation; counting every slot 0.27 s. Decided with the user:
+    - It runs while the session is played and stays twice as long as the game server's sleep setting; then it ends
+      (no CRIU: tried, it works, but needs rights close to root; rebuilding is fast enough)
+    - Its state in the top panel like the game server's (starting, running, stopped), with a note that the available
+      checks aren't known again until it runs completely
+    - The last counts kept in the database and shown while it doesn't run (as the last known ones)
+    - A button to build it again (Session-Manager and up), and its log (pages, search; Administrators only)
+    - The user's condition for more rights (a container of its own) doesn't apply: it needs none
+    - Not for: seeds uploaded from elsewhere (no YAMLs), race mode, sessions generated before 0.19.3; a slot whose
+      locations or events differ from the seed's gets no pill
 
 ## Phase 20: Hosted Minecraft Dig (planned)
 

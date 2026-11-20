@@ -13,6 +13,16 @@ didn't, then what the Launcher has that the gateway hasn't), went on to keeping 
 the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
 states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
 
+### 0.19.16: Icons in the Overview's pills
+- **The Overview's pills are an icon and a number**, what they are as their tooltip in one word: complete (a check
+  mark), goal (a flag), released (an arrow out of a box), idle (two bars), not started (an empty ring), hints not
+  found yet (*Open*, a magnifying glass), progression (a star), traps (a warning sign), deaths (a skull).
+- **The Session tile's server time says what it is**: a power sign, green while the game server runs (*Running* or
+  *Stopped* as its tooltip), and the time beside a server's icon, *Uptime* as its tooltip: how long the game server
+  ran for this seed.
+- **A section's title isn't squeezed any more**: where its filters don't fit beside the whole title, they go below
+  it (on a phone, *Hints* broke into "Hin" and "ts").
+
 ### 0.19.15: No totals for the players; icons in the Overview
 - **Received and sent without totals**: the pills say how many progression items a slot (or person) received and
   sent, not of how many: its players would learn how much is still missing. The tracker doesn't send those totals

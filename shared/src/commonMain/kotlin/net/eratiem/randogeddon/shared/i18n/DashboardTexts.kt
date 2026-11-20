@@ -11,24 +11,21 @@ interface DashboardTexts {
   val overview: String
   val finished: String
   val slotsFinished: String
-  fun partComplete(n: Int): String
-  fun partGoal(n: Int): String
-  fun partReleased(n: Int): String
   val slots: String
-  fun partIdle(n: Int): String
-  fun partNotStarted(n: Int): String
   val everyoneOnline: String
   val items: String
   fun itemsOf(progression: String, traps: String): String
   val links: String
   fun linksOf(deaths: String, traps: String): String
-  /** The Overview's pills. */
-  fun partProgression(n: String): String
-  fun partTraps(n: String): String
-  fun partDeaths(n: String): String
-  /** The game server's state in the Session tile, its running time beside it. */
+  /** The tooltips of the Overview's pills (an icon and a number each): best one word. */
+  val tipProgression: String
+  val tipTraps: String
+  val tipDeaths: String
+  val tipOpen: String
+  /** The game server's state in the Session tile, and how long it ran for this seed. */
   val serverOn: String
   val serverOff: String
+  val tipUptime: String
   val unlocked: String
   val slotsOpened: String
   val hints: String
@@ -183,22 +180,19 @@ internal object EnglishDashboard : DashboardTexts {
   override val overview = "Overview"
   override val finished = "Finished"
   override val slotsFinished = "slots done"
-  override fun partComplete(n: Int) = "$n complete"
-  override fun partGoal(n: Int) = "$n goal"
-  override fun partReleased(n: Int) = "$n released"
   override val slots = "Slots"
-  override fun partIdle(n: Int) = "$n idle"
-  override fun partNotStarted(n: Int) = "$n not started"
   override val everyoneOnline = "online now"
   override val items = "Items"
   override fun itemsOf(progression: String, traps: String) = "$progression progression · $traps traps"
   override val links = "Links"
   override fun linksOf(deaths: String, traps: String) = "$deaths deaths · $traps traps"
-  override fun partProgression(n: String) = "$n progression"
-  override fun partTraps(n: String) = "$n traps"
-  override fun partDeaths(n: String) = "$n deaths"
-  override val serverOn = "running"
-  override val serverOff = "stopped"
+  override val tipProgression = "Progression"
+  override val tipTraps = "Traps"
+  override val tipDeaths = "Deaths"
+  override val serverOn = "Running"
+  override val serverOff = "Stopped"
+  override val tipUptime = "Uptime"
+  override val tipOpen = "Open"
   override val unlocked = "Unlocked"
   override val slotsOpened = "slots opened"
   override val hints = "Hints"
@@ -284,22 +278,19 @@ internal object GermanDashboard : DashboardTexts {
   override val overview = "Überblick"
   override val finished = "Fertig"
   override val slotsFinished = "Slots fertig"
-  override fun partComplete(n: Int) = "$n komplett"
-  override fun partGoal(n: Int) = "$n Ziel"
-  override fun partReleased(n: Int) = "$n freigegeben"
   override val slots = "Slots"
-  override fun partIdle(n: Int) = "$n inaktiv"
-  override fun partNotStarted(n: Int) = "$n nicht gestartet"
   override val everyoneOnline = "jetzt online"
   override val items = "Items"
   override fun itemsOf(progression: String, traps: String) = "$progression Progression · $traps Fallen"
   override val links = "Links"
   override fun linksOf(deaths: String, traps: String) = "$deaths Tode · $traps Fallen"
-  override fun partProgression(n: String) = "$n Progression"
-  override fun partTraps(n: String) = "$n Fallen"
-  override fun partDeaths(n: String) = "$n Tode"
-  override val serverOn = "läuft"
-  override val serverOff = "gestoppt"
+  override val tipProgression = "Progression"
+  override val tipTraps = "Fallen"
+  override val tipDeaths = "Tode"
+  override val serverOn = "Läuft"
+  override val serverOff = "Gestoppt"
+  override val tipUptime = "Laufzeit"
+  override val tipOpen = "Offen"
   override val unlocked = "Entsperrt"
   override val slotsOpened = "Slots geöffnet"
   override val hints = "Hinweise"
