@@ -218,14 +218,50 @@ class StoresTest {
     assertTrue(all.zipWithNext().all { (a, b) -> a.id < b.id })
     assertEquals(listOf(3_000L, 4_000L), events.after("loud-otter", all[1].id, limit = 2).map { it.atMs })
     assertEquals(emptyList(), events.after("loud-otter", all.last().id))
-    // Since the last start up to an event: what says who is connected then
-    assertEquals(listOf(5_000L, 6_000L), events.sinceLastStart("loud-otter", all.last().id).map { it.atMs })
-    assertEquals(listOf(1_000L, 2_000L, 3_000L), events.sinceLastStart("loud-otter", all[2].id).map { it.atMs })
-    assertEquals(emptyList(), events.sinceLastStart("loud-otter", 0))
     events.delete("loud-otter")
     assertEquals(emptyList(), events.after("loud-otter", 0))
     assertEquals(1, events.after("calm-heron", 0).size)
     events.delete("calm-heron")
+  }
+
+  @Test
+  fun `a session's snapshot is kept live, made final once it finished, reopened, and goes with the session`() = runBlocking {
+    val snapshots = SessionSnapshotStore(db)
+    assertNull(snapshots.of("kept-otter"))
+    assertTrue(snapshots.saveLive("kept-otter", 1_000, "{\"live\":1}"))
+    assertEquals(SessionSnapshot("{\"live\":1}", final = false, atMs = 1_000), snapshots.of("kept-otter"))
+    assertTrue(snapshots.saveLive("kept-otter", 2_000, "{\"live\":2}"))
+    assertEquals("{\"live\":2}", snapshots.of("kept-otter")?.json)
+    assertEquals(emptyMap(), snapshots.finals().filterKeys { it == "kept-otter" })
+    // Finished: its archive, which a live one doesn't replace
+    snapshots.saveFinal("kept-otter", 3_000, "{\"final\":1}")
+    assertFalse(snapshots.saveLive("kept-otter", 4_000, "{\"live\":3}"))
+    assertEquals(SessionSnapshot("{\"final\":1}", final = true, atMs = 3_000), snapshots.of("kept-otter"))
+    assertEquals(mapOf("kept-otter" to "{\"final\":1}"), snapshots.finals().filterKeys { it == "kept-otter" })
+    // Reopened: live again
+    snapshots.reopen("kept-otter")
+    assertTrue(snapshots.saveLive("kept-otter", 5_000, "{\"live\":4}"))
+    assertEquals(false, snapshots.of("kept-otter")?.final)
+    // A final one for a session that had none yet
+    snapshots.saveFinal("done-heron", 6_000, "{\"final\":2}")
+    assertEquals(true, snapshots.of("done-heron")?.final)
+    // The history of before: kept once, the first one stays; a row with only it has no snapshot
+    assertNull(snapshots.baseline("old-fox"))
+    snapshots.importBaseline("old-fox", 7_000, "{\"history\":1}")
+    snapshots.importBaseline("old-fox", 8_000, "{\"history\":2}")
+    assertEquals("{\"history\":1}", snapshots.baseline("old-fox"))
+    assertNull(snapshots.of("old-fox"))
+    assertTrue(snapshots.saveLive("old-fox", 9_000, "{\"live\":5}"))
+    assertEquals("{\"history\":1}", snapshots.baseline("old-fox"))
+    snapshots.importBaseline("kept-otter", 10_000, "{\"history\":3}")
+    assertEquals("{\"live\":4}", snapshots.of("kept-otter")?.json)
+    // The gateway's role has nothing of it
+    GatewayRole.ensure(db, "snapshot_gateway", "snapshot-password")
+    RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "snapshot_gateway", "snapshot-password"), migrate = false, poolSize = 1)
+      .use { gateway -> assertFailsWith<Exception> { SessionSnapshotStore(gateway).of("kept-otter") } }
+    for (session in listOf("kept-otter", "done-heron", "old-fox")) snapshots.delete(session)
+    assertNull(snapshots.of("kept-otter"))
+    assertNull(snapshots.baseline("old-fox"))
   }
 
   @Test

@@ -7,8 +7,6 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.greaterEq
-import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
@@ -562,20 +560,6 @@ class SessionEventStore(private val db: RandogeddonDatabase) {
       .orderBy(SessionEventsTable.id).limit(limit).map(::event)
   }
 
-  /**
-   * [session]'s events since its game server's last start, up to the one with ID [upTo] (both ends in): who joined
-   * and left since then says who is connected at [upTo]. Empty: no start up to there.
-   */
-  suspend fun sinceLastStart(session: String, upTo: Long): List<SessionEvent> = db.query {
-    val start = SessionEventsTable.select(SessionEventsTable.id)
-      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.kind eq START) and (SessionEventsTable.id lessEq upTo) }
-      .orderBy(SessionEventsTable.id, SortOrder.DESC).limit(1).singleOrNull()?.get(SessionEventsTable.id)
-      ?: return@query emptyList()
-    SessionEventsTable.selectAll()
-      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.id greaterEq start) and (SessionEventsTable.id lessEq upTo) }
-      .orderBy(SessionEventsTable.id).map(::event)
-  }
-
   /** [session] is deleted (its ID may be given to a new one). */
   suspend fun delete(session: String) = db.query {
     SessionEventsTable.deleteWhere { SessionEventsTable.session eq session }
@@ -589,5 +573,107 @@ class SessionEventStore(private val db: RandogeddonDatabase) {
     const val PACKET = "packet"
     const val START = "start"
     const val STOP = "stop"
+    /** A cheat from the admin panel, written by the tracker: its feed line's parts as JSON. */
+    const val CHEAT = "cheat"
+  }
+}
+
+/** A session's snapshot as it was kept: its JSON, whether it is the final one (the archive), and when. */
+data class SessionSnapshot(val json: String, val final: Boolean, val atMs: Long)
+
+/**
+ * What the sessions' dashboards show, kept by the tracker: while a session runs the last it knew ([saveLive]: shown
+ * while its game server doesn't run), once it finished its archive ([saveFinal]). A live one never replaces an
+ * archive; reopening a session makes its archive live again ([reopen]). Also, once, the tracker's history file from
+ * before ([baseline]).
+ */
+class SessionSnapshotStore(private val db: RandogeddonDatabase) {
+  /** [session]'s snapshot; `null`: none yet. */
+  suspend fun of(session: String): SessionSnapshot? = db.query {
+    SessionSnapshotsTable.selectAll().where { SessionSnapshotsTable.session eq session }.singleOrNull()?.let { row ->
+      row[SessionSnapshotsTable.snapshot]?.let { SessionSnapshot(it, row[SessionSnapshotsTable.final], row[SessionSnapshotsTable.atMs]) }
+    }
+  }
+
+  /** Every final snapshot (archive), by session. */
+  suspend fun finals(): Map<String, String> = db.query {
+    SessionSnapshotsTable.select(SessionSnapshotsTable.session, SessionSnapshotsTable.snapshot)
+      .where { SessionSnapshotsTable.final eq true }
+      .mapNotNull { row -> row[SessionSnapshotsTable.snapshot]?.let { row[SessionSnapshotsTable.session] to it } }.toMap()
+  }
+
+  /** [session]'s live snapshot; `false`: not written, it has its archive already. */
+  suspend fun saveLive(session: String, atMs: Long, json: String): Boolean = db.query {
+    val final = SessionSnapshotsTable.select(SessionSnapshotsTable.final).where { SessionSnapshotsTable.session eq session }
+      .singleOrNull()?.get(SessionSnapshotsTable.final)
+    when (final) {
+      true -> false
+      false -> {
+        SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) {
+          it[SessionSnapshotsTable.atMs] = atMs
+          it[SessionSnapshotsTable.snapshot] = json
+        }
+        true
+      }
+      null -> {
+        SessionSnapshotsTable.insert {
+          it[SessionSnapshotsTable.session] = session
+          it[SessionSnapshotsTable.atMs] = atMs
+          it[SessionSnapshotsTable.snapshot] = json
+        }
+        true
+      }
+    }
+  }
+
+  /** [session]'s archive: it finished. */
+  suspend fun saveFinal(session: String, atMs: Long, json: String) = db.query {
+    val updated = SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) {
+      it[SessionSnapshotsTable.atMs] = atMs
+      it[SessionSnapshotsTable.final] = true
+      it[SessionSnapshotsTable.snapshot] = json
+    }
+    if (updated == 0) {
+      SessionSnapshotsTable.insert {
+        it[SessionSnapshotsTable.session] = session
+        it[SessionSnapshotsTable.atMs] = atMs
+        it[SessionSnapshotsTable.final] = true
+        it[SessionSnapshotsTable.snapshot] = json
+      }
+    }
+    Unit
+  }
+
+  /** [session] is reopened: its archive is its live snapshot from now on. */
+  suspend fun reopen(session: String) = db.query {
+    SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) { it[SessionSnapshotsTable.final] = false }
+    Unit
+  }
+
+  /** The tracker's history from before, imported once; `null`: none. */
+  suspend fun baseline(session: String): String? = db.query {
+    SessionSnapshotsTable.select(SessionSnapshotsTable.baseline).where { SessionSnapshotsTable.session eq session }
+      .singleOrNull()?.get(SessionSnapshotsTable.baseline)
+  }
+
+  /** Keeps [json] as [session]'s history from before (once: one that is there stays). */
+  suspend fun importBaseline(session: String, atMs: Long, json: String) = db.query {
+    val row = SessionSnapshotsTable.select(SessionSnapshotsTable.baseline).where { SessionSnapshotsTable.session eq session }.singleOrNull()
+    when {
+      row == null -> SessionSnapshotsTable.insert {
+        it[SessionSnapshotsTable.session] = session
+        it[SessionSnapshotsTable.atMs] = atMs
+        it[SessionSnapshotsTable.baseline] = json
+      }
+      row[SessionSnapshotsTable.baseline] == null ->
+        SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) { it[SessionSnapshotsTable.baseline] = json }
+    }
+    Unit
+  }
+
+  /** [session] is deleted. */
+  suspend fun delete(session: String) = db.query {
+    SessionSnapshotsTable.deleteWhere { SessionSnapshotsTable.session eq session }
+    Unit
   }
 }
