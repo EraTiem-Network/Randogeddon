@@ -11,6 +11,26 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.11: The dashboard's states and tiles
+- **A slot's state in a new order**, the first that applies: *released* (before its goal, or by hand after it),
+  *complete* (every location checked; the automatic release at the goal, release mode `auto`, counts as complete:
+  a release less than 5 s after the slot's goal is that one), *goal* (locations left), *locked*, *online*, *idle*,
+  *not started*. Before, `released` lived in memory only (after a restart a released slot read `complete`) and the
+  goal beat it.
+- **Online instead of playing**: a game client connected now. Whether someone really plays can't be known; the
+  client's own status isn't used any more, so the grey "playing" of a slot nobody plays is gone. An archive of before
+  is read with `playing` as online.
+- **Idle and not started**: idle only once the slot was connected and has a check, else not started.
+- **The time beside a state**: since it was complete or released, since its goal and its last check, the last check
+  of an idle or online slot. Release and last-check times come from the events, so they survive restarts; a release
+  from before 0.19.9 is taken from the feed of the imported history, older ones can't be known.
+- **The Overview's tiles**: *Finished* (done of all: complete, goal, released, with the parts below; goal only when
+  the release mode isn't `auto`), *Slots* (online of all, with idle and not started; Online merged in), *Unlocked*,
+  *Hints*, *Items* (sent, of them progression and traps; new), *Links* (deaths and traps shared; new, from the first
+  one on), *Play time*, *Session* (its age, the date as a tooltip; below the game server's running time). The
+  Overview's subtitle goes; the top card reads "x of y checks done".
+- "Done" for a person, a past session and the Finished tile counts complete slots too.
+
 ### 0.19.10: A session's state in the database
 - **The dashboard isn't empty while a game server sleeps.** The tracker learnt a session's slots only from its
   connection to the game server, and every game server sleeps after the gateway starts (since 0.18.10): after each

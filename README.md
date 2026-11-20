@@ -790,15 +790,25 @@ which the gateway writes before it starts the session's game server.
   slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
   downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
   the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
-- **Overview:** overall completion, slots at goal, game clients online, locked slots opened, hint count.
+- **Top card:** overall completion with "x of y checks done".
+- **Overview:** *Finished* (slots done of all; below how many are complete, at their goal (not shown with release
+  mode `auto`, where a goal becomes complete) and released), *Slots* (online of all; below idle and not started),
+  *Unlocked* (locked slots opened), *Hints*, *Items* (sent so far; below progression and traps), *Links* (deaths and
+  traps shared by DeathLink and TrapLink, from the first one on), *Play time*, *Session* (its age, the date it was
+  made as a tooltip; below the game server's running time).
 - **Players:** one card per player of the session with their slots (a slot played together
-  shows on each of its players' cards): game, progress, status
-  (not started / playing / locked / goal / released / complete), online dot, last activity, how many game clients
+  shows on each of its players' cards): game, progress, state, online dot, the time beside its state, how many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
   player's name for their overview (totals, slots, open hints, combined connection log, recent activity). Click a slot
   for its received items (filterable), remaining locations, play time and connection log.
+- **A slot's state**, the first that applies: *released* (given up before its goal, or released by hand after it),
+  *complete* (every location checked, also by the automatic release at the goal: a release less than 5 s after the
+  slot's goal is that one), *goal* (locations left), *locked* (the key isn't found yet), *online* (a game client is
+  connected now; whether someone really plays can't be known), *idle* (connected before and has checks), *not
+  started*. Beside it: how long ago it was complete or released; for a goal, its goal and its last check; for idle and
+  online, its last check.
 - **Play time:** time a game client was connected to a slot, per slot and per player, kept across restarts.
 - **Live feed:** item sends colour-coded by classification (purple = progression, blue = useful,
   red = trap), hints, goals, releases, chat and joins, and the links between games (a DeathLink: who died and of
