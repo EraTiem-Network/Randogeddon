@@ -17,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.eratiem.randogeddon.database.FinishState
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionRecord
 import net.eratiem.randogeddon.database.SessionSetup
@@ -59,11 +60,13 @@ class LiveSession(
   private val archives: Archives,
   /** Where the one poller of its [changes] runs (the sessions' own scope, not a viewer's). */
   private val streams: CoroutineScope,
+  /** What the gateway hears on the game servers. */
+  events: SessionEventStore? = null,
 ) {
   /** Written by the gateway before each start of its game server. */
   val roomJson: Path = config.dataDir.resolve("sessions").resolve(id).resolve("room.json")
 
-  val tracker = TrackerService(archives.history(id), roomJson) { server?.port?.let { "ws://${config.gatewayHost}:$it" } }
+  val tracker = TrackerService(archives.history(id), roomJson, id, events) { server?.port?.let { "ws://${config.gatewayHost}:$it" } }
 
   @Volatile
   var record: SessionRecord = record
@@ -306,6 +309,7 @@ class LiveSessions(
   private val finishes: SessionFinishStore,
   private val gameServer: GameServerClient,
   private val archives: Archives,
+  private val events: SessionEventStore,
 ) {
   private val mutex = Mutex()
   private val sessions = ConcurrentHashMap<String, LiveSession>()
@@ -339,7 +343,7 @@ class LiveSessions(
       sessions.remove(gone)?.let { runCatching { it.disconnect() } }
     }
     for (record in records.filter { it.id in ids }) {
-      val live = sessions.getOrPut(record.id) { LiveSession(record.id, record, config, archives, streams) }
+      val live = sessions.getOrPut(record.id) { LiveSession(record.id, record, config, archives, streams, events) }
       live.record = record
       live.time = runCatching { times.of(record.seedName) }.getOrNull()
       live.setup = runCatching { setups.of(record.seedName) }.getOrNull()

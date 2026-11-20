@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.SessionSetupStore
@@ -160,6 +161,7 @@ class SessionAdmin(
   private val settings: AppSettingsStore,
   private val limit: SessionLimit,
   private val gameServers: GameServerLimit,
+  private val events: SessionEventStore,
 ) {
   /**
    * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
@@ -533,6 +535,8 @@ class SessionAdmin(
     live.tracker.clear()
     archives.delete(id)
     setups.delete(live.seedName)
+    // Its ID may be a new session's later: nothing of this one is left to be heard then
+    runCatching { events.delete(id) }
     spoilers.forget(id)
     sessions.refresh()
     logger.info("{} deleted session {} (seed {}){}", admin, id, live.seedName, if (purge) " for good" else "")

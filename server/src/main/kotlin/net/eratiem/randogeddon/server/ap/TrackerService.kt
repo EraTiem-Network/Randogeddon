@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.state.LINK_TAGS
 import net.eratiem.randogeddon.server.state.SessionState
@@ -52,8 +53,10 @@ class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToStrin
 /**
  * Follows the room through the Archipelago network protocol and feeds [SessionState].
  *
- * One *primary* connection (tag `Tracker`) gets the room-wide information: RoomInfo, the data package, every PrintJSON
- * event and the data storage keys of the hints and client status of all slots. It then starts one *secondary*
+ * One *primary* connection (tag `Tracker`) gets the room-wide information: RoomInfo, the data package and the data
+ * storage keys of the hints and client status of all slots. What is said to everyone (every PrintJSON event: the
+ * feed, who joins and leaves) it doesn't take from there: the gateway hears that from the game server's start and
+ * keeps it in the database, and [follow] reads it in order, so nothing is lost while this tracker isn't connected. It then starts one *secondary*
  * connection per other slot (tags `Tracker`, `NoText`), only to learn that slot's checked locations and received items,
  * which the server sends to the slot's own connections only.
  *
@@ -64,6 +67,9 @@ class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToStrin
 class TrackerService(
   private val statePath: Path,
   private val roomJson: Path,
+  /** The session's ID and where the gateway keeps what it hears on its game server; `null`: heard here only. */
+  private val sessionId: String = "",
+  private val events: SessionEventStore? = null,
   private val serverUrl: () -> String?,
 ) {
   private val state = SessionState()
@@ -95,6 +101,7 @@ class TrackerService(
       loaded = true
     }
     launch { autosave() }
+    events?.let { launch { follow(it) } }
     var backoff = 1L
     while (isActive) {
       val name = slotNames().firstOrNull()
@@ -115,11 +122,38 @@ class TrackerService(
       } catch (e: Exception) {
         error(e.message ?: e::class.simpleName.orEmpty(), refused = false)
       }
-      update { onConnectionLost() }
+      update { if (events == null) onConnectionLost() else onTrackerDisconnected() }
       delay(backoff.seconds)
       backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_SECONDS)
     }
   }
+
+  /**
+   * Reads what the gateway heard on the game server, in its order, about once a second; first, once the saved
+   * history is back (the first connection brings it), who is connected now from the joins and leaves before.
+   */
+  private suspend fun follow(events: SessionEventStore) {
+    while (!restored) delay(1.seconds)
+    runCatching {
+      val before = events.sinceLastStart(sessionId, read { serverCursor })
+      update { restorePresence(before.mapNotNull { packetOf(it.packet) }) }
+    }.onFailure { logger.warn("Could not read who is connected to {}: {}", sessionId, it.message) }
+    while (true) {
+      val next = runCatching { events.after(sessionId, read { serverCursor }) }
+        .onFailure { logger.warn("Could not read {}'s events: {}", sessionId, it.message) }.getOrDefault(emptyList())
+      if (next.isNotEmpty()) {
+        update { next.forEach { onServerEvent(it.id, it.atMs, it.kind == SessionEventStore.START, packetOf(it.packet)) } }
+      }
+      if (next.size < 1000) delay(1.seconds)
+    }
+  }
+
+  private fun packetOf(json: String): JsonObject? =
+    json.takeIf { it.isNotEmpty() }?.let { runCatching { ApiJson.parseToJsonElement(it).jsonObject }.getOrNull() }
+
+  /** The saved history was applied (the first connection knows the seed it belongs to). */
+  @Volatile
+  private var restored = false
 
   /** The history file was read (by the first [start]). */
   @Volatile
@@ -155,7 +189,7 @@ class TrackerService(
   private suspend fun primary(slotName: String, url: String) = http.webSocket(url) {
     val conn = ApConnection(this)
     // The links' tags: MultiServer passes a Bounced packet on to the clients that have one of its tags
-    val (roomInfo, connected) = conn.handshake(slotName, listOf("Tracker") + LINK_TAGS)
+    val (roomInfo, connected) = conn.handshake(slotName, listOf("Tracker") + if (events == null) LINK_TAGS else emptyList())
     val games = roomInfo.array("games").orEmpty().map { it.jsonPrimitive.content }.toSet() + "Archipelago"
     conn.send(buildJsonObject {
       put("cmd", "GetDataPackage")
@@ -167,6 +201,7 @@ class TrackerService(
       if (state.onRoomInfo(roomInfo)) logger.info("Seed {}", state.seedName)
       state.onConnected(mySlot, connected)
       state.applySaved()
+      restored = true
       state.connected = true
       state.players.filterKeys { it != mySlot }.mapValues { it.value.name }
     }
@@ -221,8 +256,9 @@ class TrackerService(
       "RoomUpdate" -> onRoomUpdate(slot, packet)
       "Connected" -> onConnected(slot, packet)
       else -> if (primary) when (packet.string("cmd")) {
-        "PrintJSON" -> onPrintJson(packet)
-        "Bounced" -> onBounced(packet)
+        // With the gateway's events: taken from those, not heard a second time here
+        "PrintJSON" -> if (events == null) onPrintJson(packet)
+        "Bounced" -> if (events == null) onBounced(packet)
         "SetReply" -> onSetReply(packet.string("key")!!, packet["value"], live = true)
         "Retrieved" -> packet.obj("keys")?.forEach { (key, value) -> onSetReply(key, value) }
         "DataPackage" -> onDataPackage(packet)
