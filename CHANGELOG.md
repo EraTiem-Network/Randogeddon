@@ -11,6 +11,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 A seed that the Launcher generates is to generate here too: first why one didn't (its log), then what the Launcher
 has that the gateway hasn't.
 
+### 0.19.14: Nothing cut off
+- **The person cards and slot rows were cut off at their end**: the last slot of a card showed only its first bar,
+  and on live often not even that. Cards side by side took the height of the tallest, and a slot row its height,
+  from their content's measured minimum, which the lines of pills that wrap (0.19.13) underestimated. Now each card
+  and each slot row is as tall as its content (cards side by side may end at different heights); the lock badge under
+  a locked slot's game icon has a height of its own.
+- **Icons instead of the bars' labels**: a check mark for *Checks*, a star (new) for *Progression checks*; the label
+  shows as the icon's tooltip. The bars get the room.
+
 ### 0.19.13: Progression checks, received and sent
 - **The second bar is the slot's progression checks**: of the locations in its own world, those that hold a
   progression item (for anyone), how many it checked. 0.19.12's second bar (progression received) becomes a pill.
