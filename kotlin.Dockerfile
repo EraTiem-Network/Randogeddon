@@ -156,7 +156,8 @@ RUN useradd --uid 1000 --create-home randogeddon \
  && mkdir -p logs custom_worlds \
  && touch host.yaml \
  && chown randogeddon . logs host.yaml custom_worlds
-COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py ./
+COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py \
+     archipelago/seed_info.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server
