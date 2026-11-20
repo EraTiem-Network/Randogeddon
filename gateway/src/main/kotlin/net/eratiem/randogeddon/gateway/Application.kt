@@ -149,6 +149,8 @@ fun main() {
       ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
   // What happens on the game servers, heard here and kept for the tracker
   val events = SessionEvents(SessionEventStore(database), http, background)
+  // Each session's logic (the available checks), running with its game server and a while after
+  val logic = Logic(archipelago, dirs, apworlds, background)
   val sessions = Sessions(
     dirs, gameServers::get,
     create = { id, dir, port ->
@@ -162,10 +164,12 @@ fun main() {
           onRunning = { _ ->
             readSeedName(roomJson)?.let { seed -> count { times.started(seed) } }
             events.started(id, port(), roomJson)
+            logic.serverRunning(id)
           },
           onEnded = { _ ->
             readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } }
             events.ended(id)
+            logic.serverEnded(id)
           },
           // A finished session stays stopped, also after a gateway restart, until it is reopened
           refuse = { seed ->
@@ -198,6 +202,9 @@ fun main() {
       runCatching { sessions.sweep(idleMinutes.get(), ::rulesOf) }
         .onSuccess { if (it.isNotEmpty()) logger.info("Asleep, nobody played: {}", it.joinToString()) }
         .onFailure { logger.warn("Could not put idle game servers to sleep: {}", it.message) }
+      // A logic stays as long again after its game server ended
+      runCatching { logic.sweep(idleMinutes.get()) }
+        .onSuccess { if (it.isNotEmpty()) logger.info("Logic ended, its game server sleeps: {}", it.joinToString()) }
     }
   }
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
@@ -268,11 +275,12 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds)
+        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic)
       }
     }
     monitor.subscribe(ApplicationStopping) {
       // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last counts.
+      logic.stopAll()
       runBlocking {
         sessions.stopAll()
         counts.coroutineContext[Job]?.children?.forEach { it.join() }

@@ -185,7 +185,7 @@ fun generationsAtOnce(configured: Int = 0, cores: Int = Runtime.getRuntime().ava
   if (configured > 0) configured.coerceAtMost(32) else (cores - 1).coerceAtLeast(1)
 
 /** Exit code 137: killed from outside, which on a server is mostly for its memory. */
-private fun killedHint(code: Int): String =
+internal fun killedHint(code: Int): String =
   if (code == 137) " (killed: probably out of memory; fewer generations at once need less: GENERATIONS_AT_ONCE)" else ""
 
 /** [file]'s SHA-256, in hex. */

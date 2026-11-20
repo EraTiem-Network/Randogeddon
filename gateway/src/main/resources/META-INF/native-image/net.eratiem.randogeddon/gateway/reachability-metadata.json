@@ -1547,6 +1547,40 @@
           "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.AvailableRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.AvailableRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.AvailableAnswer",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.AvailableAnswer$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
     }
   ],
   "resources": [
