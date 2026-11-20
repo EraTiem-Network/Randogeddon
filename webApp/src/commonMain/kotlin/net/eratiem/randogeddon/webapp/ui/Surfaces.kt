@@ -208,8 +208,8 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 8.d
 }
 
 /**
- * A labelled bar: [label] at the start (as wide as [labelWidth], so bars below each other line up), the bar, and
- * [value] at the end; [fraction] `null`: no bar, only [value].
+ * A labelled bar: [label] at the start (as wide as [labelWidth], so bars below each other line up), or [icon] with
+ * [label] as its tooltip; the bar, and [value] at the end. [fraction] `null`: no bar, only [value].
  */
 @Composable
 fun LabeledBar(
@@ -220,10 +220,12 @@ fun LabeledBar(
   labelWidth: Dp = 112.dp,
   height: Dp = 5.dp,
   dimmed: Boolean = false,
+  icon: Icon? = null,
 ) {
   val p = LocalPalette.current
   Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.width(labelWidth))
+    if (icon != null) Tip(label) { DrawnIcon(icon, p.muted, 12.dp) }
+    else Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.width(labelWidth))
     if (fraction != null) ProgressBar(fraction, Modifier.weight(1f), height = height, dimmed = dimmed)
     else Spacer(Modifier.weight(1f))
     Txt(value, size = 11.5.sp, color = p.muted, maxLines = 1)

@@ -799,8 +799,8 @@ which the gateway writes before it starts the session's game server.
 - **Players:** one card per player of the session with their slots (a slot played together
   shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
   progression items it got of those meant for it in the whole multiworld; *sent*: the progression items found in its
-  world for other slots, of all such; play time), two bars (*Checks*: the locations checked in its own world;
-  *Progression checks*: those of them that hold a progression item). The person card has the same, summed over their
+  world for other slots, of all such; play time), two bars (a check mark: the locations checked in its own world; a
+  star: those of them that hold a progression item, the progression checks). The person card has the same, summed over their
   slots, with their slots, done and play time as pills under the name. How many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
