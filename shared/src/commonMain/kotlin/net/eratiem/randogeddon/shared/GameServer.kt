@@ -48,7 +48,44 @@ data class SessionServer(
   val port: Int? = null,
   /** Its spoiler log while it is completed in the background (since 0.19.3); `null`: complete (or from before). */
   val spoiler: SpoilerProgress? = null,
+  /** Its logic (the available checks); `null`: it has none (a seed from elsewhere, a race, from before 0.19.3). */
+  val logic: LogicProgress? = null,
 )
+
+/**
+ * A session's logic: its seed's worlds generated again up to the fill (with the seed's number and inputs, as for its
+ * spoiler log), kept to answer how many of each slot's locations its items reach now.
+ */
+@Serializable
+enum class LogicStatus {
+  /** Being built: no answers yet. */
+  @SerialName("starting") STARTING,
+  @SerialName("running") RUNNING,
+  /** Not running: it starts with the game server. */
+  @SerialName("stopped") STOPPED,
+  /** Its build failed (see [LogicProgress.problem] and its log): it stays so until it is built again. */
+  @SerialName("failed") FAILED,
+}
+
+/** [since]: when it got to [status] (epoch milliseconds). */
+@Serializable
+data class LogicProgress(val status: LogicStatus, val since: Long? = null, val problem: String? = null)
+
+/** One slot as the logic is asked about it: the item IDs it received (not its starting inventory), its checked locations. */
+@Serializable
+data class AvailableSlot(val slot: Int, val items: List<Long>, val checked: List<Long>)
+
+/** Tracker → gateway: `POST /internal/sessions/{id}/logic/available`. */
+@Serializable
+data class AvailableRequest(val slots: List<AvailableSlot>)
+
+/** How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it). */
+@Serializable
+data class AvailableAnswer(val available: Map<Int, Int?> = emptyMap())
+
+/** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */
+@Serializable
+data class LogicView(val progress: LogicProgress? = null)
 
 /**
  * A session's spoiler log as the gateway completes it after the seed (with the same seed number and inputs, only the

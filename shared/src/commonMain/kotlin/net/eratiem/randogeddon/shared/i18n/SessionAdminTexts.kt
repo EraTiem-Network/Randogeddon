@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.shared.i18n
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PlandoModule
 
 /** A session in the panel: its state and actions, its players, the past sessions, a new session's form. */
@@ -131,6 +132,11 @@ interface SessionAdminTexts {
   val spoilerPaused: String
   fun spoilerStopped(level: Int, why: String): String
   val spoilerRetry: String
+  /** The session's logic: its state, built again, its log (Administrators). */
+  val logicSection: String
+  val logicSectionSubtitle: String
+  fun logicState(status: LogicStatus, problem: String?): String
+  val logicRebuild: String
   val useSeed: String
   val stepSeed: String
   val seedChecking: String
@@ -321,6 +327,15 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val spoilerPaused = "paused: a new session's generation goes first; it goes on after, where it was"
   override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
   override val spoilerRetry = "Try again"
+  override val logicSection = "Logic"
+  override val logicSectionSubtitle = "counts each slot's available checks"
+  override fun logicState(status: LogicStatus, problem: String?) = when (status) {
+    LogicStatus.STARTING -> "Being built: the seed's worlds generated again up to the fill (seconds, for a big seed a minute)"
+    LogicStatus.RUNNING -> "Running: it counts what each slot can check now, whenever its items or checks change"
+    LogicStatus.STOPPED -> "Not running: it starts with the game server and stays as long again after it sleeps"
+    LogicStatus.FAILED -> "Couldn't be built: ${problem ?: "see its log"}"
+  }
+  override val logicRebuild = "Build again"
   override val useSeed = "Use a generated seed…"
   override val stepSeed = "1. The seed"
   override val seedChecking = "Checking the seed…"
@@ -536,6 +551,15 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val spoilerPaused = "pausiert: Die Generierung einer neuen Session geht vor; danach geht es dort weiter, wo es war"
   override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
   override val spoilerRetry = "Erneut versuchen"
+  override val logicSection = "Logik"
+  override val logicSectionSubtitle = "zählt die verfügbaren Checks jedes Slots"
+  override fun logicState(status: LogicStatus, problem: String?) = when (status) {
+    LogicStatus.STARTING -> "Wird aufgebaut: Die Welten des Seeds werden bis vor dem Verteilen neu generiert (Sekunden, bei einem großen Seed eine Minute)"
+    LogicStatus.RUNNING -> "Läuft: Sie zählt, was jeder Slot jetzt checken kann, sobald sich seine Items oder Checks ändern"
+    LogicStatus.STOPPED -> "Läuft nicht: Sie startet mit dem Spielserver und bleibt noch einmal so lange, nachdem er schläft"
+    LogicStatus.FAILED -> "Konnte nicht aufgebaut werden: ${problem ?: "siehe ihr Log"}"
+  }
+  override val logicRebuild = "Neu aufbauen"
   override val useSeed = "Generierten Seed verwenden…"
   override val stepSeed = "1. Der Seed"
   override val seedChecking = "Seed wird geprüft…"

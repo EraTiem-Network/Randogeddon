@@ -34,6 +34,11 @@ data class Summary(
   val spoilerCompleting: Boolean = false,
   /** Its spoiler log has its playthrough: it can be opened (by who may). */
   val spoilerReady: Boolean = true,
+  /**
+   * Its logic, which counts the slots' available checks; `null`: it has none. While it isn't running, the counts are
+   * the last known ones.
+   */
+  val logic: LogicProgress? = null,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,
@@ -193,6 +198,11 @@ data class PlayerSummary(
   val progressionChecked: Int = 0,
   /** Progression items found in its world for other slots so far (once it is scouted); no total, as above. */
   val sent: Int? = null,
+  /**
+   * Its unchecked locations its logic reaches with the items it has: the checks it can make now (the session's logic
+   * counts them, see [Summary.logic]); `null`: not known.
+   */
+  val available: Int? = null,
   val hintPoints: Int? = null,
   /** Points one hint costs in this world (0 = free); `hintPoints / hintCost` hints can be bought now. */
   val hintCost: Int? = null,
@@ -319,11 +329,12 @@ data class PlayerDetail(
   val missing: List<String>,
   val checked: Int,
   val total: Int,
-  /** As [PlayerSummary.progressionReceived], the progression checks and sent. */
+  /** As [PlayerSummary.progressionReceived], the progression checks, sent and available. */
   val progressionReceived: Int = 0,
   val progressionChecks: Int? = null,
   val progressionChecked: Int = 0,
   val sent: Int? = null,
+  val available: Int? = null,
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,

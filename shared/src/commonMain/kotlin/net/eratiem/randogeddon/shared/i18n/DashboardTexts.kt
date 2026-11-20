@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PlayerStatus
 
 /** A session's dashboard: the overview tiles, the players and their slots, the hints. */
@@ -60,6 +61,13 @@ interface DashboardTexts {
   /** Progression received, and sent to others (counts only: no totals for the players). */
   fun received(n: String): String
   fun sent(n: String): String
+  /** The checks a slot can make now (its logic's count), as a pill; its tooltip, and while the logic doesn't run. */
+  fun available(n: String): String
+  val availableTip: String
+  val availableLastKnown: String
+  /** The session's logic in the top panel: its name, and its state as the tooltip. */
+  val logic: String
+  fun logicTip(status: LogicStatus): String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
@@ -231,6 +239,17 @@ internal object EnglishDashboard : DashboardTexts {
   override val progressionChecksBar = "Progression checks"
   override fun received(n: String) = "received $n"
   override fun sent(n: String) = "sent $n"
+  override fun available(n: String) = "$n available"
+  override val availableTip = "Checks it can make now: by its game's logic, with the items it has"
+  override val availableLastKnown =
+    "The last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
+  override val logic = "Logic"
+  override fun logicTip(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "The logic is being built: the available checks come once it runs completely"
+    LogicStatus.RUNNING -> "The logic runs: it counts each slot's available checks"
+    LogicStatus.STOPPED -> "The logic isn't running: the available checks are the last known ones. It starts with the game server."
+    LogicStatus.FAILED -> "The logic couldn't be built: the available checks are the last known ones"
+  }
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -328,6 +347,17 @@ internal object GermanDashboard : DashboardTexts {
   override val progressionChecksBar = "Progressions-Checks"
   override fun received(n: String) = "erhalten $n"
   override fun sent(n: String) = "gesendet $n"
+  override fun available(n: String) = "$n verfügbar"
+  override val availableTip = "Checks, die jetzt möglich sind: nach der Logik seines Spiels, mit den Items, die er hat"
+  override val availableLastKnown =
+    "Die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
+  override val logic = "Logik"
+  override fun logicTip(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "Die Logik wird aufgebaut: Die verfügbaren Checks kommen, sobald sie vollständig läuft"
+    LogicStatus.RUNNING -> "Die Logik läuft: Sie zählt die verfügbaren Checks jedes Slots"
+    LogicStatus.STOPPED -> "Die Logik läuft nicht: Die verfügbaren Checks sind die zuletzt bekannten. Sie startet mit dem Spielserver."
+    LogicStatus.FAILED -> "Die Logik konnte nicht aufgebaut werden: Die verfügbaren Checks sind die zuletzt bekannten"
+  }
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
