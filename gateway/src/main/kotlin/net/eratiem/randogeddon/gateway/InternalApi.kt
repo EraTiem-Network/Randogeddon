@@ -106,6 +106,11 @@ fun Route.internalApi(
           val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
           generator.spoilerLog(id, since, 1000)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
+        // Its spoiler log stopped: tried again from there
+        post("/spoiler-run/retry") {
+          val id = sessionId() ?: return@post
+          call.respond(if (generator.retrySpoiler(id)) HttpStatusCode.NoContent else HttpStatusCode.Conflict)
+        }
         get("/generate/log.txt") {
           val id = sessionId() ?: return@get
           generator.logText(id)?.let { call.respondText(it) } ?: call.respond(HttpStatusCode.NotFound)
