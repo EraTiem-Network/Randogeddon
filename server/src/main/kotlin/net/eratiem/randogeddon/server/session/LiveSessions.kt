@@ -244,6 +244,8 @@ class LiveSession(
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finish?.finishedAt?.toEpochMilli(),
       managerUnavailable = managerUnavailable(),
+      createdAt = record.createdAt.toEpochMilli(),
+      releaseMode = options.releaseMode,
     )
   }
 

@@ -35,6 +35,7 @@ object English : Texts {
     override fun hoursAgo(n: Long) = "${n}h ago"
     override fun daysAgo(n: Long) = "${n}d ago"
     override fun hoursMinutes(hours: Long, minutes: Long) = "${hours}h ${minutes}m"
+    override fun daysHours(days: Long, hours: Long) = "${days}d ${hours}h"
     override fun minutes(n: Long) = "${n}m"
     override val underAMinute = "<1m"
   }
@@ -73,7 +74,7 @@ object English : Texts {
     override val finished = "finished"
     override val live = "live"
     override val serverOffline = "server offline"
-    override fun ofChecksDone(total: String) = "of $total checks done"
+    override fun ofChecksDone(checked: String, total: String) = "$checked of $total checks done"
     override fun hintMode(pointHints: Boolean, costPercent: Int, autoHints: Boolean): String {
       val points = when {
         !pointHints -> null

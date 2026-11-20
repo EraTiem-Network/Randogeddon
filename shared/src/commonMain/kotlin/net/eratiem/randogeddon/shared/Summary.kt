@@ -1,7 +1,9 @@
 package net.eratiem.randogeddon.shared
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 /** How far a session is: running (maybe about to end by itself), or finished, paused or ended (completed). */
 @Serializable
@@ -56,6 +58,10 @@ data class Summary(
    * are told to turn to an Administrator for what a Session-Manager does.
    */
   val managerUnavailable: Boolean = false,
+  /** When the session was made (epoch ms): the Overview shows its age. */
+  val createdAt: Long? = null,
+  /** Its release mode (`auto`, `goal`, …): with `auto`, a slot at its goal is released, so complete. */
+  val releaseMode: String? = null,
   /** Increases with every change of the session state. */
   val version: Long,
   val totals: Totals,
@@ -75,13 +81,20 @@ data class Totals(
   val percent: Double,
   /** Worlds (slots). */
   val players: Int,
-  /** Worlds that reached their goal or were released. */
+  /** Worlds that are done: complete, at their goal or released ([PlayerStatus]). */
   val goals: Int,
   val online: Int,
   /** Worlds whose key has not been found yet. */
   val locked: Int = 0,
   /** Worlds that start locked (World Locks). */
   val lockable: Int = 0,
+  /** Items sent so far (found at a location; no starting inventory), of them progression and traps. */
+  val itemsSent: Int = 0,
+  val progressionSent: Int = 0,
+  val trapsSent: Int = 0,
+  /** Deaths passed on by DeathLink, traps by TrapLink, over the whole session. */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
 )
 
 /**
@@ -132,15 +145,26 @@ data class PersonSummary(
   val deleted: Boolean = false,
 )
 
+/**
+ * A world's state, the first that applies: released (given up before its goal, or by hand after it), complete (every
+ * location checked, also by the automatic release at the goal), goal (locations left), locked, online (a game client
+ * connected now), idle (connected before and has checks), not started.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 enum class PlayerStatus {
+  @SerialName("not_started") NOT_STARTED,
   @SerialName("idle") IDLE,
   /** Starts locked (World Locks) and its key has not been found yet. */
   @SerialName("locked") LOCKED,
-  @SerialName("playing") PLAYING,
+  /** Was `playing` until 0.19.11 (an archive of before says so). */
+  @SerialName("online") @JsonNames("playing") ONLINE,
   @SerialName("complete") COMPLETE,
   @SerialName("goal") GOAL,
-  @SerialName("released") RELEASED,
+  @SerialName("released") RELEASED;
+
+  /** Done: complete, at its goal, or released. */
+  val done: Boolean get() = this == COMPLETE || this == GOAL || this == RELEASED
 }
 
 @Serializable
@@ -171,6 +195,12 @@ data class PlayerSummary(
   val onlineSince: Long? = null,
   val firstCheckAt: Long? = null,
   val goalAt: Long? = null,
+  /** When it was released (by hand, or automatically at its goal). */
+  val releasedAt: Long? = null,
+  /** Its newest check (a location it found an item at). */
+  val lastCheckAt: Long? = null,
+  /** When its last location was checked, while it is complete. */
+  val completedAt: Long? = null,
   /** For worlds that start locked: the key and what is known about it. */
   val lock: LockInfo? = null,
 )

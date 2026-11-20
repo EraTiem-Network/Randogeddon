@@ -51,6 +51,7 @@ interface FormatTexts {
   fun daysAgo(n: Long): String
   /** A duration of hours and minutes, e.g. `4h 12m`. */
   fun hoursMinutes(hours: Long, minutes: Long): String
+  fun daysHours(days: Long, hours: Long): String
   fun minutes(n: Long): String
   /** Less than a minute, but more than nothing. */
   val underAMinute: String
@@ -91,7 +92,7 @@ interface FrameTexts {
   val live: String
   val serverOffline: String
   /** After the percentage: `of 12,345 checks done` ([total] formatted already). */
-  fun ofChecksDone(total: String): String
+  fun ofChecksDone(checked: String, total: String): String
   /** The session's hint mode: `hints 10%`, `free hints`, `auto hints only`, … */
   fun hintMode(pointHints: Boolean, costPercent: Int, autoHints: Boolean): String
 }

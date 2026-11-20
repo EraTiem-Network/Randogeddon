@@ -43,7 +43,10 @@ class Player(val slot: Int, val name: String, val game: String) {
 
   /** Game clients connected to this slot, counted from Join/Part since the tracker connected. */
   var online: Int = 0
-  var released: Boolean = false
+  /** When it was released ([Release] message); with [goalAt] it tells the automatic release at the goal. */
+  var releasedAt: Long? = null
+  /** Its newest check: the newest `ItemSend` it found. */
+  var lastCheckAt: Long? = null
   var lastActivity: Long? = null
   var hintPoints: Int? = null
   var sessions: MutableList<ConnectionSession> = mutableListOf()
@@ -51,6 +54,9 @@ class Player(val slot: Int, val name: String, val game: String) {
   var goalAt: Long? = null
 
   val openSession: ConnectionSession? get() = sessions.lastOrNull()?.takeIf { it.end == null }
+
+  /** Every location checked (by playing, or by a release). */
+  val complete: Boolean get() = total > 0 && missing.isEmpty()
 
   /** Finished sessions only; the open one is added by whoever knows the current time. */
   val playTimeMs: Long get() = sessions.sumOf { s -> s.end?.let { it - s.start } ?: 0 }

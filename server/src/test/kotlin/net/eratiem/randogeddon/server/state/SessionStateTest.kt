@@ -240,17 +240,72 @@ class SessionStateTest {
   }
 
   @Test
-  fun `goal wins over release`() {
+  fun `a slot's state is the first that applies, in their order`() {
     val s = makeState()
+    fun status(slot: Int) = s.summary("t", null).players.first { it.slot == slot }.status
+    fun print(text: String, at: Long) = s.onPrintJson(json(text), now = at)
+    // Never connected, no check: not started; a check alone doesn't make it started either
+    assertEquals(PlayerStatus.NOT_STARTED, status(2))
+    // Connected: online; gone again with a check: idle; gone without one: not started
+    print("""{"type":"Join","team":0,"slot":2,"tags":["AP"]}""", 1_000)
+    assertEquals(PlayerStatus.ONLINE, status(2))
+    print("""{"type":"Part","team":0,"slot":2}""", 2_000)
+    assertEquals(PlayerStatus.NOT_STARTED, status(2))
+    assertEquals(PlayerStatus.NOT_STARTED, status(1)) // checked 1 location, but never connected
+    print("""{"type":"Join","team":0,"slot":1,"tags":["AP"]}""", 3_000)
+    print("""{"type":"ItemSend","receiving":1,"item":${item(100, 11, 1, 1)}}""", 4_000)
+    print("""{"type":"Part","team":0,"slot":1}""", 5_000)
+    assertEquals(PlayerStatus.IDLE, status(1))
+    assertEquals(4_000L, s.summary("t", null).players[0].lastCheckAt)
+    // The client's status doesn't make it online any more
     s.onSetReply("_read_client_status_0_1", JsonPrimitive(ClientStatus.READY + 10))
-    assertEquals(PlayerStatus.PLAYING, s.summary("t", null).players[0].status)
-    s.onPrintJson(json("""{"type":"Goal","team":0,"slot":1}"""))
-    s.onPrintJson(json("""{"type":"Release","team":0,"slot":2}"""))
-    val players = s.summary("t", null).players
-    assertEquals(listOf(PlayerStatus.GOAL, PlayerStatus.RELEASED), players.map { it.status })
+    assertEquals(PlayerStatus.IDLE, status(1))
+    // Its goal, locations left: goal
+    print("""{"type":"Goal","team":0,"slot":1}""", 10_000)
+    assertEquals(PlayerStatus.GOAL, status(1))
+    // Released right at its goal (release mode auto) and so complete: complete, since then
+    print("""{"type":"Release","team":0,"slot":1}""", 10_000)
+    assertEquals(PlayerStatus.GOAL, status(1)) // the release's checks arrive after it
+    for (location in listOf(12, 13)) print("""{"type":"ItemSend","receiving":2,"item":${item(100, location, 1, 0)}}""", 10_100)
+    assertEquals(PlayerStatus.COMPLETE, status(1))
+    assertEquals(10_100L, s.summary("t", null).players[0].completedAt)
+    // Released before its goal: released, and that wins over complete
+    print("""{"type":"Release","team":0,"slot":2}""", 20_000)
+    s.onRoomUpdate(2, json("""{"cmd":"RoomUpdate","checked_locations":[20,21]}"""))
+    assertEquals(PlayerStatus.RELEASED, status(2))
+    assertEquals(20_000L, s.summary("t", null).players[1].releasedAt)
     assertEquals(2, s.summary("t", null).totals.goals)
-    s.onPrintJson(json("""{"type":"Release","team":0,"slot":1}""")) // auto-release on goal
-    assertEquals(PlayerStatus.GOAL, s.summary("t", null).players[0].status)
+  }
+
+  @Test
+  fun `a release by hand after the goal is released, the automatic one at it complete`() {
+    val s = makeState()
+    s.onPrintJson(json("""{"type":"Goal","team":0,"slot":1}"""), now = 1_000)
+    s.onPrintJson(json("""{"type":"Release","team":0,"slot":1}"""), now = 1_000 + 60_000)
+    s.onRoomUpdate(1, json("""{"cmd":"RoomUpdate","checked_locations":[11,12,13]}"""))
+    assertEquals(PlayerStatus.RELEASED, s.summary("t", null).players[0].status)
+    // A slot whose goal came from its status only (data storage, before the Goal message was heard)
+    s.onSetReply("_read_client_status_0_2", JsonPrimitive(ClientStatus.GOAL))
+    assertEquals(PlayerStatus.GOAL, s.summary("t", null).players[1].status)
+    assertTrue(s.allDone())
+  }
+
+  @Test
+  fun `items sent and links are counted for the tiles, the starting inventory isn't`() {
+    val s = makeState()
+    s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)},${item(101, 21, 2, 4)},${item(101, -2, 0, 1)}]}"""))
+    s.onBounced(json("""{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"Alice"}}"""))
+    s.onBounced(json("""{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"Bob"}}"""))
+    s.onBounced(json("""{"cmd":"Bounced","tags":["TrapLink"],"data":{"source":"Bob","trap_name":"Ice Trap"}}"""))
+    val totals = s.summary("t", null).totals
+    assertEquals(listOf(2, 1, 1), listOf(totals.itemsSent, totals.progressionSent, totals.trapsSent))
+    assertEquals(2 to 1, totals.deaths to totals.trapLinks)
+  }
+
+  @Test
+  fun `an archive of before reads playing as online`() {
+    assertEquals(PlayerStatus.ONLINE, ApiJson.decodeFromString(PlayerStatus.serializer(), "\"playing\""))
+    assertEquals("\"online\"", ApiJson.encodeToString(PlayerStatus.serializer(), PlayerStatus.ONLINE))
   }
 
   @Test
@@ -349,7 +404,8 @@ class SessionStateTest {
     val lock = summary.players[1].lock!!
     assertTrue(lock.unlocked)
     assertEquals("Bob" to 70L, lock.foundBy to lock.foundAt)
-    assertEquals(PlayerStatus.IDLE, summary.players[1].status)
+    // Open now, never connected: not started
+    assertEquals(PlayerStatus.NOT_STARTED, summary.players[1].status)
     assertEquals(0, summary.totals.locked)
     val unlock = summary.events.single()
     assertEquals(EventType.UNLOCK, unlock.type)

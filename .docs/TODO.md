@@ -863,7 +863,7 @@ generates didn't generate on the server, and an APWorld that loaded before was r
 - [x] A session's state in the database (0.19.10, from the planning of the state panels): a snapshot of what its
       dashboard shows, kept when the tracker's connection ends (the dashboard isn't empty while the game server
       sleeps), the history replayed from the events instead of a file, finished sessions' archives in the database
-- [ ] The dashboard's states and tiles (0.19.11, planned with the user): a slot's states in a new order (released
+- [x] The dashboard's states and tiles (0.19.11, planned with the user): a slot's states in a new order (released
       before or by hand after its goal > complete > goal > locked > online > idle > not started; the automatic
       release at the goal counts as complete; "playing" becomes "online"), the times beside them (since complete,
       released, goal; the last check), the Overview's tiles (Finished with its parts, Slots with online, Items, Links,

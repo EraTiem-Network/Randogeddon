@@ -132,6 +132,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private val locationNames = mutableMapOf<String, Map<Long, String>>()
   private var eventSeq = 0L
 
+  /** Deaths passed on by DeathLink and traps by TrapLink, over every event of the session. */
+  private var deaths = 0
+  private var trapLinks = 0
+
   /** Up to which of the gateway's events of the game server (their IDs in the database) this state has heard. */
   var serverCursor = 0L
     private set
@@ -153,6 +157,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     locationNames.clear()
     locks.clear()
     eventSeq = 0
+    deaths = 0
+    trapLinks = 0
   }
 
   private fun touch() {
@@ -349,6 +355,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         if (type == "ItemSend") {
           players[item.player]?.let { sender ->
             sender.lastActivity = now
+            sender.lastCheckAt = now
             if (sender.firstCheckAt == null) sender.firstCheckAt = now
             // Only an own item proves the world is being played: collect and release send items for others
             if (item.player == receiver) seenPlaying(sender, now)
@@ -384,7 +391,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
       "Release", "Collect" -> {
         val slot = packet.int("slot")!!
-        if (type == "Release") players[slot]?.released = true
+        if (type == "Release") players[slot]?.let { if (it.releasedAt == null) it.releasedAt = now }
         event(now, if (type == "Release") EventType.RELEASE else EventType.COLLECT, slot = slot)
       }
 
@@ -441,6 +448,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val source = text("source", 80)
     val slot = source?.let { name -> players.values.firstOrNull { it.alias == name || it.name == name }?.slot }
     val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
+    if (link == "DeathLink") deaths++ else trapLinks++
     events.addLast(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
     while (events.size > MAX_EVENTS) events.removeFirst()
     touch()
@@ -482,7 +490,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
    */
   fun allDone(): Boolean {
     val slots = players.values.filter { it.game != WORLD_LOCKS_GAME }
-    return slots.isNotEmpty() && slots.all { it.status == ClientStatus.GOAL || it.released }
+    return slots.isNotEmpty() && slots.all { it.status == ClientStatus.GOAL || it.goalAt != null || it.releasedAt != null }
   }
 
   /** The slot names an admin can cheat for (not the World Locks slot). */
@@ -493,7 +501,6 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     slots.isNotEmpty() && slots.all { it.complete }
   }
 
-  private val Player.complete: Boolean get() = total > 0 && missing.isEmpty()
 
   /** For cheats: every item of the slot's game, and the slot's locations not checked yet; `null` for an unknown slot. */
   fun cheatNames(slotName: String): CheatNames? {
@@ -599,10 +606,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         onlineSince = p.openSession?.start,
         firstCheckAt = p.firstCheckAt,
         goalAt = p.goalAt,
+        releasedAt = p.releasedAt,
+        lastCheckAt = p.lastCheckAt,
+        completedAt = p.lastCheckAt?.takeIf { p.complete },
         lock = lock,
       )
     }
     val checked = list.sumOf { it.checked }
+    // Found at a location, not the starting inventory (no location) or a cheat's
+    val sent = players.values.filter { it.slot !in lockSlots }.flatMap { p -> p.items.filter { it.location >= 0 } }
     val total = list.sumOf { it.total }
     return Summary(
       title = title,
@@ -620,10 +632,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         total = total,
         percent = percent(checked, total),
         players = list.size,
-        goals = list.count { it.status == PlayerStatus.GOAL || it.status == PlayerStatus.RELEASED },
+        goals = list.count { it.status.done },
         online = list.count { it.online },
         locked = list.count { it.lock?.unlocked == false },
         lockable = list.count { it.lock != null },
+        itemsSent = sent.size,
+        progressionSent = sent.count { it.flags and ItemFlags.PROGRESSION != 0 },
+        trapsSent = sent.count { it.flags and ItemFlags.TRAP != 0 },
+        deaths = deaths,
+        trapLinks = trapLinks,
       ),
       people = people(list, people),
       players = list,
@@ -753,6 +770,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
     data.firstCheckAt.forEach { (s, ts) -> players[s]?.let { p -> p.firstCheckAt = minOf(ts, p.firstCheckAt ?: ts) } }
     data.goalAt.forEach { (s, ts) -> players[s]?.let { p -> p.goalAt = minOf(ts, p.goalAt ?: ts) } }
+    // The history file had no release times: its feed has them (its last 500 events)
+    data.events.filter { it.type == EventType.RELEASE }.forEach { e ->
+      e.slot?.let { players[it] }?.let { p -> p.releasedAt = minOf(e.ts, p.releasedAt ?: e.ts) }
+    }
     touch()
   }
 }
@@ -776,7 +797,7 @@ private fun people(worlds: List<PlayerSummary>, people: Map<String, List<String>
       checked = checked,
       total = total,
       percent = percent(checked, total),
-      goals = list.count { it.status == PlayerStatus.GOAL || it.status == PlayerStatus.RELEASED },
+      goals = list.count { it.status.done },
       online = list.any { it.online },
       lastActivity = list.mapNotNull { it.lastActivity }.maxOrNull(),
       playTimeMs = list.sumOf { it.playTimeMs },
@@ -784,13 +805,26 @@ private fun people(worlds: List<PlayerSummary>, people: Map<String, List<String>
   }
 }
 
-private fun statusOf(p: Player, lock: LockInfo?): PlayerStatus = when {
-  p.status == ClientStatus.GOAL -> PlayerStatus.GOAL
-  p.released -> PlayerStatus.RELEASED
-  p.total > 0 && p.missing.isEmpty() -> PlayerStatus.COMPLETE
-  lock?.unlocked == false -> PlayerStatus.LOCKED
-  p.status >= ClientStatus.READY -> PlayerStatus.PLAYING
-  else -> PlayerStatus.IDLE
+/**
+ * A release this soon after the slot's goal is the automatic one (release mode `auto`): MultiServer sends `Goal`, then
+ * (`Collect` and) `Release` in the same moment (`on_goal_achieved`).
+ */
+private const val AUTO_RELEASE_MS = 5_000L
+
+/** The first that applies; see [PlayerStatus]. */
+internal fun statusOf(p: Player, lock: LockInfo?): PlayerStatus {
+  val goal = p.goalAt ?: if (p.status == ClientStatus.GOAL) Long.MAX_VALUE else null
+  val released = p.releasedAt
+  val atGoal = released != null && goal != null && released - goal in 0..AUTO_RELEASE_MS
+  return when {
+    released != null && !atGoal -> PlayerStatus.RELEASED
+    p.complete -> PlayerStatus.COMPLETE
+    goal != null -> PlayerStatus.GOAL
+    lock?.unlocked == false -> PlayerStatus.LOCKED
+    p.online > 0 -> PlayerStatus.ONLINE
+    p.sessions.isNotEmpty() && p.checked.isNotEmpty() -> PlayerStatus.IDLE
+    else -> PlayerStatus.NOT_STARTED
+  }
 }
 
 private fun percent(part: Int, total: Int): Double = if (total == 0) 0.0 else round(1000.0 * part / total) / 10

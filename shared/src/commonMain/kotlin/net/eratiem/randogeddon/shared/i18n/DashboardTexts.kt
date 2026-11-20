@@ -9,11 +9,19 @@ interface DashboardTexts {
   val serverAsleep: String
   // The overview
   val overview: String
-  fun overviewSubtitle(slots: Int, checked: String, total: String): String
-  val goals: String
+  val finished: String
   val slotsFinished: String
-  val online: String
-  val clientsConnected: String
+  fun partComplete(n: Int): String
+  fun partGoal(n: Int): String
+  fun partReleased(n: Int): String
+  val slots: String
+  fun partIdle(n: Int): String
+  fun partNotStarted(n: Int): String
+  val everyoneOnline: String
+  val items: String
+  fun itemsOf(progression: String, traps: String): String
+  val links: String
+  fun linksOf(deaths: String, traps: String): String
   val unlocked: String
   val slotsOpened: String
   val hints: String
@@ -21,8 +29,9 @@ interface DashboardTexts {
   val playTime: String
   val allSlotsTogether: String
   val session: String
-  val serverRunning: String
-  val serverStopped: String
+  /** Below the session's age: the game server's running time. */
+  fun serverTime(duration: String, running: Boolean): String
+  fun madeOn(date: String): String
   // The players
   val players: String
   fun playersSubtitle(players: Int, slots: Int): String
@@ -36,9 +45,9 @@ interface DashboardTexts {
   fun connections(n: Int): String
   fun done(n: Int): String
   fun played(duration: String): String
-  /** A slot's state; [started]: some of its checks are done. */
-  fun status(status: PlayerStatus, started: Boolean): String
-  val playing: String
+  fun status(status: PlayerStatus): String
+  /** Beside a slot's state: how long ago its last check was. */
+  fun lastCheck(ago: String): String
   fun slot(name: String): String
   fun progress(checked: Int, total: Int, progression: Int): String
   fun doneAt(time: String): String
@@ -160,11 +169,19 @@ internal object EnglishDashboard : DashboardTexts {
   override val serverAsleep =
     "The game server sleeps: nobody has played for a while. It starts by itself as soon as a player connects."
   override val overview = "Overview"
-  override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots slots · $checked of $total checks"
-  override val goals = "Goals"
-  override val slotsFinished = "slots finished"
-  override val online = "Online"
-  override val clientsConnected = "clients connected"
+  override val finished = "Finished"
+  override val slotsFinished = "slots done"
+  override fun partComplete(n: Int) = "$n complete"
+  override fun partGoal(n: Int) = "$n goal"
+  override fun partReleased(n: Int) = "$n released"
+  override val slots = "Slots"
+  override fun partIdle(n: Int) = "$n idle"
+  override fun partNotStarted(n: Int) = "$n not started"
+  override val everyoneOnline = "online now"
+  override val items = "Items"
+  override fun itemsOf(progression: String, traps: String) = "$progression progression · $traps traps"
+  override val links = "Links"
+  override fun linksOf(deaths: String, traps: String) = "$deaths deaths · $traps traps"
   override val unlocked = "Unlocked"
   override val slotsOpened = "slots opened"
   override val hints = "Hints"
@@ -172,8 +189,9 @@ internal object EnglishDashboard : DashboardTexts {
   override val playTime = "Play time"
   override val allSlotsTogether = "all slots together"
   override val session = "Session"
-  override val serverRunning = "game server running"
-  override val serverStopped = "game server stopped"
+  override fun serverTime(duration: String, running: Boolean) =
+    if (running) "game server running · $duration" else "game server ran $duration"
+  override fun madeOn(date: String) = "made on $date"
   override val players = "Players"
   override fun playersSubtitle(players: Int, slots: Int) =
     "$players ${if (players == 1) "player" else "players"} · $slots ${if (slots == 1) "slot" else "slots"}"
@@ -187,15 +205,16 @@ internal object EnglishDashboard : DashboardTexts {
   override fun connections(n: Int) = "$n connections"
   override fun done(n: Int) = "$n done"
   override fun played(duration: String) = "$duration played"
-  override fun status(status: PlayerStatus, started: Boolean) = when (status) {
-    PlayerStatus.IDLE -> if (started) "idle" else "not started"
+  override fun status(status: PlayerStatus) = when (status) {
+    PlayerStatus.NOT_STARTED -> "not started"
+    PlayerStatus.IDLE -> "idle"
     PlayerStatus.LOCKED -> "locked"
-    PlayerStatus.PLAYING -> "playing"
+    PlayerStatus.ONLINE -> "online"
     PlayerStatus.GOAL -> "goal"
     PlayerStatus.RELEASED -> "released"
     PlayerStatus.COMPLETE -> "complete"
   }
-  override val playing = "playing"
+  override fun lastCheck(ago: String) = "last check $ago"
   override fun slot(name: String) = "Slot: $name"
   override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression progression"
   override fun doneAt(time: String) = "done $time"
@@ -244,11 +263,19 @@ internal object GermanDashboard : DashboardTexts {
   override val serverAsleep =
     "Der Spielserver schläft: Eine Weile hat niemand gespielt. Er startet von selbst, sobald sich jemand verbindet."
   override val overview = "Überblick"
-  override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots Slots · $checked von $total Checks"
-  override val goals = "Ziele"
+  override val finished = "Fertig"
   override val slotsFinished = "Slots fertig"
-  override val online = "Online"
-  override val clientsConnected = "Clients verbunden"
+  override fun partComplete(n: Int) = "$n komplett"
+  override fun partGoal(n: Int) = "$n Ziel"
+  override fun partReleased(n: Int) = "$n freigegeben"
+  override val slots = "Slots"
+  override fun partIdle(n: Int) = "$n inaktiv"
+  override fun partNotStarted(n: Int) = "$n nicht gestartet"
+  override val everyoneOnline = "jetzt online"
+  override val items = "Items"
+  override fun itemsOf(progression: String, traps: String) = "$progression Progression · $traps Fallen"
+  override val links = "Links"
+  override fun linksOf(deaths: String, traps: String) = "$deaths Tode · $traps Fallen"
   override val unlocked = "Entsperrt"
   override val slotsOpened = "Slots geöffnet"
   override val hints = "Hinweise"
@@ -256,8 +283,9 @@ internal object GermanDashboard : DashboardTexts {
   override val playTime = "Spielzeit"
   override val allSlotsTogether = "alle Slots zusammen"
   override val session = "Session"
-  override val serverRunning = "Spielserver läuft"
-  override val serverStopped = "Spielserver gestoppt"
+  override fun serverTime(duration: String, running: Boolean) =
+    if (running) "Spielserver läuft · $duration" else "Spielserver lief $duration"
+  override fun madeOn(date: String) = "erstellt am $date"
   override val players = "Spieler"
   override fun playersSubtitle(players: Int, slots: Int) = "$players Spieler · $slots ${if (slots == 1) "Slot" else "Slots"}"
   override val sortPlayer = "Sortieren: Spieler"
@@ -270,15 +298,16 @@ internal object GermanDashboard : DashboardTexts {
   override fun connections(n: Int) = "$n Verbindungen"
   override fun done(n: Int) = "$n fertig"
   override fun played(duration: String) = "$duration gespielt"
-  override fun status(status: PlayerStatus, started: Boolean) = when (status) {
-    PlayerStatus.IDLE -> if (started) "inaktiv" else "nicht gestartet"
+  override fun status(status: PlayerStatus) = when (status) {
+    PlayerStatus.NOT_STARTED -> "nicht gestartet"
+    PlayerStatus.IDLE -> "inaktiv"
     PlayerStatus.LOCKED -> "gesperrt"
-    PlayerStatus.PLAYING -> "spielt"
+    PlayerStatus.ONLINE -> "online"
     PlayerStatus.GOAL -> "Ziel"
     PlayerStatus.RELEASED -> "freigegeben"
     PlayerStatus.COMPLETE -> "komplett"
   }
-  override val playing = "spielt"
+  override fun lastCheck(ago: String) = "letzter Check $ago"
   override fun slot(name: String) = "Slot: $name"
   override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression Progression"
   override fun doneAt(time: String) = "fertig $time"
