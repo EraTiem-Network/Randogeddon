@@ -996,7 +996,7 @@ through Randogeddon Bridge only.
     - Mojang's EULA: accepted by the operator, not in the panel (decided with the user): `MINECRAFT_EULA=true` in
       `.env` accepts it for every hosted server, false by default; the Administrators' setting of 0.20.2 is gone
 
-## Phase 21: Floating Panels – Slot & Player (planned)
+## Phase 21: Floating Panels – Slot & Player
 
 *Asked for when Phase 19 closed: the slot and player panels as floating panels. What they float over, how they
 open, move and close, and what they show is to come from the user.*
@@ -1016,8 +1016,11 @@ open, move and close, and what they show is to come from the user.*
     - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
       Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
     - Late invites, then
-- [ ] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
+- [x] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
       Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
+    - Done (0.21.1): *Logs* at the panel's bottom, a tab per log: the game server's (always, first), the spoiler log's
+      run, the logic's and each directly hosted Minecraft server's (Administrators). A section hands its log over only
+      while its viewer may read it, so no other tab exists; on the support page the spoiler log's run keeps its own
 - [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
 
 ## Phase 22: Maps (planned)
@@ -1026,3 +1029,4 @@ open, move and close, and what they show is to come from the user.*
 and the locations' places come from, and what a marker shows are to come from the user.*
 
 - [ ] Maps with check markers for the slots
+- [ ] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21)

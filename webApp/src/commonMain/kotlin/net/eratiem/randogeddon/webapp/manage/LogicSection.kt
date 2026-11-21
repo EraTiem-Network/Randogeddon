@@ -29,7 +29,6 @@ import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
-import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
@@ -88,7 +87,7 @@ fun LogicSection(id: String, administrator: Boolean) {
           }
         })
       }
-      if (administrator && log.isNotEmpty()) LogView(log, LocalTexts.current.panel.nothingYet, height = 260.dp)
+      if (administrator && log.isNotEmpty()) SectionLog("logic", t.logicSection, LogOrder.LOGIC, log)
     }
   }
 }

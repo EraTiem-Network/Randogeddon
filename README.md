@@ -555,11 +555,12 @@ its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **Pe
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
 share link), its **Patch files** (every slot's files from the seed), its **Minecraft** servers (a Minecraft Dig slot's:
-asleep, starting, running with who is on it, or ended on its own; *Start* and *Stop* by hand; each one's log for
-Administrators), the cheats, its game server's state (running, starting, stopped, crashed), lets
-them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live
-(the last 10,000 lines, newest on top, a page at a time and searchable),
-and has the server console:
+asleep, starting, running with who is on it, or ended on its own; *Start* and *Stop* by hand), the cheats, its game
+server's state (running, starting, stopped, crashed), lets them start, stop and restart it (stop and restart ask once
+more: every player is disconnected), has the server console and, at the bottom, its **Logs** as tabs: the game
+server's (live, the last 10,000 lines), the spoiler log's run, and for Administrators the logic's and each Minecraft
+server's; each newest on top, a page at a time and searchable. Nobody gets a tab of a log they may not read. The
+console:
 
 ```
 /players              # who's connected

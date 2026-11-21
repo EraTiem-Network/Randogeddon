@@ -7,6 +7,17 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 21: Floating Panels – Slot & Player
+The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
+site growing with the window, a session's slots and their players, the Management panel's logs, the README.
+
+### 0.21.1: The logs in tabs
+- The Management panel's *Logs*, at its bottom, shows every log of the session as a tab: the game server's (first),
+  the spoiler log's run, and for Administrators the logic's and each directly hosted Minecraft server's. The sections
+  no longer show a log of their own; nobody gets a tab of a log they may not read.
+- TODO: Phase 21 begun; Phase 22: the README notes every tool and piece of software Randogeddon uses.
+- Updating: nothing to do.
+
 ## Phase 20: Hosted Minecraft Dig
 The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and reached through Randogeddon Bridge.
 
