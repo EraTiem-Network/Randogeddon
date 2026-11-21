@@ -16,6 +16,9 @@ object UserNames {
   /** A hosted slot's "player" (no account): no one may be named so, in any case. */
   const val HOSTED = "Hosted"
 
+  /** The "player" of the slots open to all of a session's players (no account; the name is reserved). */
+  const val EVERYONE = "Everyone"
+
   /** Names that would pass for Randogeddon itself or for someone with a say here: no one may be named so (any case). */
   private val RESERVED = setOf(
     "hosted", "admin", "admins", "administrator", "administrators", "moderator", "moderators", "mod", "mods", "support",

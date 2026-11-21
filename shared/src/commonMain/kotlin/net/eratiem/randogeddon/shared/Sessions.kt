@@ -104,6 +104,11 @@ data class WorldPlan(
    * (Administrators only); else its Session-Managers run their own.
    */
   val direct: Boolean = false,
+  /**
+   * Open to all of the session's players: every one of them plays it (no players named), or for a hosted slot, gets it
+   * (its patch files, the bridge's tunnel; not its password). A hosted slot not open goes to the players named for it.
+   */
+  val open: Boolean = false,
 )
 
 @Serializable
