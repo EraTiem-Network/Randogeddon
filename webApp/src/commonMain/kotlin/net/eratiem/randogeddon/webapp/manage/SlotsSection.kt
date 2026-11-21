@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,18 +34,17 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.percentEncoded
-import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
-import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.Select
 import net.eratiem.randogeddon.webapp.ui.card
 
 /**
- * A running session's slots, for its Session-Managers and Administrators: who plays each one (or, hosted, gets it),
- * changed here, *Open to all* included, and someone new invited by address. Its hosted mode stays as it was created.
- * Someone taken off a slot loses its connection: the tracker gives it a new password (asked once more here).
+ * A running session's slots, for its Session-Managers and Administrators: one at a time, picked in the heading (*Edit
+ * slot:*), with who plays it (or, hosted, gets it), *Open to all* and *Hosted*; someone new invited by address. Someone
+ * taken off a slot loses its connection: the tracker gives it a new password (asked once more here). Making it hosted
+ * is asked once more, no longer hosted twice (a directly hosted Minecraft server stops).
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SlotsSection(id: String) {
   val p = LocalPalette.current
@@ -52,6 +53,7 @@ fun SlotsSection(id: String) {
   var view by remember(id) { mutableStateOf<AdminSessionView?>(null) }
   // The accounts to pick from, with those invited from here
   val people = remember(id) { mutableStateListOf<UserRef>() }
+  var chosen by remember(id) { mutableStateOf<String?>(null) }
   fun load() = scope.launch {
     (call("GET", "api/sessions/$id/manage", null, AdminSessionView.serializer()) as? Answer.Ok)?.value?.let { loaded ->
       view = loaded
@@ -60,17 +62,20 @@ fun SlotsSection(id: String) {
   }
   LaunchedEffect(id) { load() }
   val worlds = view?.session?.worlds?.takeIf { it.isNotEmpty() } ?: return
-  Section(t.sessionAdmin.slotsSection, subtitle = t.sessionAdmin.slotsSectionSubtitle) {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      worlds.forEachIndexed { i, world ->
-        if (i > 0) Divider()
-        SlotEditor(id, world, people, onInvited = { people += it }, onSaved = { load() })
-      }
+  val world = worlds.firstOrNull { it.name == chosen } ?: worlds.first()
+  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // The heading: which slot is edited
+    Row(Modifier.heightIn(min = 34.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Txt(t.sessionAdmin.editSlot, size = 17.sp, weight = FontWeight.Bold, maxLines = 1)
+      Select(worlds.map { it.name to it.name }, world.name, { chosen = it }, maxLabel = 260.dp)
+    }
+    Column(Modifier.fillMaxWidth().card(p).padding(16.dp)) {
+      key(world) { SlotEditor(id, world, people, onInvited = { people += it }, onSaved = { load() }) }
     }
   }
 }
 
-/** One slot: its players as chips (or *Open to all*), changed here and saved together. */
+/** One slot: its players as chips (or *Open to all*), saved together; *Hosted* at the right, switched at once. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onInvited: (UserRef) -> Unit, onSaved: () -> Unit) {
@@ -82,14 +87,16 @@ private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onIn
   var ids by remember(world) { mutableStateOf(savedIds) }
   var open by remember(world) { mutableStateOf(world.open) }
   var asking by remember(world) { mutableStateOf(false) }
+  // Hosted switched: on asked once (1), off twice (2, then 3)
+  var hostedStep by remember(world) { mutableStateOf(0) }
   var problem by remember(world) { mutableStateOf<String?>(null) }
   val changed = open != world.open || ids.toSet() != savedIds.toSet()
   // Someone loses it: no longer open, or a player taken off
   val loses = (world.open && !open) || (!open && !world.open && (savedIds - ids.toSet()).isNotEmpty())
-  fun save() = scope.launch {
+  fun save(hosted: Boolean? = null) = scope.launch {
     problem = post(
       "api/sessions/$id/manage/slots/${world.name.percentEncoded()}",
-      ApiJson.encodeToString(SlotPlayersRequest.serializer(), SlotPlayersRequest(if (open) emptyList() else ids, open)),
+      ApiJson.encodeToString(SlotPlayersRequest.serializer(), SlotPlayersRequest(if (open) emptyList() else ids, open, hosted)),
     )
     if (problem == null) onSaved()
   }
@@ -97,14 +104,22 @@ private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onIn
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Column(Modifier.weight(1f)) {
         Txt(world.name, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
-        if (world.hosted) Txt(t.sessionAdmin.hostedCheck, size = 11.5.sp, color = p.muted, maxLines = 1)
       }
-      Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip) { open = it }
       if (changed) Button(t.sessionAdmin.slotSave, danger = loses) { if (loses) asking = true else save() }
+      Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip) { open = it }
+      Check(t.sessionAdmin.hostedCheck, world.hosted, t.sessionAdmin.hostedTip) { yes -> hostedStep = if (yes) 1 else 2 }
     }
     if (asking) {
       Confirm(t.sessionAdmin.slotLosesQuestion, t.sessionAdmin.slotLosesYes, danger = true,
         onYes = { asking = false; save() }, onCancel = { asking = false })
+    }
+    when (hostedStep) {
+      1 -> Confirm(t.sessionAdmin.hostedOnQuestion, t.sessionAdmin.yesHosted, danger = true,
+        onYes = { hostedStep = 0; save(hosted = true) }, onCancel = { hostedStep = 0 })
+      2 -> Confirm(t.sessionAdmin.hostedOffQuestion(world.direct), t.sessionAdmin.yesNotHosted, danger = true,
+        onYes = { hostedStep = 3 }, onCancel = { hostedStep = 0 })
+      3 -> Confirm(t.sessionAdmin.hostedOffSure, t.sessionAdmin.yesNotHosted, danger = true,
+        onYes = { hostedStep = 0; save(hosted = false) }, onCancel = { hostedStep = 0 })
     }
     when {
       open -> Txt(if (world.hosted) t.sessionAdmin.openHostedLine else t.sessionAdmin.openLine, size = 12.sp, color = p.muted)
