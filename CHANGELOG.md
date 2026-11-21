@@ -13,6 +13,19 @@ didn't, then what the Launcher has that the gateway hasn't), went on to keeping 
 the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
 states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
 
+Generating: the spoiler log in three levels after the seed (the session starts at once), a playthrough that doesn't
+give up, generations at once, generator settings per session, a session from a seed generated elsewhere. Keeping:
+the gateway hears every game server and writes what happens into the database, the tracker replays it; a snapshot of
+each dashboard and the finished sessions' archives in the database too, so nothing is lost while the tracker isn't
+connected and the state volume holds nothing that matters. Showing: the slots' states in a new order with their
+times, the Overview's tiles with icons and pills, the players' panels with two bars and icon pills, the available
+checks counted by each session's logic, deaths and traps per slot, cheats for locked slots. Updating: nothing to do
+(the database's new tables come with their migrations, V24 and V25; the old `tracker.json` and `archive.json` are
+imported once and left where they are).
+
+### 0.19.20: Phase 19 done
+- TODO: Phase 19 done (the panels' item closed with it); Phase 21 (*Floating Panels – Slot & Player*) planned.
+
 ### 0.19.19: Cheatable locks
 - **Two cheats for a locked slot** in the *Cheats* section (Session-Managers, Administrators, support), listed while a
   slot is locked, with the locked slots to pick from:
