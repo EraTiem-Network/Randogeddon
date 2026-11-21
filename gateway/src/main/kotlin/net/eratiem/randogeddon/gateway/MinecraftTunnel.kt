@@ -25,6 +25,7 @@ import net.eratiem.randogeddon.shared.MinecraftStatus
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
+import net.eratiem.randogeddon.database.minecraftTunnelKey
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -86,8 +87,8 @@ internal class PacketReader(private val next: suspend () -> ByteArray?) {
 
 internal class EndOfTunnel : Exception("the tunnel ended")
 
-/** The header with the slot's password that Randogeddon Bridge's tunnel sends. */
-const val SLOT_PASSWORD_HEADER = "X-Randogeddon-Slot-Password"
+/** The header with the slot's tunnel key ([minecraftTunnelKey]) that Randogeddon Bridge's tunnel sends. */
+const val TUNNEL_KEY_HEADER = "X-Randogeddon-Tunnel-Key"
 
 /**
  * A tunnel's path, `…/minecraft/<slot>` (after the session's path, if it has one): the path before it and the slot;
@@ -99,11 +100,21 @@ fun minecraftPath(path: List<String>): Pair<List<String>, String>? {
   return parts.dropLast(2) to parts.last()
 }
 
-/** Whether [given] is session's slot [slot]'s password, and the slot isn't locked. */
-internal suspend fun tunnelAllowed(given: String?, slot: String, passwords: suspend () -> Map<String, String>, locked: suspend () -> Set<String>): Boolean {
-  val expected = passwords()[slot] ?: return false
+/**
+ * Whether [given] is the session's slot [slot]'s tunnel key (made from its password), the slot is hosted directly
+ * ([direct]) and it isn't locked.
+ */
+internal suspend fun tunnelAllowed(
+  given: String?,
+  slot: String,
+  passwords: suspend () -> Map<String, String>,
+  locked: suspend () -> Set<String>,
+  direct: suspend () -> Set<String>,
+): Boolean {
+  val password = passwords()[slot] ?: return false
+  val expected = minecraftTunnelKey(password, slot)
   if (given == null || !MessageDigest.isEqual(given.encodeToByteArray(), expected.encodeToByteArray())) return false
-  return slot !in locked()
+  return slot in direct() && slot !in locked()
 }
 
 internal fun writeVarInt(out: ByteArrayOutputStream, value: Int) {

@@ -18,6 +18,8 @@ import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.User
+import net.eratiem.randogeddon.database.minecraftTunnelKey
+import net.eratiem.randogeddon.shared.MINECRAFT_DIG
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSession
@@ -202,9 +204,12 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
         passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (slot in locked) "" else it, locked = slot in locked) }
       }
     if (person == null && !manages) return own
+    val direct = session.setup?.direct.orEmpty()
     return own + hosted.sorted().mapNotNull { slot ->
       passwords[slot]?.let {
-        MySlot(slot, games[slot].orEmpty(), if (manages && slot !in locked) it else "", hosted = true, locked = slot in locked)
+        // Its Minecraft server run here: the bridge's tunnel to it for everyone who gets the slot
+        val tunnel = if (slot in direct && games[slot] == MINECRAFT_DIG && slot !in locked) minecraftTunnelKey(it, slot) else ""
+        MySlot(slot, games[slot].orEmpty(), if (manages && slot !in locked) it else "", hosted = true, locked = slot in locked, tunnel = tunnel)
       }
     }
   }

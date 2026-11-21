@@ -55,8 +55,11 @@ fun sessionIdOf(host: String?, path: List<String>, baseDomain: String): String? 
 fun sleepsNow(status: GameServerStatus, players: Int, idleFor: Duration, idleMinutes: Int, keepRunning: Boolean): Boolean =
   status == GameServerStatus.RUNNING && players == 0 && idleMinutes > 0 && !keepRunning && idleFor >= idleMinutes.minutes
 
-/** What decides a session's sleep, from the database: kept running, and its hosted slots (they aren't players). */
-data class SleepRules(val keepRunning: Boolean = false, val hosted: Set<String> = emptySet())
+/**
+ * What decides a session's sleep, from the database: kept running, and its hosted slots (they aren't players); of
+ * them, the [direct] ones, whose Minecraft server the gateway runs.
+ */
+data class SleepRules(val keepRunning: Boolean = false, val hosted: Set<String> = emptySet(), val direct: Set<String> = emptySet())
 
 /** One session's game server, its directory, and the port it listens on while it runs. */
 class SessionGameServer(val id: String, val dir: Path, val server: GameServer, passwordCache: () -> SlotPasswordCache) {

@@ -61,6 +61,8 @@ import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.NewSessionView
 import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.shared.MINECRAFT_DIG
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionInfo
@@ -442,6 +444,12 @@ class SessionAdmin(
     people.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_USERS, "ids" to it.joinToString())
     }
+    // Randogeddon runs a hosted Minecraft Dig slot's server only when an Administrator says so
+    val direct = plans.values.filter { it.hosted && it.direct }.map { it.name }.toSet()
+    if (direct.isNotEmpty() && !creator.administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS)
+    direct.filter { name -> found.none { it.name == name && it.game == MINECRAFT_DIG } }.takeIf { it.isNotEmpty() }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_POSSIBLE)
+    }
     // Every slot is played by someone, or hosted
     plans.values.filter { !it.hosted && it.userIds.isEmpty() }.map { it.name }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to it.joinToString())
@@ -487,6 +495,7 @@ class SessionAdmin(
         hosted = plans.filterValues { it.hosted }.keys,
         // It counts towards the creator's limit while it runs
         createdBy = creator.id,
+        direct = direct,
       )
       slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
       // No one connects a locked slot until its key is found (the tracker opens it then)
@@ -576,6 +585,21 @@ class SessionAdmin(
     if (!setups.setKeepRunning(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     sessions.refresh()
     logger.info("{} let {} {}", admin, id, if (keep) "keep running without players" else "sleep when idle")
+  }
+
+  /**
+   * Randogeddon runs session [id]'s hosted Minecraft Dig slot [slot]'s server itself ([direct]), or no longer: only an
+   * Administrator switches it on ([administrator]); off, its server is stopped (its world stays).
+   */
+  suspend fun setDirect(id: String, slot: String, direct: Boolean, administrator: Boolean, actor: String) {
+    val live = session(id)
+    if (direct && !administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS)
+    val game = Room.read(live.roomJson)?.players?.firstOrNull { it.name == slot }?.game
+    if (slot !in live.setup?.hosted.orEmpty() || game != MINECRAFT_DIG) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_POSSIBLE)
+    if (!setups.setDirect(live.seedName, slot, direct)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+    if (!direct) runCatching { gameServer.stopMinecraft(id, slot) }
+    sessions.refresh()
+    logger.info("{} {} {}'s Minecraft server of {} here", actor, if (direct) "hosts" else "no longer hosts", id, slot)
   }
 
   private fun session(id: String): LiveSession =

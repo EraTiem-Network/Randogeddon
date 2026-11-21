@@ -37,6 +37,7 @@ import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApworldRemoval
@@ -241,6 +242,16 @@ fun Route.manageRoutes(
       val stopped = minecraftRuns.stop(id(), slot)
       if (stopped) logger.info("{}'s Minecraft server of {} stopped by {}", id(), slot, call.loggedIn.user.name)
       call.respond(if (stopped) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
+  }
+  // Randogeddon runs a hosted slot's Minecraft server, or no longer: on only for Administrators, off for its
+  // Session-Managers too
+  post("/minecraft/{slot}/direct") {
+    val slot = call.parameters["slot"].orEmpty()
+    val direct = call.receive<MinecraftDirectRequest>().direct
+    gatewayCall {
+      admin.setDirect(id(), slot, direct, call.loggedIn.user.administrator, call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
     }
   }
   get("/minecraft/log") {

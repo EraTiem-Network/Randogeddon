@@ -144,6 +144,8 @@ object SessionWorldsTable : Table("session_worlds") {
 object SessionHostedSlotsTable : Table("session_hosted_slots") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)
+  /** A Minecraft Dig slot whose server Randogeddon runs itself, reached through the bridge's tunnel (V26). */
+  val direct = bool("direct").default(false)
   override val primaryKey = PrimaryKey(sessionId, slotName)
 }
 

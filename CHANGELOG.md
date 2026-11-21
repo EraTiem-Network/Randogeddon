@@ -22,6 +22,18 @@ The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and rea
   then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
   servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
 
+### 0.20.5: Hosted here only when an Administrator says so
+- Randogeddon runs a Minecraft Dig slot's server only when the slot is hosted and an Administrator switches it on:
+  when creating the session (*its server here (through the bridge)* beside *Hosted*) or later in the panel's
+  *Minecraft* section (*Host here*). Session-Managers can switch it off (*Don't host here*: its server stops, its
+  world stays). Any other Minecraft Dig slot runs its own server, and the bridge relays it like any game.
+- The bridge's tunnel logs in with the slot's tunnel key instead of its password: made from the password, given to
+  the session's players and its Session-Managers, so the players reach the server without being able to connect to
+  Archipelago as the slot. The bridge offers such a slot to its players too.
+- Database: V26 (`session_hosted_slots.direct`); every slot hosted so far stays as it was, not hosted here.
+- Updating: the tunnel needs this bridge (0.20.5) or newer. `MINECRAFT_EULA=true` in `.env` now hosts only the
+  switched-on slots.
+
 ### 0.20.4: The Minecraft servers in the panel
 - The Management panel has a *Minecraft* section for a session with a Minecraft Dig slot: each slot's server (asleep,
   starting, running with who is on it, or ended on its own), *Start* and *Stop* for Session-Managers and
