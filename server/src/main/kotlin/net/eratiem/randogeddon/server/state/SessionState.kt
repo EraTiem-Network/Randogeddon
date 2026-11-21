@@ -511,6 +511,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val slot = source?.let { name -> players.values.firstOrNull { it.alias == name || it.name == name }?.slot }
     val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
     if (link == "DeathLink") deaths++ else trapLinks++
+    slot?.let { players[it] }?.let { if (link == "DeathLink") it.deaths++ else it.trapLinks++ }
     events.addLast(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
     while (events.size > MAX_EVENTS) events.removeFirst()
     touch()
@@ -665,6 +666,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         progressionChecked = checks?.checked ?: 0,
         sent = checks?.sent,
         available = p.available,
+        deaths = p.deaths,
+        trapLinks = p.trapLinks,
         hintPoints = p.hintPoints,
         // As MultiServer's Context.get_hint_cost
         hintCost = if (costPercent == 0) 0 else maxOf(1, (costPercent * 0.01 * total).toInt()),
@@ -739,6 +742,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       progressionChecked = checks?.checked ?: 0,
       sent = checks?.sent,
       available = p.available,
+      deaths = p.deaths,
+      trapLinks = p.trapLinks,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
     )

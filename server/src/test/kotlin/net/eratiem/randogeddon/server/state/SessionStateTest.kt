@@ -177,6 +177,13 @@ class SessionStateTest {
     assertEquals(listOf(name, "Somebody else"), links.map { it.linkSource })
     assertEquals(listOf("$name fell into lava", "Ice Trap"), links.map { it.message })
     assertEquals(name, s.render(links[0]).playerName)
+    // Counted for the slot that sent it, and for the session (also one from outside its slots)
+    s.onBounced(json("""{"cmd":"Bounced","tags":["TrapLink"],"data":{"source":"$name","trap_name":"Bee Trap"}}"""))
+    val summary = s.summary("t", null)
+    assertEquals(1 to 1, summary.players.first { it.slot == 1 }.let { it.deaths to it.trapLinks })
+    assertEquals(0 to 0, summary.players.first { it.slot == 2 }.let { it.deaths to it.trapLinks })
+    assertEquals(1 to 2, summary.totals.deaths to summary.totals.trapLinks)
+    assertEquals(1 to 1, s.playerDetail(1)!!.let { it.deaths to it.trapLinks })
   }
 
   @Test
