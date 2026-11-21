@@ -1004,8 +1004,11 @@ open, move and close, and what they show is to come from the user.*
 - [ ] Floating panels for a slot and for a player
 - [ ] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
       side as fit), and sortable in some way (asked for on 2026-11-21)
-- [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
+- [x] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
       2026-11-21)
+    - Done (0.21.5): no fixed width any more (1,400 dp before): the page takes the window less 2 % at each side; the
+      feed grows with it (a quarter, 440 to 640 dp); the tiles and the players' cards fill as many columns as fit
+      (2560 px: five cards side by side, 3840 px: six), the Management panel is as wide
 - [x] Creating a session (asked for on 2026-11-21):
     - [x] A hosted game can still be given to certain players
     - [x] For every slot, a checkbox: open to all of the session's players
