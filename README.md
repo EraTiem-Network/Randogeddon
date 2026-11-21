@@ -751,6 +751,15 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
   Administrators the session's hosted slots too; never a locked one. Starting it again opens the running one's page;
   *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
   back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
+- **Minecraft Dig:** its slot's Minecraft server is hosted by Randogeddon, and the bridge is the only way to it: a
+  tunnel instead of a relay, `localhost:<port>` for Minecraft 1.19.4's *Direct Connection*. Each Minecraft connection
+  goes over `wss://<session-id>.randogeddon.eratiem.net/minecraft/<slot>` with the slot's password in a header (the
+  `X-Randogeddon-Slot-Password` header; a wrong one or a locked slot is refused), and the gateway passes it on to the
+  server; no Minecraft port is open to the internet. A look at the server list while it sleeps is answered by the
+  gateway ("asleep, join to wake it") and starts nothing; a join starts it and is held ("Logging in…", about 15 s
+  to a minute) until it is ready, then every byte passes: Mojang's account check and the encryption are the
+  server's own. Once a player is on it, it connects to the session with the slot's password, and it sleeps when
+  nobody has been on it for as long as the game servers wait.
 - **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
   `randogeddon-bridge login` asks for the key (typed or pasted at a terminal it isn't shown; or from a file:
   `randogeddon-bridge login < keyfile`; never an argument or an `echo`, which the process list and the shell's
@@ -786,7 +795,8 @@ How it stays safe:
   like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode, font and language again,
   right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
-  browser can play a slot through them.
+  browser can play a slot through them. A Minecraft tunnel takes raw TCP, but the gateway reads a Minecraft handshake
+  first and ends anything else (an HTTP request a page could send is none).
 - The page answers only on its own address (`127.0.0.1:<port>`/`localhost:<port>`, against DNS rebinding), with the
   token of the link the bridge opened (a SameSite=Strict cookie); changes need its own header too. The dashboard is
   reached only over HTTPS (plain HTTP only on the same computer).

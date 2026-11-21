@@ -22,6 +22,18 @@ The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and rea
   then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
   servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
 
+### 0.20.3: The tunnel
+- Randogeddon Bridge opens a tunnel for a Minecraft Dig slot instead of a relay: `localhost:<port>` for Minecraft
+  1.19.4's *Direct Connection*, each Minecraft connection passed on over `wss://<session>.<domain>/minecraft/<slot>`
+  with the slot's password. Its page says how to join.
+- The gateway answers a look at the server list itself while the server sleeps ("asleep, join to wake it") and starts
+  nothing for it; a join starts the server and is held until it is ready, the client kept waiting; then every byte
+  passes, and Mojang's account check and the encryption are the server's. A wrong password or a locked slot is
+  refused; a start that fails or takes more than 4 minutes ends the join with a message the client shows.
+- Fixed: a deleted session's Minecraft server kept its relay open, so the next server given its number couldn't open
+  its own (and would have reached the deleted session). Since 0.20.2; nothing was hosted live.
+- Updating: nothing to do. The bridge's tunnel needs this bridge (0.20.3) or newer.
+
 ### 0.20.2: The Minecraft servers
 - A new service, `minecraft`, runs the hosted Minecraft servers (Java 17, Forge 1.19.4-45.3.15 and the mod 0.0.11 in
   the gateway's image, both checked by their SHA-256), one process per Minecraft Dig slot, as user 1000 without
