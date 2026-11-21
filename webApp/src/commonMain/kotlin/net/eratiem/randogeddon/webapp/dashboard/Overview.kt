@@ -148,9 +148,12 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
     )
     add(Tile(d.finished, "$done / ${s.players.size}", d.slotsFinished, p.ok, Icon.FLAG, pills = parts))
     val online = s.players.count { it.online }
+    // A locked slot hasn't started either: it can't connect before its key turns up
+    val notStarted = count(PlayerStatus.NOT_STARTED) + count(PlayerStatus.LOCKED)
     val waiting = listOfNotNull(
       state(PlayerStatus.IDLE, Icon.PAUSE, p.muted).takeIf { count(PlayerStatus.IDLE) > 0 },
-      state(PlayerStatus.NOT_STARTED, Icon.CIRCLE, p.muted).takeIf { count(PlayerStatus.NOT_STARTED) > 0 },
+      TilePill(Icon.CIRCLE, "$notStarted", d.status(PlayerStatus.NOT_STARTED).replaceFirstChar { it.uppercase() }, p.muted)
+        .takeIf { notStarted > 0 },
     )
     add(Tile(d.slots, "$online / ${s.players.size}", d.everyoneOnline, p.useful, Icon.USER, pills = waiting))
     if (totals.lockable > 0) {
