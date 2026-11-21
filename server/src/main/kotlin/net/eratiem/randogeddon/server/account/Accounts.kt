@@ -189,8 +189,9 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
   }
 
   /**
-   * The slots of [person] in [session] (a slot played together is theirs too) with game and password; then its hosted
-   * slots for everyone who plays in it or manages it ([manages]: with their passwords, to set the game's server up).
+   * The slots of [person] in [session] (a slot played together is theirs too, and every slot open to all) with game
+   * and password; then its hosted slots: for its Session-Managers all of them ([manages]: with their passwords, to set
+   * the game's server up), for a player the ones open to all and the ones naming them.
    */
   suspend fun of(session: LiveSession, person: String?, manages: Boolean = false): List<MySlot> {
     val room = Room.read(session.roomJson) ?: return emptyList()
@@ -199,13 +200,16 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     val hosted = session.setup?.hosted.orEmpty()
     // A locked slot has no password until its key is found
     val locked = lockedNow(session)
-    val own = person?.takeIf { it != UserNames.HOSTED }?.let { session.people()[it] }.orEmpty().filter { it !in hosted }
+    // Their own slots and the ones open to all of the session's players
+    val own = session.playedBy(person).filter { it !in hosted }
       .mapNotNull { slot ->
         passwords[slot]?.let { MySlot(slot, games[slot].orEmpty(), if (slot in locked) "" else it, locked = slot in locked) }
       }
     if (person == null && !manages) return own
     val direct = session.setup?.direct.orEmpty()
-    return own + hosted.sorted().mapNotNull { slot ->
+    // Its Session-Managers get every hosted slot; a player the open ones and the ones naming them
+    val shown = if (manages) hosted.sorted() else session.hostedFor(person)
+    return own + shown.mapNotNull { slot ->
       passwords[slot]?.let {
         // Its Minecraft server run here: the bridge's tunnel to it for everyone who gets the slot
         val tunnel = if (slot in direct && games[slot] == MINECRAFT_DIG && slot !in locked) minecraftTunnelKey(it, slot) else ""

@@ -186,6 +186,13 @@ interface SessionAdminTexts {
   val hostedQuestion: String
   val yesHosted: String
   val hostedLine: String
+  /** A slot open to all of the session's players: its checkbox, its tip, what its row says instead of its players. */
+  val openCheck: String
+  val openTip: String
+  val openLine: String
+  val openHostedLine: String
+  /** A hosted slot not open: the players named for it get it (its patch files, the bridge's tunnel). */
+  val hostedPlayersLine: String
   /** YAMLs whose games the release has no APWorld for ([files]: each with its games), then what to do. */
   fun missingApworlds(files: String, version: String): String
   val uploadThem: String
@@ -419,6 +426,12 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val noAccountMatches = "No account matches; type their e-mail address to invite them"
   override val hostedCheck = "Hosted"
   override val hostedQuestion = "Make this slot hosted? Its players are removed: its game runs as a server of its own."
+  override val openCheck = "Open to all"
+  override val openTip = "Every player of the session plays it (its password for each). Hosted: every player gets it " +
+    "(its patch files, the bridge's tunnel), not its password."
+  override val openLine = "Every player of the session plays it."
+  override val openHostedLine = "Every player of the session joins its game's server."
+  override val hostedPlayersLine = "Only these players join its game's server (no password: they don't play it):"
   override val yesHosted = "Yes, hosted"
   override val hostedLine = "No players: the game runs as a server of its own, which they join with their games."
   override fun missingApworlds(files: String, version: String) =
@@ -659,6 +672,12 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val noAccountMatches = "Kein Konto passt; gib die E-Mail-Adresse ein, um die Person einzuladen"
   override val hostedCheck = "Gehostet"
   override val hostedQuestion = "Diesen Slot hosten? Seine Spieler werden entfernt: Sein Spiel läuft als eigener Server."
+  override val openCheck = "Für alle"
+  override val openTip = "Jeder Spieler der Session spielt ihn (mit seinem Passwort). Gehostet: Jeder Spieler bekommt ihn " +
+    "(seine Patch-Dateien, den Tunnel der Bridge), nicht sein Passwort."
+  override val openLine = "Jeder Spieler der Session spielt ihn."
+  override val openHostedLine = "Jeder Spieler der Session tritt dem Server seines Spiels bei."
+  override val hostedPlayersLine = "Nur diese Spieler treten dem Server seines Spiels bei (ohne Passwort: Sie spielen ihn nicht):"
   override val yesHosted = "Ja, hosten"
   override val hostedLine = "Keine Spieler: Das Spiel läuft als eigener Server, dem sie mit ihren Spielen beitreten."
   override fun missingApworlds(files: String, version: String) =

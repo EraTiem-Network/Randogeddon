@@ -407,10 +407,14 @@ docker compose up -d
    account's ID; never anything of their address, which only Administrators see). When a session ends, its invitations nobody accepted
    go (unless another running session has them).
    **Hosted slots:** for a game that runs as a server of its own (its players join that server with their games, not
-   Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players and nothing to add any; the
-   dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
-   see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
-   server up. No account can be named *Hosted*. Randogeddon Bridge offers a hosted slot to its Session-Managers and
+   Archipelago), tick the slot's *Hosted* (asked once more). The slot then has no players; the dashboard shows it on a
+   card of its own, *Hosted*. It starts *Open to all*: under *Your connection*, every player of the session can pick it
+   and see its patch files. Untick *Open to all* and name players to give it only to them (they join its server, they
+   don't play it). Its Session-Managers see its whole connection (server, slot, password), to set the game's server
+   up. No account can be named *Hosted*.
+   **Open to all:** a slot that isn't hosted can be ticked *Open to all* too: every player of the session (everyone
+   named for any of its slots) plays it, with its password, its files and the bridge, and the dashboard shows it on a
+   card of its own, *Everyone*. A session needs someone who plays for that. Randogeddon Bridge offers a hosted slot to its Session-Managers and
    Administrators (for a hosted game that can't do TLS), not to its players. A hosted *Minecraft Dig* slot can have
    its server run by Randogeddon itself instead: an Administrator ticks *its server here (through the bridge)* (or
    switches it on later in the panel's *Minecraft* section; Session-Managers can switch it off). Then the bridge
