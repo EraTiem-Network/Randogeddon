@@ -235,6 +235,8 @@ private fun CreateSession(
   val hosted = remember { mutableStateMapOf<String, Boolean>() }
   // Of them, the Minecraft Dig slots whose server Randogeddon runs (Administrators only)
   val direct = remember { mutableStateMapOf<String, Boolean>() }
+  // The slots open to all of the session's players (a hosted one starts so)
+  val openToAll = remember { mutableStateMapOf<String, Boolean>() }
   val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
   var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
@@ -602,7 +604,13 @@ private fun CreateSession(
       val isLocked = world.name in lockedNow
       WorldRow(
         world, users[world.name].orEmpty(), people, hosted = hosted[world.name] == true,
-        onHosted = { yes -> hosted[world.name] = yes; if (yes) users[world.name] = emptyList() else direct.remove(world.name) },
+        onHosted = { yes ->
+          hosted[world.name] = yes
+          openToAll[world.name] = yes
+          if (yes) users[world.name] = emptyList() else direct.remove(world.name)
+        },
+        open = openToAll[world.name] == true,
+        onOpen = { yes -> openToAll[world.name] = yes },
         hostedLabel = t.sessionAdmin.hostedCheck,
         direct = (direct[world.name] == true).takeIf { administrator && world.game == MINECRAFT_DIG },
         onDirect = { yes -> direct[world.name] = yes },
@@ -673,8 +681,8 @@ private fun CreateSession(
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
-    // Every slot played by someone, or hosted
-    val unplayed = usable.filter { hosted[it.name] != true && users[it.name].isNullOrEmpty() }.map { it.name }
+    // Every slot played by someone, hosted, or open to all
+    val unplayed = usable.filter { hosted[it.name] != true && openToAll[it.name] != true && users[it.name].isNullOrEmpty() }.map { it.name }
     if (unplayed.isNotEmpty()) Txt(t.sessionAdmin.slotsWithoutPlayer(unplayed.joinToString(", ")), size = 12.5.sp, color = p.warn)
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -699,10 +707,11 @@ private fun CreateSession(
             yamls = if (seed != null) emptyList() else yamls.filter { it.fileName !in waitingFiles },
             worlds = usable.map {
               WorldPlan(
-                it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
+                it.name, userIds = if (openToAll[it.name] == true) emptyList() else users[it.name].orEmpty(),
                 locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
                 hosted = hosted[it.name] == true,
                 direct = hosted[it.name] == true && direct[it.name] == true,
+                open = openToAll[it.name] == true,
               )
             },
             options = options.copy(openSlots = open),
@@ -809,6 +818,9 @@ private fun WorldRow(
   /** A hosted Minecraft Dig slot's server run here (its checkbox, for Administrators); `null`: not offered. */
   direct: Boolean?,
   onDirect: (Boolean) -> Unit,
+  /** Open to all of the session's players (its checkbox): no players named. */
+  open: Boolean,
+  onOpen: (Boolean) -> Unit,
   /** Invites an address from here: the new account, or `null` (the form shows why). */
   onInvite: suspend (String) -> UserRef?,
   lock: @Composable () -> Unit,
@@ -827,6 +839,7 @@ private fun WorldRow(
           Txt("${world.game} · ${world.fileName}", size = 11.5.sp, color = p.muted, maxLines = 1)
         }
         lock()
+        Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip) { onOpen(it) }
         Check(hostedLabel, hosted, t.sessionAdmin.hostedTip) { yes -> if (yes) asking = true else onHosted(false) }
       }
       if (asking) {
@@ -835,7 +848,9 @@ private fun WorldRow(
       }
       if (hosted && direct != null) Check(t.sessionAdmin.hostDirectly, direct) { onDirect(it) }
       if (hosted) Txt(t.sessionAdmin.hostedLine, size = 12.sp, color = p.muted)
-      else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      if (open) Txt(if (hosted) t.sessionAdmin.openHostedLine else t.sessionAdmin.openLine, size = 12.sp, color = p.muted)
+      else if (hosted) Txt(t.sessionAdmin.hostedPlayersLine, size = 12.sp, color = p.muted)
+      if (!open) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { id ->
           val user = known.firstOrNull { it.id == id }
           UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
