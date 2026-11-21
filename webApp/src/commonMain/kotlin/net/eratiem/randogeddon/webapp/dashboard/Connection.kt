@@ -1,14 +1,20 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
@@ -20,9 +26,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -39,6 +49,7 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
+import net.eratiem.randogeddon.webapp.ui.AppPopup
 import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
@@ -50,8 +61,10 @@ import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.SmallHeading
+import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.hand
 
 /**
  * How the logged-in player joins the game: the server address and, for one of their worlds, the slot name and its
@@ -109,7 +122,7 @@ fun ConnectionSection(
   ) {
     // The server and the slot; for a player also the slot's files and the bridge, beside them where there is room
     val connect: @Composable () -> Unit = {
-      Field(c.server, connection?.server ?: "…")
+      ServerField(c.server, connection?.server ?: "…")
       when {
         // Someone who doesn't play still gets the hosted slots (a Session-Manager sets their servers up)
         !mine && slots.none { it.hosted } -> Txt(
@@ -223,7 +236,15 @@ private fun BridgePart() {
       ),
     )
     Spacer(Modifier.weight(1f))
-    if (open) SmallButton(c.makeKey, {
+    // Folded or open: a chevron, pointing where the part goes
+    Tip(if (open) c.foldBridge else c.openBridge) {
+      IconButton({ BridgeFold.toggle() }, Icon.CHEVRON, Modifier.size(28.dp).rotate(if (open) 180f else 0f))
+    }
+  }
+  if (!open) return
+  // A key: a row of its own
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    SmallButton(c.makeKey, {
       scope.launch {
         when (val r = call("POST", "api/account/bridge-keys", null, BridgeKey.serializer())) {
           is Answer.Ok -> { key = r.value; problem = null }
@@ -231,9 +252,7 @@ private fun BridgePart() {
         }
       }
     })
-    SmallButton(if (open) c.foldBridge else c.openBridge, { BridgeFold.toggle() })
   }
-  if (!open) return
   key?.let { made -> KeyField(made) { key = null } }
   problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
@@ -265,9 +284,10 @@ private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
   val c = t.connection
   var shown by remember(made.key) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Mono(if (shown) made.key else "•".repeat(12), Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
-    SmallButton(if (shown) c.hide else c.show, { shown = !shown })
-    SmallButton(t.common.copy, { Platform.copy(made.key) })
+    ReadOnlyField(if (shown) made.key else "•".repeat(12), Modifier.weight(1f)) {
+      SmallButton(if (shown) c.hide else c.show, { shown = !shown })
+      SmallButton(t.common.copy, { Platform.copy(made.key) })
+    }
     IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp))
   }
   Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = LocalPalette.current.muted)
@@ -278,9 +298,10 @@ private fun PasswordField(slot: MySlot) {
   var shown by remember(slot.name) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(LocalTexts.current.connection.password)
-    Mono(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
-    SmallButton(if (shown) LocalTexts.current.connection.hide else LocalTexts.current.connection.show, { shown = !shown })
-    SmallButton(LocalTexts.current.common.copy, { Platform.copy(slot.password) })
+    ReadOnlyField(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f)) {
+      SmallButton(if (shown) LocalTexts.current.connection.hide else LocalTexts.current.connection.show, { shown = !shown })
+      SmallButton(LocalTexts.current.common.copy, { Platform.copy(slot.password) })
+    }
   }
 }
 
@@ -317,8 +338,67 @@ private fun archName(os: String, arch: String) = when {
 private fun Field(label: String, value: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(label)
-    Mono(value, Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
-    SmallButton(LocalTexts.current.common.copy, { Platform.copy(value) })
+    ReadOnlyField(value, Modifier.weight(1f)) { SmallButton(LocalTexts.current.common.copy, { Platform.copy(value) }) }
+  }
+}
+
+/**
+ * The server: copied as shown (`host:port`), its host, its port, or as a `wss://` address, picked from the menu of its
+ * copy button. A local address with its scheme and path (`ws://localhost:38281/<id>`) is taken apart the same way.
+ */
+@Composable
+private fun ServerField(label: String, server: String) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val c = t.connection
+  var menu by remember { mutableStateOf(false) }
+  val parts = serverParts(server)
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Label(label)
+    ReadOnlyField(server, Modifier.weight(1f)) {
+      Box {
+        SmallButton(t.common.copy + " ▾", { menu = !menu })
+        if (menu) AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 26.dp.roundToPx() }), onDismissRequest = { menu = false }) {
+          Column(Modifier.card(p).padding(4.dp)) {
+            listOf(c.copyAsShown to server, c.copyHost to parts.host, c.copyPort to parts.port, c.copyWss to parts.wss).forEach { (what, text) ->
+              Row(
+                Modifier.clip(RoundedCornerShape(6.dp)).hand().clickable { Platform.copy(text); menu = false }.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                Txt(what, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.width(110.dp))
+                Mono(text, size = 12.sp)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** A server's address in its parts: its host, its port (443 for `wss`), and as a `wss://` (or its own `ws://`) address. */
+internal data class ServerParts(val host: String, val port: String, val wss: String)
+
+internal fun serverParts(server: String): ServerParts {
+  val scheme = server.substringBefore("://", "").takeIf { "://" in server }
+  val rest = server.substringAfter("://")
+  val hostPort = rest.substringBefore('/')
+  val host = hostPort.substringBefore(':')
+  val port = hostPort.substringAfter(':', "").ifEmpty { if (scheme == "ws") "80" else "443" }
+  return ServerParts(host, port, if (scheme != null) server else "wss://$server")
+}
+
+/** A value shown like a text field that can't be changed, its buttons inside it at the right. */
+@Composable
+private fun ReadOnlyField(value: String, modifier: Modifier = Modifier, buttons: @Composable RowScope.() -> Unit) {
+  val p = LocalPalette.current
+  Row(
+    modifier.heightIn(min = 34.dp).clip(RoundedCornerShape(10.dp)).background(p.panelAlt).border(1.dp, p.border, RoundedCornerShape(10.dp))
+      .padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Mono(value, Modifier.weight(1f), size = 13.sp)
+    buttons()
   }
 }
 
