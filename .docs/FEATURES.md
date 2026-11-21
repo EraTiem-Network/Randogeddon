@@ -165,8 +165,8 @@ its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothi
 - **Players:** a card per player with their slots (state, time, pills for received, sent, available, deaths, traps;
   two bars: checks and progression checks), in as many columns as fit, each card into the shortest; *Sort* by name,
   progress or activity. A slot's states: released, complete, goal, locked, online, idle, not started.
-- **Panels:** a player's (totals, slots, open hints, connections, activity) and a slot's (received items, remaining
-  locations with the available ones first, connections), every list a page at a time.
+- **Panels:** a player's (totals, slots, open hints, connections, activity) and a slot's, in tabs: *Checks* (available
+  now, the rest remaining), *Transported items* (sent, received), *Connections*; every list a page at a time.
 - **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below.
 - **Counts only:** progression counts per slot are its own world's; how many progression items are meant for a slot
   isn't shown (it would tell how much is missing).
