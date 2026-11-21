@@ -10,6 +10,19 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 ## Phase 20: Hosted Minecraft Dig
 The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and reached through Randogeddon Bridge.
 
+A new service, `minecraft`, runs the servers (Forge 1.19.4 and the mod, up to 3 GB each, `MINECRAFT_SERVERS` at once,
+their worlds kept while they sleep), for a hosted Minecraft Dig slot an Administrator switches on. The bridge reaches
+one by a tunnel, with a key made from the slot's password that the session's players get; no Minecraft port is
+public. The gateway answers the server list while a server sleeps and starts it only for a join, which it holds
+until the server is ready; then the server's own account check and encryption take over. A server connects to
+Archipelago with the slot's password once a player is on it, and sleeps like the game servers. The panel's
+*Minecraft* section shows each one with *Start*, *Stop*, the switch and its log. Mojang's EULA is the operator's
+(`MINECRAFT_EULA=true`). Updating: the database's V26 comes with its migration; to host servers, `MINECRAFT_EULA=true`
+in `.env` and the bridge 0.20.5 or newer for the players. Not yet tried with a real Minecraft client.
+
+### 0.20.6: Phase 20 done
+- TODO: Phase 20 done; Phase 22 (*Maps*: the slots' games' maps with markers for their checks) planned.
+
 ### 0.20.1: Found out first
 - TODO: what the mod and the APWorld's client do, read from the mod (0.0.11) and the client. The mod connects by
   itself to the address in `APData/archipelago.json`, with the slot name from the patch but without a password, so
