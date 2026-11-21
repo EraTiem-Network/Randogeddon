@@ -32,6 +32,7 @@ and the locations' places come from, and what a marker shows are to come from th
 - [x] *Your connection*: copy, show and hide as icons; the bridge's fold arrow left to collapse, right to expand
       (0.22.1)
 - [x] Creating a session: its ID's field takes only what a subdomain allows, capitals as small letters (0.22.1)
+- [x] After its generation, the panel goes to the new session's page, not back to *New session* (0.22.1.1)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 
