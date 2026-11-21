@@ -11,6 +11,11 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.4: New icons
+- *Sent* has the arrow up out of an open box that *released* had; *released* is a broken chain, its links pulled
+  apart; the available checks are a signpost. Picked by the user from candidates.
+- Updating: nothing to do.
+
 ### 0.21.3: A running session's slots, a shorter README
 - The Management panel's *Slots* (Session-Managers and Administrators): who plays each slot is changed while the
   session runs (players added or taken off, *Open to all* switched), and someone new is invited by e-mail right

@@ -1035,9 +1035,11 @@ open, move and close, and what they show is to come from the user.*
     - Done (0.21.3): down to the essential points (1,168 lines to 137, as the user asked): what it is, a session,
       the roles, the server, the bridge, development, each with a link to its details. The details as they were in
       `.docs/FEATURES.md`, `.docs/OPERATIONS.md` and `.docs/DEVELOPMENT.md`
-- [ ] Icons: *sent* gets the icon *released* has now; *released* a new one that fits better (unchained, an open door,
+- [x] Icons: *sent* gets the icon *released* has now; *released* a new one that fits better (unchained, an open door,
       …) (asked for on 2026-11-21)
-    - And a new icon for the available checks (asked for on 2026-11-21)
+    - [x] And a new icon for the available checks (asked for on 2026-11-21)
+    - Done (0.21.4), picked by the user from candidates: *sent* the arrow up out of an open box, *released* a broken
+      chain, the available checks a signpost
 
 ## Phase 22: Maps (planned)
 
