@@ -606,15 +606,17 @@ class SessionAdmin(
   }
 
   /**
-   * Who plays session [id]'s slot [slot] now: [request]'s accounts, or every player of it (open); its hosted mode stays.
-   * Whoever loses the slot loses its connection: it gets a new password and the gateway closes its connections (they
-   * connect again with the new one). Not for a hosted slot run elsewhere, whose players never had its password.
+   * Who plays session [id]'s slot [slot] now: [request]'s accounts, or every player of it (open); and whether it is
+   * hosted. Whoever loses the slot loses its connection: it gets a new password and the gateway closes its connections
+   * (they connect again with the new one). A slot no longer hosted loses its direct switch, its Minecraft server stops.
    */
   suspend fun setSlotPlayers(id: String, slot: String, request: SlotPlayersRequest, actor: String) {
     val live = session(id)
     val setup = live.setup ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_POSSIBLE)
     if (Room.read(live.roomJson)?.players?.none { it.name == slot } != false) throw SessionProblem(HttpStatusCode.NotFound, Problem.NOT_POSSIBLE)
-    val hosted = slot in setup.hosted
+    val wasHosted = slot in setup.hosted
+    val wasDirect = slot in setup.direct
+    val hosted = request.hosted ?: wasHosted
     val accounts = users.accounts().associateBy { it.id.toString() }
     request.userIds.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_USERS, "ids" to it.joinToString())
@@ -622,18 +624,34 @@ class SessionAdmin(
     val named = if (request.open) emptyList() else request.userIds.distinct().mapNotNull { accounts[it]?.id }
     // A slot that isn't hosted is played by someone, or by everyone
     if (!hosted && !request.open && named.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to slot)
-    // Who had it before and won't now: everyone but the named, when it stops being open; else the ones left out
-    val before = setup.worlds[slot].orEmpty().toSet()
     val after = named.mapNotNull { setup.members[it] ?: accounts[it.toString()]?.name }.toSet()
-    val lost = if (slot in setup.open) !request.open else (before - after).isNotEmpty()
+    // Whoever holds its password before and after (`null`: every player of the session), its tunnel key counted: a
+    // hosted slot whose server runs elsewhere has nobody among its players who holds it
+    fun holders(hosted: Boolean, direct: Boolean, open: Boolean, names: Set<String>): Set<String>? = when {
+      hosted && !direct -> emptySet()
+      open -> null
+      else -> names
+    }
+    val before = holders(wasHosted, wasDirect, slot in setup.open, setup.worlds[slot].orEmpty().toSet())
+    val now = holders(hosted, hosted && wasDirect, request.open, after)
+    val lost = when {
+      before != null && before.isEmpty() -> false
+      before == null -> now != null
+      else -> now != null && !now.containsAll(before)
+    }
     if (!setups.setSlotPlayers(live.seedName, slot, named, request.open)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
-    if (lost && (!hosted || slot in setup.direct)) {
+    if (hosted != wasHosted) {
+      setups.setHosted(live.seedName, slot, hosted)
+      // No longer hosted: Randogeddon no longer runs its Minecraft server (its world stays)
+      if (!hosted && wasDirect) runCatching { gameServer.stopMinecraft(id, slot) }
+    }
+    if (lost) {
       slotPasswords.renew(live.seedName, slot, PasswordGenerator.generate())
       gameServer.disconnectSlot(id, slot)
     }
     sessions.refresh()
-    logger.info("{} gave {}'s slot {} to {}{}", actor, id, slot, if (request.open) "everyone" else after.joinToString().ifEmpty { "nobody" },
-      if (lost) "; its password is new" else "")
+    logger.info("{} gave {}'s slot {} to {}{}{}", actor, id, slot, if (request.open) "everyone" else after.joinToString().ifEmpty { "nobody" },
+      if (hosted != wasHosted) (if (hosted) ", hosted" else ", no longer hosted") else "", if (lost) "; its password is new" else "")
   }
 
   /**
