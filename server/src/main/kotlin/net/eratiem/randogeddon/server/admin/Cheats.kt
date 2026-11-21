@@ -51,9 +51,10 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
     CheatAction.COLLECT -> "/collect $slot"
     CheatAction.HINT -> "/hint $target $what"
     CheatAction.HINT_LOCATION -> "/hint_location $target $what"
-    // [slot]: the world the key's location is in; the World Locks slot that gets the key
+    // [slot]: the world the key's location is in (Unlock without the placements is a /send, see runLock)
     CheatAction.KEY_LOCATION -> "/send_location $target $what"
-    CheatAction.UNLOCK -> "/send $target $what"
+    CheatAction.KEY_HINT -> "/hint_location $target $what"
+    CheatAction.UNLOCK -> "/send_location $target $what"
   }
 }
 
@@ -95,7 +96,8 @@ internal fun cheatText(admin: String, action: CheatAction, slot: String, value: 
   CheatAction.HINT -> "hinted $value for $slot"
   CheatAction.HINT_LOCATION -> "hinted what is at $value in $slot"
   CheatAction.KEY_LOCATION -> "checked the key to $slot at $value"
-  CheatAction.UNLOCK -> "unlocked $slot"
+  CheatAction.KEY_HINT -> "hinted where the key to $slot is: $value"
+  CheatAction.UNLOCK -> if (value != null) "unlocked $slot (its key at $value)" else "unlocked $slot"
 }
 
 /**
@@ -151,20 +153,21 @@ class Cheats(
   }
 
   /**
-   * A lock cheat for the locked slot [slot]: its key's location checked, or the key given to the World Locks slot.
-   * Logged and shown under the locked slot, with where the key was.
+   * A lock cheat for the locked slot [slot]: its key's location checked (*Unlock*: the key comes from that world, the
+   * lock says the server did it; without the placements the key given to the World Locks slot), or hinted. Logged and
+   * shown under the locked slot, with where the key was.
    */
   private suspend fun runLock(id: String, session: LiveSession, action: CheatAction, slot: String, admin: String, byRole: String) {
     val tracker = session.tracker
     val lock = tracker.read { lockedSlots() }.firstOrNull { it.first == slot }
       ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_SLOT, "slot" to slot)
     val (_, key, lockSlot) = lock
-    val (command, shown) = if (action == CheatAction.KEY_LOCATION) {
-      val at = keyPlacements(session, listOf(lock))[slot]
-        ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_A_LOCATION, "value" to key, "slot" to slot)
-      cheatCommand(action, at.finder, at.location) to "${at.location} (in ${at.finder})"
-    } else {
-      cheatCommand(action, lockSlot, key) to null
+    val at = keyPlacements(session, listOf(lock))[slot]
+    val (command, shown) = when {
+      at != null -> cheatCommand(action, at.finder, at.location) to "${at.location} (in ${at.finder})"
+      // Unlock without the placements: the key straight to the World Locks slot
+      action == CheatAction.UNLOCK -> "/send ${consoleWord(lockSlot)} ${consoleWord(key)}" to null
+      else -> throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_A_LOCATION, "value" to key, "slot" to slot)
     }
     if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
     logger.info("{} cheated in {} for {}: {}", admin, id, slot, command)

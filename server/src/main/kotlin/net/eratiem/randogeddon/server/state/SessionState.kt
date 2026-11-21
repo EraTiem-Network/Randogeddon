@@ -152,6 +152,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
   /** Key item name -> slot name of the world it unlocks, from the World Locks slot data. */
   private val locks = mutableMapOf<String, String>()
+  /** The locked slots whose key's location the server checked (an *Unlock* cheat), by name: their locks say so. */
+  private val unlockedByServer = mutableSetOf<String>()
 
   private fun reset(seed: String?) {
     seedName = seed
@@ -533,6 +535,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       )
     )
     while (events.size > MAX_EVENTS) events.removeFirst()
+    if (slot != null && (action == CheatAction.UNLOCK || action == CheatAction.KEY_LOCATION)) unlockedByServer += slot
     touch()
   }
 
@@ -609,7 +612,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       val received = players[lockSlot]?.items?.firstOrNull { itemName(it.item, lockSlot) == key }
       if (received != null) {
         val found = events.lastOrNull { it.type == EventType.UNLOCK && it.item == received.item && it.receiver == lockSlot }
-        return LockInfo(key, unlocked = true, foundBy = playerName(received.player), foundAt = found?.ts)
+        return LockInfo(key, unlocked = true, foundBy = playerName(received.player), foundAt = found?.ts, byServer = name in unlockedByServer)
       }
     }
     val hint = hints.values.firstOrNull { it.receivingPlayer in lockSlots() && itemName(it.item, it.receivingPlayer) == key }

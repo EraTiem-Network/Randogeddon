@@ -27,9 +27,10 @@ class CheatsTest {
     assertEquals("/collect Bob-Yacht", cheatCommand(CheatAction.COLLECT, "Bob-Yacht", null))
     assertEquals("/hint \"Alice-HK\" \"Mantis Claw\"", cheatCommand(CheatAction.HINT, "Alice-HK", "Mantis Claw"))
     assertEquals("/hint_location \"Alice-HK\" \"King's Pass\"", cheatCommand(CheatAction.HINT_LOCATION, "Alice-HK", "King's Pass"))
-    // A locked slot: its key's location in the world it is in, or the key to the World Locks slot
+    // A locked slot: its key's location in the world it is in, checked (Unlock) or hinted
+    assertEquals("/send_location \"Bob\" \"Chest B\"", cheatCommand(CheatAction.UNLOCK, "Bob", "Chest B"))
+    assertEquals("/hint_location \"Bob\" \"Chest B\"", cheatCommand(CheatAction.KEY_HINT, "Bob", "Chest B"))
     assertEquals("/send_location \"Bob\" \"Chest B\"", cheatCommand(CheatAction.KEY_LOCATION, "Bob", "Chest B"))
-    assertEquals("/send \"Locks\" \"World Key 1\"", cheatCommand(CheatAction.UNLOCK, "Locks", "World Key 1"))
   }
 
   @Test
@@ -80,6 +81,9 @@ class CheatsTest {
     assertEquals("Ada gave Mantis Claw to Alice-HK", cheatText("Ada", CheatAction.ITEM, "Alice-HK", "Mantis Claw"))
     assertEquals("Ada released Bob-Yacht", cheatText("Ada", CheatAction.RELEASE, "Bob-Yacht", null))
     assertEquals("Ada unlocked Alice-Locked", cheatText("Ada", CheatAction.UNLOCK, "Alice-Locked", null))
+    assertEquals("Ada unlocked Alice-Locked (its key at Chest B (in Bob))", cheatText("Ada", CheatAction.UNLOCK, "Alice-Locked", "Chest B (in Bob)"))
+    assertEquals("Ada hinted where the key to Alice-Locked is: Chest B (in Bob)",
+      cheatText("Ada", CheatAction.KEY_HINT, "Alice-Locked", "Chest B (in Bob)"))
     assertEquals("Ada checked the key to Alice-Locked at Chest B (in Bob)",
       cheatText("Ada", CheatAction.KEY_LOCATION, "Alice-Locked", "Chest B (in Bob)"))
     // Anyone but an Administrator with their role

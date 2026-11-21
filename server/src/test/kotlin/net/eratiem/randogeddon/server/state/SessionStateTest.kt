@@ -461,6 +461,8 @@ class SessionStateTest {
     assertTrue(lock.unlocked)
     assertEquals(emptyList(), s.lockedSlots())
     assertEquals("Bob" to 70L, lock.foundBy to lock.foundAt)
+    // A player found it: not the server
+    assertEquals(false, lock.byServer)
     // Open now, never connected: not started
     assertEquals(PlayerStatus.NOT_STARTED, summary.players[1].status)
     assertEquals(0, summary.totals.locked)
