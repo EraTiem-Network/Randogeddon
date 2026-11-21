@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -88,7 +87,7 @@ fun PersonDialog(
   val openHints = s.hints.filter { !it.found && it.receiverName in worldNames }
   val activity = s.events.asReversed().filter { e ->
     listOfNotNull(e.playerName, e.senderName, e.receiverName, e.finderName).any { it in worldNames }
-  }.take(40)
+  }
 
   // A world opens inside this dialog (with a back button): two dialogs on top of each other don't work on the web
   var openWorld by remember(name) { mutableStateOf<Int?>(null) }
@@ -149,7 +148,7 @@ fun PersonDialog(
               Spacer(Modifier.height(10.dp))
               DialogSection(t.dialogs.openHints(person.name, openHints.size))
               if (openHints.isEmpty()) Txt(t.dialogs.none, size = 13.sp, color = p.muted)
-              openHints.forEach { h ->
+              Paged(openHints, 20) { h ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
                   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
@@ -164,7 +163,7 @@ fun PersonDialog(
           val right: @Composable ColumnScope.() -> Unit = {
             DialogSection(t.dialogs.connections(sessions.size))
             if (sessions.isEmpty()) Txt(t.dialogs.noClientYet, size = 13.sp, color = p.muted)
-            sessions.take(20).forEach { (world, c) ->
+            Paged(sessions, 20) { (world, c) ->
               Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Dot(if (c.end == null) p.ok else p.muted, 7.dp)
@@ -182,9 +181,7 @@ fun PersonDialog(
             Spacer(Modifier.height(10.dp))
             DialogSection(t.dialogs.recentActivity)
             if (activity.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
-            Column(Modifier.heightIn(max = 520.dp).scrolling()) {
-              activity.forEach { FeedRow(it) }
-            }
+            Paged(activity, 25) { FeedRow(it) }
           }
           TwoColumns(twoColumns, 18.dp, left, right)
         }

@@ -60,6 +60,8 @@ class Player(val slot: Int, val name: String, val game: String) {
   var trapLinks: Int = 0
   /** Its checks available now, as the session's logic last counted them; `null`: not known. */
   var available: Int? = null
+  /** Which of its locations those are (their IDs), as the logic counted them last. */
+  var availableLocations: Set<Long> = emptySet()
   /** Its received items and checks when the logic was last asked about it (asked again once they change). */
   var availableAsked: Pair<Int, Int>? = null
 

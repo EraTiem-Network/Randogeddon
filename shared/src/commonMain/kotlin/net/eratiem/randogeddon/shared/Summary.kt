@@ -340,6 +340,8 @@ data class PlayerDetail(
   val progressionChecked: Int = 0,
   val sent: Int? = null,
   val available: Int? = null,
+  /** Of its remaining locations, the ones its logic reaches now (the last known while it doesn't run). */
+  val availableLocations: List<String> = emptyList(),
   val deaths: Int = 0,
   val trapLinks: Int = 0,
   /** Connection log, oldest first. */

@@ -288,6 +288,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     asked.forEach { a ->
       val p = players[a.slot] ?: return@forEach
       p.available = answer.available[a.slot]
+      answer.locations[a.slot]?.let { p.availableLocations = it.toSet() }
       p.availableAsked = a.items.size to a.checked.size
     }
     touch()
@@ -756,6 +757,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       progressionChecked = checks?.checked ?: 0,
       sent = checks?.sent,
       available = p.available,
+      // Still remaining (a check since the last count is no longer available)
+      availableLocations = (p.availableLocations intersect p.missing.toSet()).map { locationName(it, slot) }.sorted(),
       deaths = p.deaths,
       trapLinks = p.trapLinks,
       sessions = p.sessions.toList(),
