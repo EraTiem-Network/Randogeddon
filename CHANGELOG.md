@@ -11,10 +11,6 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
 came up on the way.
 
-### 0.22.1.1: To the new session after its generation
-- Once a new session is generated, the panel goes to its page. It went there before its list had the session, took
-  it for gone, and fell back to another running session or to none, *New session* highlighted.
-
 ### 0.22.1: Icons for the connection, the session ID as typed
 - *Your connection*: copy, show and hide are icons (two sheets; an eye, struck through while shown), their words as
   tips; the server's copy icon opens its menu. The bridge's fold arrow points left to collapse and right to expand.
@@ -23,6 +19,8 @@ came up on the way.
   hyphen last are still said under it.
 - Creating a session: *Plando* (was *YAMLs may plan*) in a row of its own, its ⓘ saying shortly what a ticked kind
   does; *No progression balancing* and *Race mode*, which have nothing to do with it, below as *Generation*.
+- Once a new session is generated, the panel goes to its page. It went there before its list had the session, took
+  it for gone, and fell back to another running session or to none, *New session* highlighted.
 
 ## Phase 21: Floating Panels – Slot & Player
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
