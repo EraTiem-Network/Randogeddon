@@ -43,13 +43,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -316,10 +316,15 @@ internal val NARROW = 600.dp
  * passwords, file names, a program's output. [color]: the text's colour if not given.
  */
 @Composable
-fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, size: TextUnit = 12.5.sp) {
+fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, size: TextUnit = 12.5.sp, oneLine: Boolean = false) {
   val shown = color.takeOrElse { LocalPalette.current.text }
   SelectionContainer(modifier) {
-    BasicText(text, style = TextStyle(color = shown, fontSize = size, fontFamily = FontFamily.Monospace))
+    // [oneLine]: cut in the middle where it doesn't fit, so its start and its end (a port, a file's ending) still show
+    if (oneLine) BasicText(
+      text, style = TextStyle(color = shown, fontSize = size, fontFamily = FontFamily.Monospace),
+      maxLines = 1, softWrap = false, overflow = TextOverflow.MiddleEllipsis,
+    )
+    else BasicText(text, style = TextStyle(color = shown, fontSize = size, fontFamily = FontFamily.Monospace))
   }
 }
 

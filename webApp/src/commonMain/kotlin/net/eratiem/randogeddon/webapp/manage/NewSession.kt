@@ -144,7 +144,9 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   // The first suggestion stays for this form: the panel loads its overview again every 15 s, each time with a new
   // one, and the ID shown (and generated with) mustn't change under the user's hands
   val suggested = remember(round, overview != null) { overview?.suggestedId.orEmpty() }
-  val chosen = id ?: suggested
+  // As typed (a hyphen at its end while the next word comes), and the ID it stands for
+  val shown = id ?: suggested
+  val chosen = SessionIds.trimEnd(shown)
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
   // What the server says about the ID (a word nobody wants in one), asked a moment after the last key
   var idRefused by remember { mutableStateOf<String?>(null) }
@@ -186,7 +188,8 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
           InfoTip(t.tips.sessionId)
-          FilterField(chosen, { id = SessionIds.typed(it.trim()) }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+          // Only the start trimmed: a space typed at the end becomes its hyphen at once
+          FilterField(shown, { id = SessionIds.typed(it.trimStart()) }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
           idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
         }
       }

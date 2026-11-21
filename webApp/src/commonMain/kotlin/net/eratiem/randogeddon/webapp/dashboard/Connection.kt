@@ -284,7 +284,7 @@ private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
   val c = t.connection
   var shown by remember(made.key) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    ReadOnlyField(if (shown) made.key else "•".repeat(12), Modifier.weight(1f)) {
+    ReadOnlyField(if (shown) made.key else "•".repeat(12), Modifier.weight(1f), tip = made.key.takeIf { shown }) {
       ShowButton(shown) { shown = !shown }
       CopyButton { Platform.copy(made.key) }
     }
@@ -298,7 +298,7 @@ private fun PasswordField(slot: MySlot) {
   var shown by remember(slot.name) { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(LocalTexts.current.connection.password)
-    ReadOnlyField(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f)) {
+    ReadOnlyField(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f), tip = slot.password.takeIf { shown }) {
       ShowButton(shown) { shown = !shown }
       CopyButton { Platform.copy(slot.password) }
     }
@@ -311,7 +311,8 @@ private fun PasswordField(slot: MySlot) {
 private fun FileField(sessionId: String, file: SlotFile) {
   val t = LocalTexts.current
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Mono(file.name, Modifier.weight(1f).padding(end = 2.dp), size = 13.sp)
+    // One line, cut in the middle so its ending shows; the whole name on hover
+    Box(Modifier.weight(1f).padding(end = 2.dp)) { Tip(file.name) { Mono(file.name, size = 13.sp, oneLine = true) } }
     Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
     InfoTip(LocalTexts.current.connection.patchHowTo)
     SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
@@ -403,14 +404,17 @@ private fun ShowButton(shown: Boolean, onClick: () -> Unit) {
 
 /** A value shown like a text field that can't be changed, its buttons inside it at the right. */
 @Composable
-private fun ReadOnlyField(value: String, modifier: Modifier = Modifier, buttons: @Composable RowScope.() -> Unit) {
+private fun ReadOnlyField(value: String, modifier: Modifier = Modifier, tip: String? = value, buttons: @Composable RowScope.() -> Unit) {
   val p = LocalPalette.current
   Row(
     modifier.heightIn(min = 34.dp).clip(RoundedCornerShape(10.dp)).background(p.panelAlt).border(1.dp, p.border, RoundedCornerShape(10.dp))
       .padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    Mono(value, Modifier.weight(1f), size = 13.sp)
+    // One line, cut in the middle; the whole of it on hover
+    Box(Modifier.weight(1f)) {
+      if (tip != null) Tip(tip) { Mono(value, size = 13.sp, oneLine = true) } else Mono(value, size = 13.sp, oneLine = true)
+    }
     buttons()
   }
 }

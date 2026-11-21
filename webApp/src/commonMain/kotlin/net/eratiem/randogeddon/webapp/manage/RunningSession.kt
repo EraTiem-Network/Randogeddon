@@ -1,7 +1,10 @@
 package net.eratiem.randogeddon.webapp.manage
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -260,7 +263,7 @@ private fun SessionSummary(
       if (session.keep) t.sessionAdmin.yesEnable else t.sessionAdmin.yesDisable, danger = false,
       onYes = { pending = null; onKeep(!session.keep) }, onCancel = { pending = null },
     )
-    else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    else -> ActionsLine(actions = {
       when {
         finishedAt != null -> if (reopenable(until)) Tip(t.tips.reopen) { Button(t.sessionAdmin.reopen) { onReopen() } }
         finishesAt != null -> {
@@ -275,7 +278,7 @@ private fun SessionSummary(
       if (finishedAt == null && onKeepRunning != null) {
         Check(t.sessionAdmin.keepRunning, session.keepRunning, t.sessionAdmin.keepRunningTip) { onKeepRunning(it) }
       }
-      Spacer(Modifier.weight(1f))
+    }, links = {
       if (finishedAt != null) {
         Tip(t.tips.keep) { SmallButton(if (session.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = "keep" }) }
       }
@@ -283,6 +286,31 @@ private fun SessionSummary(
       if (spoilerReady) {
         Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
       }
+    })
+  }
+}
+
+/**
+ * A session's line of [actions], its [links] (dashboard, spoiler log) on the right. Where that doesn't fit (a phone),
+ * the actions wrap as they need, and the links go on a line of their own below them.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ActionsLine(actions: @Composable () -> Unit, links: @Composable () -> Unit) {
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    if (maxWidth < 640.dp) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+      ) { actions() }
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+      ) { links() }
+    } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      actions()
+      Spacer(Modifier.weight(1f))
+      links()
     }
   }
 }

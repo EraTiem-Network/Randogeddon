@@ -33,6 +33,13 @@ and the locations' places come from, and what a marker shows are to come from th
       (0.22.1)
 - [x] Creating a session: its ID's field takes only what a subdomain allows, capitals as small letters (0.22.1)
 - [x] After its generation, the panel goes to the new session's page, not back to *New session* (0.22.1)
+- [x] *State and Control* on a phone: the actions wrap, the dashboard's and spoiler log's buttons below, nothing cut
+      off (0.22.2)
+- [x] The session ID's field: a space becomes `-` as it's typed, nothing before the first letter, a `-` at the end left
+      off the ID (0.22.2)
+- [x] *Your connection*: the server and the patch files' names on one line, cut in the middle, the whole on hover
+      (0.22.2)
+- [x] Randogeddon Bridge's page: the address copied the same ways as the server on the dashboard (0.22.2)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 
