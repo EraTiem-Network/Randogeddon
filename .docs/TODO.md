@@ -1066,6 +1066,7 @@ and the locations' places come from, and what a marker shows are to come from th
 
 - [ ] Maps with check markers for the slots
 - [ ] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21)
+- [ ] `.docs/` down to the essentials, shorter, and restructured where that helps (asked for on 2026-11-21)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 
