@@ -27,7 +27,6 @@ import net.eratiem.randogeddon.webapp.api.load
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
-import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
@@ -95,7 +94,7 @@ fun SpoilerRunSection(id: String, base: String) {
         }
         else -> Txt(t.spoilerWaiting, size = 12.5.sp, color = p.muted)
       }
-      if (log.isNotEmpty()) LogView(log, LocalTexts.current.panel.nothingYet, height = 260.dp)
+      if (log.isNotEmpty()) SectionLog("spoiler", t.spoilerSection, LogOrder.SPOILER, log)
     }
   }
 }

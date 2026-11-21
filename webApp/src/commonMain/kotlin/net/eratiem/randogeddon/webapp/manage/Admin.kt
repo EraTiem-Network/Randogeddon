@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,7 +50,6 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.StatusPill
-import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.Icon
@@ -220,15 +220,19 @@ private fun SelectedSession(
     id, overview, cache, administrator, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
-  PeopleSection(id)
-  SpoilerRunSection(id, "manage")
-  LogicSection(id, administrator)
-  MinecraftSection(id, administrator)
-  PatchFilesSection(id)
-  // Not before the spoiler log has its playthrough: the hints and cheats need it
-  if (overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false) CheatSection(id, server, cache)
-  ConsoleSection(onSend = { line -> run { repository.command(line) } })
-  LogSection(repository.log)
+  // Every section's log in one place, as tabs (each only for whoever may read it)
+  val logs = remember(id) { PanelLogs() }
+  CompositionLocalProvider(LocalPanelLogs provides logs) {
+    PeopleSection(id)
+    SpoilerRunSection(id, "manage")
+    LogicSection(id, administrator)
+    MinecraftSection(id, administrator)
+    PatchFilesSection(id)
+    // Not before the spoiler log has its playthrough: the hints and cheats need it
+    if (overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false) CheatSection(id, server, cache)
+    ConsoleSection(onSend = { line -> run { repository.command(line) } })
+    LogSection(repository.log, logs)
+  }
 }
 
 /** The session's game server, in its State and Control: how it runs, start, stop, restart. */
@@ -307,11 +311,13 @@ private fun ServerControls(
 
 /** The game server's output, newest on top, a page at a time and searchable; the gateway's own notes stand out. */
 @Composable
-private fun LogSection(log: List<LogLine>) {
+private fun LogSection(log: List<LogLine>, logs: PanelLogs) {
   val p = LocalPalette.current
   val t = LocalTexts.current
+  // The game server's is always there, and first
+  SectionLog("game-server", t.panel.gameServer, LogOrder.GAME_SERVER, log, color = { line -> if (line.text.startsWith("[gateway]")) p.accent else null })
   Section(t.panel.log, subtitle = t.panel.logSubtitle) {
-    LogView(log, t.panel.nothingYet, color = { line -> if (line.text.startsWith("[gateway]")) p.accent else null })
+    LogTabs(logs)
   }
 }
 
