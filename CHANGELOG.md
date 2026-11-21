@@ -11,6 +11,12 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.5: The whole window
+- The page grows with the window instead of stopping at 1,400 dp: it takes the width less 2 % at each side. On a
+  1440p screen five players' cards sit side by side, on 2160p six; the Overview's tiles fill their row, and the feed
+  grows to a quarter of the width (440 to 640 dp). Normal windows look as before.
+- Updating: nothing to do.
+
 ### 0.21.4: New icons
 - *Sent* has the arrow up out of an open box that *released* had; *released* is a broken chain, its links pulled
   apart; the available checks are a signpost. Picked by the user from candidates.

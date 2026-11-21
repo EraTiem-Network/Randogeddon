@@ -583,7 +583,9 @@ which the gateway writes before it starts the session's game server.
 - **Hints:** every hint in the room, filterable by player, slot and state (not found, found, priority,
   avoid, no priority, unmarked).
 - **Layout:** the live feed can be hidden (list button in the header) and placed right, left or below; each viewer's
-  choice is remembered in their browser. On narrow screens it always sits below the players.
+  choice is remembered in their browser. On narrow screens it always sits below the players. The page takes the
+  window's width less 2 % at each side, so a 1440p or 2160p screen is used: the feed grows to a quarter of it (440 to
+  640 dp), and the tiles and the players' cards fill as many columns as fit (a card at least 330 dp).
 - **Scroll bars:** the page, the dialogs and the lists show a thin bar on the right edge while there is more than fits
   (the page is drawn on a canvas, so the browser has none of its own); the mouse drags it, a click beside it jumps
   there, touch scrolls the content.

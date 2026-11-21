@@ -24,13 +24,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.webapp.app.Platform
 
-/** The widest the page's column gets. */
-private val PAGE_WIDTH = 1400.dp
+/** The page's margin at each side: 2 % of the window, at least this. */
+private val MIN_MARGIN = 16.dp
 
 /**
  * The frame of the dashboard and of a share link's page: the page colour with the brand's tint on top, one scrolling
- * column of at most [PAGE_WIDTH] whose text can be selected (and copied) anywhere, its parts [spacing] apart.
- * [content] gets the page's width ([maxWidth]) and the column's ([contentWidth]).
+ * column as wide as the window less its margins (2 % each side; a 1440p or 2160p screen is used, not left empty at the
+ * sides), whose text can be selected (and copied) anywhere, its parts [spacing] apart. [content] gets the page's width
+ * ([maxWidth]) and the column's ([contentWidth]).
  */
 @Composable
 fun PageFrame(spacing: Dp, content: @Composable ColumnScope.(maxWidth: Dp, contentWidth: Dp) -> Unit) {
@@ -42,10 +43,11 @@ fun PageFrame(spacing: Dp, content: @Composable ColumnScope.(maxWidth: Dp, conte
     )
   ) {
     val pageWidth = maxWidth
-    val contentWidth = minOf(maxWidth, PAGE_WIDTH + 32.dp) - 32.dp
-    Column(Modifier.fillMaxSize().scrolling().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    val margin = maxOf(MIN_MARGIN, maxWidth * 0.02f)
+    val contentWidth = (maxWidth - margin * 2).coerceAtLeast(0.dp)
+    Column(Modifier.fillMaxSize().scrolling().padding(horizontal = margin, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
       SelectionContainer {
-        Column(Modifier.widthIn(max = PAGE_WIDTH).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing)) {
           content(pageWidth, contentWidth)
         }
       }
