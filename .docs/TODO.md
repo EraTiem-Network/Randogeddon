@@ -24,7 +24,7 @@ phases (1 to 21) are in [DONE.md](DONE.md).
 *Asked for on 2026-11-21: maps of the slots' games with markers for their checks. Which games, where the maps
 and the locations' places come from, and what a marker shows are to come from the user.*
 
-- [ ] Maps with check markers for the slots
+- [x] Maps with check markers for the slots (0.22.4)
     - Decided with the user: generated for every game, no game images (maybe later), in the slot panel's *Map* tab:
       its regions from the logic, a location's place by its region, the ones without a useful region grouped by
       their names; checked, open and available, the name on hover, filters by state. Started with Luigi's
@@ -47,6 +47,7 @@ and the locations' places come from, and what a marker shows are to come from th
 - [x] The Overview's *Slots* tile counts locked slots as not started (0.22.3)
 - [x] A slot's panel in tabs: *Checks* (available, remaining), *Map*, *Transported items* (sent, received),
       *Connections* (0.22.3; the map 0.22.4)
+- [ ] Maps: the game's real map images, uploaded by an Administrator (maybe later, the user)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 
