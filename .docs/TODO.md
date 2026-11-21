@@ -1002,8 +1002,13 @@ through Randogeddon Bridge only.
 open, move and close, and what they show is to come from the user.*
 
 - [ ] Floating panels for a slot and for a player
-- [ ] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
+- [x] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
       side as fit), and sortable in some way (asked for on 2026-11-21)
+    - Done (0.21.6): as many columns as fit (at least 330 dp each), each card into the shortest one so far, so they
+      fill the space without rows' gaps; the columns don't widen for few cards; *Sort*'s order reads left to right
+- [x] The hosted Minecraft servers in an image of their own (asked for on 2026-11-21, done in 0.21.6): Java 17, Forge
+      with the mod and `minecraft_host.py` on Python's standard library, nothing of Archipelago; the gateway's image
+      without Java and Forge
 - [x] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
       2026-11-21)
     - Done (0.21.5): no fixed width any more (1,400 dp before): the page takes the window less 2 % at each side; the

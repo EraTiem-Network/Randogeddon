@@ -11,6 +11,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.6: The players' panels fill the space
+- The players' cards lie in as many columns as fit, each card into the column that is shortest so far: no gaps under
+  a short card any more, and a few cards stay as narrow as a column instead of being stretched. *Sort*'s order reads
+  left to right.
+- The hosted Minecraft servers have an image of their own, `minecraft` (Java 17, Forge with the mod,
+  `minecraft_host.py`), instead of the gateway's: the gateway no longer carries Java and Forge, and the servers, which
+  run third-party mod code, nothing of Archipelago. `scripts/deploy.sh` builds and pushes it, tagged like the tracker.
+- Updating: nothing to do (the deploy sets `MINECRAFT_IMAGE`). A rollback to a version before 0.21.6 finds no
+  `minecraft` image under that tag: tag 0.21.6's for it on the server first (`.docs/OPERATIONS.md`).
+
 ### 0.21.5: The whole window
 - The page grows with the window instead of stopping at 1,400 dp: it takes the width less 2 % at each side. On a
   1440p screen five players' cards sit side by side, on 2160p six; the Overview's tiles fill their row, and the feed
