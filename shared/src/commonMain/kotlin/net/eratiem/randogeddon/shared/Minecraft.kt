@@ -3,6 +3,9 @@ package net.eratiem.randogeddon.shared
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/** The game whose hosted slots can have their Minecraft server run by Randogeddon. */
+const val MINECRAFT_DIG = "Minecraft Dig"
+
 /** A hosted Minecraft server (a Minecraft Dig slot's) as the gateway runs it. */
 @Serializable
 enum class MinecraftStatus {
@@ -15,9 +18,9 @@ enum class MinecraftStatus {
 }
 
 /**
- * Session `{id}`'s Minecraft Dig slot [slot] and its server: [status] since [since] (epoch milliseconds), the Minecraft
- * players on it now, whether it is connected to Archipelago. [problem]: why it can't run (Mojang's EULA not accepted,
- * no room for another server).
+ * Session `{id}`'s hosted Minecraft Dig slot [slot] and its server: [status] since [since] (epoch milliseconds), the
+ * Minecraft players on it now. [problem]: why it can't run (Mojang's EULA not accepted, no room for another server).
+ * [direct]: Randogeddon runs its server (reached through the bridge's tunnel); else its Session-Managers run their own.
  */
 @Serializable
 data class MinecraftServerView(
@@ -26,7 +29,12 @@ data class MinecraftServerView(
   val since: Long? = null,
   val players: List<String> = emptyList(),
   val problem: String? = null,
+  val direct: Boolean = false,
 )
+
+/** `POST /api/sessions/{id}/manage/minecraft/{slot}/direct`: Randogeddon runs the hosted slot's server itself, or not. */
+@Serializable
+data class MinecraftDirectRequest(val direct: Boolean)
 
 /**
  * `GET /internal/sessions/{id}/minecraft`: its Minecraft Dig slots' servers (none: it has no such slot). [hosting]:

@@ -99,6 +99,11 @@ data class WorldPlan(
   val random: Boolean = false,
   /** A hosted slot: the game runs as a server of its own, which its players join with their games; nobody plays it. */
   val hosted: Boolean = false,
+  /**
+   * A hosted Minecraft Dig slot whose server Randogeddon runs itself, reached through Randogeddon Bridge's tunnel
+   * (Administrators only); else its Session-Managers run their own.
+   */
+  val direct: Boolean = false,
 )
 
 @Serializable

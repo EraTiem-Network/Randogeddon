@@ -20,6 +20,11 @@ data class MySlot(
   val hosted: Boolean = false,
   /** Still locked: its key isn't found yet, so no one connects it (no password until then). */
   val locked: Boolean = false,
+  /**
+   * A hosted Minecraft Dig slot whose server Randogeddon runs: the key for Randogeddon Bridge's tunnel to it, for its
+   * players and Session-Managers alike (it joins its Minecraft server, never Archipelago). Empty: none.
+   */
+  val tunnel: String = "",
 )
 
 /**
