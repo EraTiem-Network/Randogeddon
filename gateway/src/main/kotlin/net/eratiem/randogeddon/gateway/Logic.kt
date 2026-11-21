@@ -1,5 +1,15 @@
 package net.eratiem.randogeddon.gateway
 
+import java.io.IOException
+import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import kotlin.io.path.absolutePathString
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.isRegularFile
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,11 +21,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.AvailableRequest
@@ -23,16 +36,6 @@ import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.LogicProgress
 import net.eratiem.randogeddon.shared.LogicStatus
 import org.slf4j.LoggerFactory
-import java.io.IOException
-import java.nio.file.Path
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import kotlin.io.path.absolutePathString
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.isRegularFile
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Logic")
 
@@ -168,8 +171,15 @@ class Logic(
       }.isSuccess
       if (!written) return@withLock null
       val answer = withTimeoutOrNull(ANSWER_TIME) { run.answers.receiveCatching().getOrNull() } ?: return@withLock null
-      val counts = answer["available"]?.jsonObject ?: return@withLock null
-      AvailableAnswer(counts.entries.associate { (slot, count) -> slot.toInt() to count.jsonPrimitive.intOrNull })
+      val answers = answer["available"]?.jsonObject ?: return@withLock null
+      // Each slot's reachable locations (a number from a logic before 0.21.8: only how many)
+      val locations = answers.entries.mapNotNull { (slot, found) ->
+        (found as? JsonArray)?.let { list -> slot.toInt() to list.mapNotNull { it.jsonPrimitive.longOrNull } }
+      }.toMap()
+      AvailableAnswer(
+        answers.entries.associate { (slot, found) -> slot.toInt() to ((found as? JsonArray)?.size ?: (found as? JsonPrimitive)?.intOrNull) },
+        locations,
+      )
     }
   }
 
