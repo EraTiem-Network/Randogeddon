@@ -107,8 +107,9 @@ class TrackerService(
 
   private suspend fun update(block: SessionState.() -> Unit) = mutex.withLock { state.block() }
 
-  /** The session logic's answer about the slots in [asked] (see [SessionState.onAvailable]). */
-  suspend fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer) = update { onAvailable(asked, answer) }
+  /** The session logic's answer about the slots in [asked] and the maps of [maps] (see [SessionState.onAvailable]). */
+  suspend fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer, maps: List<Int> = emptyList()) =
+    update { onAvailable(asked, answer, maps) }
 
   /** Its logic was built again: every slot is asked anew. */
   suspend fun forgetAvailableAsks() = update { forgetAvailableAsks() }

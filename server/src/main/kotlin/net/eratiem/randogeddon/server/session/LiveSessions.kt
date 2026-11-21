@@ -244,9 +244,11 @@ class LiveSession(
       logicSince = logic.since
     }
     val asks = tracker.read { availableAsks() }
-    if (asks.isEmpty()) return
-    val answer = gameServer.available(id, AvailableRequest(asks)) ?: return
-    tracker.onAvailable(asks, answer)
+    // The slots' maps, once per build
+    val maps = tracker.read { mapsWanted() }
+    if (asks.isEmpty() && maps.isEmpty()) return
+    val answer = gameServer.available(id, AvailableRequest(asks, maps)) ?: return
+    tracker.onAvailable(asks, answer, maps)
   }
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
