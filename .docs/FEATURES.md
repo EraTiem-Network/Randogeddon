@@ -51,7 +51,8 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   - Every slot is played by someone, hosted or open to all.
 - **Locks:** per slot, *Random* (a number start open) or *Mixed* (per slot open, locked or chance); at least one slot
   starts open. See *Locked slots*.
-- **Options:** hints and release mode; plando modules; *No progression balancing*; *Race mode* (no spoiler log).
+- **Options:** hints and release mode; *Plando* (which kinds of a YAML's hand-made plans are used; the rest ignored);
+  *Generation*: *No progression balancing*, *Race mode* (no spoiler log).
 - **A seed generated elsewhere** (Administrators): the Launcher's `AP_<seed>.zip`, up to 64 MB. Checked before use
   (only a seed's files, one `.archipelago`, at most 1,000 files and 512 MB unpacked; its multidata read with
   Archipelago's restricted loader, no code runs); rewritten from what was read. No locks, no generation; its files

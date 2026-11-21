@@ -29,6 +29,9 @@ and the locations' places come from, and what a marker shows are to come from th
 - [x] `.docs/` down to the essentials, shorter, and restructured where that helps (asked for on 2026-11-21)
     - The finished phases moved unchanged into `DONE.md`; the rest rewritten as compact references (from about
       2,500 lines to 530); `MEASUREMENTS.md` only the latest numbers
+- [x] *Your connection*: copy, show and hide as icons; the bridge's fold arrow left to collapse, right to expand
+      (0.22.1)
+- [x] Creating a session: its ID's field takes only what a subdomain allows, capitals as small letters (0.22.1)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 
