@@ -35,6 +35,7 @@ import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.LogicProgress
 import net.eratiem.randogeddon.shared.LogicStatus
+import net.eratiem.randogeddon.shared.SlotMap
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Logic")
@@ -176,9 +177,14 @@ class Logic(
       val locations = answers.entries.mapNotNull { (slot, found) ->
         (found as? JsonArray)?.let { list -> slot.toInt() to list.mapNotNull { it.jsonPrimitive.longOrNull } }
       }.toMap()
+      // The maps asked for (none from a logic before 0.22.4)
+      val maps = answer["maps"]?.jsonObject?.entries?.mapNotNull { (slot, map) ->
+        runCatching { slot.toInt() to ApiJson.decodeFromJsonElement(SlotMap.serializer(), map) }.getOrNull()
+      }?.toMap().orEmpty()
       AvailableAnswer(
         answers.entries.associate { (slot, found) -> slot.toInt() to ((found as? JsonArray)?.size ?: (found as? JsonPrimitive)?.intOrNull) },
         locations,
+        maps,
       )
     }
   }

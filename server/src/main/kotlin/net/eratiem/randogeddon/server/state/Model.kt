@@ -4,9 +4,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import net.eratiem.randogeddon.shared.ConnectionSession
 import net.eratiem.randogeddon.server.util.int
 import net.eratiem.randogeddon.server.util.long
+import net.eratiem.randogeddon.shared.ConnectionSession
+import net.eratiem.randogeddon.shared.SlotMap
 
 /** `NetUtils.ClientStatus` */
 object ClientStatus {
@@ -64,6 +65,9 @@ class Player(val slot: Int, val name: String, val game: String) {
   var availableLocations: Set<Long> = emptySet()
   /** Its received items and checks when the logic was last asked about it (asked again once they change). */
   var availableAsked: Pair<Int, Int>? = null
+  /** Its map, as the session's logic gave it; [mapAsked]: asked for since the logic was built (once, answer or not). */
+  var map: SlotMap? = null
+  var mapAsked: Boolean = false
 
   val openSession: ConnectionSession? get() = sessions.lastOrNull()?.takeIf { it.end == null }
 
