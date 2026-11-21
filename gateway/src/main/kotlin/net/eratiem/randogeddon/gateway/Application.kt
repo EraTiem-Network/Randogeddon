@@ -299,9 +299,10 @@ fun main() {
           // The gateway listens before a player is in, so the tracker hears of this one too
           events.awaitListening(session.id)
           // A player keeps it awake; a hosted slot's connection doesn't
-          serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections) { slot ->
-            if (slot in rulesOf(session).hosted) null else session.joined()
-          }
+          serve(
+            http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections,
+            joined = { slot -> if (slot in rulesOf(session).hosted) null else session.joined() }, clients = session.clients,
+          )
         }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network

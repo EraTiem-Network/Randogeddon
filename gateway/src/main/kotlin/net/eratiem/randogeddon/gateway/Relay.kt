@@ -48,6 +48,7 @@ suspend fun DefaultWebSocketServerSession.serve(
   locked: suspend () -> Set<String>,
   connections: ConnectionLimits,
   joined: suspend (slot: String) -> (() -> Unit)? = { null },
+  clients: SlotClients? = null,
 ) {
   val address = call.request.origin.remoteHost
   val ticket = connections.enter()
@@ -57,7 +58,7 @@ suspend fun DefaultWebSocketServerSession.serve(
     return
   }
   try {
-    relay(http, upstreamUrl, passwords, locked, ticket, connections.limits, joined)
+    relay(http, upstreamUrl, passwords, locked, ticket, connections.limits, joined, clients)
   } finally {
     ticket.leave()
   }
@@ -76,6 +77,7 @@ private suspend fun DefaultWebSocketServerSession.relay(
   ticket: ConnectionLimits.Ticket,
   limits: Limits,
   joined: suspend (slot: String) -> (() -> Unit)?,
+  clients: SlotClients?,
 ) {
   val client = this
   val address = call.request.origin.remoteHost
@@ -109,7 +111,10 @@ private suspend fun DefaultWebSocketServerSession.relay(
                 is Verdict.Join -> {
                   ticket.joined()
                   leave?.invoke()
-                  leave = runCatching { joined(verdict.slot) }.getOrNull()
+                  val left = runCatching { joined(verdict.slot) }.getOrNull()
+                  // Known as the slot's, so taking someone off it can close their connection
+                  clients?.add(verdict.slot, client)
+                  leave = { left?.invoke(); clients?.remove(verdict.slot, client) }
                   frame
                 }
                 is Verdict.Refuse -> {
@@ -151,6 +156,26 @@ private suspend fun DefaultWebSocketServerSession.relay(
     client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Game server not reachable"))
   } finally {
     leave?.invoke()
+  }
+}
+
+/** A session's game clients in a slot, by slot: closed together when someone is taken off the slot. */
+class SlotClients {
+  private val bySlot = java.util.concurrent.ConcurrentHashMap<String, MutableSet<DefaultWebSocketSession>>()
+
+  fun add(slot: String, client: DefaultWebSocketSession) {
+    bySlot.computeIfAbsent(slot) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(client)
+  }
+
+  fun remove(slot: String, client: DefaultWebSocketSession) {
+    bySlot[slot]?.remove(client)
+  }
+
+  /** Closes every connection in [slot] ([reason] to the client); how many there were. */
+  suspend fun close(slot: String, reason: String): Int {
+    val now = bySlot.remove(slot).orEmpty().toList()
+    now.forEach { runCatching { it.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, reason)) } }
+    return now.size
   }
 }
 
