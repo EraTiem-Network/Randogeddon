@@ -203,6 +203,9 @@ data class PlayerSummary(
    * counts them, see [Summary.logic]); `null`: not known.
    */
   val available: Int? = null,
+  /** The deaths it passed on by DeathLink, and the traps by TrapLink (what it sent, not what it got). */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
   val hintPoints: Int? = null,
   /** Points one hint costs in this world (0 = free); `hintPoints / hintCost` hints can be bought now. */
   val hintCost: Int? = null,
@@ -329,12 +332,14 @@ data class PlayerDetail(
   val missing: List<String>,
   val checked: Int,
   val total: Int,
-  /** As [PlayerSummary.progressionReceived], the progression checks, sent and available. */
+  /** As [PlayerSummary.progressionReceived], the progression checks, sent, available, deaths and traps. */
   val progressionReceived: Int = 0,
   val progressionChecks: Int? = null,
   val progressionChecked: Int = 0,
   val sent: Int? = null,
   val available: Int? = null,
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,
