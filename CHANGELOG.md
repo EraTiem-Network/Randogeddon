@@ -11,6 +11,18 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.3: A running session's slots, a shorter README
+- The Management panel's *Slots* (Session-Managers and Administrators): who plays each slot is changed while the
+  session runs (players added or taken off, *Open to all* switched), and someone new is invited by e-mail right
+  there. A hosted slot stays hosted.
+- Whoever loses a slot loses its connection: it gets a new password (asked once more), the gateway reads it at once
+  and closes the slot's connections, and its players connect again with the new one (the dashboard and the bridge
+  have it). A directly hosted Minecraft server connects again by itself. A hosted slot whose server runs elsewhere
+  keeps its password: its players never had it.
+- The README is down to the essential points (137 lines); the details are in `.docs/FEATURES.md`,
+  `.docs/OPERATIONS.md` and `.docs/DEVELOPMENT.md`.
+- Updating: nothing to do.
+
 ### 0.21.2: Slots open to all, hosted slots for certain players
 - Creating a session, every slot has *Open to all*: every player of the session (everyone named for any of its slots)
   plays it, with its password, its files and the bridge; the dashboard shows it on a card of its own, *Everyone*.
