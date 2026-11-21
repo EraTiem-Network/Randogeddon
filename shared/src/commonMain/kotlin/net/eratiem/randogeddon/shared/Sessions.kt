@@ -111,6 +111,13 @@ data class WorldPlan(
   val open: Boolean = false,
 )
 
+/**
+ * `POST /api/sessions/{id}/manage/slots/{slot}`: who plays a running session's slot now ([userIds], account IDs), or
+ * every player of it ([open]). Its hosted mode stays.
+ */
+@Serializable
+data class SlotPlayersRequest(val userIds: List<String> = emptyList(), val open: Boolean = false)
+
 @Serializable
 data class CreateSessionRequest(
   /** The new session's ID (see [SessionIds]); it must be free. */

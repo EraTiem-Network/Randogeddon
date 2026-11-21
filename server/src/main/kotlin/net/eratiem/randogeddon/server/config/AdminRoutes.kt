@@ -37,6 +37,9 @@ import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.server.admin.SessionPeopleService
+import net.eratiem.randogeddon.shared.InviteRequest
+import net.eratiem.randogeddon.shared.SlotPlayersRequest
 import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AppSettings
@@ -179,6 +182,7 @@ fun Route.manageRoutes(
   spoilerRuns: SpoilerRuns,
   logicRuns: LogicRuns,
   minecraftRuns: MinecraftRuns,
+  people: SessionPeopleService,
 ) {
   get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
@@ -221,6 +225,22 @@ fun Route.manageRoutes(
     if (!call.loggedIn.user.administrator) return@get call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.ONLY_ADMINISTRATORS))
     val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
     gatewayCall { call.respond(logicRuns.log(id(), since)) }
+  }
+  // Who plays a slot now (its hosted mode stays); someone taken off it loses its connection (a new password)
+  post("/slots/{slot}") {
+    val slot = call.parameters["slot"].orEmpty()
+    val request = call.receive<SlotPlayersRequest>()
+    gatewayCall {
+      admin.setSlotPlayers(id(), slot, request, call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  // Someone without an account, invited to play in it (a slot of theirs follows): only an address no account has
+  post("/invite") {
+    accountCall {
+      val request = call.receive<InviteRequest>()
+      call.respond(people.inviteNew(request.email, request.suggestedName, call.loggedIn.user, call.language()))
+    }
   }
   // Its Minecraft Dig slots' servers: their state, started and stopped by hand; their logs only for Administrators
   get("/minecraft") { gatewayCall { call.respond(minecraftRuns.view(id())) } }

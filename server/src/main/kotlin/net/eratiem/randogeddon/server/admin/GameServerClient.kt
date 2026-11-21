@@ -191,6 +191,12 @@ class GameServerClient(private val config: TrackerConfig) {
     }
   }
 
+  /** Session [id]'s slot [slot] has a new password: the gateway reads it at once and closes the slot's connections. */
+  suspend fun disconnectSlot(id: String, slot: String) {
+    val response = request { http.post("${session(id)}/slots/${slot.encodeURLPathPart()}/disconnect") { auth() } }
+    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+  }
+
   /** Session [id]'s Minecraft Dig slots' hosted servers. */
   suspend fun minecraft(id: String): MinecraftServers = call { http.get("${session(id)}/minecraft") { auth() } }
     .let { ApiJson.decodeFromString(MinecraftServers.serializer(), it) }
