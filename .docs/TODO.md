@@ -901,7 +901,7 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       placements. *Unlock*: its key is given to the World Locks slot (`/send`), no location checked. Logged and in the
       live feed like every cheat, for whoever may cheat (Session-Managers, Administrators, support)
 
-## Phase 20: Hosted Minecraft Dig
+## Phase 20: Hosted Minecraft Dig (done)
 
 Decided on 2026-11-19: Randogeddon hosts the Minecraft server a *Minecraft Dig* slot needs, and its players reach it
 through Randogeddon Bridge only.
@@ -1018,3 +1018,11 @@ open, move and close, and what they show is to come from the user.*
     - Late invites, then
 - [ ] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
       Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
+- [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+
+## Phase 22: Maps (planned)
+
+*Asked for on 2026-11-21: maps of the slots' games with markers for their checks. Which games, where the maps
+and the locations' places come from, and what a marker shows are to come from the user.*
+
+- [ ] Maps with check markers for the slots
