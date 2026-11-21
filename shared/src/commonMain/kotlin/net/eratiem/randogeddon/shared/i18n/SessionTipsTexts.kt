@@ -92,9 +92,9 @@ internal object EnglishSessionTips : SessionTips {
   override val cheatHints = "Session-Managers may give free hints with the cheats (support always may). Every one is " +
     "logged and shown in the live feed. Giving items and checks works without this."
   override val plando =
-    "What the YAMLs may set by hand instead of leaving it to chance (Archipelago's plando): which bosses, " +
-      "the connections between areas, in-game texts, where items go. A YAML that needs one that isn't ticked " +
-      "is refused; a plan it merely has is left out. Archipelago's own default is everything but the items."
+    "Archipelago's plando: a YAML can fix parts of its game by hand instead of leaving them to chance. A " +
+      "ticked kind is used when a YAML sets it; an unticked one is ignored (a game that insists on it refuses " +
+      "the YAML). Archipelago's default: all but items."
   override val skipBalancing =
     "Archipelago leaves out its progression balancing: the step that moves progression items to earlier " +
       "spheres for players who would wait long. Generating a big multiworld gets faster; some may wait " +
@@ -176,10 +176,9 @@ internal object GermanSessionTips : SessionTips {
   override val cheatHints = "Session-Manager dürfen mit den Cheats Gratis-Hinweise geben (Support darf das immer). " +
     "Jeder wird protokolliert und im Live-Feed gezeigt. Items und Checks geben geht auch ohne das."
   override val plando =
-    "Was die YAMLs von Hand festlegen dürfen, statt es dem Zufall zu überlassen (Archipelagos Plando): welche " +
-      "Bosse, die Verbindungen zwischen Gebieten, Texte im Spiel, wo Items liegen. Eine YAML, die eines braucht, " +
-      "das nicht angehakt ist, wird abgelehnt; ein Plan, den sie nur enthält, bleibt weg. Archipelagos eigener " +
-      "Standard ist alles außer den Items."
+    "Archipelagos Plando: Eine YAML kann Teile ihres Spiels von Hand festlegen, statt sie dem Zufall zu " +
+      "überlassen. Eine angehakte Art wird verwendet, wenn eine YAML sie setzt; eine nicht angehakte wird " +
+      "ignoriert (ein Spiel, das darauf besteht, lehnt die YAML ab). Archipelagos Standard: alles außer Items."
   override val skipBalancing =
     "Archipelago lässt sein Progression-Balancing weg: den Schritt, der Progression-Items für Spieler, die lange " +
       "warten würden, in frühere Sphären schiebt. Eine große Multiworld generiert schneller; manche warten " +
