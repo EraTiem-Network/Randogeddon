@@ -149,12 +149,14 @@ fun CheatSection(
           if (!current.available) Txt(t.cheats.onlyWhileRunning, size = 12.5.sp, color = p.muted)
           // The lock cheats while a slot is locked
           val actions = CheatAction.entries.filter {
-            (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) && (it !in LOCK_CHEATS || current.locked.isNotEmpty())
+            (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) && (it !in LOCK_CHEATS || current.locked.isNotEmpty()) &&
+              // Unlock checks the key's location since 0.21.7: the old action isn't offered any more
+              it != CheatAction.KEY_LOCATION
           }
           val lock = current.locked.firstOrNull { it.slot == slot }.takeIf { action in LOCK_CHEATS }
           val ready = current.available && slot != null && !busy &&
             (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION)) &&
-            (action != CheatAction.KEY_LOCATION || lock?.keyLocation != null)
+            (action != CheatAction.KEY_HINT || lock?.keyLocation != null)
           val incoming = toSlot && action == CheatAction.LOCATION
           // A hint names one place: only locations not hinted yet, and items with a copy neither checked nor hinted
           val choices = when (action) {
@@ -239,7 +241,7 @@ fun CheatSection(
                   // A key's location as the log says it: "Location (in World)"
                   is Answer.Ok -> true to t.cheats.done(
                     action, world ?: slot.orEmpty(),
-                    if (action == CheatAction.KEY_LOCATION) lock?.let { "${it.keyLocation} (in ${it.keyWorld})" } else value,
+                    if (action in LOCK_CHEATS) lock?.keyLocation?.let { "$it (in ${lock.keyWorld})" } else value,
                   )
                   is Answer.Failed -> false to answer.message
                 }
@@ -271,8 +273,8 @@ fun CheatSection(
               }
             }
           }
-          // Where the picked locked slot's key lies, for checking that location
-          if (action == CheatAction.KEY_LOCATION && lock != null) {
+          // Where the picked locked slot's key lies, for checking or hinting that location
+          if (action in LOCK_CHEATS && lock != null) {
             val location = lock.keyLocation
             val world = lock.keyWorld
             Txt(

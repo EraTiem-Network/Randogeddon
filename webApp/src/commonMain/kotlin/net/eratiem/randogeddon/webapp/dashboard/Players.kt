@@ -241,7 +241,8 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
       AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
         Txt(
           when {
-            lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "")
+            lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "") +
+              (if (lock.byServer) " · ${t.dashboard.byServer}" else "")
             lock.hintedAt != null -> t.dashboard.keyHinted(
               lock.hintLocation?.let { t.dashboard.hintPlace(it, lock.hintSlot.orEmpty()) } ?: lock.hintedAt.orEmpty()
             )
