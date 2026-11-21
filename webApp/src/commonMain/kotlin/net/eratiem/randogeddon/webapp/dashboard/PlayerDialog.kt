@@ -54,8 +54,8 @@ import net.eratiem.randogeddon.webapp.ui.TwoColumns
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
-/** The slot panel's tabs: its checks (available, remaining), its items (sent, received), its connections. */
-internal enum class WorldTab(val key: String) { CHECKS("checks"), TRANSPORTED("transported"), CONNECTIONS("connections") }
+/** The slot panel's tabs: its checks (available, remaining), its map, its items (sent, received), its connections. */
+internal enum class WorldTab(val key: String) { CHECKS("checks"), MAP("map"), TRANSPORTED("transported"), CONNECTIONS("connections") }
 
 /** One world as a dialog; see [WorldDetail]. */
 @Composable
@@ -67,8 +67,8 @@ fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: (
 }
 
 /**
- * One world: its progress and time, then in tabs its checks (available now, the rest remaining), its items (sent,
- * received) and its connection log; reloaded when the session changes while it is shown. [back]: shown inside another view (a person), so the button goes back instead of closing.
+ * One world: its progress and time, then in tabs its checks (available now, the rest remaining), its map, its items
+ * (sent, received) and its connection log; reloaded when the session changes while it is shown. [back]: shown inside another view (a person), so the button goes back instead of closing.
  */
 @Composable
 fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean) {
@@ -84,7 +84,8 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
 
   val d = detail
   val percent = if (d == null || d.total == 0) 0.0 else 100.0 * d.checked / d.total
-  DialogCard(900.dp, header = {
+  // The map as wide as the window lets it be
+  DialogCard(if (chosen == WorldTab.MAP) 1600.dp else 900.dp, header = {
     if (d != null) GameChip(d.game, size = 40.dp)
     Column(Modifier.weight(1f)) {
       Txt(d?.name ?: "…", size = 17.sp, weight = FontWeight.SemiBold)
@@ -145,6 +146,11 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
             else if (shown.isEmpty()) Txt(t.dialogs.nothingYet, size = 13.sp, color = p.muted)
             Paged(shown, 50, reset = checksQuery) { location -> ListRow { Txt(location, size = 13.sp) } }
           })
+        }
+        WorldTab.MAP -> {
+          val map = d.map
+          if (map == null || map.regions.isEmpty()) Txt(t.dialogs.mapNone, size = 13.sp, color = p.muted)
+          else WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems)
         }
         WorldTab.TRANSPORTED -> {
           FilterField(itemsQuery, { itemsQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth())

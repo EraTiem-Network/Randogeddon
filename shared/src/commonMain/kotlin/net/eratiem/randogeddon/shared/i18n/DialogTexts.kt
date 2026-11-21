@@ -44,6 +44,17 @@ interface DialogTexts {
   fun sentItems(n: Int): String
   /** A sent item's receiver and the location it was at. */
   fun to(receiver: String, location: String): String
+  /** The map's filter that shows every location; [mapOpen] and [mapAvailable] are its states (and its other filters). */
+  val mapAll: String
+  val mapChecked: String
+  val mapOpen: String
+  val mapAvailable: String
+  /** What a checked location held, and whom it went to. */
+  fun mapFound(item: String, receiver: String): String
+  /** A box of the map: how many of its locations are checked. */
+  fun mapRegion(checked: Int, total: Int): String
+  /** No map known for the slot. */
+  val mapNone: String
   val allDone: String
 }
 
@@ -149,6 +160,14 @@ internal object EnglishDialogs : DialogTexts {
   override val availableUnknown = "Not known: the session's logic doesn't run for this slot."
   override fun sentItems(n: Int) = "Sent items ($n)"
   override fun to(receiver: String, location: String) = "  to $receiver · $location"
+  override val mapAll = "All"
+  override val mapChecked = "Checked"
+  override val mapOpen = "Open"
+  override val mapAvailable = "Available now"
+  override fun mapFound(item: String, receiver: String) = "Held $item for $receiver"
+  override fun mapRegion(checked: Int, total: Int) = if (total == 0) "No locations: a way through" else "$checked of $total checked"
+  override val mapNone =
+    "No map yet: it comes from the session's logic while that runs (not for a seed from elsewhere or a race)."
   override val allDone = "All done!"
 }
 
@@ -195,6 +214,14 @@ internal object GermanDialogs : DialogTexts {
   override val availableUnknown = "Nicht bekannt: Die Logik der Session läuft für diesen Slot nicht."
   override fun sentItems(n: Int) = "Gesendete Items ($n)"
   override fun to(receiver: String, location: String) = "  an $receiver · $location"
+  override val mapAll = "Alle"
+  override val mapChecked = "Gecheckt"
+  override val mapOpen = "Offen"
+  override val mapAvailable = "Jetzt erreichbar"
+  override fun mapFound(item: String, receiver: String) = "Enthielt $item für $receiver"
+  override fun mapRegion(checked: Int, total: Int) = if (total == 0) "Keine Orte: ein Durchgang" else "$checked von $total gecheckt"
+  override val mapNone =
+    "Noch keine Karte: Sie kommt von der Logik der Session, solange diese läuft (nicht bei einem Seed von anderswo oder einem Race)."
   override val allDone = "Alles erledigt!"
 }
 
