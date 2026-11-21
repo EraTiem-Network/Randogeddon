@@ -936,12 +936,21 @@ through Randogeddon Bridge only.
       one or two at a time (a setting, as the game servers at once)
     - Tried with it: the mod read the slot's patch ("Loaded APMC data with client_version: 16") and the address from
       `APData/archipelago.json` ("Found initial server address from archipelago.json") and tried to connect there
-- [ ] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
+- [x] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
       third-party mod, with memory of its own), from an image that has Java, Forge and the mod; the slot's `.apmcdig`
       from the seed goes into it. The operator accepts Mojang's EULA once (a setting), or nothing is hosted
     - Decided with the user (after 0.20.1): a limit of 3 GB per container, `-Xmx2G` (the JVM needs room beyond its
       heap; a world full of dropped items needs more than the measured 1.5 GB). Its world kept on disk while it
       sleeps; a fresh one for each seed. No `archipelago.json` (the mod would connect without a password first)
+    - Done (0.20.2): one container, the `minecraft` service, runs the servers as its processes instead of a container
+      each (the gateway would need Docker's socket for that, which is root on the machine): the gateway's image with
+      Java 17, Forge 1.19.4-45.3.15 and the mod (both checked by their SHA-256), `minecraft_host.py` as its program,
+      as user 1000 without capabilities. The gateway tells it what to run (its API on 8002, the internal token): the
+      slot's `data.json` from the seed's `.apmcdig` as `APData/<slot>.apmc`, `eula.txt`, `server.properties`
+      (`online-mode=true`), a fresh world when the seed changes; at most `MINECRAFT_SERVERS` at once (1 by default);
+      a server above `MINECRAFT_LIMIT_MB` (3072) is ended. Its world is in `data/minecraft/<key>`
+    - Tried with it (WSL, the demo's group b with a Minecraft Dig slot): started through the gateway, ready and
+      connected to the session's game server with its password, items received, 1.46 GB, stopped and saved
 - [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
       bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
     - Decided with the user (after 0.20.1): it starts when a player joins, not when a client only looks at it. The
@@ -952,10 +961,11 @@ through Randogeddon Bridge only.
       client), until the server is ready ("Done (" in its log). Then it sends the held packets on and only passes
       bytes from there: Mojang's account check and the encryption are the server's, end to end. A start that fails
       or takes too long ends the join with a message the client shows
-    - It sleeps when no player has been on it for as long as the game servers wait (the same setting)
-    - It connects to Archipelago when its first player joins, not at its start: the gateway types
+    - [x] It sleeps when no player has been on it for as long as the game servers wait (the same setting) (0.20.2)
+    - [x] It connects to Archipelago when its first player joins, not at its start: the gateway types
       `/connect <address> <port> "<password>"` into its console (the password in double quotes), through the gateway
-      like any client (so the session's game server wakes for it); its connection ends when it sleeps
+      like any client (so the session's game server wakes for it); its connection ends when it sleeps (0.20.2: to
+      a relay of the `minecraft` service on 127.0.0.1, which adds the session's path, as `/connect` takes no path)
 - [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
       `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
       container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
