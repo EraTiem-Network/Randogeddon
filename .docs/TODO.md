@@ -785,7 +785,7 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       diagrams, in the README (0.18.13: *Sessions and their game servers*)
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
 
-## Phase 19: Generating, Keeping, Showing
+## Phase 19: Generating, Keeping, Showing (done)
 
 *A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
 generates didn't generate on the server, and an APWorld that loaded before was refused); then a session's state kept
@@ -869,12 +869,13 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       release at the goal counts as complete; "playing" becomes "online"), the times beside them (since complete,
       released, goal; the last check), the Overview's tiles (Finished with its parts, Slots with online, Items, Links,
       the Session's age) and "x of y checks done" in the top card
-- [ ] The slot / player panels themselves (asked for; the cards stay, reworked step by step, each step its own PR so
+- [x] The slot / player panels themselves (asked for; the cards stay, reworked step by step, each step its own PR so
       it can be taken back): 0.19.12 checks and progression as two bars; 0.19.13 progression checks as the second
       bar, received and sent as pills, the person header as pills; 0.19.14 nothing cut off, icons on the bars; 0.19.15
       received and sent without totals (the players aren't to learn how much is missing), slots and done in one pill,
       icons and pills in the Overview; 0.19.16 the Overview's pills as icons with a one-word tooltip, the game
-      server's uptime said as such; more to come from the user
+      server's uptime said as such; then 0.19.17 to 0.19.19 as items of their own (below). Closed with the phase; the
+      panels as floating windows are Phase 21
 - [x] Available checks per slot and person (asked for after 0.19.15; 0.19.17): a pill with how many of a slot's
       locations can be checked now, by its world's logic with the items it has (as a Universal Tracker shows them),
       summed on the person card. The logic exists only in a generated multiworld (the seed's `.archipelago` has the
@@ -925,3 +926,10 @@ through Randogeddon Bridge only.
 - [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
       server sees every connection coming from the gateway, so limits and bans by address mean nothing)
 - [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+
+## Phase 21: Floating Panels – Slot & Player (planned)
+
+*Asked for when Phase 19 closed: the slot and player panels as floating panels. What they float over, how they
+open, move and close, and what they show is to come from the user.*
+
+- [ ] Floating panels for a slot and for a player
