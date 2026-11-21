@@ -220,11 +220,7 @@ class SessionAdmin(
       apVersion = setup?.apVersion,
       createdAt = live.record.createdAt.toEpochMilli(),
       options = live.options,
-      worlds = live.people().flatMap { (person, slots) -> slots.map { it to person } }
-        .groupBy({ it.first }, { it.second }).map { (slot, names) ->
-          val ids = setup?.members?.entries?.associate { (id, name) -> name to id.toString() }.orEmpty()
-          WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] }, hosted = slot in setup?.hosted.orEmpty())
-        },
+      worlds = worldPlans(live),
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finishedAt?.toEpochMilli(),
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },
@@ -436,8 +432,9 @@ class SessionAdmin(
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_IN_YAMLS, "names" to it.joinToString())
     }
     val plans = found.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
-      // A hosted slot has no players: its game's own server is joined, not Archipelago
-      .mapValues { (_, plan) -> if (plan.hosted) plan.copy(userIds = emptyList()) else plan }
+      // A slot open to all names nobody: every player of the session plays it (or gets it, hosted). A hosted slot not
+      // open goes to the players named for it, who join its game's server, not Archipelago
+      .mapValues { (_, plan) -> if (plan.open) plan.copy(userIds = emptyList()) else plan }
     // Who plays: accounts by ID, invited ones too (they sign up later; the session shows them meanwhile)
     val accounts = users.accounts().associateBy { it.id.toString() }
     val people = plans.values.flatMap { it.userIds }.distinct()
@@ -450,8 +447,12 @@ class SessionAdmin(
     direct.filter { name -> found.none { it.name == name && it.game == MINECRAFT_DIG } }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_POSSIBLE)
     }
-    // Every slot is played by someone, or hosted
-    plans.values.filter { !it.hosted && it.userIds.isEmpty() }.map { it.name }.takeIf { it.isNotEmpty() }?.let {
+    // Every slot is played by someone, hosted, or open to all; and a slot everyone plays needs someone who plays
+    val open = plans.values.filter { it.open }.map { it.name }.toSet()
+    plans.values.filter { !it.hosted && !it.open && it.userIds.isEmpty() }.map { it.name }.takeIf { it.isNotEmpty() }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to it.joinToString())
+    }
+    if (people.isEmpty()) plans.values.filter { it.open && !it.hosted }.map { it.name }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to it.joinToString())
     }
     val versions = gameServer.versions()
@@ -496,6 +497,7 @@ class SessionAdmin(
         // It counts towards the creator's limit while it runs
         createdBy = creator.id,
         direct = direct,
+        open = open,
       )
       slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
       // No one connects a locked slot until its key is found (the tracker opens it then)
@@ -600,6 +602,24 @@ class SessionAdmin(
     if (!direct) runCatching { gameServer.stopMinecraft(id, slot) }
     sessions.refresh()
     logger.info("{} {} {}'s Minecraft server of {} here", actor, if (direct) "hosts" else "no longer hosts", id, slot)
+  }
+
+  /**
+   * [live]'s slots as the panel shows them: each with who plays it (or, hosted, who gets it), hosted, open to all,
+   * hosted here. A session from before its setup was kept: the people its archive names.
+   */
+  private fun worldPlans(live: LiveSession): List<WorldPlan> {
+    val setup = live.setup
+    val ids = setup?.members?.entries?.associate { (id, name) -> name to id.toString() }.orEmpty()
+    if (setup == null) return live.people().flatMap { (person, slots) -> slots.map { it to person } }
+      .groupBy({ it.first }, { it.second }).map { (slot, names) -> WorldPlan(slot, names, userIds = names.mapNotNull { ids[it] }) }
+    return (setup.worlds.keys + setup.hosted + setup.open).sortedBy { it.lowercase() }.map { slot ->
+      val names = if (slot in setup.open) emptyList() else setup.worlds[slot].orEmpty()
+      WorldPlan(
+        slot, names, userIds = names.mapNotNull { ids[it] }, hosted = slot in setup.hosted, direct = slot in setup.direct,
+        open = slot in setup.open,
+      )
+    }
   }
 
   private fun session(id: String): LiveSession =
