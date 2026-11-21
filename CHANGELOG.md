@@ -16,6 +16,8 @@ site growing with the window, a session's slots and their players, the Managemen
   hints and connections 20, recent activity 25) with arrows to the others: a slot with thousands of locations opened
   so slowly the browser lagged. The remaining locations get a filter of their own; the connection log and the recent
   activity are no longer cut off.
+- A slot's remaining locations list the ones its logic reaches now first, marked (green, the signpost): the logic
+  says which they are now, not only how many (the last known while it doesn't run).
 - *Your connection*: server, slot and password are text fields that can't be changed, their buttons inside; the
   server is copied as shown, as its host, its port or a `wss://` address. The bridge's *Create key* has a row of its
   own, its fold is a chevron.

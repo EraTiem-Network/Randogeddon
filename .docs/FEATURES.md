@@ -569,7 +569,8 @@ which the gateway writes before it starts the session's game server.
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
   player's name for their overview (totals, slots, open hints, combined connection log, recent activity). Click a slot
-  for its received items and remaining locations (each filterable), play time and connection log. Every list there
+  for its received items and remaining locations (each filterable; the ones its logic reaches now first, green with
+  the signpost), play time and connection log. Every list there
   shows a page at a time (50 items or locations, 20 hints or connections, 25 events) with arrows to the others: a slot
   can have thousands of locations, which the browser couldn't draw at once.
 - **A slot's state**, the first that applies: *released* (given up before its goal, or released by hand after it),
