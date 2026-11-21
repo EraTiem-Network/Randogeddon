@@ -231,6 +231,12 @@ class Minecraft(
     }
   }
 
+  /** Session [id]'s slot [slot]'s server, if it runs, connects to Archipelago again (with a new password). */
+  suspend fun reconnect(id: String, slot: String) {
+    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return
+    known[key(id, digSlot)]?.takeIf { it.status == "running" }?.let { connect(it) }
+  }
+
   /** Its first player is on it: it connects to Archipelago, through the relay that leads to its session's game server. */
   private suspend fun connect(server: HostServer) {
     val id = server.session ?: return

@@ -1016,17 +1016,25 @@ open, move and close, and what they show is to come from the user.*
       (V27), every slot hosted before copied in as open
     - [x] A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
       bridge's tunnel) (moved to Phase 20: 0.20.5)
-- [ ] A running session's slots edited (asked for on 2026-11-21):
-    - Who may use a slot changed; its hosted mode not (for now)
+- [x] A running session's slots edited (asked for on 2026-11-21):
+    - [x] Who may use a slot changed; its hosted mode not (for now)
     - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
       Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
-    - Late invites, then
+    - [x] Late invites, then
+    - Done (0.21.3), decided with the user: the panel's *Slots* (Session-Managers, Administrators): each slot's
+      players changed, *Open to all* switched, someone new invited by e-mail there. Whoever loses a slot loses its
+      connection: a new password, which the gateway reads at once while it closes the slot's connections (the
+      players connect again with the new one); a directly hosted Minecraft server connects again by itself. Not for
+      a hosted slot whose server runs elsewhere (its players never had the password)
 - [x] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
       Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
     - Done (0.21.1): *Logs* at the panel's bottom, a tab per log: the game server's (always, first), the spoiler log's
       run, the logic's and each directly hosted Minecraft server's (Administrators). A section hands its log over only
       while its viewer may read it, so no other tab exists; on the support page the spoiler log's run keeps its own
-- [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+- [x] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+    - Done (0.21.3): down to the essential points (1,168 lines to 137, as the user asked): what it is, a session,
+      the roles, the server, the bridge, development, each with a link to its details. The details as they were in
+      `.docs/FEATURES.md`, `.docs/OPERATIONS.md` and `.docs/DEVELOPMENT.md`
 - [ ] Icons: *sent* gets the icon *released* has now; *released* a new one that fits better (unchained, an open door,
       …) (asked for on 2026-11-21)
     - And a new icon for the available checks (asked for on 2026-11-21)
@@ -1038,3 +1046,15 @@ and the locations' places come from, and what a marker shows are to come from th
 
 - [ ] Maps with check markers for the slots
 - [ ] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21)
+
+## Phase 23: Full Code Review & Security Check (planned)
+
+*Asked for on 2026-11-21: the whole code reviewed, and its security checked. How deep and in which order is to
+come with it.*
+
+- [ ] A review of the whole code: tracker, gateway, web app, bridge, database, Archipelago's wrappers, scripts
+    - Besides the usual review: duplication, optimisation, and merging what belongs together, where it makes sense
+    - How (the user's choice): Fable 5.2 scans and hands each finding on by itself to a subagent on Opus 5.5,
+      which fixes it
+- [ ] A security check: logins and roles, the API and its limits, the gateway and the tunnel, the bridge, secrets,
+      the containers, the dependencies

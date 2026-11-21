@@ -224,6 +224,7 @@ private fun SelectedSession(
   val logs = remember(id) { PanelLogs() }
   CompositionLocalProvider(LocalPanelLogs provides logs) {
     PeopleSection(id)
+    SlotsSection(id)
     SpoilerRunSection(id, "manage")
     LogicSection(id, administrator)
     MinecraftSection(id, administrator)

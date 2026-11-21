@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.gateway
 
+import org.slf4j.LoggerFactory
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.createRouteScopedPlugin
@@ -29,6 +30,8 @@ import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SlotFiles
 import java.security.MessageDigest
+
+private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.InternalApi")
 
 /**
  * Only for calls with `Authorization: Bearer <token>`; with no token configured, nothing gets through. The internal
@@ -156,6 +159,18 @@ fun Route.internalApi(
         delete("/generate") {
           val id = sessionId() ?: return@delete
           call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
+        // Someone was taken off a slot (its password is new): the new one read at once, the slot's connections
+        // closed (they connect again with the new one), its hosted Minecraft server connected again
+        post("/slots/{slot}/disconnect") {
+          val id = sessionId() ?: return@post
+          val slot = call.parameters["slot"].orEmpty()
+          val session = sessions.get(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+          session.passwords.invalidate()
+          val closed = session.clients.close(slot, "Your access to this slot changed")
+          minecraft.reconnect(id, slot)
+          logger.info("{}'s slot {}: its password is new, {} connection(s) closed", id, slot, closed)
+          call.respond(HttpStatusCode.NoContent)
         }
         // Its Minecraft Dig slots' servers: their state; started and stopped by hand; their logs (by slot)
         get("/minecraft") {

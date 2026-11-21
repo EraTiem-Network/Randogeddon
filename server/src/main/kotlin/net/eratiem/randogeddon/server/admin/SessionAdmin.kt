@@ -61,6 +61,7 @@ import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.NewSessionView
 import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.SlotPlayersRequest
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.MINECRAFT_DIG
 import net.eratiem.randogeddon.shared.Refusal
@@ -602,6 +603,37 @@ class SessionAdmin(
     if (!direct) runCatching { gameServer.stopMinecraft(id, slot) }
     sessions.refresh()
     logger.info("{} {} {}'s Minecraft server of {} here", actor, if (direct) "hosts" else "no longer hosts", id, slot)
+  }
+
+  /**
+   * Who plays session [id]'s slot [slot] now: [request]'s accounts, or every player of it (open); its hosted mode stays.
+   * Whoever loses the slot loses its connection: it gets a new password and the gateway closes its connections (they
+   * connect again with the new one). Not for a hosted slot run elsewhere, whose players never had its password.
+   */
+  suspend fun setSlotPlayers(id: String, slot: String, request: SlotPlayersRequest, actor: String) {
+    val live = session(id)
+    val setup = live.setup ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_POSSIBLE)
+    if (Room.read(live.roomJson)?.players?.none { it.name == slot } != false) throw SessionProblem(HttpStatusCode.NotFound, Problem.NOT_POSSIBLE)
+    val hosted = slot in setup.hosted
+    val accounts = users.accounts().associateBy { it.id.toString() }
+    request.userIds.filter { it !in accounts }.takeIf { it.isNotEmpty() }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_USERS, "ids" to it.joinToString())
+    }
+    val named = if (request.open) emptyList() else request.userIds.distinct().mapNotNull { accounts[it]?.id }
+    // A slot that isn't hosted is played by someone, or by everyone
+    if (!hosted && !request.open && named.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to slot)
+    // Who had it before and won't now: everyone but the named, when it stops being open; else the ones left out
+    val before = setup.worlds[slot].orEmpty().toSet()
+    val after = named.mapNotNull { setup.members[it] ?: accounts[it.toString()]?.name }.toSet()
+    val lost = if (slot in setup.open) !request.open else (before - after).isNotEmpty()
+    if (!setups.setSlotPlayers(live.seedName, slot, named, request.open)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+    if (lost && (!hosted || slot in setup.direct)) {
+      slotPasswords.renew(live.seedName, slot, PasswordGenerator.generate())
+      gameServer.disconnectSlot(id, slot)
+    }
+    sessions.refresh()
+    logger.info("{} gave {}'s slot {} to {}{}", actor, id, slot, if (request.open) "everyone" else after.joinToString().ifEmpty { "nobody" },
+      if (lost) "; its password is new" else "")
   }
 
   /**

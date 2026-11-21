@@ -1,5 +1,5 @@
 # Overlay for the server when Traefik runs on another machine (e.g. on the Proxmox host, Randogeddon in a VM) and
-# routes to this one through its file provider (see README): publish the ports, but keep the public addresses.
+# routes to this one through its file provider (see .docs/OPERATIONS.md): publish the ports, but keep the public addresses.
 #   Traefik: https://${BASE_DOMAIN} → http://<this machine>:8000, <session-id>.${BASE_DOMAIN} → http://<this machine>:38281
 services:
   gateway:

@@ -2,7 +2,7 @@
 # Game servers: wss://<session-id>.${BASE_DOMAIN}:443  (players enter "<session-id>.${BASE_DOMAIN}:443" in their client)
 # Dashboard:    https://${BASE_DOMAIN}
 # One router for every session: the gateway relays each client by its host name to that session's MultiServer. Its
-# wildcard certificate needs a cert resolver with the DNS challenge (TRAEFIK_DNS_CERTRESOLVER, see README).
+# wildcard certificate needs a cert resolver with the DNS challenge (TRAEFIK_DNS_CERTRESOLVER, see .docs/OPERATIONS.md).
 services:
   # MultiServer itself stays inside: game clients come in through the gateway
   gateway:

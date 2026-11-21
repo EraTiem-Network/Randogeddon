@@ -198,6 +198,32 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     )
   }
 
+  /**
+   * Who plays [seedName]'s slot [slot] now (or, hosted, gets it): exactly [users], or every player of the session
+   * ([open], nobody named); `false`: no such session.
+   */
+  suspend fun setSlotPlayers(seedName: String, slot: String, users: List<Uuid>, open: Boolean): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionWorldsTable.deleteWhere { (SessionWorldsTable.sessionId eq id) and (SessionWorldsTable.slotName eq slot) }
+    val named = if (open) emptyList() else users.distinct()
+    val names = names(named)
+    for (user in named) {
+      SessionWorldsTable.insert {
+        it[sessionId] = id
+        it[slotName] = slot
+        it[userId] = user
+        it[userName] = names[user]
+      }
+    }
+    SessionOpenSlotsTable.deleteWhere { (SessionOpenSlotsTable.sessionId eq id) and (SessionOpenSlotsTable.slotName eq slot) }
+    if (open) SessionOpenSlotsTable.insert {
+      it[sessionId] = id
+      it[slotName] = slot
+    }
+    true
+  }
+
   /** Lets Randogeddon run [seedName]'s hosted slot [slot]'s Minecraft server itself, or not; `false`: no such hosted slot. */
   suspend fun setDirect(seedName: String, slot: String, direct: Boolean): Boolean = db.query {
     val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
@@ -350,6 +376,15 @@ class SlotPasswordStore(private val db: RandogeddonDatabase) {
       it[SlotPasswordsTable.locked] = false
     }
     Unit
+  }
+
+  /** [seedName]'s slot [slot] gets [password] in place of its own (someone lost it); `false`: no such slot. */
+  suspend fun renew(seedName: String, slot: String, password: String): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName eq slot) }) {
+      it[SlotPasswordsTable.password] = password
+    } > 0
   }
 
   /** Slot name -> password of [seedName]; empty if the seed is unknown. */

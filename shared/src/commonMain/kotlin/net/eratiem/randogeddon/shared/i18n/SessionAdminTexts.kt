@@ -193,6 +193,12 @@ interface SessionAdminTexts {
   val openHostedLine: String
   /** A hosted slot not open: the players named for it get it (its patch files, the bridge's tunnel). */
   val hostedPlayersLine: String
+  /** A running session's slots: who plays each, changed; taking someone off one asks once more. */
+  val slotsSection: String
+  val slotsSectionSubtitle: String
+  val slotSave: String
+  val slotLosesQuestion: String
+  val slotLosesYes: String
   /** YAMLs whose games the release has no APWorld for ([files]: each with its games), then what to do. */
   fun missingApworlds(files: String, version: String): String
   val uploadThem: String
@@ -432,6 +438,12 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val openLine = "Every player of the session plays it."
   override val openHostedLine = "Every player of the session joins its game's server."
   override val hostedPlayersLine = "Only these players join its game's server (no password: they don't play it):"
+  override val slotsSection = "Slots"
+  override val slotsSectionSubtitle = "who plays each one; someone new is invited by e-mail"
+  override val slotSave = "Save"
+  override val slotLosesQuestion = "Someone loses this slot: it gets a new password, and whoever is connected to it is " +
+    "disconnected (its players connect again with the new one)."
+  override val slotLosesYes = "Yes, save"
   override val yesHosted = "Yes, hosted"
   override val hostedLine = "No players: the game runs as a server of its own, which they join with their games."
   override fun missingApworlds(files: String, version: String) =
@@ -678,6 +690,12 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val openLine = "Jeder Spieler der Session spielt ihn."
   override val openHostedLine = "Jeder Spieler der Session tritt dem Server seines Spiels bei."
   override val hostedPlayersLine = "Nur diese Spieler treten dem Server seines Spiels bei (ohne Passwort: Sie spielen ihn nicht):"
+  override val slotsSection = "Slots"
+  override val slotsSectionSubtitle = "wer jeden spielt; jemand Neues wird per E-Mail eingeladen"
+  override val slotSave = "Speichern"
+  override val slotLosesQuestion = "Jemand verliert diesen Slot: Er bekommt ein neues Passwort, und wer mit ihm verbunden " +
+    "ist, wird getrennt (seine Spieler verbinden sich mit dem neuen wieder)."
+  override val slotLosesYes = "Ja, speichern"
   override val yesHosted = "Ja, hosten"
   override val hostedLine = "Keine Spieler: Das Spiel läuft als eigener Server, dem sie mit ihren Spielen beitreten."
   override fun missingApworlds(files: String, version: String) =
