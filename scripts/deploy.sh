@@ -6,11 +6,11 @@
 #   ./scripts/deploy.sh --publish   build and push the same, and a release's bridge and GitHub release, but leave the
 #                                   server alone: nothing is copied there and it keeps running what it runs
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
-#                                   README, restoring)
+#                                   .docs/OPERATIONS.md, restoring)
 # A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
 # GitHub release).
 #
-# The server holds only what runs (README, "The live server"); this script copies its compose files and the backup
+# The server holds only what runs (.docs/OPERATIONS.md, "The live server"); this script copies its compose files and the backup
 # script there. Needs: `docker login` to the registry (a token that may push), the Gradle init script for the build, and
 # an SSH alias DEPLOY_SSH (default randogeddon-live) for the server, e.g. in ~/.ssh/config:
 #   Host randogeddon-live
@@ -97,7 +97,7 @@ case "${1:-}" in
 esac
 
 [[ -z "$(git status --porcelain)" ]] || { echo "Uncommitted changes: deploy a commit"; exit 1; }
-# A release (the commit tagged v<version>, see README, versions) goes out under its version and `latest`, anything else
+# A release (the commit tagged v<version>, see .docs/DEVELOPMENT.md, versions) goes out under its version and `latest`, anything else
 # under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
 if [[ "$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)" == "$(git rev-parse HEAD)" ]]; then

@@ -17,7 +17,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
-# Lets the build read the Gradle init script outside the build context without asking (see README, setup)
+# Lets the build read the Gradle init script outside the build context without asking (see .docs/OPERATIONS.md, setup)
 export BUILDX_BAKE_ENTITLEMENTS_FS=0
 # A local demo needs no secret database password or internal token; a real .env sets its own
 if [[ -z "${POSTGRES_PASSWORD:-}" ]] && ! grep -qs '^POSTGRES_PASSWORD=.' .env; then export POSTGRES_PASSWORD=demo; fi
