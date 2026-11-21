@@ -34,8 +34,10 @@ mkdir -p output/demo
 
 # The gateway image has Archipelago (and Python, for the simulated players and the admin calls)
 image="randogeddon-gateway:$AP_VERSION"
-# The native tracker and gateway (minutes the first time, then cached)
-docker compose build tracker gateway
+# The native tracker and gateway (minutes the first time, then cached), one after the other: each native-image
+# compile takes several GB at its peak
+docker compose build tracker
+docker compose build gateway
 docker compose up -d
 echo "Waiting for the tracker…"
 for _ in $(seq 1 90); do

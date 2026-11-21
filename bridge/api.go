@@ -91,11 +91,22 @@ type Slot struct {
 	Hosted   bool   `json:"hosted"`
 	// Locked: its key isn't found yet, so the gateway refuses it (no password until then).
 	Locked bool `json:"locked"`
+	// Tunnel: a hosted Minecraft Dig slot whose server Randogeddon runs, the key for a tunnel to it (for its players
+	// too, who don't get its password); empty: none.
+	Tunnel string `json:"tunnel"`
 }
 
 // Usable is whether the bridge can open the slot: not locked, and with its password (a hosted one only for those who
-// run its game).
-func (s Slot) Usable() bool { return !s.Locked && s.Password != "" }
+// run its game) or a tunnel to its Minecraft server.
+func (s Slot) Usable() bool { return !s.Locked && (s.Password != "" || s.Tunnel != "") }
+
+// secret is what the bridge sends for the slot: its tunnel key for a tunnel, else its password for a relay.
+func (s Slot) secret() string {
+	if s.Tunnel != "" {
+		return s.Tunnel
+	}
+	return s.Password
+}
 
 // slotOf is [slot] of [session] with where the session's game server is, for a relay.
 func slotOf(c *Client, session, slot string) (Slot, string, error) {

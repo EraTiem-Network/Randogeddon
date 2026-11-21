@@ -7,6 +7,82 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 20: Hosted Minecraft Dig
+The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and reached through Randogeddon Bridge.
+
+A new service, `minecraft`, runs the servers (Forge 1.19.4 and the mod, up to 3 GB each, `MINECRAFT_SERVERS` at once,
+their worlds kept while they sleep), for a hosted Minecraft Dig slot an Administrator switches on. The bridge reaches
+one by a tunnel, with a key made from the slot's password that the session's players get; no Minecraft port is
+public. The gateway answers the server list while a server sleeps and starts it only for a join, which it holds
+until the server is ready; then the server's own account check and encryption take over. A server connects to
+Archipelago with the slot's password once a player is on it, and sleeps like the game servers. The panel's
+*Minecraft* section shows each one with *Start*, *Stop*, the switch and its log. Mojang's EULA is the operator's
+(`MINECRAFT_EULA=true`). Updating: the database's V26 comes with its migration; to host servers, `MINECRAFT_EULA=true`
+in `.env` and the bridge 0.20.5 or newer for the players. Not yet tried with a real Minecraft client.
+
+### 0.20.6: Phase 20 done
+- TODO: Phase 20 done; Phase 22 (*Maps*: the slots' games' maps with markers for their checks) planned.
+
+### 0.20.1: Found out first
+- TODO: what the mod and the APWorld's client do, read from the mod (0.0.11) and the client. The mod connects by
+  itself to the address in `APData/archipelago.json`, with the slot name from the patch but without a password, so
+  the hosted server will reach the session's game server inside the compose network. The server's files are the
+  patch's `data.json` in base64 as `APData/<name>.apmc` and that `archipelago.json`; each seed needs a fresh world.
+- Measured in WSL with a generated seed: ready 12 s after its start; 1.4 to 1.5 GB a while after, nobody on it, with
+  any heap from 1.5 to 3 GB.
+- Decided with the user: 3 GB per server (`-Xmx2G`); it starts when a player joins through the bridge (a client
+  only looking at the server list wakes nothing), the gateway holding the connection until the server is ready and
+  then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
+  servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
+
+### 0.20.5: Hosted here only when an Administrator says so
+- Randogeddon runs a Minecraft Dig slot's server only when the slot is hosted and an Administrator switches it on:
+  when creating the session (*its server here (through the bridge)* beside *Hosted*) or later in the panel's
+  *Minecraft* section (*Host here*). Session-Managers can switch it off (*Don't host here*: its server stops, its
+  world stays). Any other Minecraft Dig slot runs its own server, and the bridge relays it like any game.
+- The bridge's tunnel logs in with the slot's tunnel key instead of its password: made from the password, given to
+  the session's players and its Session-Managers, so the players reach the server without being able to connect to
+  Archipelago as the slot. The bridge offers such a slot to its players too.
+- Database: V26 (`session_hosted_slots.direct`); every slot hosted so far stays as it was, not hosted here.
+- Updating: the tunnel needs this bridge (0.20.5) or newer. `MINECRAFT_EULA=true` in `.env` now hosts only the
+  switched-on slots.
+
+### 0.20.4: The Minecraft servers in the panel
+- The Management panel has a *Minecraft* section for a session with a Minecraft Dig slot: each slot's server (asleep,
+  starting, running with who is on it, or ended on its own), *Start* and *Stop* for Session-Managers and
+  Administrators, its log for Administrators.
+- Mojang's EULA is the operator's: `MINECRAFT_EULA=true` in `.env` accepts it once for every hosted server (false by
+  default: nothing runs). The Administrators' setting `minecraft_eula` of 0.20.2 is gone.
+- No whitelist (decided with the user): only the slot's players reach its server, through the bridge.
+- Updating: to host Minecraft Dig servers, `MINECRAFT_EULA=true` in `.env`.
+
+### 0.20.3: The tunnel
+- Randogeddon Bridge opens a tunnel for a Minecraft Dig slot instead of a relay: `localhost:<port>` for Minecraft
+  1.19.4's *Direct Connection*, each Minecraft connection passed on over `wss://<session>.<domain>/minecraft/<slot>`
+  with the slot's password. Its page says how to join.
+- The gateway answers a look at the server list itself while the server sleeps ("asleep, join to wake it") and starts
+  nothing for it; a join starts the server and is held until it is ready, the client kept waiting; then every byte
+  passes, and Mojang's account check and the encryption are the server's. A wrong password or a locked slot is
+  refused; a start that fails or takes more than 4 minutes ends the join with a message the client shows.
+- Fixed: a deleted session's Minecraft server kept its relay open, so the next server given its number couldn't open
+  its own (and would have reached the deleted session). Since 0.20.2; nothing was hosted live.
+- Updating: nothing to do. The bridge's tunnel needs this bridge (0.20.3) or newer.
+
+### 0.20.2: The Minecraft servers
+- A new service, `minecraft`, runs the hosted Minecraft servers (Java 17, Forge 1.19.4-45.3.15 and the mod 0.0.11 in
+  the gateway's image, both checked by their SHA-256), one process per Minecraft Dig slot, as user 1000 without
+  capabilities, up to 3.5 GB in all (`MINECRAFT_MEMORY`); a server above 3 GB is ended, `MINECRAFT_SERVERS` run at
+  once (1 by default). Each one's world is kept in `data/minecraft/` while it sleeps and made anew for a new seed.
+- The gateway tells it what to run: a slot's server from the seed's patch, started and stopped (the internal API, for
+  now; the bridge's tunnel and the panel come next). Nothing runs until an Administrator accepts Mojang's EULA (the
+  setting `minecraft_eula`, its switch to come).
+- Once its first player is on it, the gateway connects the server to Archipelago with `/connect` and the slot's
+  password, through the gateway like any client; it sleeps when nobody has been on it for as long as the game
+  servers wait.
+- The tracker's and the gateway's native images are built one after the other (`scripts/deploy.sh`,
+  `scripts/demo.sh`): each takes several GB while it compiles.
+- Updating: nothing to do; the new service starts with the others.
+
 ## Phase 19: Generating, Keeping, Showing
 It began with generating like the Launcher (a seed that the Launcher generates is to generate here too: first why one
 didn't, then what the Launcher has that the gateway hasn't), went on to keeping a session's state (nothing lost while

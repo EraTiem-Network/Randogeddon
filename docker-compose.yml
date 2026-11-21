@@ -126,12 +126,43 @@ services:
       # How long a generation may take before it is stopped (minutes)
       GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
       GENERATIONS_AT_ONCE: ${GENERATIONS_AT_ONCE:-0}
+      # The minecraft service (the Minecraft Dig slots' servers)
+      MINECRAFT_API: http://minecraft:8002
+      # true: the operator accepts Mojang's EULA (https://aka.ms/MinecraftEULA) for every hosted Minecraft server;
+      # without it none runs
+      MINECRAFT_EULA: ${MINECRAFT_EULA:-false}
       # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""
     volumes:
       - ./data:/data                  # sessions/<id>/ (seed, save, room.json), old/, uploaded apworlds
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
+
+  minecraft:
+    # The hosted Minecraft servers of Minecraft Dig slots: the gateway's image, its own program (minecraft_host.py), on
+    # the gateway's orders. Nothing of it is published: the gateway passes the players' connections on to it
+    image: ${GATEWAY_IMAGE:-randogeddon-gateway}:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
+    entrypoint: ["python", "/app/minecraft_host.py"]
+    restart: unless-stopped
+    logging: *logging
+    # Each server saves its world on `stop`
+    stop_grace_period: 60s
+    # Each server at most 3 GB (its heap 2 GB; a watchdog ends one above that): MINECRAFT_SERVERS of them at once
+    mem_limit: ${MINECRAFT_MEMORY:-3500m}
+    pids_limit: 2048
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    user: "1000"
+    environment:
+      INTERNAL_TOKEN: *internal-token
+      MINECRAFT_SERVERS: ${MINECRAFT_SERVERS:-1}
+      MINECRAFT_HEAP: 2G
+      MINECRAFT_LIMIT_MB: 3072
+      GATEWAY_WS: gateway:38281
+      # In the gateway's data folder (its user owns it): minecraft/servers/<session>-<slot>/, each server's world
+      DATA: /data/minecraft
+    volumes:
+      - ./data:/data
 
   tracker:
     image: ${TRACKER_IMAGE:-randogeddon-tracker}:${IMAGE_TAG:-latest}

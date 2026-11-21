@@ -47,7 +47,9 @@ type Relay struct {
 	connected int // of them, the ones the server took in
 	detail    string
 	listener  net.Listener
-	server    *http.Server
+	server    *http.Server // nil for a tunnel
+	closing   context.Context
+	close     context.CancelFunc
 }
 
 // RelayView is a relay as the page shows it.
@@ -61,6 +63,8 @@ type RelayView struct {
 	State   string `json:"state"`
 	Detail  string `json:"detail,omitempty"`
 	Games   int    `json:"games"`
+	// Tunnel: to a Minecraft server Randogeddon runs (Minecraft connects to it), not a relay
+	Tunnel bool `json:"tunnel"`
 }
 
 // startRelay opens a relay on [port] of 127.0.0.1 (only this computer reaches it); 0: a free one.
@@ -71,7 +75,13 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 	}
 	r := &Relay{
 		ID: id, Session: session, Title: title, Slot: slot.Name, Game: slot.Game, Port: ln.Addr().(*net.TCPAddr).Port,
-		refresh: refresh, password: slot.Password, upstream: upstream, listener: ln,
+		refresh: refresh, password: slot.secret(), upstream: upstream, listener: ln,
+	}
+	r.closing, r.close = context.WithCancel(context.Background())
+	if slot.Tunnel != "" {
+		go r.serveTunnel(ln)
+		log.Printf("Tunnel for %s in %s on localhost:%d", r.Slot, r.Session, r.Port)
+		return r, nil
 	}
 	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -85,6 +95,11 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 
 // Close ends the relay and its game connections.
 func (r *Relay) Close() {
+	r.close()
+	if r.server == nil {
+		_ = r.listener.Close()
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = r.server.Shutdown(ctx)
@@ -105,7 +120,7 @@ func (r *Relay) View() RelayView {
 	}
 	return RelayView{
 		ID: r.ID, Session: r.Session, Title: r.Title, Slot: r.Slot, Game: r.Game, Port: r.Port, State: state,
-		Detail: r.detail, Games: r.open,
+		Detail: r.detail, Games: r.open, Tunnel: r.server == nil,
 	}
 }
 
@@ -214,7 +229,7 @@ func (r *Relay) update() {
 		log.Printf("relay %s: the password couldn't be fetched again: %v", r.Slot, err)
 		return
 	}
-	r.note(func() { r.password = slot.Password; r.upstream = upstream })
+	r.note(func() { r.password = slot.secret(); r.upstream = upstream })
 }
 
 // pump sends every message of from on to to, after mapping it, until either side ends.

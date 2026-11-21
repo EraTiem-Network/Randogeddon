@@ -2,7 +2,8 @@
 # The images of this repository; the Kotlin apps are native executables (GraalVM Native Image, Linux x86_64):
 #   target tracker   the dashboard server (:server) with the Compose web app (:webApp)
 #   target gateway   the game host: runs MultiServer (Archipelago, pinned release) and is the game clients' entry to it,
-#                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`)
+#                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`). The same image runs
+#                    the hosted Minecraft servers of Minecraft Dig slots, as a service of its own (`minecraft_host.py`)
 # The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once. Randogeddon Bridge (bridge/, Go)
 # is built in its own stage for every system the dashboard offers it for; the tracker serves the builds.
 #
@@ -147,6 +148,21 @@ WORKDIR ${AP_HOME}
 # Never try to pip-install anything at runtime
 ENV SKIP_REQUIREMENTS_UPDATE=true
 
+# Forge's server for Minecraft Dig, with the APWorld's mod: each download checked against its checksum. The installer
+# fetches the libraries (Minecraft's server among them) and checks them itself
+FROM eclipse-temurin:17-jre-jammy AS forge
+ARG FORGE_VERSION=1.19.4-45.3.15
+ARG DIG_MOD=aprandomizer-MC1.19.4-0.0.11.jar
+WORKDIR /opt/forge
+ADD --checksum=sha256:bf622e9f00b9a1e7ce36ff7b220ccc9350dc036d6f98e2767b5dce132562861c \
+    https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/forge-${FORGE_VERSION}-installer.jar installer.jar
+ADD --checksum=sha256:36ebbe566deaa1a5a71ba657650189982c5aa4e0586e3a066aeadd472c52242e \
+    https://github.com/jacobmix/Minecraft_AP_Randomizer/releases/download/0.0.11_dig/${DIG_MOD} mods/${DIG_MOD}
+RUN java -jar installer.jar --installServer /opt/forge > /dev/null \
+ && rm -f installer.jar installer.jar.log run.sh run.bat user_jvm_args.txt \
+ && test -f "libraries/net/minecraftforge/forge/${FORGE_VERSION}/unix_args.txt" \
+ && chmod -R a+rX /opt/forge
+
 FROM archipelago AS gateway
 # MultiServer runs as this user and writes host.yaml and logs/ next to itself. Archipelago checks whether its own
 # directory is writable: if not, it moves to the home directory and copies folders there that a plain checkout doesn't
@@ -158,6 +174,13 @@ RUN useradd --uid 1000 --create-home randogeddon \
  && chown randogeddon . logs host.yaml custom_worlds
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py archipelago/logic_run.py \
      archipelago/seed_info.py ./
+# The hosted Minecraft servers (the minecraft service): Java 17, Forge with the mod, the program that runs them
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=forge /opt/forge /opt/forge
+COPY archipelago/minecraft_host.py /app/
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server

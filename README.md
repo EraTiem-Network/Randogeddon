@@ -411,7 +411,10 @@ docker compose up -d
    dashboard shows it on a card of its own, *Hosted*. Under *Your connection*, the session's players can pick it and
    see its patch files; its Session-Managers see its whole connection (server, slot, password), to set the game's
    server up. No account can be named *Hosted*. Randogeddon Bridge offers a hosted slot to its Session-Managers and
-   Administrators (for a hosted game that can't do TLS), not to its players.
+   Administrators (for a hosted game that can't do TLS), not to its players. A hosted *Minecraft Dig* slot can have
+   its server run by Randogeddon itself instead: an Administrator ticks *its server here (through the bridge)* (or
+   switches it on later in the panel's *Minecraft* section; Session-Managers can switch it off). Then the bridge
+   offers it to the session's players too, as a tunnel to that server (below).
 4. **Players log in** (with their name or their e-mail address) at `https://randogeddon.eratiem.net`. The dashboard opens their running session; with several
    (or none running), they pick one from their sessions, and switch between them on top of the dashboard. Each view
    has its own link: `#/<session-id>` a session's dashboard, `#/<session-id>/spoiler` its spoiler log, `#/manage` and
@@ -551,7 +554,9 @@ Everyone gets a gear button in the dashboard's header: the *Management panel*. I
 its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
-share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
+share link), its **Patch files** (every slot's files from the seed), its **Minecraft** servers (a Minecraft Dig slot's:
+asleep, starting, running with who is on it, or ended on its own; *Start* and *Stop* by hand; each one's log for
+Administrators), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live
 (the last 10,000 lines, newest on top, a page at a time and searchable),
 and has the server console:
@@ -751,6 +756,21 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
   Administrators the session's hosted slots too; never a locked one. Starting it again opens the running one's page;
   *Quit* ends it (on Windows it has no console window), and so does closing the page or the browser (unless it is
   back within 10 seconds, e.g. a reload). A newer bridge on the dashboard shows a notice with its download.
+- **Minecraft Dig:** a hosted Minecraft Dig slot whose server Randogeddon runs (an Administrator's switch, see
+  hosted slots) is reached only through the bridge: a tunnel instead of a relay, `localhost:<port>` for Minecraft
+  1.19.4's *Direct Connection*, offered to the session's players and its Session-Managers. Each Minecraft connection
+  goes over `wss://<session-id>.randogeddon.eratiem.net/minecraft/<slot>` with the slot's tunnel key in a header
+  (`X-Randogeddon-Tunnel-Key`: made from the slot's password, so the players get it without the password, which
+  would let them connect to Archipelago as the slot; a wrong key, a locked slot or one not hosted here is refused),
+  and the gateway passes it on to the server; no Minecraft port is open to the internet. A Minecraft Dig slot that
+  isn't hosted here (an account plays it, or it is hosted without the switch) runs its own server, and the bridge
+  relays its mod like any game. A look at the server list while it sleeps is answered by the
+  gateway ("asleep, join to wake it") and starts nothing; a join starts it and is held ("Logging in…", about 15 s
+  to a minute) until it is ready, then every byte passes: Mojang's account check and the encryption are the
+  server's own. Once a player is on it, it connects to the session with the slot's password, and it sleeps when
+  nobody has been on it for as long as the game servers wait. None runs until the operator accepts Mojang's EULA
+  (https://aka.ms/MinecraftEULA) with `MINECRAFT_EULA=true` in `.env`, once for all of them; at most
+  `MINECRAFT_SERVERS` at once (1 by default, each up to 3 GB).
 - **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
   `randogeddon-bridge login` asks for the key (typed or pasted at a terminal it isn't shown; or from a file:
   `randogeddon-bridge login < keyfile`; never an argument or an `echo`, which the process list and the shell's
@@ -786,7 +806,8 @@ How it stays safe:
   like every login; the bridge checks it every 15 seconds (and fetches the account's theme, mode, font and language again,
   right away when its page is back in view) and logs out once it is ended.
 - The relays listen on `127.0.0.1` only and refuse connections from a web page (an `Origin` header), so no site in the
-  browser can play a slot through them.
+  browser can play a slot through them. A Minecraft tunnel takes raw TCP, but the gateway reads a Minecraft handshake
+  first and ends anything else (an HTTP request a page could send is none).
 - The page answers only on its own address (`127.0.0.1:<port>`/`localhost:<port>`, against DNS rebinding), with the
   token of the link the bridge opened (a SameSite=Strict cookie); changes need its own header too. The dashboard is
   reached only over HTTPS (plain HTTP only on the same computer).

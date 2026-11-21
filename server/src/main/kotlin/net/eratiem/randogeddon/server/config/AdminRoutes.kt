@@ -30,12 +30,14 @@ import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
 import net.eratiem.randogeddon.server.admin.LogicRuns
+import net.eratiem.randogeddon.server.admin.MinecraftRuns
 import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
+import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApworldRemoval
@@ -176,6 +178,7 @@ fun Route.manageRoutes(
   gameServers: GameServerLimit,
   spoilerRuns: SpoilerRuns,
   logicRuns: LogicRuns,
+  minecraftRuns: MinecraftRuns,
 ) {
   get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
@@ -218,6 +221,43 @@ fun Route.manageRoutes(
     if (!call.loggedIn.user.administrator) return@get call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.ONLY_ADMINISTRATORS))
     val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
     gatewayCall { call.respond(logicRuns.log(id(), since)) }
+  }
+  // Its Minecraft Dig slots' servers: their state, started and stopped by hand; their logs only for Administrators
+  get("/minecraft") { gatewayCall { call.respond(minecraftRuns.view(id())) } }
+  post("/minecraft/{slot}/start") {
+    val slot = call.parameters["slot"].orEmpty()
+    gatewayCall {
+      val why = minecraftRuns.start(id(), slot)
+      if (why == null) {
+        logger.info("{}'s Minecraft server of {} started by {}", id(), slot, call.loggedIn.user.name)
+        call.respond(HttpStatusCode.NoContent)
+      } else {
+        call.respond(HttpStatusCode.Conflict, ApiError(why))
+      }
+    }
+  }
+  post("/minecraft/{slot}/stop") {
+    val slot = call.parameters["slot"].orEmpty()
+    gatewayCall {
+      val stopped = minecraftRuns.stop(id(), slot)
+      if (stopped) logger.info("{}'s Minecraft server of {} stopped by {}", id(), slot, call.loggedIn.user.name)
+      call.respond(if (stopped) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
+  }
+  // Randogeddon runs a hosted slot's Minecraft server, or no longer: on only for Administrators, off for its
+  // Session-Managers too
+  post("/minecraft/{slot}/direct") {
+    val slot = call.parameters["slot"].orEmpty()
+    val direct = call.receive<MinecraftDirectRequest>().direct
+    gatewayCall {
+      admin.setDirect(id(), slot, direct, call.loggedIn.user.administrator, call.loggedIn.user.name)
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  get("/minecraft/log") {
+    if (!call.loggedIn.user.administrator) return@get call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.ONLY_ADMINISTRATORS))
+    val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+    gatewayCall { call.respond(minecraftRuns.log(id(), since)) }
   }
   post("/keep") {
     val keep = call.receive<KeepRequest>().keep

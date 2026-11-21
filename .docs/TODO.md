@@ -901,7 +901,7 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       placements. *Unlock*: its key is given to the World Locks slot (`/send`), no location checked. Logged and in the
       live feed like every cheat, for whoever may cheat (Session-Managers, Administrators, support)
 
-## Phase 20: Hosted Minecraft Dig (planned)
+## Phase 20: Hosted Minecraft Dig (done)
 
 Decided on 2026-11-19: Randogeddon hosts the Minecraft server a *Minecraft Dig* slot needs, and its players reach it
 through Randogeddon Bridge only.
@@ -911,21 +911,90 @@ through Randogeddon Bridge only.
   patch file (`.apmcdig`, into the server's `APData`), and several players can join the same slot's server; in the
   game a player connects it to Archipelago with `/connect <address> <port> <password>` and begins with `/start`;
   the players need Minecraft Java 1.19.4
-- [ ] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
+- [x] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
       (the `archipelago.json` the APWorld's client extracts for an auto-connect), so no player types `/connect` or
       sees a password; how much memory a server needs, and how much the live machine has to spare
-- [ ] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
+    - Found (0.20.1, from the mod jar 0.0.11 and the APWorld's client on its `apworld_dig` branch): the mod connects
+      by itself. When the server starts, it reads `APData/archipelago.json` ("Found server address in
+      archipelago.json") and connects there with the slot name from the patch (`player_name`), trying again up to 5
+      times when the connection drops; nobody types `/connect`. It sends no password then: only `/connect` takes
+      one. Randogeddon's slot passwords are the gateway's (MultiServer itself has none), so the hosted server reaches
+      the session's game server inside the compose network, on a way the gateway opens for that slot's container
+      only (to decide in the container's step)
+    - The server's files, as the APWorld's client writes them: the patch (a zip with `data.json`) as
+      `APData/<name>.apmc`, and `APData/archipelago.json` (here: written by Randogeddon with the session's internal
+      address). One world per seed: a world used for another seed is refused, so each slot gets a fresh one. Started
+      as the client does: `java -Xmx<heap> @<forge's unix_args.txt> -nogui`, `eula.txt` set once (the setting);
+      ready at the "Done (" line of `logs/latest.log`
+    - Who may join: the mod has no whitelist of its own; Minecraft's own (`whitelist.json`, `white-list=true`) and
+      `online-mode=true` (Mojang's account check) apply as on any server
+    - Memory: neither the mod nor its client recommends a heap. Measured (0.20.1, WSL; Forge 1.19.4-45.3.15, Java 17,
+      the mod 0.0.11, a generated seed's Minecraft Dig slot set up as the client does): the server is ready 12 s after
+      its start (its world made), and holds 1.4 to 1.5 GB a while after, nobody on it, with `-Xmx` 3 G, 2 G or
+      1.5 G alike. Players exploring load more of the world: `-Xmx2G` and a container limit of about 2.5 GB per
+      server. The live machine: 8 GB, about 6.9 GB available next to the tracker, the gateway and the database, so
+      one or two at a time (a setting, as the game servers at once)
+    - Tried with it: the mod read the slot's patch ("Loaded APMC data with client_version: 16") and the address from
+      `APData/archipelago.json` ("Found initial server address from archipelago.json") and tried to connect there
+- [x] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
       third-party mod, with memory of its own), from an image that has Java, Forge and the mod; the slot's `.apmcdig`
       from the seed goes into it. The operator accepts Mojang's EULA once (a setting), or nothing is hosted
-- [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
+    - Decided with the user (after 0.20.1): a limit of 3 GB per container, `-Xmx2G` (the JVM needs room beyond its
+      heap; a world full of dropped items needs more than the measured 1.5 GB). Its world kept on disk while it
+      sleeps; a fresh one for each seed. No `archipelago.json` (the mod would connect without a password first)
+    - Done (0.20.2): one container, the `minecraft` service, runs the servers as its processes instead of a container
+      each (the gateway would need Docker's socket for that, which is root on the machine): the gateway's image with
+      Java 17, Forge 1.19.4-45.3.15 and the mod (both checked by their SHA-256), `minecraft_host.py` as its program,
+      as user 1000 without capabilities. The gateway tells it what to run (its API on 8002, the internal token): the
+      slot's `data.json` from the seed's `.apmcdig` as `APData/<slot>.apmc`, `eula.txt`, `server.properties`
+      (`online-mode=true`), a fresh world when the seed changes; at most `MINECRAFT_SERVERS` at once (1 by default);
+      a server above `MINECRAFT_LIMIT_MB` (3072) is ended. Its world is in `data/minecraft/<key>`
+    - Tried with it (WSL, the demo's group b with a Minecraft Dig slot): started through the gateway, ready and
+      connected to the session's game server with its password, items received, 1.46 GB, stopped and saved
+- [x] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
       bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
-- [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
+    - Done (0.20.3): as decided below. Tried with a client speaking 1.19.4's protocol through the gateway (WSL, the
+      demo): the server list's look answered while asleep (its pong too), a join held with a login plugin request
+      every 10 s and started after 15 s, then the server's own encryption request. Whether a real Minecraft client
+      keeps waiting that long is to be seen with one (the protocol says it does: any packet keeps it)
+    - Decided with the user (after 0.20.1): it starts when a player joins, not when a client only looks at it. The
+      gateway reads only the first packet of a Minecraft connection: a server list ping (a client in its menu) it
+      answers itself ("asleep, join to wake it", "starting…") and starts nothing; a join (handshake and login start)
+      starts the container, and the gateway holds the connection (the client says "Logging in…"), keeping it from
+      timing out with a login plugin request every ~10 s whose answers it drops (to be tried with a real 1.19.4
+      client), until the server is ready ("Done (" in its log). Then it sends the held packets on and only passes
+      bytes from there: Mojang's account check and the encryption are the server's, end to end. A start that fails
+      or takes too long ends the join with a message the client shows
+    - [x] It sleeps when no player has been on it for as long as the game servers wait (the same setting) (0.20.2)
+    - [x] It connects to Archipelago when its first player joins, not at its start: the gateway types
+      `/connect <address> <port> "<password>"` into its console (the password in double quotes), through the gateway
+      like any client (so the session's game server wakes for it); its connection ends when it sleeps (0.20.2: to
+      a relay of the `minecraft` service on 127.0.0.1, which adds the session's path, as `/connect` takes no path)
+- [x] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
       `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
       container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
       Minecraft port is open to the internet. A relay of its own kind (binary, uncompressed, its own limits)
-- [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
+    - Done (0.20.3): on the session's own address instead of a host of its own, `…/minecraft/<slot>` (Traefik's
+      router for the sessions needs nothing new), with the slot's password in `X-Randogeddon-Slot-Password` as the
+      bridge has it for a relay (from the player's key), checked in constant time; a locked slot is refused. Each
+      Minecraft connection its own WebSocket, binary messages; before the server takes over, a packet may have 4 KB
+- [x] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
       server sees every connection coming from the gateway, so limits and bans by address mean nothing)
-- [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+    - Decided with the user (0.20.4): no whitelist. Only the slot's players reach the server at all (the bridge
+      with their key and the slot's password; no Minecraft port is public), and their Minecraft names aren't the
+      slot names a whitelist could come from
+- [x] Hosted here only when an Administrator says so (asked for on 2026-11-21, moved from Phase 21)
+    - Done (0.20.5): a hosted Minecraft Dig slot's server is run here only with its switch (`session_hosted_slots.direct`,
+      V26): on by Administrators only, when creating the session or in the panel; off by Session-Managers too (its
+      server stops). The tunnel logs in with a key made from the slot's password, which the tracker gives the
+      session's players and its Session-Managers (the players never get the password); the gateway checks it
+      without anything stored
+- [x] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+    - Done (0.20.4): its own section, *Minecraft*, after *Logic* (a session without a Minecraft Dig slot doesn't
+      show it): each slot's server, its state and who is on it, *Start* and *Stop* for Session-Managers and
+      Administrators, its log for Administrators
+    - Mojang's EULA: accepted by the operator, not in the panel (decided with the user): `MINECRAFT_EULA=true` in
+      `.env` accepts it for every hosted server, false by default; the Administrators' setting of 0.20.2 is gone
 
 ## Phase 21: Floating Panels – Slot & Player (planned)
 
@@ -933,3 +1002,27 @@ through Randogeddon Bridge only.
 open, move and close, and what they show is to come from the user.*
 
 - [ ] Floating panels for a slot and for a player
+- [ ] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
+      side as fit), and sortable in some way (asked for on 2026-11-21)
+- [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
+      2026-11-21)
+- [ ] Creating a session (asked for on 2026-11-21):
+    - A hosted game can still be given to certain players
+    - For every slot, a checkbox: open to all of the session's players
+    - [x] A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
+      bridge's tunnel) (moved to Phase 20: 0.20.5)
+- [ ] A running session's slots edited (asked for on 2026-11-21):
+    - Who may use a slot changed; its hosted mode not (for now)
+    - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
+      Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
+    - Late invites, then
+- [ ] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
+      Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
+- [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+
+## Phase 22: Maps (planned)
+
+*Asked for on 2026-11-21: maps of the slots' games with markers for their checks. Which games, where the maps
+and the locations' places come from, and what a marker shows are to come from the user.*
+
+- [ ] Maps with check markers for the slots

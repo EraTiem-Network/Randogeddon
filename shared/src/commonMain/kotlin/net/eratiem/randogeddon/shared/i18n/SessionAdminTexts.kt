@@ -4,6 +4,7 @@ import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
 import net.eratiem.randogeddon.shared.LogicStatus
+import net.eratiem.randogeddon.shared.MinecraftStatus
 import net.eratiem.randogeddon.shared.PlandoModule
 
 /** A session in the panel: its state and actions, its players, the past sessions, a new session's form. */
@@ -137,6 +138,21 @@ interface SessionAdminTexts {
   val logicSectionSubtitle: String
   fun logicState(status: LogicStatus, problem: String?): String
   val logicRebuild: String
+  /** The session's hosted Minecraft servers (Minecraft Dig): each one's state, start and stop, its log (Administrators). */
+  val minecraftSection: String
+  val minecraftSectionSubtitle: String
+  /** [players]: who is on it, joined (empty: nobody). */
+  fun minecraftState(status: MinecraftStatus, players: String): String
+  val minecraftNotHosted: String
+  val minecraftStart: String
+  val minecraftStop: String
+  /** A hosted slot whose server Randogeddon doesn't run: its Session-Managers run their own. */
+  val minecraftNotDirect: String
+  /** Switched on by Administrators only, off by Session-Managers too. */
+  val minecraftHostHere: String
+  val minecraftDontHost: String
+  /** At creation: a hosted Minecraft Dig slot's server run here (Administrators only). */
+  val hostDirectly: String
   val useSeed: String
   val stepSeed: String
   val seedChecking: String
@@ -336,6 +352,22 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     LogicStatus.FAILED -> "Couldn't be built: ${problem ?: "see its log"}"
   }
   override val logicRebuild = "Build again"
+  override val minecraftSection = "Minecraft"
+  override val minecraftSectionSubtitle = "the Minecraft Dig slots' servers, reached through Randogeddon Bridge"
+  override fun minecraftState(status: MinecraftStatus, players: String) = when (status) {
+    MinecraftStatus.ASLEEP -> "Asleep: it starts when a player joins through the bridge"
+    MinecraftStatus.STARTING -> "Starting (about a minute; a player's join waits for it)"
+    MinecraftStatus.RUNNING -> if (players.isEmpty()) "Running, nobody on it: it sleeps after the game servers' idle time"
+      else "Running: $players on it"
+    MinecraftStatus.CRASHED -> "Ended on its own (see its log): it starts again when a player joins"
+  }
+  override val minecraftNotHosted = "Not hosted here: the operator hasn't accepted Mojang's EULA (MINECRAFT_EULA)"
+  override val minecraftStart = "Start"
+  override val minecraftStop = "Stop"
+  override val minecraftNotDirect = "Not hosted here: its Session-Managers run its server themselves"
+  override val minecraftHostHere = "Host here"
+  override val minecraftDontHost = "Don't host here"
+  override val hostDirectly = "its server here (through the bridge)"
   override val useSeed = "Use a generated seed…"
   override val stepSeed = "1. The seed"
   override val seedChecking = "Checking the seed…"
@@ -560,6 +592,22 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     LogicStatus.FAILED -> "Konnte nicht aufgebaut werden: ${problem ?: "siehe ihr Log"}"
   }
   override val logicRebuild = "Neu aufbauen"
+  override val minecraftSection = "Minecraft"
+  override val minecraftSectionSubtitle = "die Server der Minecraft-Dig-Slots, erreichbar über Randogeddon Bridge"
+  override fun minecraftState(status: MinecraftStatus, players: String) = when (status) {
+    MinecraftStatus.ASLEEP -> "Schläft: Er startet, wenn jemand über die Bridge beitritt"
+    MinecraftStatus.STARTING -> "Startet (etwa eine Minute; ein Beitritt wartet darauf)"
+    MinecraftStatus.RUNNING -> if (players.isEmpty()) "Läuft, niemand darauf: Er schläft nach der Leerlaufzeit der Spielserver"
+      else "Läuft: $players darauf"
+    MinecraftStatus.CRASHED -> "Von selbst beendet (siehe sein Log): Er startet wieder, wenn jemand beitritt"
+  }
+  override val minecraftNotHosted = "Hier nicht gehostet: Der Betreiber hat Mojangs EULA nicht akzeptiert (MINECRAFT_EULA)"
+  override val minecraftStart = "Starten"
+  override val minecraftStop = "Stoppen"
+  override val minecraftNotDirect = "Nicht hier gehostet: Seine Session-Manager betreiben den Server selbst"
+  override val minecraftHostHere = "Hier hosten"
+  override val minecraftDontHost = "Nicht hier hosten"
+  override val hostDirectly = "sein Server hier (über die Bridge)"
   override val useSeed = "Generierten Seed verwenden…"
   override val stepSeed = "1. Der Seed"
   override val seedChecking = "Seed wird geprüft…"

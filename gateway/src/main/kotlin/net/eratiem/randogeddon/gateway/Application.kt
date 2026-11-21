@@ -80,6 +80,8 @@ data class GatewayConfig(
           adminPassword = server("adminPassword"),
           generationMinutes = server("generationMinutes").toInt(),
           generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
+          minecraftApi = server("minecraftApi").trim().trimEnd('/'),
+          minecraftEula = server("minecraftEula").trim().equals("true", ignoreCase = true),
         ),
       )
     }
@@ -98,6 +100,10 @@ data class GameServerSettings(
   val generationMinutes: Int,
   /** How many Generate.py run at once (seeds and spoiler logs' later levels together). */
   val generationsAtOnce: Int,
+  /** The minecraft service's API (`http://minecraft:8002`); empty: no Minecraft Dig server is hosted. */
+  val minecraftApi: String = "",
+  /** The operator accepted Mojang's EULA for every hosted Minecraft server (`MINECRAFT_EULA=true`); else none runs. */
+  val minecraftEula: Boolean = false,
 )
 
 /**
@@ -146,7 +152,7 @@ fun main() {
   // A session's: kept running, its hosted slots. Unknown (the database didn't answer): it keeps running
   suspend fun rulesOf(session: SessionGameServer): SleepRules =
     readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
-      ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
+      ?.let { SleepRules(it.keepRunning, it.hosted, it.direct) } ?: SleepRules()
   // What happens on the game servers, heard here and kept for the tracker
   val events = SessionEvents(SessionEventStore(database), http, background)
   // Each session's logic (the available checks), running with its game server and a while after
@@ -207,6 +213,12 @@ fun main() {
         .onSuccess { if (it.isNotEmpty()) logger.info("Logic ended, its game server sleeps: {}", it.joinToString()) }
     }
   }
+  // The Minecraft Dig slots' servers, run by the minecraft service
+  val minecraft = Minecraft(
+    http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
+    passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
+    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() }, scope = background,
+  )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
   val uploadedSeeds = UploadedSeeds(archipelago, dirs, options.dataDir)
@@ -244,7 +256,26 @@ fun main() {
         // wss://<session>.<domain>:443 behind Traefik, ws://host:38281/<session> without; with one session running,
         // a client that names none gets that one
         webSocket("/{path...}") {
-          val id = sessionIdOf(call.request.origin.serverHost, call.parameters.getAll("path").orEmpty(), config.baseDomain)
+          val path = call.parameters.getAll("path").orEmpty()
+          // Randogeddon Bridge's tunnel to a Minecraft Dig slot's server: it starts no game server (the Minecraft
+          // server's own connection does), only the slot's password and an open slot let it in
+          minecraftPath(path)?.let { (sessionPath, slot) ->
+            val tunnelId = sessionIdOf(call.request.origin.serverHost, sessionPath, config.baseDomain)
+            val tunnelSession = tunnelId?.let { sessions.get(it) }
+            if (tunnelSession == null || !minecraft.enabled) {
+              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "No Minecraft server here"))
+            } else if (!tunnelAllowed(
+                call.request.headers[TUNNEL_KEY_HEADER], slot, tunnelSession.passwords::current, tunnelSession.passwords::locked,
+              ) { rulesOf(tunnelSession).direct }
+            ) {
+              logger.info("Refused a Minecraft tunnel from {} to {}'s {}", call.request.origin.remoteHost, tunnelSession.id, printable(slot))
+              close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Wrong key, a locked slot, or not hosted here"))
+            } else {
+              minecraftTunnel(this, minecraft, tunnelSession.id, slot)
+            }
+            return@webSocket
+          }
+          val id = sessionIdOf(call.request.origin.serverHost, path, config.baseDomain)
           val session = if (id != null) sessions.get(id) else sessions.onlyActive()
           // A sleeping game server starts for its player (if there's room), who waits meanwhile
           if (session != null && session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {
@@ -275,7 +306,7 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic)
+        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic, minecraft)
       }
     }
     monitor.subscribe(ApplicationStopping) {
