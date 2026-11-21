@@ -25,6 +25,10 @@ phases (1 to 21) are in [DONE.md](DONE.md).
 and the locations' places come from, and what a marker shows are to come from the user.*
 
 - [ ] Maps with check markers for the slots
+    - Decided with the user: generated for every game, no game images (maybe later), in the slot panel's *Map* tab:
+      its regions from the logic, a location's place by its region, the ones without a useful region grouped by
+      their names; checked, open and available, the name on hover, filters by state. Started with Luigi's
+      Mansion and Pikmin
 - [x] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21): *Built with*
 - [x] `.docs/` down to the essentials, shorter, and restructured where that helps (asked for on 2026-11-21)
     - The finished phases moved unchanged into `DONE.md`; the rest rewritten as compact references (from about
@@ -40,6 +44,9 @@ and the locations' places come from, and what a marker shows are to come from th
 - [x] *Your connection*: the server and the patch files' names on one line, cut in the middle, the whole on hover
       (0.22.2)
 - [x] Randogeddon Bridge's page: the address copied the same ways as the server on the dashboard (0.22.2)
+- [x] The Overview's *Slots* tile counts locked slots as not started (0.22.3)
+- [x] A slot's panel in tabs: *Checks* (available, remaining), *Map*, *Transported items* (sent, received),
+      *Connections* (0.22.3; the map 0.22.4)
 
 ## Phase 23: Full Code Review & Security Check (planned)
 

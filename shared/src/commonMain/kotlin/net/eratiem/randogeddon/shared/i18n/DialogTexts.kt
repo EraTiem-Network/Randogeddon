@@ -36,6 +36,14 @@ interface DialogTexts {
   /** After the item: `from Bob-HK · Crossroads`. */
   fun from(sender: String, location: String?): String
   fun remainingChecks(n: Int): String
+  /** The slot panel's tabs, by key: checks, transported, connections (and map). */
+  fun tab(key: String): String
+  fun availableChecks(n: Int): String
+  /** Its logic isn't known: not running for it (a seed from elsewhere, a race), or not yet. */
+  val availableUnknown: String
+  fun sentItems(n: Int): String
+  /** A sent item's receiver and the location it was at. */
+  fun to(receiver: String, location: String): String
   val allDone: String
 }
 
@@ -130,6 +138,17 @@ internal object EnglishDialogs : DialogTexts {
   override val nextPage = "Next"
   override fun from(sender: String, location: String?) = "  from $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Remaining checks ($n)"
+  override fun tab(key: String) = when (key) {
+    "checks" -> "Checks"
+    "transported" -> "Transported items"
+    "connections" -> "Connections"
+    "map" -> "Map"
+    else -> key
+  }
+  override fun availableChecks(n: Int) = "Available now ($n)"
+  override val availableUnknown = "Not known: the session's logic doesn't run for this slot."
+  override fun sentItems(n: Int) = "Sent items ($n)"
+  override fun to(receiver: String, location: String) = "  to $receiver · $location"
   override val allDone = "All done!"
 }
 
@@ -165,6 +184,17 @@ internal object GermanDialogs : DialogTexts {
   override val nextPage = "Weiter"
   override fun from(sender: String, location: String?) = "  von $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Offene Checks ($n)"
+  override fun tab(key: String) = when (key) {
+    "checks" -> "Checks"
+    "transported" -> "Transportierte Items"
+    "connections" -> "Verbindungen"
+    "map" -> "Karte"
+    else -> key
+  }
+  override fun availableChecks(n: Int) = "Jetzt erreichbar ($n)"
+  override val availableUnknown = "Nicht bekannt: Die Logik der Session läuft für diesen Slot nicht."
+  override fun sentItems(n: Int) = "Gesendete Items ($n)"
+  override fun to(receiver: String, location: String) = "  an $receiver · $location"
   override val allDone = "Alles erledigt!"
 }
 

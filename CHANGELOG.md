@@ -11,6 +11,14 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
 came up on the way.
 
+### 0.22.3: The slot panel in tabs, locked slots as not started
+- A slot's panel: under its progress and its time, tabs. *Checks*: what its logic reaches now on the left, the rest
+  of its remaining checks on the right. *Transported items*: what it sent on the left (what its checked locations
+  held, and to whom), what it received on the right. *Connections*: its connection log. One filter above both
+  columns of a tab.
+- The Overview's *Slots* tile counts a locked slot as not started (it can't connect before its key turns up): with
+  locks, its *not started* no longer left them out, and *Slots* adds up again.
+
 ### 0.22.2: A session's control on a phone, the ID as typed, one-line fields
 - *State and Control* on a narrow screen: its actions (pause or end, delete, *Keep running without players*) wrap
   where they need to, and the dashboard's and the spoiler log's buttons go on a line of their own below them; they
