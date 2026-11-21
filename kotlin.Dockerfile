@@ -2,8 +2,9 @@
 # The images of this repository; the Kotlin apps are native executables (GraalVM Native Image, Linux x86_64):
 #   target tracker   the dashboard server (:server) with the Compose web app (:webApp)
 #   target gateway   the game host: runs MultiServer (Archipelago, pinned release) and is the game clients' entry to it,
-#                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`). The same image runs
-#                    the hosted Minecraft servers of Minecraft Dig slots, as a service of its own (`minecraft_host.py`)
+#                    checking the slot passwords (:gateway); also generates seeds (`ap-generate`)
+#   target minecraft the hosted Minecraft servers of Minecraft Dig slots (Java 17, Forge with the mod, minecraft_host.py);
+#                    nothing of Archipelago
 # The Kotlin apps are built in one stage, so `docker compose build` runs Gradle once. Randogeddon Bridge (bridge/, Go)
 # is built in its own stage for every system the dashboard offers it for; the tracker serves the builds.
 #
@@ -174,13 +175,6 @@ RUN useradd --uid 1000 --create-home randogeddon \
  && chown randogeddon . logs host.yaml custom_worlds
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py archipelago/logic_run.py \
      archipelago/seed_info.py ./
-# The hosted Minecraft servers (the minecraft service): Java 17, Forge with the mod, the program that runs them
-# hadolint ignore=DL3008
-RUN apt-get update \
- && apt-get install -y --no-install-recommends openjdk-17-jre-headless \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=forge /opt/forge /opt/forge
-COPY archipelago/minecraft_host.py /app/
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server
@@ -190,3 +184,19 @@ COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /s
 USER randogeddon
 EXPOSE 38281
 CMD ["/app/randogeddon-gateway"]
+
+# The hosted Minecraft servers of Minecraft Dig slots (the minecraft service): Forge with the mod on Java 17, and the
+# program that runs them on the gateway's orders (minecraft_host.py: Python's standard library only). Nothing of
+# Archipelago or the gateway: the servers run third-party mod code, so their image holds no more than they need
+FROM forge AS minecraft
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --uid 1000 --create-home randogeddon
+COPY archipelago/minecraft_host.py /app/
+# It must run on this image's Python, not only on a newer one
+RUN python3 -m py_compile /app/minecraft_host.py
+USER randogeddon
+EXPOSE 8002
+CMD ["python3", "/app/minecraft_host.py"]
