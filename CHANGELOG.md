@@ -7,6 +7,21 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 20: Hosted Minecraft Dig
+The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and reached through Randogeddon Bridge.
+
+### 0.20.1: Found out first
+- TODO: what the mod and the APWorld's client do, read from the mod (0.0.11) and the client. The mod connects by
+  itself to the address in `APData/archipelago.json`, with the slot name from the patch but without a password, so
+  the hosted server will reach the session's game server inside the compose network. The server's files are the
+  patch's `data.json` in base64 as `APData/<name>.apmc` and that `archipelago.json`; each seed needs a fresh world.
+- Measured in WSL with a generated seed: ready 12 s after its start; 1.4 to 1.5 GB a while after, nobody on it, with
+  any heap from 1.5 to 3 GB.
+- Decided with the user: 3 GB per server (`-Xmx2G`); it starts when a player joins through the bridge (a client
+  only looking at the server list wakes nothing), the gateway holding the connection until the server is ready and
+  then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
+  servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
+
 ## Phase 19: Generating, Keeping, Showing
 It began with generating like the Launcher (a seed that the Launcher generates is to generate here too: first why one
 didn't, then what the Launcher has that the gateway hasn't), went on to keeping a session's state (nothing lost while
