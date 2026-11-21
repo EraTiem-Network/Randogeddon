@@ -49,7 +49,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
 enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
-  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT }
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT, COPY, EYE, EYE_OFF }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -274,6 +274,26 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
         drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
           color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+      }
+
+      // Two sheets, one over the other: copy
+      Icon.COPY -> {
+        val line = Stroke(stroke, join = StrokeJoin.Round)
+        drawRoundRect(color, Offset(w * .32f, w * .32f), Size(w * .54f, w * .56f), CornerRadius(w * .08f), style = line)
+        drawPath(Path().apply {
+          moveTo(w * .2f, w * .68f); lineTo(w * .14f, w * .68f); lineTo(w * .14f, w * .12f); lineTo(w * .66f, w * .12f)
+          lineTo(w * .66f, w * .2f)
+        }, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+      }
+
+      // An eye: show; struck through: hide
+      Icon.EYE, Icon.EYE_OFF -> {
+        drawPath(Path().apply {
+          moveTo(w * .06f, w * .5f); quadraticTo(w * .5f, w * .08f, w * .94f, w * .5f); quadraticTo(w * .5f, w * .92f, w * .06f, w * .5f)
+          close()
+        }, color, style = Stroke(stroke, join = StrokeJoin.Round))
+        drawCircle(color, radius = w * .13f, center = Offset(w * .5f, w * .5f))
+        if (icon == Icon.EYE_OFF) drawLine(color, Offset(w * .14f, w * .86f), Offset(w * .86f, w * .14f), stroke * 1.2f, StrokeCap.Round)
       }
 
       // A signpost, its signs pointing both ways: the checks available now
