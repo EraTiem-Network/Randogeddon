@@ -13,6 +13,15 @@ didn't, then what the Launcher has that the gateway hasn't), went on to keeping 
 the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
 states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
 
+### 0.19.18: Icons on the players' pills; deaths and traps per slot
+- **The person cards' and slot rows' pills are an icon and a number**, what they are as their tooltip in one word, as
+  in the Overview: *Done* (a flag, "1 / 3"), *Locked* (a lock), *Played* (a clock), *Received* (an arrow into a tray),
+  *Sent* (an arrow away), *Available* (a target; while the logic doesn't run, the tooltip says it is the last known
+  count). In the dialogs too.
+- **Deaths and traps per slot**: what each slot passed on by DeathLink (a skull) and TrapLink (a warning sign), from
+  the first one, summed on the person card; counted from what it sent, not from what it got. Older links count once
+  the tracker replays them (every link since 0.19.9 is in the database).
+
 ### 0.19.17: Available checks
 - **How many checks a slot can make now**, as a pill on each slot ("12 available"), summed on the person card and in
   the dialogs: its unchecked locations its game's logic reaches with the items it has (as a Universal Tracker shows

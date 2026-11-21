@@ -812,12 +812,13 @@ which the gateway writes before it starts the session's game server.
   traps shared by DeathLink and TrapLink, from the first one on), *Play time*, *Session* (its age, the date it was
   made as a tooltip; below a power sign, green while the game server runs, and its *Uptime* for this seed).
 - **Players:** one card per player of the session with their slots (a slot played together
-  shows on each of its players' cards): game, state, online dot, the time beside its state, pills (*received*: the
-  progression items it got; *sent*: the progression items found in its world for other slots; play time; counts
-  only, so its players don't learn how much is still missing; *available*: the checks it can make now, by its
-  game's logic, grey with the last known count while the logic doesn't run), two bars (a check mark: the locations checked in its own world; a
+  shows on each of its players' cards): game, state, online dot, the time beside its state, pills of an icon and a
+  number, what they are as their tooltip (*Received*: the progression items it got; *Sent*: the progression items
+  found in its world for other slots; counts only, so its players don't learn how much is still missing;
+  *Available*: the checks it can make now, by its game's logic, grey with the last known count while the logic doesn't
+  run; *Deaths* and *Traps*: what it passed on by DeathLink and TrapLink, from the first one; *Played*), two bars (a check mark: the locations checked in its own world; a
   star: those of them that hold a progression item, the progression checks). The person card has the same, summed over their
-  slots, with "x / y done" and play time as pills under the name. How many game clients
+  slots, with *Done* (x / y), *Locked* and *Played* as pills under the name. How many game clients
   are connected if more than one, and for locked slots the key: who found it, or where it was hinted. *Sort* orders
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
