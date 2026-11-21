@@ -13,6 +13,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AvailableAnswer
+import net.eratiem.randogeddon.shared.AvailableSlot
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.ConnectionSession
@@ -266,6 +268,31 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val checked = own.filterKeys { it.second in p.checked }
     return ProgressionChecks(own.size, checked.size, checked.count { (_, value) -> value.first != p.slot })
   }
+
+  /**
+   * The slots to ask the session's logic about: those whose items or checks changed since it was last asked about
+   * them, with what they received (without the starting inventory: the logic has it) and checked.
+   */
+  fun availableAsks(): List<AvailableSlot> {
+    val lockSlots = lockSlots()
+    return players.values.filter { it.slot !in lockSlots && it.game != WORLD_LOCKS_GAME }.mapNotNull { p ->
+      val received = p.items.filter { it.location != STARTING_INVENTORY }.map { it.item }
+      AvailableSlot(p.slot, received, p.checked.toList()).takeIf { p.availableAsked != received.size to p.checked.size }
+    }
+  }
+
+  /** The logic's [answer] to [asked]: each slot's available checks (`null`: it has no answer for that slot). */
+  fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer) {
+    asked.forEach { a ->
+      val p = players[a.slot] ?: return@forEach
+      p.available = answer.available[a.slot]
+      p.availableAsked = a.items.size to a.checked.size
+    }
+    touch()
+  }
+
+  /** The logic was built again: every slot is asked anew. */
+  fun forgetAvailableAsks() = players.values.forEach { it.availableAsked = null }
 
   /** Progression items [p] received from a location (not the starting inventory, not a cheat's). */
   private fun progressionReceived(p: Player): Int = p.items.count { it.location >= 0 && it.flags and ItemFlags.PROGRESSION != 0 }
@@ -637,6 +664,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         progressionChecks = checks?.locations,
         progressionChecked = checks?.checked ?: 0,
         sent = checks?.sent,
+        available = p.available,
         hintPoints = p.hintPoints,
         // As MultiServer's Context.get_hint_cost
         hintCost = if (costPercent == 0) 0 else maxOf(1, (costPercent * 0.01 * total).toInt()),
@@ -710,6 +738,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       progressionChecks = checks?.locations,
       progressionChecked = checks?.checked ?: 0,
       sent = checks?.sent,
+      available = p.available,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
     )

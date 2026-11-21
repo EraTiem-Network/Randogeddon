@@ -2987,6 +2987,23 @@
           "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.LogicView",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.LogicView$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
     }
   ],
   "resources": [

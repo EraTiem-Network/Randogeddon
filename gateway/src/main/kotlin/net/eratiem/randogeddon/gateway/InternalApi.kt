@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.RandogeddonVersion
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
@@ -60,6 +61,7 @@ fun Route.internalApi(
   apworlds: Apworlds,
   dirs: SessionDirs,
   seeds: UploadedSeeds,
+  logic: Logic,
 ) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
@@ -92,7 +94,11 @@ fun Route.internalApi(
       call.respond(if (seeds.drop(call.parameters["token"].orEmpty())) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
     }
     route("/sessions") {
-      get { call.respond(sessions.list().let { it.copy(sessions = it.sessions.map { s -> s.copy(spoiler = generator.spoiler(s.id)) }) }) }
+      get {
+        call.respond(sessions.list().let {
+          it.copy(sessions = it.sessions.map { s -> s.copy(spoiler = generator.spoiler(s.id), logic = logic.progress(s.id)) })
+        })
+      }
       route("/{id}") {
         // Takes as long as Generate.py does (up to minutes); the new seed's game server waits for a start
         post("/generate") {
@@ -150,10 +156,27 @@ fun Route.internalApi(
           val id = sessionId() ?: return@delete
           call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
         }
+        // Its logic: how many of each slot's locations it can check now (no content: it isn't running)
+        post("/logic/available") {
+          val id = sessionId() ?: return@post
+          logic.available(id, call.receive<AvailableRequest>())?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
+        }
+        // Built again from the start (also after a failed build)
+        post("/logic/rebuild") {
+          val id = sessionId() ?: return@post
+          call.respond(if (logic.rebuild(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
+        // Its logic's log: lines after ?since=
+        get("/logic/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          logic.log(id, since)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
           generator.dropSpoiler(id)
+          logic.stop(id)
           val purge = call.request.queryParameters["purge"] == "true"
           if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
         }

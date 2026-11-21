@@ -36,7 +36,9 @@ import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ArchivedSession
+import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.GameServerStatus
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
@@ -205,7 +207,28 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting, playthroughReady).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting, playthroughReady, server?.logic)
+      .hashCode().toLong().shl(16)
+
+  /** When its logic was last seen built: after each build every slot is asked anew. */
+  private var logicSince: Long? = null
+
+  /**
+   * Asks its logic about the slots whose items or checks changed, while it runs and the tracker is connected (only
+   * then does it know what they received).
+   */
+  suspend fun askLogic(gameServer: GameServerClient) {
+    val logic = server?.logic?.takeIf { it.status == LogicStatus.RUNNING } ?: return
+    if (finished || !tracker.read { connected }) return
+    if (logic.since != logicSince) {
+      tracker.forgetAvailableAsks()
+      logicSince = logic.since
+    }
+    val asks = tracker.read { availableAsks() }
+    if (asks.isEmpty()) return
+    val answer = gameServer.available(id, AvailableRequest(asks)) ?: return
+    tracker.onAvailable(asks, answer)
+  }
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
   val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
@@ -232,7 +255,12 @@ class LiveSession(
     val time = time
     val finish = finish
     val live = tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }
-    return (shownKept?.summary?.let { withPresence(it, live) } ?: live).copy(
+    val shown = shownKept?.summary?.let { withPresence(it, live) } ?: live
+    // The available checks not counted since the tracker's start: the last ones kept
+    val keptAvailable = kept?.summary?.players?.associate { it.slot to it.available }.orEmpty()
+    return shown.copy(
+      players = shown.players.map { if (it.available == null) it.copy(available = keptAvailable[it.slot]) else it },
+      logic = server?.logic,
       sessionId = id,
       errorRefused = error != null && tracker.lastErrorRefused,
       // As the gateway said at its last look; connected again: awake (it woke for a player since)
@@ -467,6 +495,21 @@ class LiveSessions(
     // The finished sessions' archives (and those of before, from their files, once)
     runCatching { archives.load() }.onFailure { logger.warn("Could not read the archives: {}", it.message) }
     this@LiveSessions.scope = scope
+    // The logic of the sessions whose game servers run is asked about what changed, every few seconds
+    launch {
+      while (true) {
+        delay(3.seconds)
+        sessions.values.forEach { live ->
+          try {
+            live.askLogic(gameServer)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            logger.debug("Could not ask {}'s logic: {}", live.id, e.message)
+          }
+        }
+      }
+    }
     while (true) {
       try {
         refresh()

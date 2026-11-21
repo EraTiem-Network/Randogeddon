@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.Totals
@@ -117,6 +118,28 @@ class SessionStateTest {
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)}]}""")) // reconnect resync
     assertEquals(1, s.players[1]!!.items.size)
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
+  }
+
+  @Test
+  fun `the logic is asked about the slots whose items or checks changed, without the starting inventory`() {
+    val s = makeState()
+    s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)},${item(101, -2, 0, 1)}]}"""))
+    val asked = s.availableAsks()
+    assertEquals(listOf(1, 2), asked.map { it.slot })
+    assertEquals(listOf(100L), asked.first { it.slot == 1 }.items)
+    assertEquals(listOf(10L), asked.first { it.slot == 1 }.checked)
+    s.onAvailable(asked, AvailableAnswer(mapOf(1 to 3, 2 to null)))
+    assertEquals(3, s.summary("t", null).players.first { it.slot == 1 }.available)
+    assertEquals(null, s.summary("t", null).players.first { it.slot == 2 }.available)
+    // Nothing changed: nobody to ask
+    assertEquals(emptyList(), s.availableAsks())
+    // A check of slot 2: only it again; its count stays until answered
+    s.onRoomUpdate(2, json("""{"checked_locations":[20]}"""))
+    assertEquals(listOf(2), s.availableAsks().map { it.slot })
+    assertEquals(3, s.playerDetail(1)!!.available)
+    // Built again: everyone anew
+    s.forgetAvailableAsks()
+    assertEquals(listOf(1, 2), s.availableAsks().map { it.slot })
   }
 
   @Test
