@@ -11,6 +11,21 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
 came up on the way.
 
+### 0.22.2: A session's control on a phone, the ID as typed, one-line fields
+- *State and Control* on a narrow screen: its actions (pause or end, delete, *Keep running without players*) wrap
+  where they need to, and the dashboard's and the spoiler log's buttons go on a line of their own below them; they
+  were cut off at the right. On a wide screen the line stays as it was, those buttons on the right.
+- The session ID's field turns a space into `-` as it is typed. A space typed at the end was trimmed away before it
+  could become one (`friday chaos` came out as `fridaychaos`); only a pasted ID kept its hyphens.
+- The ID's field takes nothing before its first letter (`2024 run`: `run`), and a hyphen at its end is left off the
+  ID (it stays in the field while the next word comes): neither is said as a mistake any more. Under the field only
+  what the server knows: taken, reserved or unwanted, too short.
+- *Your connection*: the server, the slot, a shown password or key and the patch files' names stay on one line, cut
+  in the middle where they don't fit (the port and the file's ending still show), the whole of it on hover. The panel
+  is that much shorter, and with it the Overview's tiles beside it, which take its height.
+- Randogeddon Bridge's page: a connection's address is copied the same ways as the server on the dashboard: as
+  shown, its host, its port, or as a `ws://` address (not for a Minecraft tunnel, which takes host and port).
+
 ### 0.22.1: Icons for the connection, the session ID as typed
 - *Your connection*: copy, show and hide are icons (two sheets; an eye, struck through while shown), their words as
   tips; the server's copy icon opens its menu. The bridge's fold arrow points left to collapse and right to expand.
