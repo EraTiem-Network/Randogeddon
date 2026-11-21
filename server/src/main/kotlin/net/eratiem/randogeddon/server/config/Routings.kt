@@ -31,6 +31,7 @@ import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
 import net.eratiem.randogeddon.server.admin.SlotDownloads
 import net.eratiem.randogeddon.server.admin.LogicRuns
+import net.eratiem.randogeddon.server.admin.MinecraftRuns
 import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.admin.Support
 import net.eratiem.randogeddon.server.session.Archives
@@ -70,6 +71,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val gameServerLimit by inject<GameServerLimit>()
   val spoilerRuns by inject<SpoilerRuns>()
   val logicRuns by inject<LogicRuns>()
+  val minecraftRuns by inject<MinecraftRuns>()
 
   routing {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
@@ -95,7 +97,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
           this.logins = logins
           roles = setOf(SessionRole.MANAGER)
         }
-        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit, spoilerRuns, logicRuns)
+        manageRoutes(gameServer, sessionAdmin, lifecycle, cheats, sessions, list, logins, gameServerLimit, spoilerRuns, logicRuns, minecraftRuns)
       }
       adminRoutes(gameServer, sessionAdmin, settings, logins)
       adminUserRoutes(accounts, logins)

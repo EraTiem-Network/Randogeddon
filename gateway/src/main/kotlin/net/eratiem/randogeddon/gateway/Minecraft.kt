@@ -86,7 +86,7 @@ class Minecraft(
   private val api: String,
   private val token: String,
   private val dirs: SessionDirs,
-  /** Mojang's EULA accepted (the Administrators' setting). */
+  /** Mojang's EULA accepted (the operator's `MINECRAFT_EULA`). */
   private val eula: suspend () -> Boolean,
   /** The slot passwords of session `id`, by slot name. */
   private val passwords: suspend (String) -> Map<String, String>,
@@ -126,7 +126,7 @@ class Minecraft(
   private fun key(id: String, slot: DigSlot) = "$id-p${slot.number}".lowercase()
 
   /** Session [id]'s Minecraft Dig slots and their servers. */
-  fun servers(id: String): MinecraftServers = MinecraftServers(slotsOf(id).map { slot ->
+  suspend fun servers(id: String): MinecraftServers = MinecraftServers(slotsOf(id).map { slot ->
     val key = key(id, slot)
     val host = known[key]
     val status = when (host?.status) {
@@ -136,7 +136,7 @@ class Minecraft(
       else -> MinecraftStatus.ASLEEP
     }
     MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problems[key])
-  })
+  }, hosting = enabled && eula())
 
   /** Where session [id]'s slot [slot]'s Minecraft server listens (host, port) while it runs; `null`: it doesn't. */
   fun address(id: String, slot: String): Pair<String, Int>? {
@@ -151,7 +151,7 @@ class Minecraft(
     val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return "$slot isn't a Minecraft Dig slot of this session"
     val key = key(id, digSlot)
     if (known[key]?.status in setOf("starting", "running")) return null
-    if (!eula()) return "Mojang's EULA isn't accepted (an Administrator's setting)".also { problems[key] = it }
+    if (!eula()) return "Mojang's EULA isn't accepted (the operator's MINECRAFT_EULA)".also { problems[key] = it }
     val seed = dirs.seed(id)?.name ?: return "it has no seed"
     val files = buildJsonText(id, digSlot, seed)
     val put = http.put("$api/servers/$key") { auth(); contentType(ContentType.Application.Json); setBody(files) }

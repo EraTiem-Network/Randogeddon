@@ -223,6 +223,7 @@ private fun SelectedSession(
   PeopleSection(id)
   SpoilerRunSection(id, "manage")
   LogicSection(id, administrator)
+  MinecraftSection(id, administrator)
   PatchFilesSection(id)
   // Not before the spoiler log has its playthrough: the hints and cheats need it
   if (overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false) CheatSection(id, server, cache)

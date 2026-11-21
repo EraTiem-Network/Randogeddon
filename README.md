@@ -551,7 +551,9 @@ Everyone gets a gear button in the dashboard's header: the *Management panel*. I
 its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
-share link), its **Patch files** (every slot's files from the seed), the cheats, its game server's state (running, starting, stopped, crashed), lets
+share link), its **Patch files** (every slot's files from the seed), its **Minecraft** servers (a Minecraft Dig slot's:
+asleep, starting, running with who is on it, or ended on its own; *Start* and *Stop* by hand; each one's log for
+Administrators), the cheats, its game server's state (running, starting, stopped, crashed), lets
 them start, stop and restart it (stop and restart ask once more: every player is disconnected), shows its log live
 (the last 10,000 lines, newest on top, a page at a time and searchable),
 and has the server console:
@@ -759,7 +761,9 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
   gateway ("asleep, join to wake it") and starts nothing; a join starts it and is held ("Logging in…", about 15 s
   to a minute) until it is ready, then every byte passes: Mojang's account check and the encryption are the
   server's own. Once a player is on it, it connects to the session with the slot's password, and it sleeps when
-  nobody has been on it for as long as the game servers wait.
+  nobody has been on it for as long as the game servers wait. None runs until the operator accepts Mojang's EULA
+  (https://aka.ms/MinecraftEULA) with `MINECRAFT_EULA=true` in `.env`, once for all of them; at most
+  `MINECRAFT_SERVERS` at once (1 by default, each up to 3 GB).
 - **Command line** (a computer without a browser, e.g. the one a hosted game runs on):
   `randogeddon-bridge login` asks for the key (typed or pasted at a terminal it isn't shown; or from a file:
   `randogeddon-bridge login < keyfile`; never an argument or an `echo`, which the process list and the shell's

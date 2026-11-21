@@ -39,6 +39,8 @@ import net.eratiem.randogeddon.shared.SeedInstall
 import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.MinecraftLogs
+import net.eratiem.randogeddon.shared.MinecraftServers
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.SessionServers
@@ -188,6 +190,35 @@ class GameServerClient(private val config: TrackerConfig) {
       else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
     }
   }
+
+  /** Session [id]'s Minecraft Dig slots' hosted servers. */
+  suspend fun minecraft(id: String): MinecraftServers = call { http.get("${session(id)}/minecraft") { auth() } }
+    .let { ApiJson.decodeFromString(MinecraftServers.serializer(), it) }
+
+  /** Starts session [id]'s slot [slot]'s Minecraft server; `null`, or why it can't. */
+  suspend fun startMinecraft(id: String, slot: String): String? {
+    val response = request { http.post("${session(id)}/minecraft/${slot.encodeURLPathPart()}/start") { auth() } }
+    return when {
+      response.status.isSuccess() -> null
+      response.status == HttpStatusCode.Conflict ->
+        runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrDefault("It can't start")
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Stops session [id]'s slot [slot]'s Minecraft server (it saves its world first); `false`: no such slot. */
+  suspend fun stopMinecraft(id: String, slot: String): Boolean {
+    val response = request { http.post("${session(id)}/minecraft/${slot.encodeURLPathPart()}/stop") { auth() } }
+    return when {
+      response.status == HttpStatusCode.NotFound -> false
+      response.status.isSuccess() -> true
+      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    }
+  }
+
+  /** Session [id]'s Minecraft servers' log lines after [since], by slot. */
+  suspend fun minecraftLog(id: String, since: Long): MinecraftLogs = call { http.get("${session(id)}/minecraft/log?since=$since") { auth() } }
+    .let { ApiJson.decodeFromString(MinecraftLogs.serializer(), it) }
 
   /** Session [id]'s logic: each asked slot's available checks; `null`: it isn't running. */
   suspend fun available(id: String, request: AvailableRequest): AvailableAnswer? {

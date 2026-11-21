@@ -28,9 +28,12 @@ data class MinecraftServerView(
   val problem: String? = null,
 )
 
-/** `GET /internal/sessions/{id}/minecraft`: its Minecraft Dig slots' servers (none: it has no such slot). */
+/**
+ * `GET /internal/sessions/{id}/minecraft`: its Minecraft Dig slots' servers (none: it has no such slot). [hosting]:
+ * the servers can run here (the minecraft service is there and the operator accepted Mojang's EULA).
+ */
 @Serializable
-data class MinecraftServers(val servers: List<MinecraftServerView> = emptyList())
+data class MinecraftServers(val servers: List<MinecraftServerView> = emptyList(), val hosting: Boolean = false)
 
 /** `GET /internal/sessions/{id}/minecraft/log?since=`: each Minecraft Dig slot's server log, by slot. */
 @Serializable
