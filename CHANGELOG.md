@@ -11,6 +11,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+The Management panel's logs in tabs (each only for whoever may read it); slots open to all of a session's players, a
+hosted slot for certain players, and a running session's slots edited one at a time (players, open to all, hosted;
+someone who loses a slot loses its connection: a new password), with late invites; the README down to its essentials,
+its details in `.docs/`; new icons for sent, released and the available checks; the page as wide as the window and
+the players' cards filling it without gaps; the hosted Minecraft servers in an image of their own, stopping with
+their session and keeping their idle time past a deploy; the lock cheats reworked (*Unlock* takes the key from its
+world, the lock says the server did; or a hint for it); the slot's and player's panels a page at a time, a slot's
+available checks first; *Your connection*'s fields reworked. Updating: the database's V27 comes with its migration;
+the deploy builds and pushes the third image (`minecraft`) and sets `MINECRAFT_IMAGE`.
+
 ### 0.21.8: Lighter panels, the connection's fields
 - The slot's and the player's panels show their lists a page at a time (received items and remaining locations 50,
   hints and connections 20, recent activity 25) with arrows to the others: a slot with thousands of locations opened

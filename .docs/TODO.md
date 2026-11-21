@@ -996,12 +996,14 @@ through Randogeddon Bridge only.
     - Mojang's EULA: accepted by the operator, not in the panel (decided with the user): `MINECRAFT_EULA=true` in
       `.env` accepts it for every hosted server, false by default; the Administrators' setting of 0.20.2 is gone
 
-## Phase 21: Floating Panels – Slot & Player
+## Phase 21: Floating Panels – Slot & Player (done)
 
 *Asked for when Phase 19 closed: the slot and player panels as floating panels. What they float over, how they
 open, move and close, and what they show is to come from the user.*
 
-- [ ] Floating panels for a slot and for a player
+- [x] Floating panels for a slot and for a player
+    - Done as the user meant it (0.21.8): the slot's and the player's panels as they are, lighter (their lists a page at
+      a time, a slot's available checks first)
 - [x] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
       side as fit), and sortable in some way (asked for on 2026-11-21)
     - Done (0.21.6): as many columns as fit (at least 330 dp each), each card into the shortest one so far, so they
