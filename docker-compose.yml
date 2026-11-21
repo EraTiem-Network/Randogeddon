@@ -128,6 +128,9 @@ services:
       GENERATIONS_AT_ONCE: ${GENERATIONS_AT_ONCE:-0}
       # The minecraft service (the Minecraft Dig slots' servers)
       MINECRAFT_API: http://minecraft:8002
+      # true: the operator accepts Mojang's EULA (https://aka.ms/MinecraftEULA) for every hosted Minecraft server;
+      # without it none runs
+      MINECRAFT_EULA: ${MINECRAFT_EULA:-false}
       # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""

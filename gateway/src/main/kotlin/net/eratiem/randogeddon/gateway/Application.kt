@@ -81,6 +81,7 @@ data class GatewayConfig(
           generationMinutes = server("generationMinutes").toInt(),
           generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
           minecraftApi = server("minecraftApi").trim().trimEnd('/'),
+          minecraftEula = server("minecraftEula").trim().equals("true", ignoreCase = true),
         ),
       )
     }
@@ -101,6 +102,8 @@ data class GameServerSettings(
   val generationsAtOnce: Int,
   /** The minecraft service's API (`http://minecraft:8002`); empty: no Minecraft Dig server is hosted. */
   val minecraftApi: String = "",
+  /** The operator accepted Mojang's EULA for every hosted Minecraft server (`MINECRAFT_EULA=true`); else none runs. */
+  val minecraftEula: Boolean = false,
 )
 
 /**
@@ -212,7 +215,7 @@ fun main() {
   }
   // The Minecraft Dig slots' servers, run by the minecraft service
   val minecraft = Minecraft(
-    http, options.minecraftApi, config.internalToken, dirs, eula = { runCatching { settings.minecraftEula() }.getOrDefault(false) },
+    http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
     passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() }, scope = background,
   )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
