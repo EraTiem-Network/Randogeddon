@@ -18,7 +18,21 @@ enum class CheatAction {
   @SerialName("hint") HINT,
   /** A free hint for what is at one of the slot's locations (`/hint_location`), likewise. */
   @SerialName("hint_location") HINT_LOCATION,
+  /** A locked slot: the location that holds its key is checked (`/send_location`), as if its player found it. */
+  @SerialName("key_location") KEY_LOCATION,
+  /** A locked slot: its key is given to the World Locks slot (`/send`), no location checked. */
+  @SerialName("unlock") UNLOCK,
 }
+
+/** The cheats for a locked slot: no item or location to pick, the slot is one of [CheatView.locked]. */
+val LOCK_CHEATS = setOf(CheatAction.KEY_LOCATION, CheatAction.UNLOCK)
+
+/**
+ * A slot still locked, for the lock cheats: its key, and where that lies ([keyLocation] in [keyWorld], not checked
+ * yet; `null` without the spoiler log's placements).
+ */
+@Serializable
+data class LockedSlot(val slot: String, val key: String, val keyLocation: String? = null, val keyWorld: String? = null)
 
 /**
  * `POST /api/admin/cheat`; [value]: the item or location, for the actions that need one. [from]: a location checked
@@ -59,6 +73,8 @@ data class CheatView(
   /** The game server runs and the session isn't finished. */
   val available: Boolean = false,
   val log: List<CheatLogEntry> = emptyList(),
+  /** The slots still locked (with World Locks), for the lock cheats. */
+  val locked: List<LockedSlot> = emptyList(),
 )
 
 /**
