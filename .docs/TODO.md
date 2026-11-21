@@ -951,8 +951,12 @@ through Randogeddon Bridge only.
       a server above `MINECRAFT_LIMIT_MB` (3072) is ended. Its world is in `data/minecraft/<key>`
     - Tried with it (WSL, the demo's group b with a Minecraft Dig slot): started through the gateway, ready and
       connected to the session's game server with its password, items received, 1.46 GB, stopped and saved
-- [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
+- [x] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
       bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
+    - Done (0.20.3): as decided below. Tried with a client speaking 1.19.4's protocol through the gateway (WSL, the
+      demo): the server list's look answered while asleep (its pong too), a join held with a login plugin request
+      every 10 s and started after 15 s, then the server's own encryption request. Whether a real Minecraft client
+      keeps waiting that long is to be seen with one (the protocol says it does: any packet keeps it)
     - Decided with the user (after 0.20.1): it starts when a player joins, not when a client only looks at it. The
       gateway reads only the first packet of a Minecraft connection: a server list ping (a client in its menu) it
       answers itself ("asleep, join to wake it", "starting…") and starts nothing; a join (handshake and login start)
@@ -966,10 +970,14 @@ through Randogeddon Bridge only.
       `/connect <address> <port> "<password>"` into its console (the password in double quotes), through the gateway
       like any client (so the session's game server wakes for it); its connection ends when it sleeps (0.20.2: to
       a relay of the `minecraft` service on 127.0.0.1, which adds the session's path, as `/connect` takes no path)
-- [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
+- [x] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
       `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
       container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
       Minecraft port is open to the internet. A relay of its own kind (binary, uncompressed, its own limits)
+    - Done (0.20.3): on the session's own address instead of a host of its own, `…/minecraft/<slot>` (Traefik's
+      router for the sessions needs nothing new), with the slot's password in `X-Randogeddon-Slot-Password` as the
+      bridge has it for a relay (from the player's key), checked in constant time; a locked slot is refused. Each
+      Minecraft connection its own WebSocket, binary messages; before the server takes over, a packet may have 4 KB
 - [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
       server sees every connection coming from the gateway, so limits and bans by address mean nothing)
 - [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
@@ -980,3 +988,7 @@ through Randogeddon Bridge only.
 open, move and close, and what they show is to come from the user.*
 
 - [ ] Floating panels for a slot and for a player
+- [ ] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
+      side as fit), and sortable in some way (asked for on 2026-11-21)
+- [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
+      2026-11-21)

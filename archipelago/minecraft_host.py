@@ -243,14 +243,13 @@ def watchdog() -> None:
                 process.kill()
 
 
-def relay(s: Server) -> None:
-    """127.0.0.1:<relay> to the gateway, with the session's path put into the WebSocket request."""
-    listener = socket.socket()
-    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind(("127.0.0.1", s.relay))
-    listener.listen()
+def relay(s: Server, listener) -> None:
+    """127.0.0.1:<relay> to the gateway, with the session's path put into the WebSocket request; until it is closed."""
     while True:
-        client, _ = listener.accept()
+        try:
+            client, _ = listener.accept()
+        except OSError:
+            return
         threading.Thread(target=relay_one, args=(s, client), daemon=True).start()
 
 
@@ -288,13 +287,40 @@ def relay_one(s: Server, client) -> None:
     pipe(client, upstream)
 
 
-relays = set()
+# Each server's relay's listening socket, by key
+relays = {}
 
 
 def ensure_relay(s: Server) -> None:
-    if s.key not in relays:
-        relays.add(s.key)
-        threading.Thread(target=relay, args=(s,), daemon=True).start()
+    with lock:
+        if s.key in relays:
+            return
+        listener = socket.socket()
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            listener.bind(("127.0.0.1", s.relay))
+            listener.listen()
+            relays[s.key] = listener
+            why = None
+        except OSError as e:
+            listener.close()
+            why = str(e)
+    if why:
+        s.note(f"[host] Its relay on {s.relay} didn't open: {why}")
+        return
+    threading.Thread(target=relay, args=(s, listener), daemon=True).start()
+
+
+def close_relay(key: str) -> None:
+    """A deleted server's relay ends: its port is free for the next server, which may have another session."""
+    with lock:
+        listener = relays.pop(key, None)
+    if listener is not None:
+        try:
+            listener.shutdown(socket.SHUT_RDWR)  # wakes its accept()
+        except OSError:
+            pass
+        listener.close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -387,6 +413,7 @@ class Handler(BaseHTTPRequestHandler):
         if s is None:
             return self.answer(404)
         stop(s)
+        close_relay(key)
         shutil.rmtree(s.dir, ignore_errors=True)
         with lock:
             servers.pop(key, None)

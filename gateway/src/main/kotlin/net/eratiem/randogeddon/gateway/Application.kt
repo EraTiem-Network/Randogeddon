@@ -252,7 +252,23 @@ fun main() {
         // wss://<session>.<domain>:443 behind Traefik, ws://host:38281/<session> without; with one session running,
         // a client that names none gets that one
         webSocket("/{path...}") {
-          val id = sessionIdOf(call.request.origin.serverHost, call.parameters.getAll("path").orEmpty(), config.baseDomain)
+          val path = call.parameters.getAll("path").orEmpty()
+          // Randogeddon Bridge's tunnel to a Minecraft Dig slot's server: it starts no game server (the Minecraft
+          // server's own connection does), only the slot's password and an open slot let it in
+          minecraftPath(path)?.let { (sessionPath, slot) ->
+            val tunnelId = sessionIdOf(call.request.origin.serverHost, sessionPath, config.baseDomain)
+            val tunnelSession = tunnelId?.let { sessions.get(it) }
+            if (tunnelSession == null || !minecraft.enabled) {
+              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "No Minecraft server here"))
+            } else if (!tunnelAllowed(call.request.headers[SLOT_PASSWORD_HEADER], slot, tunnelSession.passwords::current, tunnelSession.passwords::locked)) {
+              logger.info("Refused a Minecraft tunnel from {} to {}'s {}", call.request.origin.remoteHost, tunnelSession.id, printable(slot))
+              close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Wrong password or a locked slot"))
+            } else {
+              minecraftTunnel(this, minecraft, tunnelSession.id, slot)
+            }
+            return@webSocket
+          }
+          val id = sessionIdOf(call.request.origin.serverHost, path, config.baseDomain)
           val session = if (id != null) sessions.get(id) else sessions.onlyActive()
           // A sleeping game server starts for its player (if there's room), who waits meanwhile
           if (session != null && session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {

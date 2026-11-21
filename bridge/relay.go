@@ -47,7 +47,9 @@ type Relay struct {
 	connected int // of them, the ones the server took in
 	detail    string
 	listener  net.Listener
-	server    *http.Server
+	server    *http.Server // nil for a tunnel
+	closing   context.Context
+	close     context.CancelFunc
 }
 
 // RelayView is a relay as the page shows it.
@@ -73,6 +75,12 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 		ID: id, Session: session, Title: title, Slot: slot.Name, Game: slot.Game, Port: ln.Addr().(*net.TCPAddr).Port,
 		refresh: refresh, password: slot.Password, upstream: upstream, listener: ln,
 	}
+	r.closing, r.close = context.WithCancel(context.Background())
+	if slot.Game == MinecraftDig {
+		go r.serveTunnel(ln)
+		log.Printf("Tunnel for %s in %s on localhost:%d", r.Slot, r.Session, r.Port)
+		return r, nil
+	}
 	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := r.server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -85,6 +93,11 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 
 // Close ends the relay and its game connections.
 func (r *Relay) Close() {
+	r.close()
+	if r.server == nil {
+		_ = r.listener.Close()
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = r.server.Shutdown(ctx)
