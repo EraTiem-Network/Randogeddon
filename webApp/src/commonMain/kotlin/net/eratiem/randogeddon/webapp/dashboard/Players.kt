@@ -173,9 +173,9 @@ private fun PersonCard(
         val played = worlds.sumOf { playTime(it, now) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
           // Its slots and how many are done, in one
-          Pill(t.dashboard.slotsDone(person.goals, worlds.size), if (person.goals > 0) p.ok else p.muted)
-          if (locked > 0) Pill(t.dashboard.locked(locked), p.locked)
-          if (played > 0) Pill(t.dashboard.played(t.duration(played)), p.useful)
+          TipPill(Icon.FLAG, "${person.goals} / ${worlds.size}", t.dashboard.tipDone, if (person.goals > 0) p.ok else p.muted)
+          if (locked > 0) TipPill(Icon.LOCK, "$locked", t.dashboard.tipLocked, p.locked)
+          if (played > 0) TipPill(Icon.CLOCK, t.duration(played), t.dashboard.tipPlayed, p.useful)
           ProgressPills(Progress.sum(worlds))
         }
       }
@@ -302,7 +302,7 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
           Modifier.padding(top = 5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
           ProgressPills(progress)
-          if (played > 0) Pill(t.dashboard.played(t.duration(played)), p.useful)
+          if (played > 0) TipPill(Icon.CLOCK, t.duration(played), t.dashboard.tipPlayed, p.useful)
         }
         Spacer(Modifier.height(6.dp))
         Bars(progress, dimmed = locked)
@@ -325,13 +325,20 @@ internal data class Progress(
   val sent: Int?,
   /** Its checks available now (the session's logic counts them); `null`: not known. */
   val available: Int? = null,
+  /** The deaths and traps it passed on (DeathLink, TrapLink). */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
 ) {
   companion object {
     fun of(w: PlayerSummary) =
-      Progress(w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent, w.available)
+      Progress(
+        w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent, w.available, w.deaths, w.trapLinks,
+      )
 
     fun of(d: PlayerDetail) =
-      Progress(d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent, d.available)
+      Progress(
+        d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent, d.available, d.deaths, d.trapLinks,
+      )
 
     /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
     fun sum(worlds: List<PlayerSummary>): Progress {
@@ -341,6 +348,7 @@ internal data class Progress(
         worlds.sumOf { it.progressionReceived }, known { it.sent },
         // Those of its slots that are known (a slot the logic has no answer for adds none)
         worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
+        worlds.sumOf { it.deaths }, worlds.sumOf { it.trapLinks },
       )
     }
   }
@@ -373,22 +381,28 @@ internal val LocalLogicRunning = staticCompositionLocalOf { true }
 internal fun WithLogic(s: Summary?, content: @Composable () -> Unit) =
   CompositionLocalProvider(LocalLogicRunning provides (s?.logic?.status == LogicStatus.RUNNING), content = content)
 
+/** A pill of an icon and a number, what it is as its tooltip ([tip], best one word). */
+@Composable
+internal fun TipPill(icon: Icon, text: String, tip: String, color: Color) = Tip(tip) { Pill(text, color, icon) }
+
 /**
  * Progression received, and sent to others (once scouted), as pills: counts only. Then the checks available now (once
- * the logic counted them), greyed out with the last known count while it doesn't run.
+ * the logic counted them), greyed out with the last known count while it doesn't run; the deaths and traps it passed
+ * on, from the first one.
  */
 @Composable
 internal fun ProgressPills(progress: Progress) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  Pill(t.dashboard.received(t.number(progress.received)), p.progression)
-  progress.sent?.let { Pill(t.dashboard.sent(t.number(it)), p.useful) }
+  val d = t.dashboard
+  TipPill(Icon.RECEIVED, t.number(progress.received), d.tipReceived, p.progression)
+  progress.sent?.let { TipPill(Icon.SENT, t.number(it), d.tipSent, p.useful) }
   progress.available?.let { available ->
     val running = LocalLogicRunning.current
-    Tip(if (running) t.dashboard.availableTip else t.dashboard.availableLastKnown) {
-      Pill(t.dashboard.available(t.number(available)), if (running) p.ok else p.muted, Icon.TARGET)
-    }
+    TipPill(Icon.TARGET, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
   }
+  if (progress.deaths > 0) TipPill(Icon.SKULL, t.number(progress.deaths), d.tipDeaths, p.trap)
+  if (progress.trapLinks > 0) TipPill(Icon.TRAP, t.number(progress.trapLinks), d.tipTraps, p.warn)
 }
 
 /** Connected time of [world] so far, including the running session. */
