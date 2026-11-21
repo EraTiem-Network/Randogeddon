@@ -9,11 +9,11 @@ slot's locations are compared with the seed's first: one whose locations differ 
 same with the same seed) gets no answers.
 
 Then it answers on stdin / stdout, one JSON object a line. Asked:
-    {"slots": [{"slot": 3, "items": [<item IDs it received>], "checked": [<its checked location IDs>]}]}
+    {"slots": [{"slot": 3, "items": [<item IDs it received>], "checked": [<its checked location IDs>]}], "maps": [3]}
 it answers with a line that starts with PREFIX:
-    {"available": {"3": 12}}
-how many of the slot's unchecked locations its logic reaches with those items and its starting inventory (`null`: no
-answer for that slot). Everything else it prints is its log.
+    {"available": {"3": [<location IDs>]}, "maps": {"3": {"regions": [...], "links": [[0, 1], ...]}}}
+which of the slot's unchecked locations its logic reaches with those items and its starting inventory (`null`: no
+answer for that slot), and for the slots in "maps" their map (see slot_map). Everything else it prints is its log.
 """
 import json
 import os
@@ -92,6 +92,54 @@ def available(multiworld, slot: int, items: list, checked: set) -> list:
     ]
 
 
+def slot_map(multiworld, slot: int) -> dict:
+    """
+    [slot]'s map as its logic has it: its regions, each with its locations' IDs (its start first, then as they are
+    reached from it), and which of them connect (pairs of their indices, either way once). A region without a location
+    that leads nowhere else (a dead end only rules pass through) is left out, again and again.
+    """
+    world = multiworld.worlds[slot]
+    regions = [region for region in multiworld.get_regions(slot)]
+    locations = {
+        region.name: [location.address for location in region.locations if location.address is not None]
+        for region in regions
+    }
+    neighbours = {region.name: set() for region in regions}
+    for region in regions:
+        for exit in region.exits:
+            target = exit.connected_region
+            if target is not None and target.player == slot and target.name != region.name and target.name in neighbours:
+                neighbours[region.name].add(target.name)
+                neighbours[target.name].add(region.name)
+    start = getattr(world, "origin_region_name", "Menu")
+    pruned = True
+    while pruned:
+        pruned = False
+        for name in list(neighbours):
+            if name != start and not locations[name] and len(neighbours[name]) <= 1:
+                for other in neighbours.pop(name):
+                    neighbours[other].discard(name)
+                pruned = True
+    # Its start first, then breadth first from it; what can't be reached from it after
+    order = []
+    seen = set()
+    queue = [start] if start in neighbours else []
+    while queue:
+        name = queue.pop(0)
+        if name in seen:
+            continue
+        seen.add(name)
+        order.append(name)
+        queue.extend(sorted(neighbours[name] - seen))
+    order.extend(sorted(name for name in neighbours if name not in seen))
+    index = {name: i for i, name in enumerate(order)}
+    links = sorted({tuple(sorted((index[a], index[b]))) for a in order for b in neighbours[a]})
+    return {
+        "regions": [{"name": name, "locations": locations[name]} for name in order],
+        "links": [list(link) for link in links],
+    }
+
+
 def main() -> None:
     seed_file, arguments = sys.argv[1], sys.argv[2:]
     sys.path.insert(0, os.getcwd())
@@ -119,7 +167,8 @@ def main() -> None:
                 slot = int(entry["slot"])
                 answers[str(slot)] = available(multiworld, slot, entry.get("items", []), set(entry.get("checked", []))) \
                     if slot in answered else None
-            say({"available": answers})
+            maps = {str(slot): slot_map(multiworld, slot) for slot in map(int, asked.get("maps", [])) if slot in answered}
+            say({"available": answers, "maps": maps})
         except Exception as error:  # an answer for every question, also when one fails
             print(f"Could not answer: {error!r}", flush=True)
             say({"error": str(error)[:300]})
