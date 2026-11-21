@@ -399,7 +399,7 @@ internal fun ProgressPills(progress: Progress) {
   progress.sent?.let { TipPill(Icon.SENT, t.number(it), d.tipSent, p.useful) }
   progress.available?.let { available ->
     val running = LocalLogicRunning.current
-    TipPill(Icon.TARGET, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
+    TipPill(Icon.SIGNPOST, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
   }
   if (progress.deaths > 0) TipPill(Icon.SKULL, t.number(progress.deaths), d.tipDeaths, p.trap)
   if (progress.trapLinks > 0) TipPill(Icon.TRAP, t.number(progress.trapLinks), d.tipTraps, p.warn)

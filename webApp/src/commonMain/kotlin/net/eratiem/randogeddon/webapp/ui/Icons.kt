@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
 enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
-  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, TARGET, RECEIVED, SENT }
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -189,15 +190,22 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
       // A five-pointed star: progression
       Icon.STAR -> drawPath(Path().apply { moveTo(w * 0.5f, w * 0.07f); lineTo(w * 0.618f, w * 0.368f); lineTo(w * 0.937f, w * 0.388f); lineTo(w * 0.69f, w * 0.592f); lineTo(w * 0.77f, w * 0.902f); lineTo(w * 0.5f, w * 0.73f); lineTo(w * 0.23f, w * 0.902f); lineTo(w * 0.31f, w * 0.592f); lineTo(w * 0.063f, w * 0.388f); lineTo(w * 0.382f, w * 0.368f); close() }, color)
 
-      // An arrow up out of an open box: released
-      Icon.RELEASE -> {
+      // A chain broken in two, its links pulled apart: released (its items set free)
+      Icon.RELEASE -> rotate(45f, Offset(w * .5f, w * .5f)) {
+        val line = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
         drawPath(Path().apply {
-          moveTo(w * .3f, w * .45f); lineTo(w * .15f, w * .45f); lineTo(w * .15f, w * .88f); lineTo(w * .85f, w * .88f)
-          lineTo(w * .85f, w * .45f); lineTo(w * .7f, w * .45f)
-        }, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
-        drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
-          color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+          moveTo(w * .42f, w * .34f); lineTo(w * .2f, w * .34f)
+          arcTo(Rect(w * .04f, w * .34f, w * .36f, w * .66f), 270f, -180f, false)
+          lineTo(w * .42f, w * .66f)
+        }, color, style = line)
+        drawPath(Path().apply {
+          moveTo(w * .58f, w * .34f); lineTo(w * .8f, w * .34f)
+          arcTo(Rect(w * .64f, w * .34f, w * .96f, w * .66f), 270f, 180f, false)
+          lineTo(w * .58f, w * .66f)
+        }, color, style = line)
+        // Where it broke
+        drawLine(color, Offset(w * .5f, w * .2f), Offset(w * .5f, w * .12f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(w * .5f, w * .8f), Offset(w * .5f, w * .88f), stroke, StrokeCap.Round)
       }
 
       // Two bars: idle
@@ -257,18 +265,27 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
           color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
       }
 
-      // An arrow up and away to the right: sent
+      // An arrow up out of an open box: sent (to the other slots)
       Icon.SENT -> {
-        drawLine(color, Offset(w * .2f, w * .8f), Offset(w * .8f, w * .2f), stroke, StrokeCap.Round)
-        drawPath(Path().apply { moveTo(w * .4f, w * .2f); lineTo(w * .8f, w * .2f); lineTo(w * .8f, w * .6f) },
+        drawPath(Path().apply {
+          moveTo(w * .3f, w * .45f); lineTo(w * .15f, w * .45f); lineTo(w * .15f, w * .88f); lineTo(w * .85f, w * .88f)
+          lineTo(w * .85f, w * .45f); lineTo(w * .7f, w * .45f)
+        }, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
+        drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
           color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
       }
 
-      // A target, rings round a dot: the checks available now
-      Icon.TARGET -> {
-        drawCircle(color, radius = w * .38f, center = Offset(w / 2, w / 2), style = Stroke(stroke))
-        drawCircle(color, radius = w * .2f, center = Offset(w / 2, w / 2), style = Stroke(stroke))
-        drawCircle(color, radius = w * .07f, center = Offset(w / 2, w / 2))
+      // A signpost, its signs pointing both ways: the checks available now
+      Icon.SIGNPOST -> {
+        val line = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        drawLine(color, Offset(w * .5f, w * .92f), Offset(w * .5f, w * .08f), stroke, StrokeCap.Round)
+        drawPath(Path().apply {
+          moveTo(w * .5f, w * .18f); lineTo(w * .82f, w * .18f); lineTo(w * .92f, w * .28f); lineTo(w * .82f, w * .38f); lineTo(w * .5f, w * .38f)
+        }, color, style = line)
+        drawPath(Path().apply {
+          moveTo(w * .5f, w * .5f); lineTo(w * .18f, w * .5f); lineTo(w * .08f, w * .6f); lineTo(w * .18f, w * .7f); lineTo(w * .5f, w * .7f)
+        }, color, style = line)
       }
 
       // Two stacked server units: how long the game server ran
