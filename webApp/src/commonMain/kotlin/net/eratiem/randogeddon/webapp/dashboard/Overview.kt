@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +81,32 @@ internal fun Grid(
         row.forEach { cell(it, if (equalHeight || fillHeight) Modifier.weight(1f).fillMaxHeight() else Modifier.weight(1f)) }
         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
       }
+    }
+  }
+}
+
+/**
+ * Lays [count] cells out in as many columns of at least [minWidth] as fit, each cell as wide as a column and as tall
+ * as it is: each goes into the column that is shortest so far (the leftmost of equal ones), so the cells fill the
+ * space instead of leaving rows' gaps, and their order reads left to right. Columns don't widen for few cells.
+ */
+@Composable
+internal fun Masonry(count: Int, minWidth: Dp, modifier: Modifier = Modifier, gap: Dp = GAP, cell: @Composable (Int) -> Unit) {
+  Layout(content = { repeat(count) { cell(it) } }, modifier = modifier.fillMaxWidth()) { measurables, constraints ->
+    val gapPx = gap.roundToPx()
+    val columns = ((constraints.maxWidth + gapPx) / (minWidth.roundToPx() + gapPx)).coerceAtLeast(1)
+    val columnWidth = ((constraints.maxWidth - gapPx * (columns - 1)) / columns).coerceAtLeast(0)
+    val tops = IntArray(columns)
+    val placed = measurables.map { measurable ->
+      val placeable = measurable.measure(Constraints.fixedWidth(columnWidth))
+      val column = tops.indices.minBy { tops[it] }
+      val top = tops[column]
+      tops[column] += placeable.height + gapPx
+      Triple(placeable, column, top)
+    }
+    val height = ((tops.maxOrNull() ?: 0) - gapPx).coerceAtLeast(0)
+    layout(constraints.maxWidth, height) {
+      placed.forEach { (placeable, column, top) -> placeable.place(column * (columnWidth + gapPx), top) }
     }
   }
 }

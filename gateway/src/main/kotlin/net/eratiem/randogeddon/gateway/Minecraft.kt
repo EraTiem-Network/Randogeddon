@@ -67,6 +67,8 @@ internal data class HostServer(
   val port: Int = 0,
   val relay: Int = 0,
   val players: List<String> = emptyList(),
+  /** When a player was last on it (epoch ms; its start counts), as the minecraft service keeps it. */
+  val lastPlayer: Long? = null,
   val session: String? = null,
 )
 
@@ -93,6 +95,8 @@ class Minecraft(
   private val idleMinutes: suspend () -> Int,
   /** Session `id`'s hosted slots, and of them the ones hosted directly (only those get a server here). */
   private val rules: suspend (String) -> SleepRules = { SleepRules() },
+  /** Session `id` is finished (ended or paused): its game server is stopped, its Minecraft servers too. */
+  private val finished: suspend (String) -> Boolean = { false },
   scope: CoroutineScope,
 ) {
   /** The last answer of the minecraft service, by server key. */
@@ -158,6 +162,7 @@ class Minecraft(
     val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return "$slot isn't a Minecraft Dig slot of this session"
     val key = key(id, digSlot)
     if (slot !in rules(id).direct) return "$slot isn't hosted directly (an Administrator's switch)"
+    if (finished(id)) return "its session is finished (reopen it first)"
     if (known[key]?.status in setOf("starting", "running")) return null
     if (!eula()) return "Mojang's EULA isn't accepted (the operator's MINECRAFT_EULA)".also { problems[key] = it }
     val seed = dirs.seed(id)?.name ?: return "it has no seed"
@@ -223,12 +228,26 @@ class Minecraft(
         lastPlayer[server.key] = now
         if (before?.players.isNullOrEmpty()) connect(server)
       }
-      val since = lastPlayer.getOrPut(server.key) { now }
+      // Its session ended or paused: its game server is stopped, so is it (its world stays)
+      val session = server.session
+      if (server.status in setOf("starting", "running") && session != null && finished(session)) {
+        logger.info("Minecraft server {} stops: its session is finished", server.key)
+        http.post("$api/servers/${server.key}/stop") { auth() }
+        continue
+      }
+      // The minecraft service's time where it has one: it goes on across the gateway's restarts
+      val since = server.lastPlayer ?: lastPlayer.getOrPut(server.key) { now }
       if (server.status == "running" && server.players.isEmpty() && idle > 0 && now - since >= idle.minutes.inWholeMilliseconds) {
         logger.info("Minecraft server {} sleeps: no player for {} min", server.key, idle)
         http.post("$api/servers/${server.key}/stop") { auth() }
       }
     }
+  }
+
+  /** Session [id]'s slot [slot]'s server, if it runs, connects to Archipelago again (with a new password). */
+  suspend fun reconnect(id: String, slot: String) {
+    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return
+    known[key(id, digSlot)]?.takeIf { it.status == "running" }?.let { connect(it) }
   }
 
   /** Its first player is on it: it connects to Archipelago, through the relay that leads to its session's game server. */

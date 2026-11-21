@@ -65,8 +65,8 @@ def build(arguments: list) -> object:
     return built["multiworld"]
 
 
-def available(multiworld, slot: int, items: list, checked: set) -> int:
-    """How many of [slot]'s unchecked locations its logic reaches with [items] (and its starting inventory)."""
+def available(multiworld, slot: int, items: list, checked: set) -> list:
+    """[slot]'s unchecked locations its logic reaches with [items] (and its starting inventory): their IDs."""
     from BaseClasses import CollectionState
 
     world = multiworld.worlds[slot]
@@ -86,10 +86,10 @@ def available(multiworld, slot: int, items: list, checked: set) -> int:
                 state.collect(location.item, True, location)
                 reached.add(id(location))
                 grew = True
-    return sum(
-        1 for location in multiworld.get_locations(slot)
+    return [
+        location.address for location in multiworld.get_locations(slot)
         if location.address is not None and location.address not in checked and location.can_reach(state)
-    )
+    ]
 
 
 def main() -> None:

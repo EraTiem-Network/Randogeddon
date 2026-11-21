@@ -239,6 +239,8 @@ data class LockInfo(
   /** The same in its parts: the location, and the slot it is in. */
   val hintLocation: String? = null,
   val hintSlot: String? = null,
+  /** Its key's location was checked by the server (a cheat), not found by a player. */
+  val byServer: Boolean = false,
 )
 
 @Serializable
@@ -338,6 +340,8 @@ data class PlayerDetail(
   val progressionChecked: Int = 0,
   val sent: Int? = null,
   val available: Int? = null,
+  /** Of its remaining locations, the ones its logic reaches now (the last known while it doesn't run). */
+  val availableLocations: List<String> = emptyList(),
   val deaths: Int = 0,
   val trapLinks: Int = 0,
   /** Connection log, oldest first. */

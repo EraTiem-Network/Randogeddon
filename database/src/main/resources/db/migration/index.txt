@@ -25,3 +25,4 @@ V23__keep_running.sql
 V24__session_events.sql
 V25__session_snapshots.sql
 V26__minecraft_direct.sql
+V27__open_slots.sql

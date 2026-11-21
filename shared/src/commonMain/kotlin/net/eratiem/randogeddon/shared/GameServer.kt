@@ -79,9 +79,12 @@ data class AvailableSlot(val slot: Int, val items: List<Long>, val checked: List
 @Serializable
 data class AvailableRequest(val slots: List<AvailableSlot>)
 
-/** How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it). */
+/**
+ * How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it), and which
+ * they are ([locations], their IDs).
+ */
 @Serializable
-data class AvailableAnswer(val available: Map<Int, Int?> = emptyMap())
+data class AvailableAnswer(val available: Map<Int, Int?> = emptyMap(), val locations: Map<Int, List<Long>> = emptyMap())
 
 /** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */
 @Serializable

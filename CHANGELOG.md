@@ -7,6 +7,98 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 21: Floating Panels – Slot & Player
+The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
+site growing with the window, a session's slots and their players, the Management panel's logs, the README.
+
+The Management panel's logs in tabs (each only for whoever may read it); slots open to all of a session's players, a
+hosted slot for certain players, and a running session's slots edited one at a time (players, open to all, hosted;
+someone who loses a slot loses its connection: a new password), with late invites; the README down to its essentials,
+its details in `.docs/`; new icons for sent, released and the available checks; the page as wide as the window and
+the players' cards filling it without gaps; the hosted Minecraft servers in an image of their own, stopping with
+their session and keeping their idle time past a deploy; the lock cheats reworked (*Unlock* takes the key from its
+world, the lock says the server did; or a hint for it); the slot's and player's panels a page at a time, a slot's
+available checks first; *Your connection*'s fields reworked. Updating: the database's V27 comes with its migration;
+the deploy builds and pushes the third image (`minecraft`) and sets `MINECRAFT_IMAGE`.
+
+### 0.21.8: Lighter panels, the connection's fields
+- The slot's and the player's panels show their lists a page at a time (received items and remaining locations 50,
+  hints and connections 20, recent activity 25) with arrows to the others: a slot with thousands of locations opened
+  so slowly the browser lagged. The remaining locations get a filter of their own; the connection log and the recent
+  activity are no longer cut off.
+- A slot's remaining locations list the ones its logic reaches now first, marked (green, the signpost): the logic
+  says which they are now, not only how many (the last known while it doesn't run).
+- *Your connection*: server, slot and password are text fields that can't be changed, their buttons inside; the
+  server is copied as shown, as its host, its port or a `wss://` address. The bridge's *Create key* has a row of its
+  own, its fold is a chevron.
+- Updating: nothing to do.
+
+### 0.21.7: Editing a slot
+- The panel's slots are edited one at a time: *Edit slot:* with a drop-down as the heading, then the slot's row as
+  before (its players, *Open to all*) with *Hosted* at the right.
+- *Hosted* now switches while the session runs: on (its players then join its game's server and the slot gets a new
+  password) asked once more, off asked twice; a directly hosted Minecraft server stops when its slot is no longer
+  hosted. Who held the slot's password (or its tunnel key) and no longer does decides whether it gets a new one.
+- A hosted Minecraft server stops when its session is finished or paused, as its game server does, and doesn't
+  start again until the session is reopened. Until now it ran on until nobody had been on it for the idle time.
+- The idle time of a hosted Minecraft server is kept by the minecraft service (its start, its players' joins and
+  leaves): a gateway restart (a deploy) no longer starts it over.
+- The lock cheats reworked: *Unlock* checks the location that holds the slot's key, so the key comes from the world
+  it is in (as *Check its key's location* did), and the slot's lock then says it was unlocked by the server. The
+  other one is now *Hint its key's location*: a free hint for that location, nothing checked. Without the spoiler
+  log's placements *Unlock* gives the key to the World Locks slot, as before.
+- Updating: nothing to do.
+
+### 0.21.6: The players' panels fill the space
+- The players' cards lie in as many columns as fit, each card into the column that is shortest so far: no gaps under
+  a short card any more, and a few cards stay as narrow as a column instead of being stretched. *Sort*'s order reads
+  left to right.
+- The hosted Minecraft servers have an image of their own, `minecraft` (Java 17, Forge with the mod,
+  `minecraft_host.py`), instead of the gateway's: the gateway no longer carries Java and Forge, and the servers, which
+  run third-party mod code, nothing of Archipelago. `scripts/deploy.sh` builds and pushes it, tagged like the tracker.
+- Updating: nothing to do (the deploy sets `MINECRAFT_IMAGE`). A rollback to a version before 0.21.6 finds no
+  `minecraft` image under that tag: tag 0.21.6's for it on the server first (`.docs/OPERATIONS.md`).
+
+### 0.21.5: The whole window
+- The page grows with the window instead of stopping at 1,400 dp: it takes the width less 2 % at each side. On a
+  1440p screen five players' cards sit side by side, on 2160p six; the Overview's tiles fill their row, and the feed
+  grows to a quarter of the width (440 to 640 dp). Normal windows look as before.
+- Updating: nothing to do.
+
+### 0.21.4: New icons
+- *Sent* has the arrow up out of an open box that *released* had; *released* is a broken chain, its links pulled
+  apart; the available checks are a signpost. Picked by the user from candidates.
+- Updating: nothing to do.
+
+### 0.21.3: A running session's slots, a shorter README
+- The Management panel's *Slots* (Session-Managers and Administrators): who plays each slot is changed while the
+  session runs (players added or taken off, *Open to all* switched), and someone new is invited by e-mail right
+  there. A hosted slot stays hosted.
+- Whoever loses a slot loses its connection: it gets a new password (asked once more), the gateway reads it at once
+  and closes the slot's connections, and its players connect again with the new one (the dashboard and the bridge
+  have it). A directly hosted Minecraft server connects again by itself. A hosted slot whose server runs elsewhere
+  keeps its password: its players never had it.
+- The README is down to the essential points (137 lines); the details are in `.docs/FEATURES.md`,
+  `.docs/OPERATIONS.md` and `.docs/DEVELOPMENT.md`.
+- Updating: nothing to do.
+
+### 0.21.2: Slots open to all, hosted slots for certain players
+- Creating a session, every slot has *Open to all*: every player of the session (everyone named for any of its slots)
+  plays it, with its password, its files and the bridge; the dashboard shows it on a card of its own, *Everyone*.
+- A hosted slot starts open to all, as before (every player gets its files and, hosted here, the bridge's tunnel).
+  Unticked, it goes only to the players named for it; they join its game's server and never get its password.
+- Database: V27 (`session_open_slots`); every slot hosted so far is open to all, so nothing changes for a running
+  session.
+- TODO, Phase 21: new icons for *sent*, *released* and the available checks.
+- Updating: nothing to do.
+
+### 0.21.1: The logs in tabs
+- The Management panel's *Logs*, at its bottom, shows every log of the session as a tab: the game server's (first),
+  the spoiler log's run, and for Administrators the logic's and each directly hosted Minecraft server's. The sections
+  no longer show a log of their own; nobody gets a tab of a log they may not read.
+- TODO: Phase 21 begun; Phase 22: the README notes every tool and piece of software Randogeddon uses.
+- Updating: nothing to do.
+
 ## Phase 20: Hosted Minecraft Dig
 The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and reached through Randogeddon Bridge.
 

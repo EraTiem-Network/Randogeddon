@@ -84,6 +84,11 @@ data class SessionSetup(
   val keepRunning: Boolean = false,
   /** Of its hosted slots, the Minecraft Dig ones whose server Randogeddon runs itself (through the bridge's tunnel). */
   val direct: Set<String> = emptySet(),
+  /**
+   * Its slots open to all of its players: played by every one of them, or for a hosted one, theirs to join (a hosted
+   * slot not open goes to the players [worlds] names for it).
+   */
+  val open: Set<String> = emptySet(),
 )
 
 /**
@@ -121,6 +126,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     hosted: Set<String> = emptySet(),
     createdBy: Uuid? = null,
     direct: Set<String> = emptySet(),
+    open: Set<String> = emptySet(),
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -146,6 +152,12 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
           it[sessionId] = id
           it[slotName] = slot
           it[SessionHostedSlotsTable.direct] = slot in direct
+        }
+      }
+      for (slot in open) {
+        SessionOpenSlotsTable.insert {
+          it[sessionId] = id
+          it[slotName] = slot
         }
       }
     }
@@ -184,6 +196,47 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       row[SessionsTable.keepRunning], rows.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
       rows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
     )
+  }
+
+  /**
+   * Who plays [seedName]'s slot [slot] now (or, hosted, gets it): exactly [users], or every player of the session
+   * ([open], nobody named); `false`: no such session.
+   */
+  suspend fun setSlotPlayers(seedName: String, slot: String, users: List<Uuid>, open: Boolean): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionWorldsTable.deleteWhere { (SessionWorldsTable.sessionId eq id) and (SessionWorldsTable.slotName eq slot) }
+    val named = if (open) emptyList() else users.distinct()
+    val names = names(named)
+    for (user in named) {
+      SessionWorldsTable.insert {
+        it[sessionId] = id
+        it[slotName] = slot
+        it[userId] = user
+        it[userName] = names[user]
+      }
+    }
+    SessionOpenSlotsTable.deleteWhere { (SessionOpenSlotsTable.sessionId eq id) and (SessionOpenSlotsTable.slotName eq slot) }
+    if (open) SessionOpenSlotsTable.insert {
+      it[sessionId] = id
+      it[slotName] = slot
+    }
+    true
+  }
+
+  /**
+   * Makes [seedName]'s slot [slot] hosted (its game runs as a server of its own), or no longer: then its direct switch
+   * goes with it. `false`: no such session.
+   */
+  suspend fun setHosted(seedName: String, slot: String, hosted: Boolean): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionHostedSlotsTable.deleteWhere { (SessionHostedSlotsTable.sessionId eq id) and (SessionHostedSlotsTable.slotName eq slot) }
+    if (hosted) SessionHostedSlotsTable.insert {
+      it[sessionId] = id
+      it[slotName] = slot
+    }
+    true
   }
 
   /** Lets Randogeddon run [seedName]'s hosted slot [slot]'s Minecraft server itself, or not; `false`: no such hosted slot. */
@@ -238,6 +291,8 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
       deleted, roles, hosted, row[SessionsTable.createdBy], row[SessionsTable.keepRunning],
       direct = hostedRows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
+      open = SessionOpenSlotsTable.selectAll().where { SessionOpenSlotsTable.sessionId eq row[SessionsTable.id] }
+        .map { it[SessionOpenSlotsTable.slotName] }.toSet(),
     )
   }
 
@@ -336,6 +391,15 @@ class SlotPasswordStore(private val db: RandogeddonDatabase) {
       it[SlotPasswordsTable.locked] = false
     }
     Unit
+  }
+
+  /** [seedName]'s slot [slot] gets [password] in place of its own (someone lost it); `false`: no such slot. */
+  suspend fun renew(seedName: String, slot: String, password: String): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SlotPasswordsTable.update({ (SlotPasswordsTable.sessionId eq id) and (SlotPasswordsTable.slotName eq slot) }) {
+      it[SlotPasswordsTable.password] = password
+    } > 0
   }
 
   /** Slot name -> password of [seedName]; empty if the seed is unknown. */

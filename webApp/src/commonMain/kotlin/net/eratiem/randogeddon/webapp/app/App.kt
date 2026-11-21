@@ -49,7 +49,7 @@ import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_NARROW
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_TWO_COLUMNS
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_WIDE
 import net.eratiem.randogeddon.webapp.dashboard.ConnectionSection
-import net.eratiem.randogeddon.webapp.dashboard.FEED_WIDTH
+import net.eratiem.randogeddon.webapp.dashboard.feedWidth
 import net.eratiem.randogeddon.webapp.dashboard.Feed
 import net.eratiem.randogeddon.webapp.dashboard.FeedPosition
 import net.eratiem.randogeddon.webapp.dashboard.FeedSettings
@@ -352,10 +352,10 @@ private fun TrackerApp() {
         // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
         SideBySide(
           sideFirst = feedPosition == FeedPosition.LEFT,
-          sideWidth = FEED_WIDTH,
+          sideWidth = feedWidth(contentWidth),
           main = {
             Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
-              WithLogic(s) { People(s, now, contentWidth - FEED_WIDTH - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
+              WithLogic(s) { People(s, now, contentWidth - feedWidth(contentWidth) - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
               if (showHints(s)) Hints(s, compact = false)
             }
           },

@@ -118,8 +118,9 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
     if (people.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
-      Grid(people.size, width, 330.dp, equalHeight = false) { i, modifier ->
-        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+      // As many columns as fit, each card into the shortest one: no gaps, no stretched cards, the sort's order kept
+      Masonry(people.size, 330.dp) { i ->
+        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, Modifier.fillMaxWidth(), onOpen, onOpenPerson)
       }
     }
   }
@@ -240,7 +241,8 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
       AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 22.dp.roundToPx() }), onDismissRequest = { tapped = false }) {
         Txt(
           when {
-            lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "")
+            lock.unlocked -> t.dashboard.unlockedBy(lock.foundBy.orEmpty()) + (lock.foundAt?.let { " · ${t.ago(it, now)}" } ?: "") +
+              (if (lock.byServer) " · ${t.dashboard.byServer}" else "")
             lock.hintedAt != null -> t.dashboard.keyHinted(
               lock.hintLocation?.let { t.dashboard.hintPlace(it, lock.hintSlot.orEmpty()) } ?: lock.hintedAt.orEmpty()
             )
@@ -399,7 +401,7 @@ internal fun ProgressPills(progress: Progress) {
   progress.sent?.let { TipPill(Icon.SENT, t.number(it), d.tipSent, p.useful) }
   progress.available?.let { available ->
     val running = LocalLogicRunning.current
-    TipPill(Icon.TARGET, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
+    TipPill(Icon.SIGNPOST, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
   }
   if (progress.deaths > 0) TipPill(Icon.SKULL, t.number(progress.deaths), d.tipDeaths, p.trap)
   if (progress.trapLinks > 0) TipPill(Icon.TRAP, t.number(progress.trapLinks), d.tipTraps, p.warn)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The live server's daily database dump (installed by scripts/deploy.sh as /usr/local/sbin/randogeddon-backup, run by
 # randogeddon-backup.timer): /srv/backups/randogeddon-<time>-daily.sql.gz, the daily ones older than KEEP_DAYS deleted.
-# The dumps before an update (…-before-<tag>.sql.gz) are kept as long as the daily ones. Restoring: README.
+# The dumps before an update (…-before-<tag>.sql.gz) are kept as long as the daily ones. Restoring: .docs/OPERATIONS.md.
 set -euo pipefail
 KEEP_DAYS="${KEEP_DAYS:-14}"
 cd /srv/randogeddon

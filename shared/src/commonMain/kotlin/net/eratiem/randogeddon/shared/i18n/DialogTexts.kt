@@ -29,6 +29,10 @@ interface DialogTexts {
   val offline: String
   fun receivedItems(n: Int): String
   val filter: String
+  /** A long list's page: which of how many, and its arrows. */
+  fun rangeOf(from: String, to: String, total: String): String
+  val previousPage: String
+  val nextPage: String
   /** After the item: `from Bob-HK · Crossroads`. */
   fun from(sender: String, location: String?): String
   fun remainingChecks(n: Int): String
@@ -87,6 +91,11 @@ interface ConnectionTexts {
   /** Folds the bridge away, or opens it again. */
   val foldBridge: String
   val openBridge: String
+  /** The server copied as shown (host:port), its host, its port, or as a wss:// address. */
+  val copyAsShown: String
+  val copyHost: String
+  val copyPort: String
+  val copyWss: String
 }
 
 internal object EnglishDialogs : DialogTexts {
@@ -116,6 +125,9 @@ internal object EnglishDialogs : DialogTexts {
   override val offline = "offline"
   override fun receivedItems(n: Int) = "Received items ($n)"
   override val filter = "Filter…"
+  override fun rangeOf(from: String, to: String, total: String) = "$from–$to of $total"
+  override val previousPage = "Previous"
+  override val nextPage = "Next"
   override fun from(sender: String, location: String?) = "  from $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Remaining checks ($n)"
   override val allDone = "All done!"
@@ -148,6 +160,9 @@ internal object GermanDialogs : DialogTexts {
   override val offline = "offline"
   override fun receivedItems(n: Int) = "Erhaltene Items ($n)"
   override val filter = "Filtern…"
+  override fun rangeOf(from: String, to: String, total: String) = "$from–$to von $total"
+  override val previousPage = "Zurück"
+  override val nextPage = "Weiter"
   override fun from(sender: String, location: String?) = "  von $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Offene Checks ($n)"
   override val allDone = "Alles erledigt!"
@@ -204,6 +219,10 @@ internal object EnglishConnection : ConnectionTexts {
     "Paste it into the bridge. It is shown only now and works until $until; you can end it under Your account."
   override val foldBridge = "Collapse"
   override val openBridge = "Expand"
+  override val copyAsShown = "As shown"
+  override val copyHost = "Host"
+  override val copyPort = "Port"
+  override val copyWss = "wss:// address"
 }
 
 internal object GermanConnection : ConnectionTexts {
@@ -259,4 +278,8 @@ internal object GermanConnection : ConnectionTexts {
     "Füge ihn in die Bridge ein. Er wird nur jetzt gezeigt und gilt bis $until; beenden kannst du ihn unter Dein Konto."
   override val foldBridge = "Einklappen"
   override val openBridge = "Aufklappen"
+  override val copyAsShown = "Wie angezeigt"
+  override val copyHost = "Host"
+  override val copyPort = "Port"
+  override val copyWss = "wss://-Adresse"
 }

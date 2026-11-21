@@ -996,29 +996,70 @@ through Randogeddon Bridge only.
     - Mojang's EULA: accepted by the operator, not in the panel (decided with the user): `MINECRAFT_EULA=true` in
       `.env` accepts it for every hosted server, false by default; the Administrators' setting of 0.20.2 is gone
 
-## Phase 21: Floating Panels – Slot & Player (planned)
+## Phase 21: Floating Panels – Slot & Player (done)
 
 *Asked for when Phase 19 closed: the slot and player panels as floating panels. What they float over, how they
 open, move and close, and what they show is to come from the user.*
 
-- [ ] Floating panels for a slot and for a player
-- [ ] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
+- [x] Floating panels for a slot and for a player
+    - Done as the user meant it (0.21.8): the slot's and the player's panels as they are, lighter (their lists a page at
+      a time, a slot's available checks first)
+- [x] The players' panels use the empty space: not stretched to the row's width, laid out flexibly (as many side by
       side as fit), and sortable in some way (asked for on 2026-11-21)
-- [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
+    - Done (0.21.6): as many columns as fit (at least 330 dp each), each card into the shortest one so far, so they
+      fill the space without rows' gaps; the columns don't widen for few cards; *Sort*'s order reads left to right
+- [x] The hosted Minecraft servers in an image of their own (asked for on 2026-11-21, done in 0.21.6): Java 17, Forge
+      with the mod and `minecraft_host.py` on Python's standard library, nothing of Archipelago; the gateway's image
+      without Java and Forge
+- [x] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
       2026-11-21)
-- [ ] Creating a session (asked for on 2026-11-21):
-    - A hosted game can still be given to certain players
-    - For every slot, a checkbox: open to all of the session's players
+    - Done (0.21.5): no fixed width any more (1,400 dp before): the page takes the window less 2 % at each side; the
+      feed grows with it (a quarter, 440 to 640 dp); the tiles and the players' cards fill as many columns as fit
+      (2560 px: five cards side by side, 3840 px: six), the Management panel is as wide
+- [x] Creating a session (asked for on 2026-11-21):
+    - [x] A hosted game can still be given to certain players
+    - [x] For every slot, a checkbox: open to all of the session's players
+    - Done (0.21.2), decided with the user: *Open to all* means every player of the session (everyone named for any
+      of its slots); a slot that isn't hosted is then played by each of them (its password, files, the bridge), on a
+      card of its own, *Everyone*; a hosted one is theirs to join as before (its files, the tunnel; never its
+      password). A hosted slot starts open; unticked, it goes to the players named for it. `session_open_slots`
+      (V27), every slot hosted before copied in as open
     - [x] A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
       bridge's tunnel) (moved to Phase 20: 0.20.5)
-- [ ] A running session's slots edited (asked for on 2026-11-21):
-    - Who may use a slot changed; its hosted mode not (for now)
+- [x] A running session's slots edited (asked for on 2026-11-21):
+    - [x] Who may use a slot changed; its hosted mode not (for now)
+    - [x] Asked for on 2026-11-21, done in 0.21.7: one slot at a time (*Edit slot:* and a drop-down as the heading),
+      its row as before with *Hosted* at the right; switched on asked once more, off twice (a directly hosted
+      Minecraft server stops)
+- [x] A hosted Minecraft server stops with its session's finish (or pause), and its idle time survives a gateway
+      restart (asked for on 2026-11-21, done in 0.21.7)
+- [x] The lock cheats reworked (asked for on 2026-11-21, done in 0.21.7): *Unlock* checks the key's location in the
+      world that holds it (the lock says the server unlocked it); the other one hints that location
+- [x] The slot's and the player's panels lighter, their lists a page at a time; *Your connection*'s fields as
+      text fields that can't be changed, the server copied four ways, the bridge's *Create key* on its own row and
+      its fold an icon (asked for on 2026-11-21, done in 0.21.8)
     - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
       Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
-    - Late invites, then
-- [ ] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
+    - [x] Late invites, then
+    - Done (0.21.3), decided with the user: the panel's *Slots* (Session-Managers, Administrators): each slot's
+      players changed, *Open to all* switched, someone new invited by e-mail there. Whoever loses a slot loses its
+      connection: a new password, which the gateway reads at once while it closes the slot's connections (the
+      players connect again with the new one); a directly hosted Minecraft server connects again by itself. Not for
+      a hosted slot whose server runs elsewhere (its players never had the password)
+- [x] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
       Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
-- [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+    - Done (0.21.1): *Logs* at the panel's bottom, a tab per log: the game server's (always, first), the spoiler log's
+      run, the logic's and each directly hosted Minecraft server's (Administrators). A section hands its log over only
+      while its viewer may read it, so no other tab exists; on the support page the spoiler log's run keeps its own
+- [x] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+    - Done (0.21.3): down to the essential points (1,168 lines to 137, as the user asked): what it is, a session,
+      the roles, the server, the bridge, development, each with a link to its details. The details as they were in
+      `.docs/FEATURES.md`, `.docs/OPERATIONS.md` and `.docs/DEVELOPMENT.md`
+- [x] Icons: *sent* gets the icon *released* has now; *released* a new one that fits better (unchained, an open door,
+      …) (asked for on 2026-11-21)
+    - [x] And a new icon for the available checks (asked for on 2026-11-21)
+    - Done (0.21.4), picked by the user from candidates: *sent* the arrow up out of an open box, *released* a broken
+      chain, the available checks a signpost
 
 ## Phase 22: Maps (planned)
 
@@ -1026,3 +1067,17 @@ open, move and close, and what they show is to come from the user.*
 and the locations' places come from, and what a marker shows are to come from the user.*
 
 - [ ] Maps with check markers for the slots
+- [ ] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21)
+- [ ] `.docs/` down to the essentials, shorter, and restructured where that helps (asked for on 2026-11-21)
+
+## Phase 23: Full Code Review & Security Check (planned)
+
+*Asked for on 2026-11-21: the whole code reviewed, and its security checked. How deep and in which order is to
+come with it.*
+
+- [ ] A review of the whole code: tracker, gateway, web app, bridge, database, Archipelago's wrappers, scripts
+    - Besides the usual review: duplication, optimisation, and merging what belongs together, where it makes sense
+    - How (the user's choice): Fable 5.2 scans and hands each finding on by itself to a subagent on Opus 5.5,
+      which fixes it
+- [ ] A security check: logins and roles, the API and its limits, the gateway and the tunnel, the bridge, secrets,
+      the containers, the dependencies

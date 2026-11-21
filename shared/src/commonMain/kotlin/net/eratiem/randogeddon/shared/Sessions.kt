@@ -104,7 +104,19 @@ data class WorldPlan(
    * (Administrators only); else its Session-Managers run their own.
    */
   val direct: Boolean = false,
+  /**
+   * Open to all of the session's players: every one of them plays it (no players named), or for a hosted slot, gets it
+   * (its patch files, the bridge's tunnel; not its password). A hosted slot not open goes to the players named for it.
+   */
+  val open: Boolean = false,
 )
+
+/**
+ * `POST /api/sessions/{id}/manage/slots/{slot}`: who plays a running session's slot now ([userIds], account IDs), or
+ * every player of it ([open]); and whether it is hosted ([hosted]; `null`: as it is).
+ */
+@Serializable
+data class SlotPlayersRequest(val userIds: List<String> = emptyList(), val open: Boolean = false, val hosted: Boolean? = null)
 
 @Serializable
 data class CreateSessionRequest(

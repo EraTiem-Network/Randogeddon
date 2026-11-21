@@ -163,11 +163,14 @@ class LiveSession(
     val hosted = setup?.hosted.orEmpty()
     if (!worlds.isNullOrEmpty() || hosted.isNotEmpty()) {
       val people = LinkedHashMap<String, MutableList<String>>()
-      for ((slot, users) in worlds.orEmpty()) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+      // A hosted slot's named players join its game's server, they don't play it
+      for ((slot, users) in worlds.orEmpty()) if (slot !in hosted) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
       // Always in the same order: the people by name, each one's slots by name
       val ordered = LinkedHashMap<String, List<String>>()
       for ((person, slots) in people.entries.sortedBy { it.key.lowercase() }) ordered[person] = slots.sortedBy { it.lowercase() }
-      // The hosted slots together, as if one person played them (no account can be called so)
+      // The slots everyone plays together, and the hosted ones, each as if one person played them (no account can be
+      // called so)
+      if (openSlots.isNotEmpty()) ordered[UserNames.EVERYONE] = openSlots.sortedBy { it.lowercase() }
       if (hosted.isNotEmpty()) ordered[UserNames.HOSTED] = hosted.sortedBy { it.lowercase() }
       return ordered
     }
@@ -192,6 +195,22 @@ class LiveSession(
    * Who [user] is in this session: the name they have in it (by their UUID, so a rename doesn't matter); `null`: not
    * part of it. A seed from before without a setup: by name.
    */
+  /** Its slots open to all of its players that aren't hosted: every player of it plays them. */
+  val openSlots: Set<String> get() = setup?.open.orEmpty() - setup?.hosted.orEmpty()
+
+  /** The slots [person] plays: their own and the ones open to all ([openSlots]); not the hosted ones. */
+  fun playedBy(person: String?): List<String> {
+    if (person == null || person == UserNames.HOSTED || person == UserNames.EVERYONE) return emptyList()
+    return people()[person].orEmpty() + openSlots.sortedBy { it.lowercase() }
+  }
+
+  /** The hosted slots [person] gets (their patch files, the bridge's tunnel): the open ones, and the ones naming them. */
+  fun hostedFor(person: String?): List<String> {
+    if (person == null) return emptyList()
+    val setup = setup ?: return emptyList()
+    return setup.hosted.filter { it in setup.open || person in setup.worlds[it].orEmpty() }.sortedBy { it.lowercase() }
+  }
+
   fun personOf(user: User): String? {
     val members = setup?.members
     if (!members.isNullOrEmpty()) return members[user.id]

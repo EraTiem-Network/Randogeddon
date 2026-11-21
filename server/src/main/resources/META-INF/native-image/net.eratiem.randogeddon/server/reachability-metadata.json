@@ -3006,6 +3006,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.SlotPlayersRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.SlotPlayersRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.MinecraftDirectRequest",
       "fields": [
         {

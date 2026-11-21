@@ -33,6 +33,9 @@ class SlotPasswordCache(private val store: SlotPasswordStore, private val roomJs
     return mutex.withLock { locked }
   }
 
+  /** Read again at the next look (a slot's password changed). */
+  suspend fun invalidate() = mutex.withLock { loadedAt = null }
+
   suspend fun current(): Map<String, String> = mutex.withLock {
     val currentSeed = readSeedName(roomJson)
     val fresh = loadedAt?.let { it.elapsedNow() < REFRESH } == true

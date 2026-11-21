@@ -217,7 +217,12 @@ fun main() {
   val minecraft = Minecraft(
     http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
     passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
-    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() }, scope = background,
+    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() },
+    finished = { id ->
+      sessions.get(id)?.let { readSeedName(it.roomJson) }
+        ?.let { seed -> runCatching { finishes.of(seed)?.finishedAt != null }.getOrDefault(false) } == true
+    },
+    scope = background,
   )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
@@ -299,9 +304,10 @@ fun main() {
           // The gateway listens before a player is in, so the tracker hears of this one too
           events.awaitListening(session.id)
           // A player keeps it awake; a hosted slot's connection doesn't
-          serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections) { slot ->
-            if (slot in rulesOf(session).hosted) null else session.joined()
-          }
+          serve(
+            http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections,
+            joined = { slot -> if (slot in rulesOf(session).hosted) null else session.joined() }, clients = session.clients,
+          )
         }
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network

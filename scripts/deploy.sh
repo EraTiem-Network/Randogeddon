@@ -6,11 +6,11 @@
 #   ./scripts/deploy.sh --publish   build and push the same, and a release's bridge and GitHub release, but leave the
 #                                   server alone: nothing is copied there and it keeps running what it runs
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
-#                                   README, restoring)
+#                                   .docs/OPERATIONS.md, restoring)
 # A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
 # GitHub release).
 #
-# The server holds only what runs (README, "The live server"); this script copies its compose files and the backup
+# The server holds only what runs (.docs/OPERATIONS.md, "The live server"); this script copies its compose files and the backup
 # script there. Needs: `docker login` to the registry (a token that may push), the Gradle init script for the build, and
 # an SSH alias DEPLOY_SSH (default randogeddon-live) for the server, e.g. in ~/.ssh/config:
 #   Host randogeddon-live
@@ -62,13 +62,14 @@ fi
 sed -i '/^IMAGE_REGISTRY=/d' .env
 set_setting TRACKER_IMAGE "$IMAGES/tracker"
 set_setting GATEWAY_IMAGE "$IMAGES/gateway"
+set_setting MINECRAFT_IMAGE "$IMAGES/minecraft"
 set_setting IMAGE_TAG "$tag"
 set_setting GATEWAY_TAG "$gateway_tag"
 if [[ -n "$current" && "$current" != "$tag" ]]; then
   set_setting PREVIOUS_IMAGE_TAG "$current"
   set_setting PREVIOUS_GATEWAY_TAG "$current_gateway"
 fi
-docker compose pull -q tracker gateway
+docker compose pull -q tracker gateway minecraft
 docker compose up -d --no-build --remove-orphans 2>&1 | tail -3
 for _ in $(seq 1 60); do
   curl -sf http://localhost:8000/healthz >/dev/null && break
@@ -97,7 +98,7 @@ case "${1:-}" in
 esac
 
 [[ -z "$(git status --porcelain)" ]] || { echo "Uncommitted changes: deploy a commit"; exit 1; }
-# A release (the commit tagged v<version>, see README, versions) goes out under its version and `latest`, anything else
+# A release (the commit tagged v<version>, see .docs/DEVELOPMENT.md, versions) goes out under its version and `latest`, anything else
 # under its commit (the gateway's with the Archipelago release in front) and `edge`. The server runs the fixed tag.
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
 if [[ "$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)" == "$(git rev-parse HEAD)" ]]; then
@@ -123,11 +124,16 @@ if [[ -r "$signing_key" ]]; then export BRIDGE_SIGNING_KEY="$signing_key"; else 
 # One after the other: each native-image compile takes several GB at its peak
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build gateway
+POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build minecraft
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$moving"
-for image in "tracker:$tag" "gateway:$gateway_tag" "tracker:$moving" "gateway:$moving"; do docker push -q "$IMAGES/$image"; done
+docker tag randogeddon-minecraft:latest "$IMAGES/minecraft:$tag"
+docker tag randogeddon-minecraft:latest "$IMAGES/minecraft:$moving"
+for image in "tracker:$tag" "gateway:$gateway_tag" "minecraft:$tag" "tracker:$moving" "gateway:$moving" "minecraft:$moving"; do
+  docker push -q "$IMAGES/$image"
+done
 
 if [[ -n "$live" ]]; then
 echo "== The server's files"

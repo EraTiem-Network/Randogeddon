@@ -31,6 +31,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.EventType
@@ -89,7 +90,8 @@ internal object FeedSettings {
     Platform.saveSetting(FEED_POSITION_KEY, null)
   }
 }
-internal val FEED_WIDTH = 440.dp
+/** The feed beside the players: a quarter of the page's column, from 440 to 640 dp. */
+internal fun feedWidth(contentWidth: Dp): Dp = (contentWidth * 0.25f).coerceIn(440.dp, 640.dp)
 
 enum class FeedPosition { RIGHT, LEFT, BELOW }
 

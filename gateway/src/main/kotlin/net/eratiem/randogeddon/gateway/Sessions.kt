@@ -66,6 +66,9 @@ class SessionGameServer(val id: String, val dir: Path, val server: GameServer, p
   /** Its slot passwords, made when the first client connects. */
   val passwords: SlotPasswordCache by lazy(passwordCache)
 
+  /** Its game clients in a slot, by slot. */
+  val clients = SlotClients()
+
   @Volatile
   var port: Int? = null
     internal set
