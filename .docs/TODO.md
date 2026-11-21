@@ -983,6 +983,12 @@ through Randogeddon Bridge only.
     - Decided with the user (0.20.4): no whitelist. Only the slot's players reach the server at all (the bridge
       with their key and the slot's password; no Minecraft port is public), and their Minecraft names aren't the
       slot names a whitelist could come from
+- [x] Hosted here only when an Administrator says so (asked for on 2026-11-21, moved from Phase 21)
+    - Done (0.20.5): a hosted Minecraft Dig slot's server is run here only with its switch (`session_hosted_slots.direct`,
+      V26): on by Administrators only, when creating the session or in the panel; off by Session-Managers too (its
+      server stops). The tunnel logs in with a key made from the slot's password, which the tracker gives the
+      session's players and its Session-Managers (the players never get the password); the gateway checks it
+      without anything stored
 - [x] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
     - Done (0.20.4): its own section, *Minecraft*, after *Logic* (a session without a Minecraft Dig slot doesn't
       show it): each slot's server, its state and who is on it, *Start* and *Stop* for Session-Managers and
@@ -1003,10 +1009,12 @@ open, move and close, and what they show is to come from the user.*
 - [ ] Creating a session (asked for on 2026-11-21):
     - A hosted game can still be given to certain players
     - For every slot, a checkbox: open to all of the session's players
-    - A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
-      bridge's tunnel)
+    - [x] A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
+      bridge's tunnel) (moved to Phase 20: 0.20.5)
 - [ ] A running session's slots edited (asked for on 2026-11-21):
     - Who may use a slot changed; its hosted mode not (for now)
-    - A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
-      Session-Managers too
+    - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
+      Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
     - Late invites, then
+- [ ] The Management panel's logs in tabs, one log panel instead of several (the game server's, the logic's, each
+      Minecraft server's, …); nobody sees a tab of a log they may not read (asked for on 2026-11-21)
