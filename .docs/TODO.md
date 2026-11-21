@@ -901,7 +901,7 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
       placements. *Unlock*: its key is given to the World Locks slot (`/send`), no location checked. Logged and in the
       live feed like every cheat, for whoever may cheat (Session-Managers, Administrators, support)
 
-## Phase 20: Hosted Minecraft Dig (planned)
+## Phase 20: Hosted Minecraft Dig
 
 Decided on 2026-11-19: Randogeddon hosts the Minecraft server a *Minecraft Dig* slot needs, and its players reach it
 through Randogeddon Bridge only.
@@ -911,14 +911,51 @@ through Randogeddon Bridge only.
   patch file (`.apmcdig`, into the server's `APData`), and several players can join the same slot's server; in the
   game a player connects it to Archipelago with `/connect <address> <port> <password>` and begins with `/start`;
   the players need Minecraft Java 1.19.4
-- [ ] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
+- [x] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
       (the `archipelago.json` the APWorld's client extracts for an auto-connect), so no player types `/connect` or
       sees a password; how much memory a server needs, and how much the live machine has to spare
+    - Found (0.20.1, from the mod jar 0.0.11 and the APWorld's client on its `apworld_dig` branch): the mod connects
+      by itself. When the server starts, it reads `APData/archipelago.json` ("Found server address in
+      archipelago.json") and connects there with the slot name from the patch (`player_name`), trying again up to 5
+      times when the connection drops; nobody types `/connect`. It sends no password then: only `/connect` takes
+      one. Randogeddon's slot passwords are the gateway's (MultiServer itself has none), so the hosted server reaches
+      the session's game server inside the compose network, on a way the gateway opens for that slot's container
+      only (to decide in the container's step)
+    - The server's files, as the APWorld's client writes them: the patch (a zip with `data.json`) as
+      `APData/<name>.apmc`, and `APData/archipelago.json` (here: written by Randogeddon with the session's internal
+      address). One world per seed: a world used for another seed is refused, so each slot gets a fresh one. Started
+      as the client does: `java -Xmx<heap> @<forge's unix_args.txt> -nogui`, `eula.txt` set once (the setting);
+      ready at the "Done (" line of `logs/latest.log`
+    - Who may join: the mod has no whitelist of its own; Minecraft's own (`whitelist.json`, `white-list=true`) and
+      `online-mode=true` (Mojang's account check) apply as on any server
+    - Memory: neither the mod nor its client recommends a heap. Measured (0.20.1, WSL; Forge 1.19.4-45.3.15, Java 17,
+      the mod 0.0.11, a generated seed's Minecraft Dig slot set up as the client does): the server is ready 12 s after
+      its start (its world made), and holds 1.4 to 1.5 GB a while after, nobody on it, with `-Xmx` 3 G, 2 G or
+      1.5 G alike. Players exploring load more of the world: `-Xmx2G` and a container limit of about 2.5 GB per
+      server. The live machine: 8 GB, about 6.9 GB available next to the tracker, the gateway and the database, so
+      one or two at a time (a setting, as the game servers at once)
+    - Tried with it: the mod read the slot's patch ("Loaded APMC data with client_version: 16") and the address from
+      `APData/archipelago.json` ("Found initial server address from archipelago.json") and tried to connect there
 - [ ] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
       third-party mod, with memory of its own), from an image that has Java, Forge and the mod; the slot's `.apmcdig`
       from the seed goes into it. The operator accepts Mojang's EULA once (a setting), or nothing is hosted
+    - Decided with the user (after 0.20.1): a limit of 3 GB per container, `-Xmx2G` (the JVM needs room beyond its
+      heap; a world full of dropped items needs more than the measured 1.5 GB). Its world kept on disk while it
+      sleeps; a fresh one for each seed. No `archipelago.json` (the mod would connect without a password first)
 - [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
       bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
+    - Decided with the user (after 0.20.1): it starts when a player joins, not when a client only looks at it. The
+      gateway reads only the first packet of a Minecraft connection: a server list ping (a client in its menu) it
+      answers itself ("asleep, join to wake it", "starting…") and starts nothing; a join (handshake and login start)
+      starts the container, and the gateway holds the connection (the client says "Logging in…"), keeping it from
+      timing out with a login plugin request every ~10 s whose answers it drops (to be tried with a real 1.19.4
+      client), until the server is ready ("Done (" in its log). Then it sends the held packets on and only passes
+      bytes from there: Mojang's account check and the encryption are the server's, end to end. A start that fails
+      or takes too long ends the join with a message the client shows
+    - It sleeps when no player has been on it for as long as the game servers wait (the same setting)
+    - It connects to Archipelago when its first player joins, not at its start: the gateway types
+      `/connect <address> <port> "<password>"` into its console (the password in double quotes), through the gateway
+      like any client (so the session's game server wakes for it); its connection ends when it sleeps
 - [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
       `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
       container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
