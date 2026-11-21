@@ -1026,6 +1026,13 @@ open, move and close, and what they show is to come from the user.*
       bridge's tunnel) (moved to Phase 20: 0.20.5)
 - [x] A running session's slots edited (asked for on 2026-11-21):
     - [x] Who may use a slot changed; its hosted mode not (for now)
+    - [x] Asked for on 2026-11-21, done in 0.21.7: one slot at a time (*Edit slot:* and a drop-down as the heading),
+      its row as before with *Hosted* at the right; switched on asked once more, off twice (a directly hosted
+      Minecraft server stops)
+- [x] A hosted Minecraft server stops with its session's finish (or pause), and its idle time survives a gateway
+      restart (asked for on 2026-11-21, done in 0.21.7)
+- [x] The lock cheats reworked (asked for on 2026-11-21, done in 0.21.7): *Unlock* checks the key's location in the
+      world that holds it (the lock says the server unlocked it); the other one hints that location
     - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
       Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
     - [x] Late invites, then

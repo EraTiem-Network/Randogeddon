@@ -199,6 +199,13 @@ interface SessionAdminTexts {
   val slotSave: String
   val slotLosesQuestion: String
   val slotLosesYes: String
+  /** The heading before the slot's drop-down. */
+  val editSlot: String
+  /** Making a running session's slot hosted, asked once more; no longer hosted, asked twice. */
+  val hostedOnQuestion: String
+  fun hostedOffQuestion(direct: Boolean): String
+  val hostedOffSure: String
+  val yesNotHosted: String
   /** YAMLs whose games the release has no APWorld for ([files]: each with its games), then what to do. */
   fun missingApworlds(files: String, version: String): String
   val uploadThem: String
@@ -444,6 +451,13 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val slotLosesQuestion = "Someone loses this slot: it gets a new password, and whoever is connected to it is " +
     "disconnected (its players connect again with the new one)."
   override val slotLosesYes = "Yes, save"
+  override val editSlot = "Edit slot:"
+  override val hostedOnQuestion = "Make this slot hosted? Its players no longer play it: they join its game's server, " +
+    "and it gets a new password."
+  override fun hostedOffQuestion(direct: Boolean) = "No longer hosted? Its players then play it themselves, with its " +
+    "password" + (if (direct) ", and its Minecraft server here stops (its world stays)." else ".")
+  override val hostedOffSure = "Sure? It is no longer hosted from now on."
+  override val yesNotHosted = "Yes, not hosted"
   override val yesHosted = "Yes, hosted"
   override val hostedLine = "No players: the game runs as a server of its own, which they join with their games."
   override fun missingApworlds(files: String, version: String) =
@@ -696,6 +710,13 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val slotLosesQuestion = "Jemand verliert diesen Slot: Er bekommt ein neues Passwort, und wer mit ihm verbunden " +
     "ist, wird getrennt (seine Spieler verbinden sich mit dem neuen wieder)."
   override val slotLosesYes = "Ja, speichern"
+  override val editSlot = "Slot bearbeiten:"
+  override val hostedOnQuestion = "Diesen Slot hosten? Seine Spieler spielen ihn dann nicht mehr: Sie treten dem Server " +
+    "seines Spiels bei, und er bekommt ein neues Passwort."
+  override fun hostedOffQuestion(direct: Boolean) = "Nicht mehr hosten? Seine Spieler spielen ihn dann selbst, mit seinem " +
+    "Passwort" + (if (direct) ", und sein Minecraft-Server hier stoppt (seine Welt bleibt)." else ".")
+  override val hostedOffSure = "Sicher? Er ist ab jetzt nicht mehr gehostet."
+  override val yesNotHosted = "Ja, nicht gehostet"
   override val yesHosted = "Ja, hosten"
   override val hostedLine = "Keine Spieler: Das Spiel läuft als eigener Server, dem sie mit ihren Spielen beitreten."
   override fun missingApworlds(files: String, version: String) =

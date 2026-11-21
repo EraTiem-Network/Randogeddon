@@ -71,6 +71,8 @@ interface DashboardTexts {
   val logic: String
   fun logicTip(status: LogicStatus): String
   fun unlockedBy(name: String): String
+  /** Added to it when the key's location was checked by a cheat. */
+  val byServer: String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
   fun hintPlace(location: String, slot: String): String
@@ -252,6 +254,7 @@ internal object EnglishDashboard : DashboardTexts {
     LogicStatus.FAILED -> "The logic couldn't be built: the available checks are the last known ones"
   }
   override fun unlockedBy(name: String) = "Unlocked by $name"
+  override val byServer = "unlocked by the server"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
   override fun waitingForKey(key: String) = "Locked · waiting for $key"
@@ -359,6 +362,7 @@ internal object GermanDashboard : DashboardTexts {
     LogicStatus.FAILED -> "Die Logik konnte nicht aufgebaut werden: Die verfügbaren Checks sind die zuletzt bekannten"
   }
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
+  override val byServer = "vom Server entsperrt"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
   override fun waitingForKey(key: String) = "Gesperrt · wartet auf $key"

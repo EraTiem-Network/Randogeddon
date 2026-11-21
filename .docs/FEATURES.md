@@ -265,11 +265,12 @@ Everyone gets a gear button in the dashboard's header: the *Management panel*. I
 its actions (pause or end, reopen, auto-deletion, delete, spoiler log), its **People** (everyone of the session as a
 pill with their part; a click shows their slots and how far they are, gives them another part, e.g. a player becomes
 Session-Manager, or takes theirs; add a Session-Manager, support or a watcher by name, or invite a new address; the
-share link), its **Slots** (who plays each slot, changed while the session runs: players added or taken off,
-*Open to all* switched, someone new invited by e-mail right there; a hosted slot stays hosted; whoever loses a slot
-loses its connection: it gets a new password, the gateway reads it at once and closes the slot's connections, and
-its players connect again with the new one; asked once more; not for a hosted slot whose server runs elsewhere,
-whose players never had its password), its **Patch files** (every slot's files from the seed), its **Minecraft** servers (a Minecraft Dig slot's:
+share link), its **Slots** (*Edit slot:* and a slot picked from the list: who plays it, changed while the session
+runs: players added or taken off, *Open to all* switched, someone new invited by e-mail right there; *Hosted*
+switched at once, asked once more, and switched off asked twice: a directly hosted Minecraft server stops then;
+whoever loses a slot loses its connection: it gets a new password, the gateway reads it at once and closes the
+slot's connections, and its players connect again with the new one; asked once more; not for a hosted slot whose
+server runs elsewhere, whose players never had its password), its **Patch files** (every slot's files from the seed), its **Minecraft** servers (a Minecraft Dig slot's:
 asleep, starting, running with who is on it, or ended on its own; *Start* and *Stop* by hand), the cheats, its game
 server's state (running, starting, stopped, crashed), lets them start, stop and restart it (stop and restart ask once
 more: every player is disconnected), has the server console and, at the bottom, its **Logs** as tabs: the game
@@ -298,10 +299,11 @@ placements, so only for a seed whose spoiler log has them). Free hints (`/hint_l
 was created with *Cheat hints*. A hint names one place: a location only if it isn't hinted yet, and for an item one
 copy of it that is neither checked nor hinted, at random or the next one the playthrough needs (a switch beside it) (Archipelago's `/hint` would name every copy; it is only used
 for a seed whose spoiler log has no placements). The hints' table explains its states under the ⓘ in its last
-column. While a slot is locked (World Locks), two more: *Check its key's location* (the location that holds its key,
-from the spoiler log's placements and shown beside it, is checked as if its player found it: the key opens the slot,
-the check counts for the world it is in) and *Unlock* (its key is given to the World Locks slot with `/send`; no
-location is checked). Support has these two as well. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
+column. While a slot is locked (World Locks), two more: *Unlock* (the location that holds its key, from the spoiler
+log's placements and shown beside it, is checked: the key comes from that world and opens the slot, the check counts
+for the world it is in, and the slot's lock says the server unlocked it; without the placements, its key is given to
+the World Locks slot with `/send`) and *Hint its key's location* (a free hint for that location, nothing checked).
+Support has these two as well. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
@@ -484,7 +486,10 @@ runs on the player's PC: the game connects to `localhost:<port>`, the bridge tak
   gateway ("asleep, join to wake it") and starts nothing; a join starts it and is held ("Logging in…", about 15 s
   to a minute) until it is ready, then every byte passes: Mojang's account check and the encryption are the
   server's own. Once a player is on it, it connects to the session with the slot's password, and it sleeps when
-  nobody has been on it for as long as the game servers wait. None runs until the operator accepts Mojang's EULA
+  nobody has been on it for as long as the game servers wait (counted by the minecraft service from its start and
+  its players' joins and leaves, so a gateway restart doesn't start it over). It also stops when its session is
+  finished or paused (and doesn't start until it is reopened), when it is stopped by hand, when its slot is no
+  longer hosted here, and when its session is deleted (its world with it); otherwise its world stays. None runs until the operator accepts Mojang's EULA
   (https://aka.ms/MinecraftEULA) with `MINECRAFT_EULA=true` in `.env`, once for all of them; at most
   `MINECRAFT_SERVERS` at once (1 by default, each up to 3 GB).
 - **Command line** (a computer without a browser, e.g. the one a hosted game runs on):

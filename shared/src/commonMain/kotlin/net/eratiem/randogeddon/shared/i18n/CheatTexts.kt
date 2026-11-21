@@ -56,6 +56,7 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.HINT -> "Hint an item"
     CheatAction.HINT_LOCATION -> "Hint a location"
     CheatAction.KEY_LOCATION -> "Check its key's location"
+    CheatAction.KEY_HINT -> "Hint its key's location"
     CheatAction.UNLOCK -> "Unlock"
   }
   override fun tip(action: CheatAction) = when (action) {
@@ -68,7 +69,9 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.HINT_LOCATION -> "A free hint: what is at the slot's location."
     CheatAction.KEY_LOCATION -> "A locked slot: the location that holds its key is checked, as if its player found it. " +
       "The key opens the slot; the check counts for the world it is in."
-    CheatAction.UNLOCK -> "A locked slot: its key is given to the World Locks slot, and the slot opens. No location is checked."
+    CheatAction.KEY_HINT -> "A locked slot: a free hint for the location that holds its key. Nothing is checked."
+    CheatAction.UNLOCK -> "A locked slot: the location that holds its key is checked, so the key comes from that world " +
+      "and the slot opens; its lock says the server unlocked it. The check counts for the world it is in."
   }
   override val support = "Support"
   override val cheats = "Cheats"
@@ -111,7 +114,8 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.HINT -> "hinted $value for $slot"
     CheatAction.HINT_LOCATION -> "hinted what is at $value in $slot"
     CheatAction.KEY_LOCATION -> "checked the key to $slot at $value"
-    CheatAction.UNLOCK -> "unlocked $slot"
+    CheatAction.KEY_HINT -> "hinted where the key to $slot is: $value"
+    CheatAction.UNLOCK -> if (value != null) "unlocked $slot (its key at $value)" else "unlocked $slot"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Done: ${what(action, slot, value)}"
   override fun logTitle(support: Boolean) = if (support) "Help and cheats of this session" else "Cheats of this session"
@@ -134,6 +138,7 @@ internal object GermanCheats : CheatTexts {
     CheatAction.HINT -> "Hinweis auf ein Item"
     CheatAction.HINT_LOCATION -> "Hinweis auf einen Ort"
     CheatAction.KEY_LOCATION -> "Ort seines Schlüssels checken"
+    CheatAction.KEY_HINT -> "Hinweis auf seinen Schlüssel"
     CheatAction.UNLOCK -> "Entsperren"
   }
   override fun tip(action: CheatAction) = when (action) {
@@ -146,7 +151,10 @@ internal object GermanCheats : CheatTexts {
     CheatAction.HINT_LOCATION -> "Ein Gratis-Hinweis: was am Ort des Slots liegt."
     CheatAction.KEY_LOCATION -> "Ein gesperrter Slot: Der Ort, an dem sein Schlüssel liegt, wird gecheckt, als hätte ihn sein " +
       "Spieler gefunden. Der Schlüssel öffnet den Slot; der Check zählt für die Welt, in der er liegt."
-    CheatAction.UNLOCK -> "Ein gesperrter Slot: Sein Schlüssel geht an den World-Locks-Slot, und der Slot öffnet sich. Kein Ort wird gecheckt."
+    CheatAction.KEY_HINT -> "Ein gesperrter Slot: ein Hinweis auf den Ort, an dem sein Schlüssel liegt. Nichts wird gecheckt."
+    CheatAction.UNLOCK -> "Ein gesperrter Slot: Der Ort, an dem sein Schlüssel liegt, wird gecheckt; der Schlüssel kommt " +
+      "aus dieser Welt, und der Slot öffnet sich. Seine Sperre sagt, dass der Server ihn entsperrt hat. Der Check zählt " +
+      "für die Welt, in der er liegt."
   }
   override val support = "Support"
   override val cheats = "Cheats"
@@ -190,7 +198,8 @@ internal object GermanCheats : CheatTexts {
     CheatAction.HINT -> "Hinweis auf $value für $slot"
     CheatAction.HINT_LOCATION -> "Hinweis, was bei $value in $slot liegt"
     CheatAction.KEY_LOCATION -> "Schlüssel zu $slot bei $value gecheckt"
-    CheatAction.UNLOCK -> "$slot entsperrt"
+    CheatAction.KEY_HINT -> "Hinweis, wo der Schlüssel zu $slot liegt: $value"
+    CheatAction.UNLOCK -> if (value != null) "$slot entsperrt (sein Schlüssel bei $value)" else "$slot entsperrt"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Erledigt: ${what(action, slot, value)}"
   override fun logTitle(support: Boolean) = if (support) "Hilfe und Cheats dieser Session" else "Cheats dieser Session"

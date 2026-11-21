@@ -217,7 +217,12 @@ fun main() {
   val minecraft = Minecraft(
     http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
     passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
-    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() }, scope = background,
+    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() },
+    finished = { id ->
+      sessions.get(id)?.let { readSeedName(it.roomJson) }
+        ?.let { seed -> runCatching { finishes.of(seed)?.finishedAt != null }.getOrDefault(false) } == true
+    },
+    scope = background,
   )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)

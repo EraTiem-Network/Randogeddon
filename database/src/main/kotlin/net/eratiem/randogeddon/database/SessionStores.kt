@@ -224,6 +224,21 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     true
   }
 
+  /**
+   * Makes [seedName]'s slot [slot] hosted (its game runs as a server of its own), or no longer: then its direct switch
+   * goes with it. `false`: no such session.
+   */
+  suspend fun setHosted(seedName: String, slot: String, hosted: Boolean): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionHostedSlotsTable.deleteWhere { (SessionHostedSlotsTable.sessionId eq id) and (SessionHostedSlotsTable.slotName eq slot) }
+    if (hosted) SessionHostedSlotsTable.insert {
+      it[sessionId] = id
+      it[slotName] = slot
+    }
+    true
+  }
+
   /** Lets Randogeddon run [seedName]'s hosted slot [slot]'s Minecraft server itself, or not; `false`: no such hosted slot. */
   suspend fun setDirect(seedName: String, slot: String, direct: Boolean): Boolean = db.query {
     val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)

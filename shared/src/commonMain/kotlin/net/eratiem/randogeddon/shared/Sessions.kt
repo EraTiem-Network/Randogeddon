@@ -113,10 +113,10 @@ data class WorldPlan(
 
 /**
  * `POST /api/sessions/{id}/manage/slots/{slot}`: who plays a running session's slot now ([userIds], account IDs), or
- * every player of it ([open]). Its hosted mode stays.
+ * every player of it ([open]); and whether it is hosted ([hosted]; `null`: as it is).
  */
 @Serializable
-data class SlotPlayersRequest(val userIds: List<String> = emptyList(), val open: Boolean = false)
+data class SlotPlayersRequest(val userIds: List<String> = emptyList(), val open: Boolean = false, val hosted: Boolean? = null)
 
 @Serializable
 data class CreateSessionRequest(

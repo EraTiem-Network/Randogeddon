@@ -11,6 +11,22 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.7: Editing a slot
+- The panel's slots are edited one at a time: *Edit slot:* with a drop-down as the heading, then the slot's row as
+  before (its players, *Open to all*) with *Hosted* at the right.
+- *Hosted* now switches while the session runs: on (its players then join its game's server and the slot gets a new
+  password) asked once more, off asked twice; a directly hosted Minecraft server stops when its slot is no longer
+  hosted. Who held the slot's password (or its tunnel key) and no longer does decides whether it gets a new one.
+- A hosted Minecraft server stops when its session is finished or paused, as its game server does, and doesn't
+  start again until the session is reopened. Until now it ran on until nobody had been on it for the idle time.
+- The idle time of a hosted Minecraft server is kept by the minecraft service (its start, its players' joins and
+  leaves): a gateway restart (a deploy) no longer starts it over.
+- The lock cheats reworked: *Unlock* checks the location that holds the slot's key, so the key comes from the world
+  it is in (as *Check its key's location* did), and the slot's lock then says it was unlocked by the server. The
+  other one is now *Hint its key's location*: a free hint for that location, nothing checked. Without the spoiler
+  log's placements *Unlock* gives the key to the World Locks slot, as before.
+- Updating: nothing to do.
+
 ### 0.21.6: The players' panels fill the space
 - The players' cards lie in as many columns as fit, each card into the column that is shortest so far: no gaps under
   a short card any more, and a few cards stay as narrow as a column instead of being stretched. *Sort*'s order reads

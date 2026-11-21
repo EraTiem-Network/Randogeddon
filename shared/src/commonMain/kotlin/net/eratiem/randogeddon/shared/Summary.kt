@@ -239,6 +239,8 @@ data class LockInfo(
   /** The same in its parts: the location, and the slot it is in. */
   val hintLocation: String? = null,
   val hintSlot: String? = null,
+  /** Its key's location was checked by the server (a cheat), not found by a player. */
+  val byServer: Boolean = false,
 )
 
 @Serializable

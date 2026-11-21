@@ -18,14 +18,20 @@ enum class CheatAction {
   @SerialName("hint") HINT,
   /** A free hint for what is at one of the slot's locations (`/hint_location`), likewise. */
   @SerialName("hint_location") HINT_LOCATION,
-  /** A locked slot: the location that holds its key is checked (`/send_location`), as if its player found it. */
+  /** Until 0.21.7 (not offered since, still taken): the location that holds a locked slot's key checked, as [UNLOCK] now. */
   @SerialName("key_location") KEY_LOCATION,
-  /** A locked slot: its key is given to the World Locks slot (`/send`), no location checked. */
+  /** A locked slot: a free hint for the location that holds its key (`/hint_location` in that world). */
+  @SerialName("key_hint") KEY_HINT,
+  /**
+   * A locked slot: the location that holds its key is checked (`/send_location` in that world), so the key comes from
+   * that world and the slot opens; its lock says the server unlocked it. Without the spoiler log's placements, its key
+   * is given to the World Locks slot instead (`/send`).
+   */
   @SerialName("unlock") UNLOCK,
 }
 
 /** The cheats for a locked slot: no item or location to pick, the slot is one of [CheatView.locked]. */
-val LOCK_CHEATS = setOf(CheatAction.KEY_LOCATION, CheatAction.UNLOCK)
+val LOCK_CHEATS = setOf(CheatAction.KEY_LOCATION, CheatAction.KEY_HINT, CheatAction.UNLOCK)
 
 /**
  * A slot still locked, for the lock cheats: its key, and where that lies ([keyLocation] in [keyWorld], not checked
