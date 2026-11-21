@@ -59,6 +59,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import net.eratiem.randogeddon.shared.MINECRAFT_DIG
 import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiError
@@ -232,6 +233,8 @@ private fun CreateSession(
   val users = remember { mutableStateMapOf<String, List<String>>() }
   // The hosted slots: no players, their games run as servers of their own
   val hosted = remember { mutableStateMapOf<String, Boolean>() }
+  // Of them, the Minecraft Dig slots whose server Randogeddon runs (Administrators only)
+  val direct = remember { mutableStateMapOf<String, Boolean>() }
   val people = remember { mutableStateListOf<UserRef>().apply { addAll(view.people) } }
   val locked = remember { mutableStateMapOf<String, Boolean>() }
   var lockMode by remember { mutableStateOf(LockMode.CHOOSE) }
@@ -599,8 +602,10 @@ private fun CreateSession(
       val isLocked = world.name in lockedNow
       WorldRow(
         world, users[world.name].orEmpty(), people, hosted = hosted[world.name] == true,
-        onHosted = { yes -> hosted[world.name] = yes; if (yes) users[world.name] = emptyList() },
+        onHosted = { yes -> hosted[world.name] = yes; if (yes) users[world.name] = emptyList() else direct.remove(world.name) },
         hostedLabel = t.sessionAdmin.hostedCheck,
+        direct = (direct[world.name] == true).takeIf { administrator && world.game == MINECRAFT_DIG },
+        onDirect = { yes -> direct[world.name] = yes },
         onInvite = { email ->
           when (val r = inviteForSession(email)) {
             is Answer.Ok -> r.value.also { people += it }
@@ -697,6 +702,7 @@ private fun CreateSession(
                 it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
                 locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
                 hosted = hosted[it.name] == true,
+                direct = hosted[it.name] == true && direct[it.name] == true,
               )
             },
             options = options.copy(openSlots = open),
@@ -800,6 +806,9 @@ private fun WorldRow(
   hosted: Boolean,
   onHosted: (Boolean) -> Unit,
   hostedLabel: String,
+  /** A hosted Minecraft Dig slot's server run here (its checkbox, for Administrators); `null`: not offered. */
+  direct: Boolean?,
+  onDirect: (Boolean) -> Unit,
   /** Invites an address from here: the new account, or `null` (the form shows why). */
   onInvite: suspend (String) -> UserRef?,
   lock: @Composable () -> Unit,
@@ -824,6 +833,7 @@ private fun WorldRow(
         Confirm(t.sessionAdmin.hostedQuestion, t.sessionAdmin.yesHosted, danger = false,
           onYes = { asking = false; onHosted(true) }, onCancel = { asking = false })
       }
+      if (hosted && direct != null) Check(t.sessionAdmin.hostDirectly, direct) { onDirect(it) }
       if (hosted) Txt(t.sessionAdmin.hostedLine, size = 12.sp, color = p.muted)
       else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         users.forEach { id ->

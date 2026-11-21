@@ -146,6 +146,13 @@ interface SessionAdminTexts {
   val minecraftNotHosted: String
   val minecraftStart: String
   val minecraftStop: String
+  /** A hosted slot whose server Randogeddon doesn't run: its Session-Managers run their own. */
+  val minecraftNotDirect: String
+  /** Switched on by Administrators only, off by Session-Managers too. */
+  val minecraftHostHere: String
+  val minecraftDontHost: String
+  /** At creation: a hosted Minecraft Dig slot's server run here (Administrators only). */
+  val hostDirectly: String
   val useSeed: String
   val stepSeed: String
   val seedChecking: String
@@ -357,6 +364,10 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val minecraftNotHosted = "Not hosted here: the operator hasn't accepted Mojang's EULA (MINECRAFT_EULA)"
   override val minecraftStart = "Start"
   override val minecraftStop = "Stop"
+  override val minecraftNotDirect = "Not hosted here: its Session-Managers run its server themselves"
+  override val minecraftHostHere = "Host here"
+  override val minecraftDontHost = "Don't host here"
+  override val hostDirectly = "its server here (through the bridge)"
   override val useSeed = "Use a generated seed…"
   override val stepSeed = "1. The seed"
   override val seedChecking = "Checking the seed…"
@@ -593,6 +604,10 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val minecraftNotHosted = "Hier nicht gehostet: Der Betreiber hat Mojangs EULA nicht akzeptiert (MINECRAFT_EULA)"
   override val minecraftStart = "Starten"
   override val minecraftStop = "Stoppen"
+  override val minecraftNotDirect = "Nicht hier gehostet: Seine Session-Manager betreiben den Server selbst"
+  override val minecraftHostHere = "Hier hosten"
+  override val minecraftDontHost = "Nicht hier hosten"
+  override val hostDirectly = "sein Server hier (über die Bridge)"
   override val useSeed = "Generierten Seed verwenden…"
   override val stepSeed = "1. Der Seed"
   override val seedChecking = "Seed wird geprüft…"

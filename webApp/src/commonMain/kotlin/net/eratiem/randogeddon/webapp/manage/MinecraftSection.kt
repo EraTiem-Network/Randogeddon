@@ -19,7 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.LogLine
+import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.MinecraftLogs
 import net.eratiem.randogeddon.shared.MinecraftServers
 import net.eratiem.randogeddon.shared.MinecraftStatus
@@ -90,11 +92,19 @@ fun MinecraftSection(id: String, administrator: Boolean) {
           }
           Column(Modifier.weight(1f)) {
             Txt(server.slot, size = 13.5.sp)
-            Txt(t.minecraftState(server.status, server.players.joinToString()), size = 12.5.sp,
-              color = if (server.status == MinecraftStatus.CRASHED) p.trap else p.muted)
+            Txt(if (server.direct) t.minecraftState(server.status, server.players.joinToString()) else t.minecraftNotDirect, size = 12.5.sp,
+              color = if (server.direct && server.status == MinecraftStatus.CRASHED) p.trap else p.muted)
             (problems[server.slot] ?: server.problem)?.let { Txt(it, size = 12.5.sp, color = p.trap) }
           }
-          if (now.hosting) when (server.status) {
+          // Hosted here: switched on by Administrators only, off by Session-Managers too (its server stops)
+          fun direct(on: Boolean) = scope.launch {
+            post("api/sessions/$id/manage/minecraft/${server.slot.percentEncoded()}/direct", ApiJson.encodeToString(MinecraftDirectRequest.serializer(), MinecraftDirectRequest(on)))
+              ?.let { problems[server.slot] = it } ?: problems.remove(server.slot)
+            refresh()
+          }
+          if (server.direct) SmallButton(t.minecraftDontHost, { direct(false) })
+          else if (administrator) SmallButton(t.minecraftHostHere, { direct(true) })
+          if (now.hosting && server.direct) when (server.status) {
             MinecraftStatus.ASLEEP, MinecraftStatus.CRASHED -> SmallButton(t.minecraftStart, {
               scope.launch {
                 post("api/sessions/$id/manage/minecraft/${server.slot.percentEncoded()}/start")
@@ -110,7 +120,7 @@ fun MinecraftSection(id: String, administrator: Boolean) {
             })
           }
         }
-        logs[server.slot]?.takeIf { administrator && it.isNotEmpty() }?.let {
+        logs[server.slot]?.takeIf { administrator && server.direct && it.isNotEmpty() }?.let {
           LogView(it, LocalTexts.current.panel.nothingYet, height = 260.dp)
         }
       }
