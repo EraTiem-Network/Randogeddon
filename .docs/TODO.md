@@ -978,9 +978,17 @@ through Randogeddon Bridge only.
       router for the sessions needs nothing new), with the slot's password in `X-Randogeddon-Slot-Password` as the
       bridge has it for a relay (from the player's key), checked in constant time; a locked slot is refused. Each
       Minecraft connection its own WebSocket, binary messages; before the server takes over, a packet may have 4 KB
-- [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
+- [x] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
       server sees every connection coming from the gateway, so limits and bans by address mean nothing)
-- [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+    - Decided with the user (0.20.4): no whitelist. Only the slot's players reach the server at all (the bridge
+      with their key and the slot's password; no Minecraft port is public), and their Minecraft names aren't the
+      slot names a whitelist could come from
+- [x] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+    - Done (0.20.4): its own section, *Minecraft*, after *Logic* (a session without a Minecraft Dig slot doesn't
+      show it): each slot's server, its state and who is on it, *Start* and *Stop* for Session-Managers and
+      Administrators, its log for Administrators
+    - Mojang's EULA: accepted by the operator, not in the panel (decided with the user): `MINECRAFT_EULA=true` in
+      `.env` accepts it for every hosted server, false by default; the Administrators' setting of 0.20.2 is gone
 
 ## Phase 21: Floating Panels – Slot & Player (planned)
 
@@ -992,3 +1000,13 @@ open, move and close, and what they show is to come from the user.*
       side as fit), and sortable in some way (asked for on 2026-11-21)
 - [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
       2026-11-21)
+- [ ] Creating a session (asked for on 2026-11-21):
+    - A hosted game can still be given to certain players
+    - For every slot, a checkbox: open to all of the session's players
+    - A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
+      bridge's tunnel)
+- [ ] A running session's slots edited (asked for on 2026-11-21):
+    - Who may use a slot changed; its hosted mode not (for now)
+    - A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
+      Session-Managers too
+    - Late invites, then

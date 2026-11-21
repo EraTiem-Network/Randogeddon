@@ -22,6 +22,15 @@ The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and rea
   then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
   servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
 
+### 0.20.4: The Minecraft servers in the panel
+- The Management panel has a *Minecraft* section for a session with a Minecraft Dig slot: each slot's server (asleep,
+  starting, running with who is on it, or ended on its own), *Start* and *Stop* for Session-Managers and
+  Administrators, its log for Administrators.
+- Mojang's EULA is the operator's: `MINECRAFT_EULA=true` in `.env` accepts it once for every hosted server (false by
+  default: nothing runs). The Administrators' setting `minecraft_eula` of 0.20.2 is gone.
+- No whitelist (decided with the user): only the slot's players reach its server, through the bridge.
+- Updating: to host Minecraft Dig servers, `MINECRAFT_EULA=true` in `.env`.
+
 ### 0.20.3: The tunnel
 - Randogeddon Bridge opens a tunnel for a Minecraft Dig slot instead of a relay: `localhost:<port>` for Minecraft
   1.19.4's *Direct Connection*, each Minecraft connection passed on over `wss://<session>.<domain>/minecraft/<slot>`
