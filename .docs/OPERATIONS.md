@@ -10,7 +10,7 @@ cp .env.example .env     # set POSTGRES_PASSWORD, INTERNAL_TOKEN, TRACKER_DB_*, 
 docker compose build     # takes a few minutes (every game's requirements, the native builds)
 ```
 
-Building the tracker and gateway images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
+Building the tracker, gateway and minecraft images needs **BuildKit** (the `docker buildx` plugin, included in Docker's own
 packages; on Arch: `pacman -S docker-buildx`). Gradle takes its libraries from Maven Central, the Gradle plugin
 portal and Google, or from a Maven repository that mirrors them, `RANDOGEDDON_MAVEN` in `.env` (e.g. Artifact
 Keeper's virtual repository); its login comes from your Gradle init script, which can find it by its URL or its
@@ -18,7 +18,7 @@ name (`RANDOGEDDON_MAVEN_NAME`, default `mirror`). Compose passes the init scrip
 `.env`); it never ends up in an image. Compose asks once to let the build read that file outside the build context
 (`additional privileges requested`); answer yes, or set `BUILDX_BAKE_ENTITLEMENTS_FS=0` as the scripts do. The native
 builds need about 8 GB of RAM (peak, tracker). If the server has not the memory (or no login for the mirror), build on your PC and copy the images over:
-`docker save randogeddon-tracker:latest randogeddon-gateway:latest | ssh you@server docker load`.
+`docker save randogeddon-tracker:latest randogeddon-gateway:latest randogeddon-minecraft:latest | ssh you@server docker load`.
 
 `.env` sets `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`, so plain `docker compose …`
 always uses the Traefik labels. Check `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` and
@@ -200,7 +200,10 @@ from a registry (Artifact Keeper). Its machines, addresses and accounts are writ
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45, before the VM's own backup) |
 
 Besides the settings above, the server's `.env` has the image settings that `scripts/deploy.sh` keeps:
-`TRACKER_IMAGE=<IMAGES>/tracker` and `GATEWAY_IMAGE=<IMAGES>/gateway`, `IMAGE_TAG` and
+`TRACKER_IMAGE=<IMAGES>/tracker`, `GATEWAY_IMAGE=<IMAGES>/gateway` and `MINECRAFT_IMAGE=<IMAGES>/minecraft` (since
+0.21.6; it takes the tracker's tag, so a rollback to a version before it finds none: tag one for it first on the
+server, `docker tag <IMAGES>/minecraft:0.21.6 <IMAGES>/minecraft:<the tag rolled back to>`),
+`IMAGE_TAG` and
 `GATEWAY_TAG` (the running version, e.g. `0.8.3`; for a commit that isn't a release the commit, the gateway's with the
 Archipelago release before it), `PREVIOUS_IMAGE_TAG` and
 `PREVIOUS_GATEWAY_TAG` (the one before, for a rollback); and `GRADLE_INIT_SCRIPT=/dev/null` (nothing is built there,

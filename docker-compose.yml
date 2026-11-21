@@ -139,10 +139,13 @@ services:
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   minecraft:
-    # The hosted Minecraft servers of Minecraft Dig slots: the gateway's image, its own program (minecraft_host.py), on
-    # the gateway's orders. Nothing of it is published: the gateway passes the players' connections on to it
-    image: ${GATEWAY_IMAGE:-randogeddon-gateway}:${GATEWAY_TAG:-${AP_VERSION:-0.6.8}}
-    entrypoint: ["python", "/app/minecraft_host.py"]
+    # The hosted Minecraft servers of Minecraft Dig slots: an image of their own (Java 17, Forge with the mod,
+    # minecraft_host.py), tagged like the tracker's; they run on the gateway's orders. Nothing of it is published: the
+    # gateway passes the players' connections on to it
+    image: ${MINECRAFT_IMAGE:-randogeddon-minecraft}:${IMAGE_TAG:-latest}
+    build:
+      <<: *build
+      target: minecraft
     restart: unless-stopped
     logging: *logging
     # Each server saves its world on `stop`

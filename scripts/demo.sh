@@ -38,6 +38,7 @@ image="randogeddon-gateway:$AP_VERSION"
 # compile takes several GB at its peak
 docker compose build tracker
 docker compose build gateway
+docker compose build minecraft
 docker compose up -d
 echo "Waiting for the tracker…"
 for _ in $(seq 1 90); do

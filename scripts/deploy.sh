@@ -62,13 +62,14 @@ fi
 sed -i '/^IMAGE_REGISTRY=/d' .env
 set_setting TRACKER_IMAGE "$IMAGES/tracker"
 set_setting GATEWAY_IMAGE "$IMAGES/gateway"
+set_setting MINECRAFT_IMAGE "$IMAGES/minecraft"
 set_setting IMAGE_TAG "$tag"
 set_setting GATEWAY_TAG "$gateway_tag"
 if [[ -n "$current" && "$current" != "$tag" ]]; then
   set_setting PREVIOUS_IMAGE_TAG "$current"
   set_setting PREVIOUS_GATEWAY_TAG "$current_gateway"
 fi
-docker compose pull -q tracker gateway
+docker compose pull -q tracker gateway minecraft
 docker compose up -d --no-build --remove-orphans 2>&1 | tail -3
 for _ in $(seq 1 60); do
   curl -sf http://localhost:8000/healthz >/dev/null && break
@@ -123,11 +124,16 @@ if [[ -r "$signing_key" ]]; then export BRIDGE_SIGNING_KEY="$signing_key"; else 
 # One after the other: each native-image compile takes several GB at its peak
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build gateway
+POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build minecraft
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$moving"
-for image in "tracker:$tag" "gateway:$gateway_tag" "tracker:$moving" "gateway:$moving"; do docker push -q "$IMAGES/$image"; done
+docker tag randogeddon-minecraft:latest "$IMAGES/minecraft:$tag"
+docker tag randogeddon-minecraft:latest "$IMAGES/minecraft:$moving"
+for image in "tracker:$tag" "gateway:$gateway_tag" "minecraft:$tag" "tracker:$moving" "gateway:$moving" "minecraft:$moving"; do
+  docker push -q "$IMAGES/$image"
+done
 
 if [[ -n "$live" ]]; then
 echo "== The server's files"
