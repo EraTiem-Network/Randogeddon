@@ -118,8 +118,9 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
     if (people.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
-      Grid(people.size, width, 330.dp, equalHeight = false) { i, modifier ->
-        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+      // As many columns as fit, each card into the shortest one: no gaps, no stretched cards, the sort's order kept
+      Masonry(people.size, 330.dp) { i ->
+        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, Modifier.fillMaxWidth(), onOpen, onOpenPerson)
       }
     }
   }
