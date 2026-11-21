@@ -13,6 +13,15 @@ didn't, then what the Launcher has that the gateway hasn't), went on to keeping 
 the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
 states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
 
+### 0.19.19: Cheatable locks
+- **Two cheats for a locked slot** in the *Cheats* section (Session-Managers, Administrators, support), listed while a
+  slot is locked, with the locked slots to pick from:
+  - *Check its key's location*: the location that holds its key (from the spoiler log's placements, shown beside it)
+    is checked as if its player found it. The key opens the slot; the check counts for the world it is in.
+  - *Unlock*: its key is given to the World Locks slot (`/send`); no location is checked.
+- Logged and in the live feed like every cheat ("checked the key to Alice-Locked at Chest B (in Bob)", "unlocked
+  Alice-Locked").
+
 ### 0.19.18: Icons on the players' pills; deaths and traps per slot
 - **The person cards' and slot rows' pills are an icon and a number**, what they are as their tooltip in one word, as
   in the Overview: *Done* (a flag, "1 / 3"), *Locked* (a lock), *Played* (a clock), *Received* (an arrow into a tray),

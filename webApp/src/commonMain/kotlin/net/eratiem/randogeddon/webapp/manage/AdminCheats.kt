@@ -29,6 +29,7 @@ import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.HintPick
+import net.eratiem.randogeddon.shared.LOCK_CHEATS
 import net.eratiem.randogeddon.webapp.api.AdminCache
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
@@ -59,7 +60,7 @@ private val HINTS = setOf(CheatAction.HINT, CheatAction.HINT_LOCATION)
 private val WITH_LOCATION = setOf(CheatAction.LOCATION, CheatAction.HINT_LOCATION)
 
 /** What support does: no release or collect. */
-private val SUPPORT_ACTIONS = WITH_ITEM + WITH_LOCATION
+private val SUPPORT_ACTIONS = WITH_ITEM + WITH_LOCATION + LOCK_CHEATS
 
 /**
  * Cheats: give an item, check a location, release or collect for a slot, and free hints if the session allows them.
@@ -106,8 +107,9 @@ fun CheatSection(
       delay(10_000)
     }
   }
-  // Another session: the slot may not exist any more
-  LaunchedEffect(view?.slots) { if (slot != null && view?.slots?.contains(slot) == false) slot = null }
+  // Another session, or a slot opened meanwhile: the slot may not be one to pick any more
+  val pickable = if (action in LOCK_CHEATS) view?.locked?.map { it.slot } else view?.slots
+  LaunchedEffect(pickable) { if (slot != null && pickable?.contains(slot) == false) slot = null }
   // The slot's items and open locations, for the second picker; another slot starts empty
   LaunchedEffect(slot) {
     names = null
@@ -145,9 +147,14 @@ fun CheatSection(
         current.slots.isEmpty() -> Txt(t.cheats.noSlots, size = 13.sp, color = p.muted)
         else -> {
           if (!current.available) Txt(t.cheats.onlyWhileRunning, size = 12.5.sp, color = p.muted)
-          val actions = CheatAction.entries.filter { (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) }
+          // The lock cheats while a slot is locked
+          val actions = CheatAction.entries.filter {
+            (current.cheatHints || it !in HINTS) && (!support || it in SUPPORT_ACTIONS) && (it !in LOCK_CHEATS || current.locked.isNotEmpty())
+          }
+          val lock = current.locked.firstOrNull { it.slot == slot }.takeIf { action in LOCK_CHEATS }
           val ready = current.available && slot != null && !busy &&
-            (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION))
+            (value != null || (action !in WITH_ITEM && action !in WITH_LOCATION)) &&
+            (action != CheatAction.KEY_LOCATION || lock?.keyLocation != null)
           val incoming = toSlot && action == CheatAction.LOCATION
           // A hint names one place: only locations not hinted yet, and items with a copy neither checked nor hinted
           val choices = when (action) {
@@ -160,15 +167,18 @@ fun CheatSection(
           val what: @Composable (Modifier) -> Unit = { modifier ->
             Tip(t.cheats.tip(action)) {
               SearchableSelect(
-                actions.map { Triple(it, t.cheats.action(it), "") }, action, { action = it; value = null; from = null },
+                actions.map { Triple(it, t.cheats.action(it), "") }, action,
+                { if ((it in LOCK_CHEATS) != (action in LOCK_CHEATS)) slot = null; action = it; value = null; from = null },
                 modifier, chip = false, minHeight = CONTROL_HEIGHT,
               )
             }
           }
           val forSlot: @Composable (Modifier) -> Unit = { modifier ->
+            // A lock cheat: the locked slots only
+            val slots = if (action in LOCK_CHEATS) current.locked.map { it.slot } else current.slots
             SearchableSelect(
-              current.slots.map { Triple<String?, String, String>(it, it, "") }, slot, { slot = it },
-              modifier, chip = false, placeholder = t.cheats.slot, minHeight = CONTROL_HEIGHT,
+              slots.map { Triple<String?, String, String>(it, it, "") }, slot, { slot = it },
+              modifier, chip = false, placeholder = if (slots.isEmpty()) t.cheats.noLocked else t.cheats.slot, minHeight = CONTROL_HEIGHT,
             )
           }
           // Check a location: from the slot (its own) or to it (another world's, holding the slot's item)
@@ -226,7 +236,11 @@ fun CheatSection(
                 val world = from.takeIf { incoming }
                 val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world, hintPick))
                 outcome = when (val answer = call("POST", path, body) { }) {
-                  is Answer.Ok -> true to t.cheats.done(action, world ?: slot.orEmpty(), value)
+                  // A key's location as the log says it: "Location (in World)"
+                  is Answer.Ok -> true to t.cheats.done(
+                    action, world ?: slot.orEmpty(),
+                    if (action == CheatAction.KEY_LOCATION) lock?.let { "${it.keyLocation} (in ${it.keyWorld})" } else value,
+                  )
                   is Answer.Failed -> false to answer.message
                 }
                 busy = false
@@ -256,6 +270,15 @@ fun CheatSection(
                 send()
               }
             }
+          }
+          // Where the picked locked slot's key lies, for checking that location
+          if (action == CheatAction.KEY_LOCATION && lock != null) {
+            val location = lock.keyLocation
+            val world = lock.keyWorld
+            Txt(
+              if (location != null && world != null) t.cheats.keyAt(location, world) else t.cheats.keyUnknown,
+              size = 12.5.sp, color = if (location != null) p.muted else p.trap,
+            )
           }
           outcome?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
           if (current.log.isNotEmpty()) {

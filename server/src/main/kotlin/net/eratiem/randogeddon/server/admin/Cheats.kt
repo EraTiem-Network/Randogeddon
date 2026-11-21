@@ -23,6 +23,8 @@ import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.IncomingCheck
+import net.eratiem.randogeddon.shared.LOCK_CHEATS
+import net.eratiem.randogeddon.shared.LockedSlot
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import org.koin.core.annotation.Single
@@ -49,6 +51,9 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
     CheatAction.COLLECT -> "/collect $slot"
     CheatAction.HINT -> "/hint $target $what"
     CheatAction.HINT_LOCATION -> "/hint_location $target $what"
+    // [slot]: the world the key's location is in; the World Locks slot that gets the key
+    CheatAction.KEY_LOCATION -> "/send_location $target $what"
+    CheatAction.UNLOCK -> "/send $target $what"
   }
 }
 
@@ -89,6 +94,8 @@ internal fun cheatText(admin: String, action: CheatAction, slot: String, value: 
   CheatAction.COLLECT -> "collected for $slot"
   CheatAction.HINT -> "hinted $value for $slot"
   CheatAction.HINT_LOCATION -> "hinted what is at $value in $slot"
+  CheatAction.KEY_LOCATION -> "checked the key to $slot at $value"
+  CheatAction.UNLOCK -> "unlocked $slot"
 }
 
 /**
@@ -115,7 +122,54 @@ class Cheats(
       log = log.of(session.seedName).map {
         CheatLogEntry(it.at.toEpochMilli(), who(it.admin, it.byRole), CheatAction.valueOf(it.action), it.slotName, it.value)
       },
+      locked = locked(session),
     )
+  }
+
+  /** The slots still locked, each with where its key lies (not checked yet), if the spoiler log says. */
+  private suspend fun locked(session: LiveSession): List<LockedSlot> {
+    val locked = session.tracker.read { lockedSlots() }
+    if (locked.isEmpty()) return emptyList()
+    val keys = keyPlacements(session, locked)
+    return locked.map { (slot, key, _) ->
+      val at = keys[slot]
+      LockedSlot(slot, key, at?.location, at?.finder)
+    }
+  }
+
+  /**
+   * Where each of [locked]'s keys lies, by the locked slot: the placement of its key for the World Locks slot, at a
+   * location not checked yet (none without the spoiler log's placements).
+   */
+  private suspend fun keyPlacements(session: LiveSession, locked: List<Triple<String, String, String>>): Map<String, Placement> {
+    val text = runCatching { spoilers.of(session.id, session.seedName)?.text }.getOrNull() ?: return emptyMap()
+    val open = session.tracker.read { openLocations() }
+    val placed = placements(text, open.keys + locked.map { it.third }.toSet())
+    return locked.mapNotNull { (slot, key, lockSlot) ->
+      placed.firstOrNull { it.item == key && it.receiver == lockSlot && it.location in open[it.finder].orEmpty() }?.let { slot to it }
+    }.toMap()
+  }
+
+  /**
+   * A lock cheat for the locked slot [slot]: its key's location checked, or the key given to the World Locks slot.
+   * Logged and shown under the locked slot, with where the key was.
+   */
+  private suspend fun runLock(id: String, session: LiveSession, action: CheatAction, slot: String, admin: String, byRole: String) {
+    val tracker = session.tracker
+    val lock = tracker.read { lockedSlots() }.firstOrNull { it.first == slot }
+      ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_SLOT, "slot" to slot)
+    val (_, key, lockSlot) = lock
+    val (command, shown) = if (action == CheatAction.KEY_LOCATION) {
+      val at = keyPlacements(session, listOf(lock))[slot]
+        ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_A_LOCATION, "value" to key, "slot" to slot)
+      cheatCommand(action, at.finder, at.location) to "${at.location} (in ${at.finder})"
+    } else {
+      cheatCommand(action, lockSlot, key) to null
+    }
+    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
+    logger.info("{} cheated in {} for {}: {}", admin, id, slot, command)
+    log.add(session.seedName, CheatEntry(Instant.now(), admin, action.name, slot, shown, byRole))
+    tracker.cheat(cheatText(admin, action, slot, shown, byRole), action, admin, byRole, slot, shown)
   }
 
   /**
@@ -159,6 +213,7 @@ class Cheats(
     if (request.action in HINTS && !freeHints && session.options?.cheatHints != true) {
       throw SessionProblem(HttpStatusCode.Forbidden, Problem.NO_CHEAT_HINTS)
     }
+    if (request.action in LOCK_CHEATS) return runLock(id, session, request.action, request.slot, admin, byRole)
     val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOT, "slot" to request.slot)
     if (request.slot !in tracker.read { cheatSlots() }) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.SLOT_ALL_CHECKED, "slot" to request.slot)

@@ -443,6 +443,9 @@ class SessionStateTest {
     assertEquals(listOf("Alice", "Bob"), summary.people.map { it.name })
     assertEquals(listOf(1, 2), summary.people[0].slots)
 
+    // For the lock cheats: the locked slot, its key, the slot that gets it
+    assertEquals(listOf(Triple("Alice-Locked", "World Key 1", "Locks")), s.lockedSlots())
+
     // A hint for the key says where it is
     s.onSetReply("_read_hints_0_4", element(
       """[{"receiving_player":4,"finding_player":3,"location":11,"item":7400000,"found":false,"item_flags":1}]"""
@@ -456,6 +459,7 @@ class SessionStateTest {
     summary = s.summary("t", null, people)
     val lock = summary.players[1].lock!!
     assertTrue(lock.unlocked)
+    assertEquals(emptyList(), s.lockedSlots())
     assertEquals("Bob" to 70L, lock.foundBy to lock.foundAt)
     // Open now, never connected: not started
     assertEquals(PlayerStatus.NOT_STARTED, summary.players[1].status)

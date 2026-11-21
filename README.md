@@ -577,7 +577,10 @@ placements, so only for a seed whose spoiler log has them). Free hints (`/hint_l
 was created with *Cheat hints*. A hint names one place: a location only if it isn't hinted yet, and for an item one
 copy of it that is neither checked nor hinted, at random or the next one the playthrough needs (a switch beside it) (Archipelago's `/hint` would name every copy; it is only used
 for a seed whose spoiler log has no placements). The hints' table explains its states under the ⓘ in its last
-column. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
+column. While a slot is locked (World Locks), two more: *Check its key's location* (the location that holds its key,
+from the spoiler log's placements and shown beside it, is checked as if its player found it: the key opens the slot,
+the check counts for the world it is in) and *Unlock* (its key is given to the World Locks slot with `/send`; no
+location is checked). Support has these two as well. Every cheat is stored with who did it (and as what) and shown in the live feed ("Cheat: Alice
 gave Mantis_Claw to Alice-HK"). Items a player got with the client's `!getitem` (if the server allows it) are
 marked as cheats there too. A crashed MultiServer is started again by the gateway after a pause (1 s, doubling up to 30 s); one stopped by
 hand stays stopped until started again.
