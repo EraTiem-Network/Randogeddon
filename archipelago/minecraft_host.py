@@ -70,6 +70,9 @@ class Server:
         self.since = None
         self.exit_code = None
         self.players = set()
+        # When a player was last on it (epoch ms; its start counts): kept here, where it runs, so the gateway's idle
+        # time goes on across the gateway's restarts
+        self.last_player = None
         self.session = None
         self.lines = collections.deque(maxlen=LOG_LINES)
         self.last = 0
@@ -98,7 +101,8 @@ class Server:
 
     def view(self) -> dict:
         return {"key": self.key, "status": self.status, "since": self.since, "port": self.port, "relay": self.relay,
-                "players": sorted(self.players), "exitCode": self.exit_code, "session": self.session}
+                "players": sorted(self.players), "lastPlayer": self.last_player, "exitCode": self.exit_code,
+                "session": self.session}
 
 
 def number_for(key: str) -> int:
@@ -170,6 +174,7 @@ def start(s: Server) -> str:
     s.exit_code = None
     s.status = "starting"
     s.since = int(time.time() * 1000)
+    s.last_player = s.since
     s.note(f"[host] Starting: {JAVA} -Xmx{HEAP} {args} -nogui")
     s.process = subprocess.Popen(
         [JAVA, f"-Xmx{HEAP}", args, "-nogui"], cwd=s.dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -189,9 +194,11 @@ def read_output(s: Server, process) -> None:
         joined = JOINED.search(line)
         if joined:
             s.players.add(joined.group(1))
+            s.last_player = int(time.time() * 1000)
         left = LEFT.search(line)
         if left:
             s.players.discard(left.group(1))
+            s.last_player = int(time.time() * 1000)
     code = process.wait()
     s.exit_code = code
     s.players = set()
