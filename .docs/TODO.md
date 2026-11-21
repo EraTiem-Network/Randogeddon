@@ -1033,6 +1033,9 @@ open, move and close, and what they show is to come from the user.*
       restart (asked for on 2026-11-21, done in 0.21.7)
 - [x] The lock cheats reworked (asked for on 2026-11-21, done in 0.21.7): *Unlock* checks the key's location in the
       world that holds it (the lock says the server unlocked it); the other one hints that location
+- [x] The slot's and the player's panels lighter, their lists a page at a time; *Your connection*'s fields as
+      text fields that can't be changed, the server copied four ways, the bridge's *Create key* on its own row and
+      its fold an icon (asked for on 2026-11-21, done in 0.21.8)
     - [x] A hosted Minecraft Dig slot's direct hosting switched on by Administrators only; switched off by
       Session-Managers too (moved to Phase 20: 0.20.5, in the panel's *Minecraft* section)
     - [x] Late invites, then

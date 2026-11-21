@@ -11,6 +11,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.8: Lighter panels, the connection's fields
+- The slot's and the player's panels show their lists a page at a time (received items and remaining locations 50,
+  hints and connections 20, recent activity 25) with arrows to the others: a slot with thousands of locations opened
+  so slowly the browser lagged. The remaining locations get a filter of their own; the connection log and the recent
+  activity are no longer cut off.
+- *Your connection*: server, slot and password are text fields that can't be changed, their buttons inside; the
+  server is copied as shown, as its host, its port or a `wss://` address. The bridge's *Create key* has a row of its
+  own, its fold is a chevron.
+- Updating: nothing to do.
+
 ### 0.21.7: Editing a slot
 - The panel's slots are edited one at a time: *Edit slot:* with a drop-down as the heading, then the slot's row as
   before (its players, *Open to all*) with *Hosted* at the right.

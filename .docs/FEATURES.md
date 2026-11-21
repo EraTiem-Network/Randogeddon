@@ -544,10 +544,11 @@ For every running session, the tracker connects to its room like any other Archi
 slot about its own checked locations and received items. The slot names come from `data/sessions/<id>/room.json`,
 which the gateway writes before it starts the session's game server.
 
-- **Your connection:** the server address, your slot names and their passwords (shown on request, copyable), the
-  slot's patch files (or that it has none); beside them on a wide screen Randogeddon Bridge (its ⓘ, *Create key*, its
-  downloads). The bridge folds away (*Collapse*, remembered in the browser): then the card is one narrow column and
-  the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
+- **Your connection:** the server address, your slot names and their passwords (shown on request), each as a text
+  field that can't be changed with its buttons inside; the server copied as shown (`host:port`), as its host, its
+  port or a `wss://` address (*Copy ▾*). The slot's patch files (or that it has none); beside them on a wide screen
+  Randogeddon Bridge (its ⓘ, *Create key* on a row of its own, its downloads). The bridge folds away (the chevron,
+  remembered in the browser): then the card is one narrow column and the tiles beside it get the room. A new key shows like a password (*Show*, *Copy*) until its line is closed.
 - **Top card:** overall completion with "x of y checks done"; beside the game server's state the logic's (see the
   available checks above).
 - **Overview:** each tile with its icon and its parts as pills, each an icon and a number, what it is as its tooltip
@@ -568,7 +569,9 @@ which the gateway writes before it starts the session's game server.
   the cards and each card's slots alike (by name, progress or last activity). Without any players, every slot is its
   own card. Click a
   player's name for their overview (totals, slots, open hints, combined connection log, recent activity). Click a slot
-  for its received items (filterable), remaining locations, play time and connection log.
+  for its received items and remaining locations (each filterable), play time and connection log. Every list there
+  shows a page at a time (50 items or locations, 20 hints or connections, 25 events) with arrows to the others: a slot
+  can have thousands of locations, which the browser couldn't draw at once.
 - **A slot's state**, the first that applies: *released* (given up before its goal, or released by hand after it),
   *complete* (every location checked, also by the automatic release at the goal: a release less than 5 s after the
   slot's goal is that one), *goal* (locations left), *locked* (the key isn't found yet), *online* (a game client is
