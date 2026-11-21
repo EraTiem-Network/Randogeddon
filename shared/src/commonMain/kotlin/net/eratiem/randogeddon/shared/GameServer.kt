@@ -75,16 +75,31 @@ data class LogicProgress(val status: LogicStatus, val since: Long? = null, val p
 @Serializable
 data class AvailableSlot(val slot: Int, val items: List<Long>, val checked: List<Long>)
 
-/** Tracker → gateway: `POST /internal/sessions/{id}/logic/available`. */
+/** Tracker → gateway: `POST /internal/sessions/{id}/logic/available`; [maps]: the slots whose map it wants too. */
 @Serializable
-data class AvailableRequest(val slots: List<AvailableSlot>)
+data class AvailableRequest(val slots: List<AvailableSlot>, val maps: List<Int> = emptyList())
 
 /**
- * How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it), and which
- * they are ([locations], their IDs).
+ * A slot's map as its logic has it (`logic_run.py`'s `slot_map`): its regions, its start first and then as they are
+ * reached from it, and which of them connect ([links]: pairs of their indices).
  */
 @Serializable
-data class AvailableAnswer(val available: Map<Int, Int?> = emptyMap(), val locations: Map<Int, List<Long>> = emptyMap())
+data class SlotMap(val regions: List<MapRegion> = emptyList(), val links: List<List<Int>> = emptyList())
+
+/** A region of a slot's map and its locations (their IDs). */
+@Serializable
+data class MapRegion(val name: String, val locations: List<Long> = emptyList())
+
+/**
+ * How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it), which they
+ * are ([locations], their IDs), and the maps asked for ([maps]; none for a slot it has no answers for).
+ */
+@Serializable
+data class AvailableAnswer(
+  val available: Map<Int, Int?> = emptyMap(),
+  val locations: Map<Int, List<Long>> = emptyMap(),
+  val maps: Map<Int, SlotMap> = emptyMap(),
+)
 
 /** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */
 @Serializable
