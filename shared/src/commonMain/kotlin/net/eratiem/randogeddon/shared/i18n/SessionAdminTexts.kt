@@ -111,6 +111,8 @@ interface SessionAdminTexts {
   val keysEarly: String
   val cheatHints: String
   val plando: String
+  /** The row of the generation's other settings (balancing, race mode). */
+  val generation: String
   fun plandoModule(module: PlandoModule): String
   val skipBalancing: String
   val raceMode: String
@@ -328,7 +330,8 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatic hints"
   override val keysEarly = "Keys early"
   override val cheatHints = "Cheat hints"
-  override val plando = "YAMLs may plan"
+  override val plando = "Plando"
+  override val generation = "Generation"
   override fun plandoModule(module: PlandoModule) = when (module) {
     PlandoModule.BOSSES -> "bosses"
     PlandoModule.CONNECTIONS -> "connections"
@@ -587,7 +590,8 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatische Hinweise"
   override val keysEarly = "Schlüssel früh"
   override val cheatHints = "Cheat-Hinweise"
-  override val plando = "YAMLs dürfen planen"
+  override val plando = "Plando"
+  override val generation = "Generierung"
   override fun plandoModule(module: PlandoModule) = when (module) {
     PlandoModule.BOSSES -> "Bosse"
     PlandoModule.CONNECTIONS -> "Verbindungen"

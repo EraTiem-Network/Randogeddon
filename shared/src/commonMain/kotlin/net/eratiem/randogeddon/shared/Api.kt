@@ -28,6 +28,18 @@ object SessionIds {
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED
 
+  /**
+   * [text] as typed into a session ID's field, kept to what a subdomain allows: capitals small, a space, `_` or `.` a
+   * hyphen, anything else left out, no two hyphens in a row, at most [MAX_LENGTH]. What only a finished ID can be
+   * (a letter first, no hyphen last) [problem] says.
+   */
+  fun typed(text: String): String = text.lowercase()
+    .map { if (it == ' ' || it == '_' || it == '.') '-' else it }
+    .filter { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    .joinToString("")
+    .replace(Regex("-{2,}"), "-")
+    .take(MAX_LENGTH)
+
   /** What's wrong with [id] as a session ID; `null`: nothing. */
   fun problem(id: String): Refusal? = when {
     id.length < MIN_LENGTH -> Refusal(Problem.ID_TOO_SHORT)
