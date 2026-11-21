@@ -82,10 +82,15 @@ data class SessionSetup(
   val createdBy: Uuid? = null,
   /** Its game server keeps running without players (else it sleeps when idle). */
   val keepRunning: Boolean = false,
+  /** Of its hosted slots, the Minecraft Dig ones whose server Randogeddon runs itself (through the bridge's tunnel). */
+  val direct: Set<String> = emptySet(),
 )
 
-/** What decides whether a session's game server may sleep: [keepRunning], and its [hosted] slots (they don't count). */
-data class IdleRules(val keepRunning: Boolean, val hosted: Set<String>)
+/**
+ * What decides whether a session's game server may sleep: [keepRunning], and its [hosted] slots (they don't count);
+ * and of them, the [direct] ones, whose Minecraft server the gateway runs.
+ */
+data class IdleRules(val keepRunning: Boolean, val hosted: Set<String>, val direct: Set<String> = emptySet())
 
 /** Someone's role in a session besides playing: `manager`, `support` or `watcher`, with their name in it. */
 data class SessionRoleEntry(val role: String, val name: String, val deleted: Boolean = false, val block: Block? = null) {
@@ -102,7 +107,10 @@ fun invitedName(id: Uuid, suggested: String?): String =
 
 /** The sessions the admin panel creates and deletes. */
 class SessionSetupStore(private val db: RandogeddonDatabase) {
-  /** Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted slots. */
+  /**
+   * Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted
+   * slots, of them [direct] the ones whose Minecraft server Randogeddon runs.
+   */
   suspend fun create(
     publicId: String,
     seedName: String,
@@ -112,6 +120,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     now: Instant = Instant.now(),
     hosted: Set<String> = emptySet(),
     createdBy: Uuid? = null,
+    direct: Set<String> = emptySet(),
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -136,6 +145,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
         SessionHostedSlotsTable.insert {
           it[sessionId] = id
           it[slotName] = slot
+          it[SessionHostedSlotsTable.direct] = slot in direct
         }
       }
     }
@@ -169,9 +179,20 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
    */
   suspend fun idleRules(seedName: String): IdleRules? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
-    val hosted = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }
-      .map { it[SessionHostedSlotsTable.slotName] }.toSet()
-    IdleRules(row[SessionsTable.keepRunning], hosted)
+    val rows = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }.toList()
+    IdleRules(
+      row[SessionsTable.keepRunning], rows.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
+      rows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
+    )
+  }
+
+  /** Lets Randogeddon run [seedName]'s hosted slot [slot]'s Minecraft server itself, or not; `false`: no such hosted slot. */
+  suspend fun setDirect(seedName: String, slot: String, direct: Boolean): Boolean = db.query {
+    val id = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+      ?: return@query false
+    SessionHostedSlotsTable.update({ (SessionHostedSlotsTable.sessionId eq id) and (SessionHostedSlotsTable.slotName eq slot) }) {
+      it[SessionHostedSlotsTable.direct] = direct
+    } > 0
   }
 
   /** Lets [seedName]'s game server keep running without players, or sleep when idle; `false`: no such session. */
@@ -211,11 +232,12 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
           it[UsersTable.blockedAt]?.let { at -> Block(at, it[UsersTable.blockedUntil], null, null) },
         )
       }
-    val hosted = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }
-      .map { it[SessionHostedSlotsTable.slotName] }.toSet()
+    val hostedRows = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }.toList()
+    val hosted = hostedRows.map { it[SessionHostedSlotsTable.slotName] }.toSet()
     SessionSetup(
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
       deleted, roles, hosted, row[SessionsTable.createdBy], row[SessionsTable.keepRunning],
+      direct = hostedRows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
     )
   }
 

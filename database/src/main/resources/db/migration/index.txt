@@ -24,3 +24,4 @@ V22__email_verified_by_provider.sql
 V23__keep_running.sql
 V24__session_events.sql
 V25__session_snapshots.sql
+V26__minecraft_direct.sql
