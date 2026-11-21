@@ -11,6 +11,16 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.
 
+### 0.21.2: Slots open to all, hosted slots for certain players
+- Creating a session, every slot has *Open to all*: every player of the session (everyone named for any of its slots)
+  plays it, with its password, its files and the bridge; the dashboard shows it on a card of its own, *Everyone*.
+- A hosted slot starts open to all, as before (every player gets its files and, hosted here, the bridge's tunnel).
+  Unticked, it goes only to the players named for it; they join its game's server and never get its password.
+- Database: V27 (`session_open_slots`); every slot hosted so far is open to all, so nothing changes for a running
+  session.
+- TODO, Phase 21: new icons for *sent*, *released* and the available checks.
+- Updating: nothing to do.
+
 ### 0.21.1: The logs in tabs
 - The Management panel's *Logs*, at its bottom, shows every log of the session as a tab: the game server's (first),
   the spoiler log's run, and for Administrators the logic's and each directly hosted Minecraft server's. The sections

@@ -1006,9 +1006,14 @@ open, move and close, and what they show is to come from the user.*
       side as fit), and sortable in some way (asked for on 2026-11-21)
 - [ ] The site grows with the window: on 1440p or 2160p screens most of it is empty at the sides now (asked for on
       2026-11-21)
-- [ ] Creating a session (asked for on 2026-11-21):
-    - A hosted game can still be given to certain players
-    - For every slot, a checkbox: open to all of the session's players
+- [x] Creating a session (asked for on 2026-11-21):
+    - [x] A hosted game can still be given to certain players
+    - [x] For every slot, a checkbox: open to all of the session's players
+    - Done (0.21.2), decided with the user: *Open to all* means every player of the session (everyone named for any
+      of its slots); a slot that isn't hosted is then played by each of them (its password, files, the bridge), on a
+      card of its own, *Everyone*; a hosted one is theirs to join as before (its files, the tunnel; never its
+      password). A hosted slot starts open; unticked, it goes to the players named for it. `session_open_slots`
+      (V27), every slot hosted before copied in as open
     - [x] A hosted Minecraft Dig slot: an option, for Administrators only, to host its server directly (through the
       bridge's tunnel) (moved to Phase 20: 0.20.5)
 - [ ] A running session's slots edited (asked for on 2026-11-21):
@@ -1022,6 +1027,9 @@ open, move and close, and what they show is to come from the user.*
       run, the logic's and each directly hosted Minecraft server's (Administrators). A section hands its log over only
       while its viewer may read it, so no other tab exists; on the support page the spoiler log's run keeps its own
 - [ ] The README shorter and more compact (asked for on 2026-11-21; it has grown with every phase)
+- [ ] Icons: *sent* gets the icon *released* has now; *released* a new one that fits better (unchained, an open door,
+      …) (asked for on 2026-11-21)
+    - And a new icon for the available checks (asked for on 2026-11-21)
 
 ## Phase 22: Maps (planned)
 
