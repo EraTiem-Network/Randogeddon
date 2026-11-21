@@ -55,6 +55,9 @@ class Player(val slot: Int, val name: String, val game: String) {
   var sessions: MutableList<ConnectionSession> = mutableListOf()
   var firstCheckAt: Long? = null
   var goalAt: Long? = null
+  /** The deaths it passed on by DeathLink, the traps by TrapLink. */
+  var deaths: Int = 0
+  var trapLinks: Int = 0
   /** Its checks available now, as the session's logic last counted them; `null`: not known. */
   var available: Int? = null
   /** Its received items and checks when the logic was last asked about it (asked again once they change). */

@@ -46,11 +46,16 @@ interface DashboardTexts {
   val waitingForServer: String
   fun deleted(name: String): String
   fun account(id: String, deleted: Boolean): String
-  fun locked(n: Int): String
   fun connections(n: Int): String
-  /** A person's slots done of all, as one pill. */
-  fun slotsDone(done: Int, slots: Int): String
-  fun played(duration: String): String
+  /**
+   * The tooltips of the players' pills (an icon and a number each): a person's slots done of all, locked, play time;
+   * progression received and sent; the checks available now; deaths and traps it passed on (DeathLink, TrapLink).
+   */
+  val tipDone: String
+  val tipLocked: String
+  val tipPlayed: String
+  val tipReceived: String
+  val tipSent: String
   fun status(status: PlayerStatus): String
   /** Beside a slot's state: how long ago its last check was. */
   fun lastCheck(ago: String): String
@@ -59,10 +64,7 @@ interface DashboardTexts {
   val checksBar: String
   val progressionChecksBar: String
   /** Progression received, and sent to others (counts only: no totals for the players). */
-  fun received(n: String): String
-  fun sent(n: String): String
   /** The checks a slot can make now (its logic's count), as a pill; its tooltip, and while the logic doesn't run. */
-  fun available(n: String): String
   val availableTip: String
   val availableLastKnown: String
   /** The session's logic in the top panel: its name, and its state as the tooltip. */
@@ -220,10 +222,12 @@ internal object EnglishDashboard : DashboardTexts {
   override val waitingForServer = "Waiting for the server…"
   override fun deleted(name: String) = "$name (deleted)"
   override fun account(id: String, deleted: Boolean) = "Account $id${if (deleted) " (deleted)" else ""}"
-  override fun locked(n: Int) = "$n locked"
   override fun connections(n: Int) = "$n connections"
-  override fun slotsDone(done: Int, slots: Int) = "$done / $slots done"
-  override fun played(duration: String) = "$duration played"
+  override val tipDone = "Done"
+  override val tipLocked = "Locked"
+  override val tipPlayed = "Played"
+  override val tipReceived = "Received"
+  override val tipSent = "Sent"
   override fun status(status: PlayerStatus) = when (status) {
     PlayerStatus.NOT_STARTED -> "not started"
     PlayerStatus.IDLE -> "idle"
@@ -237,12 +241,9 @@ internal object EnglishDashboard : DashboardTexts {
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
   override val progressionChecksBar = "Progression checks"
-  override fun received(n: String) = "received $n"
-  override fun sent(n: String) = "sent $n"
-  override fun available(n: String) = "$n available"
-  override val availableTip = "Checks it can make now: by its game's logic, with the items it has"
+  override val availableTip = "Available"
   override val availableLastKnown =
-    "The last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
+    "Available, the last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
   override val logic = "Logic"
   override fun logicTip(status: LogicStatus) = when (status) {
     LogicStatus.STARTING -> "The logic is being built: the available checks come once it runs completely"
@@ -328,10 +329,12 @@ internal object GermanDashboard : DashboardTexts {
   override val waitingForServer = "Warte auf den Server…"
   override fun deleted(name: String) = "$name (gelöscht)"
   override fun account(id: String, deleted: Boolean) = "Konto $id${if (deleted) " (gelöscht)" else ""}"
-  override fun locked(n: Int) = "$n gesperrt"
   override fun connections(n: Int) = "$n Verbindungen"
-  override fun slotsDone(done: Int, slots: Int) = "$done / $slots fertig"
-  override fun played(duration: String) = "$duration gespielt"
+  override val tipDone = "Fertig"
+  override val tipLocked = "Gesperrt"
+  override val tipPlayed = "Gespielt"
+  override val tipReceived = "Erhalten"
+  override val tipSent = "Gesendet"
   override fun status(status: PlayerStatus) = when (status) {
     PlayerStatus.NOT_STARTED -> "nicht gestartet"
     PlayerStatus.IDLE -> "inaktiv"
@@ -345,12 +348,9 @@ internal object GermanDashboard : DashboardTexts {
   override fun slot(name: String) = "Slot: $name"
   override val checksBar = "Checks"
   override val progressionChecksBar = "Progressions-Checks"
-  override fun received(n: String) = "erhalten $n"
-  override fun sent(n: String) = "gesendet $n"
-  override fun available(n: String) = "$n verfügbar"
-  override val availableTip = "Checks, die jetzt möglich sind: nach der Logik seines Spiels, mit den Items, die er hat"
+  override val availableTip = "Verfügbar"
   override val availableLastKnown =
-    "Die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
+    "Verfügbar, die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
   override val logic = "Logik"
   override fun logicTip(status: LogicStatus) = when (status) {
     LogicStatus.STARTING -> "Die Logik wird aufgebaut: Die verfügbaren Checks kommen, sobald sie vollständig läuft"

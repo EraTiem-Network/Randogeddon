@@ -891,6 +891,9 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
     - The user's condition for more rights (a container of its own) doesn't apply: it needs none
     - Not for: seeds uploaded from elsewhere (no YAMLs), race mode, sessions generated before 0.19.3; a slot whose
       locations or events differ from the seed's gets no pill
+- [x] Deaths and traps on the slots too (asked for after 0.19.17; 0.19.18, with icons on the players' pills): as the Overview's *Links* tile counts them for the
+      session, each slot and person its own, by what it sent (the deaths it shared by DeathLink, the traps it sent by
+      TrapLink), not by what it received
 
 ## Phase 20: Hosted Minecraft Dig (planned)
 
