@@ -869,7 +869,7 @@ private fun WorldRow(
  * account has offers its invitation instead ([onInvite]: the new account, or `null`).
  */
 @Composable
-private fun PlayerPicker(
+internal fun PlayerPicker(
   choices: List<UserRef>,
   placeholder: String,
   onPick: (UserRef) -> Unit,
@@ -954,7 +954,7 @@ private fun YamlChip(fileName: String, games: List<String>, onRemove: () -> Unit
 }
 
 @Composable
-private fun UserChip(name: String, invited: Boolean, onRemove: () -> Unit) {
+internal fun UserChip(name: String, invited: Boolean, onRemove: () -> Unit) {
   val p = LocalPalette.current
   Row(
     Modifier.heightIn(min = FIELD_HEIGHT).clip(CircleShape).background(p.hue(name).copy(alpha = 0.15f))
