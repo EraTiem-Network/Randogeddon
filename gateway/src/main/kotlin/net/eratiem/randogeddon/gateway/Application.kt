@@ -80,6 +80,7 @@ data class GatewayConfig(
           adminPassword = server("adminPassword"),
           generationMinutes = server("generationMinutes").toInt(),
           generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
+          minecraftApi = server("minecraftApi").trim().trimEnd('/'),
         ),
       )
     }
@@ -98,6 +99,8 @@ data class GameServerSettings(
   val generationMinutes: Int,
   /** How many Generate.py run at once (seeds and spoiler logs' later levels together). */
   val generationsAtOnce: Int,
+  /** The minecraft service's API (`http://minecraft:8002`); empty: no Minecraft Dig server is hosted. */
+  val minecraftApi: String = "",
 )
 
 /**
@@ -207,6 +210,11 @@ fun main() {
         .onSuccess { if (it.isNotEmpty()) logger.info("Logic ended, its game server sleeps: {}", it.joinToString()) }
     }
   }
+  // The Minecraft Dig slots' servers, run by the minecraft service
+  val minecraft = Minecraft(
+    http, options.minecraftApi, config.internalToken, dirs, eula = { runCatching { settings.minecraftEula() }.getOrDefault(false) },
+    passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() }, scope = background,
+  )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
   val uploadedSeeds = UploadedSeeds(archipelago, dirs, options.dataDir)
@@ -275,7 +283,7 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic)
+        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic, minecraft)
       }
     }
     monitor.subscribe(ApplicationStopping) {

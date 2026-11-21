@@ -22,6 +22,21 @@ The Minecraft server a *Minecraft Dig* slot needs, hosted by Randogeddon and rea
   then only passing bytes (the account check and the encryption stay the server's); it sleeps like the game
   servers; it connects to Archipelago when its first player joins, by `/connect` with the password in its console.
 
+### 0.20.2: The Minecraft servers
+- A new service, `minecraft`, runs the hosted Minecraft servers (Java 17, Forge 1.19.4-45.3.15 and the mod 0.0.11 in
+  the gateway's image, both checked by their SHA-256), one process per Minecraft Dig slot, as user 1000 without
+  capabilities, up to 3.5 GB in all (`MINECRAFT_MEMORY`); a server above 3 GB is ended, `MINECRAFT_SERVERS` run at
+  once (1 by default). Each one's world is kept in `data/minecraft/` while it sleeps and made anew for a new seed.
+- The gateway tells it what to run: a slot's server from the seed's patch, started and stopped (the internal API, for
+  now; the bridge's tunnel and the panel come next). Nothing runs until an Administrator accepts Mojang's EULA (the
+  setting `minecraft_eula`, its switch to come).
+- Once its first player is on it, the gateway connects the server to Archipelago with `/connect` and the slot's
+  password, through the gateway like any client; it sleeps when nobody has been on it for as long as the game
+  servers wait.
+- The tracker's and the gateway's native images are built one after the other (`scripts/deploy.sh`,
+  `scripts/demo.sh`): each takes several GB while it compiles.
+- Updating: nothing to do; the new service starts with the others.
+
 ## Phase 19: Generating, Keeping, Showing
 It began with generating like the Launcher (a seed that the Launcher generates is to generate here too: first why one
 didn't, then what the Launcher has that the gateway hasn't), went on to keeping a session's state (nothing lost while

@@ -120,7 +120,9 @@ export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0 BRIDGE_VERS
 # its public half is bridge/signing-key.pub)
 signing_key="${BRIDGE_SIGNING_KEY:-$HOME/.config/randogeddon/bridge-signing-key}"
 if [[ -r "$signing_key" ]]; then export BRIDGE_SIGNING_KEY="$signing_key"; else echo "No $signing_key: the bridge's checksums won't be signed"; fi
-POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker gateway
+# One after the other: each native-image compile takes several GB at its peak
+POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker
+POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build gateway
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"

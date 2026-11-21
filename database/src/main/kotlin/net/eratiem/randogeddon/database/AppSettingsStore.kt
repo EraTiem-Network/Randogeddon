@@ -15,6 +15,9 @@ const val IDLE_MINUTES = "idle_minutes"
 const val DEFAULT_IDLE_MINUTES = 30
 const val MAX_IDLE_MINUTES = 24 * 60
 
+/** The key of whether an Administrator accepted Mojang's EULA for the hosted Minecraft servers ([AppSettingsStore.minecraftEula]). */
+const val MINECRAFT_EULA = "minecraft_eula"
+
 /** What Administrators set for everyone, by key. */
 class AppSettingsStore(private val db: RandogeddonDatabase) {
   suspend fun get(key: String): String? = db.query {
@@ -32,6 +35,9 @@ class AppSettingsStore(private val db: RandogeddonDatabase) {
    * never. A session an Administrator keeps running doesn't sleep.
    */
   suspend fun idleMinutes(): Int = get(IDLE_MINUTES)?.toIntOrNull()?.takeIf { it in 0..MAX_IDLE_MINUTES } ?: DEFAULT_IDLE_MINUTES
+
+  /** Mojang's EULA accepted for the hosted Minecraft servers (Minecraft Dig): without it, none is hosted. */
+  suspend fun minecraftEula(): Boolean = get(MINECRAFT_EULA) == "true"
 
   suspend fun set(key: String, value: String) = db.query {
     val updated = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value }

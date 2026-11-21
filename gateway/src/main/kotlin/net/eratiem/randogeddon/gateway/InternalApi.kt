@@ -62,6 +62,7 @@ fun Route.internalApi(
   dirs: SessionDirs,
   seeds: UploadedSeeds,
   logic: Logic,
+  minecraft: Minecraft,
 ) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
@@ -156,6 +157,25 @@ fun Route.internalApi(
           val id = sessionId() ?: return@delete
           call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
         }
+        // Its Minecraft Dig slots' servers: their state; started and stopped by hand; their logs (by slot)
+        get("/minecraft") {
+          val id = sessionId() ?: return@get
+          call.respond(minecraft.servers(id))
+        }
+        post("/minecraft/{slot}/start") {
+          val id = sessionId() ?: return@post
+          val why = minecraft.start(id, call.parameters["slot"].orEmpty())
+          if (why == null) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.Conflict, ApiError(why))
+        }
+        post("/minecraft/{slot}/stop") {
+          val id = sessionId() ?: return@post
+          call.respond(if (minecraft.stop(id, call.parameters["slot"].orEmpty())) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
+        get("/minecraft/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          call.respond(minecraft.log(id, since))
+        }
         // Its logic: how many of each slot's locations it can check now (no content: it isn't running)
         post("/logic/available") {
           val id = sessionId() ?: return@post
@@ -177,6 +197,7 @@ fun Route.internalApi(
           val id = sessionId() ?: return@delete
           generator.dropSpoiler(id)
           logic.stop(id)
+          minecraft.remove(id)
           val purge = call.request.queryParameters["purge"] == "true"
           if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
         }

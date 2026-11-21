@@ -26,9 +26,9 @@ echo "# Randogeddon $(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts) ($(g
 if [[ -n "$build" ]]; then
   echo; echo "## Build"; echo; echo "| What | Time |"; echo "|---|---|"
   docker builder prune -af >/dev/null
-  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker gateway >/dev/null
+  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker >/dev/null && POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q gateway >/dev/null
   echo "| from nothing (no cache) | $(( $(date +%s) - start )) s |"
-  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker gateway >/dev/null
+  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker >/dev/null && POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q gateway >/dev/null
   echo "| again, nothing changed | $(( $(date +%s) - start )) s |"
 fi
 

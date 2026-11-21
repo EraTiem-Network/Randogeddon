@@ -126,10 +126,17 @@ func TestARelayOpensAHostedSlotButNotALockedOne(t *testing.T) {
 }
 
 func TestARelayOnAFixedPort(t *testing.T) {
-	probe, _ := startRelay("1", "s", "S", Slot{Name: "A", Password: "p"}, "ws://127.0.0.1:1", nil, 0)
-	port := probe.Port
-	probe.Close()
-	relay, err := startRelay("2", "s", "S", Slot{Name: "A", Password: "p"}, "ws://127.0.0.1:1", nil, port)
+	// A free port, found by a relay on any; between its close and the next start another test can take it: then
+	// another one
+	var relay *Relay
+	var port int
+	var err error
+	for try := 0; try < 5 && relay == nil; try++ {
+		probe, _ := startRelay("1", "s", "S", Slot{Name: "A", Password: "p"}, "ws://127.0.0.1:1", nil, 0)
+		port = probe.Port
+		probe.Close()
+		relay, err = startRelay("2", "s", "S", Slot{Name: "A", Password: "p"}, "ws://127.0.0.1:1", nil, port)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,6 +22,8 @@ gateway:
     # How long a generation may take before it is stopped (a big multiworld fills on one core for a long time)
     generationMinutes: "$GENERATION_MINUTES:60"
     generationsAtOnce: "$GENERATIONS_AT_ONCE:0"
+    # The minecraft service, which runs the Minecraft Dig slots' servers (empty: none is hosted)
+    minecraftApi: "$MINECRAFT_API:"
   database:
     # PostgreSQL: the slot passwords (created by the tracker)
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
