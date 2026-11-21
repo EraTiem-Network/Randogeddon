@@ -35,7 +35,8 @@ RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gr
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
-# Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it).
+# Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it); it is in each
+# build's file name, so a downloaded file says which version it is.
 FROM golang:1.27.4-bookworm AS bridge
 WORKDIR /src
 COPY bridge/go.mod bridge/go.sum ./
@@ -47,8 +48,8 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
  && mkdir -p /out && echo "$BRIDGE_VERSION" > /out/VERSION \
  && for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
       os="${target%/*}" arch="${target#*/}" flags=""; \
-      name="randogeddon-bridge-$os-$arch"; \
-      if [ "$os" = darwin ]; then name="randogeddon-bridge-macos-$arch"; fi; \
+      name="randogeddon-bridge-$BRIDGE_VERSION-$os-$arch"; \
+      if [ "$os" = darwin ]; then name="randogeddon-bridge-$BRIDGE_VERSION-macos-$arch"; fi; \
       if [ "$os" = windows ]; then name="$name.exe" flags="-H windowsgui"; fi; \
       CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
         -ldflags "-s -w $flags -X main.version=$BRIDGE_VERSION" -o "/out/$name" . || exit 1; \
@@ -155,7 +156,8 @@ RUN useradd --uid 1000 --create-home randogeddon \
  && mkdir -p logs custom_worlds \
  && touch host.yaml \
  && chown randogeddon . logs host.yaml custom_worlds
-COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py ./
+COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py archipelago/logic_run.py \
+     archipelago/seed_info.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server

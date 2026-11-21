@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -54,7 +56,9 @@ import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Themes
+import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.Working
 import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.hand
 
@@ -156,6 +160,17 @@ internal fun Hero(
       }
     }
     val controls: @Composable () -> Unit = {
+      // Its spoiler log still being completed after the seed: a pill with a working symbol, what that means on hover
+      if (summary != null && summary.finishedAt == null && summary.spoilerCompleting) Tip(t.frame.spoilerCompletingTip) {
+        Row(
+          Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Working(onHero)
+          Txt(t.frame.spoilerCompleting, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+        }
+      }
       // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
       if (summary != null && summary.finishedAt == null) Row(
         Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
@@ -170,6 +185,23 @@ internal fun Hero(
             else -> t.frame.serverOffline
           }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
         )
+      }
+      // Its logic (the available checks), beside it: its state as a dot (a working symbol while it is built)
+      val logic = summary?.logic
+      if (summary != null && summary.finishedAt == null && logic != null) Tip(t.dashboard.logicTip(logic.status)) {
+        Row(
+          Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          when (logic.status) {
+            LogicStatus.STARTING -> Working(onHero)
+            LogicStatus.RUNNING -> Dot(p.liveDot)
+            LogicStatus.STOPPED -> Dot(p.offlineDot)
+            LogicStatus.FAILED -> Dot(p.trap)
+          }
+          Txt(t.dashboard.logic, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+        }
       }
       // Shows / hides the live feed; brighter while it is shown
       if (onToggleFeed != null) IconButton(onToggleFeed, Icon.FEED, tint = onHero,
@@ -199,7 +231,11 @@ internal fun Hero(
     if (stacked) {
       heading(Modifier)
       Spacer(Modifier.height(12.dp))
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
+      // Onto a second line where they don't fit (a phone)
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+      ) { controls() }
     } else {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         heading(Modifier.weight(1f))
@@ -212,7 +248,7 @@ internal fun Hero(
       Row(verticalAlignment = Alignment.Bottom) {
         Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
         Txt(
-          "  " + t.frame.ofChecksDone(t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
+          "  " + t.frame.ofChecksDone(t.number(totals.checked), t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
           modifier = Modifier.padding(bottom = 7.dp),
         )
       }

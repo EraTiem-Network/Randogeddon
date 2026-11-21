@@ -1,12 +1,5 @@
 package net.eratiem.randogeddon.server.state
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import kotlin.io.path.createDirectories
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 import kotlin.math.round
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -17,7 +10,11 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.eratiem.randogeddon.database.SessionEventStore
+import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.AvailableAnswer
+import net.eratiem.randogeddon.shared.AvailableSlot
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.ConnectionSession
@@ -44,7 +41,21 @@ import net.eratiem.randogeddon.server.util.string
 
 /** Tags of clients that don't play: trackers (including this one), text clients and hint games. */
 private val NON_GAME_TAGS = setOf("Tracker", "TextOnly", "HintGame")
+
+/**
+ * A `Part` message of a client that doesn't play: MultiServer's text for it ends with the client's tags
+ * (`… has stopped tracking the game. Client(0.6.8), ['Tracker'].`). One without a text counts as a game's.
+ */
+private fun nonGameLeft(packet: JsonObject): Boolean {
+  val text = (packet["data"] as? JsonArray).orEmpty()
+    .joinToString("") { ((it as? JsonObject)?.get("text") as? JsonPrimitive)?.content.orEmpty() }
+  val tags = text.substringAfterLast("Client(", "")
+  return NON_GAME_TAGS.any { "'$it'" in tags }
+}
 const val MAX_EVENTS = 500
+
+/** The links between games the feed shows: the tracker listens for their `Bounced` packets by these tags. */
+val LINK_TAGS = listOf("DeathLink", "TrapLink")
 
 private data class Group(val name: String, val game: String)
 
@@ -61,7 +72,10 @@ private data class Hint(
   val status: Int,
 )
 
-/** What survives a tracker restart: the feed and the last activity, for one seed. */
+/**
+ * What the tracker kept of a seed in its history file until 0.19.10 (the feed, the last activity, the connection
+ * logs): read once more as the baseline its events are replayed onto.
+ */
 @Serializable
 private data class SavedState(
   val seedName: String?,
@@ -73,6 +87,19 @@ private data class SavedState(
   val goalAt: Map<Int, Long> = emptyMap(),
   /** Open sessions end here at the latest: the tracker can't know how long they went on after it stopped. */
   val savedAt: Long? = null,
+  /** Up to which of the gateway's events of the game server (by their IDs) this was heard. */
+  val serverCursor: Long = 0,
+)
+
+/** A cheat's feed line as it is kept among the game server's events (written by the tracker, kind `cheat`). */
+@Serializable
+data class CheatLine(
+  val message: String,
+  val action: CheatAction? = null,
+  val by: String? = null,
+  val role: String? = null,
+  val slot: String? = null,
+  val value: String? = null,
 )
 
 /**
@@ -106,6 +133,21 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private val itemNames = mutableMapOf<String, Map<Long, String>>()
   private val locationNames = mutableMapOf<String, Map<Long, String>>()
   private var eventSeq = 0L
+
+  /**
+   * What lies at every location, from scouting each slot's own ones (`LocationScouts`): (the slot, its location) ->
+   * (the slot it is meant for, its flags). Only counted, never shown; [scouted]: the slots done.
+   */
+  private val placements = mutableMapOf<Pair<Int, Long>, Pair<Int, Int>>()
+  private val scouted = mutableSetOf<Int>()
+
+  /** Deaths passed on by DeathLink and traps by TrapLink, over every event of the session. */
+  private var deaths = 0
+  private var trapLinks = 0
+
+  /** Up to which of the gateway's events of the game server (their IDs in the database) this state has heard. */
+  var serverCursor = 0L
+    private set
   private var saved: SavedState? = null
 
   /** Key item name -> slot name of the world it unlocks, from the World Locks slot data. */
@@ -124,6 +166,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     locationNames.clear()
     locks.clear()
     eventSeq = 0
+    deaths = 0
+    trapLinks = 0
+    placements.clear()
+    scouted.clear()
   }
 
   private fun touch() {
@@ -134,6 +180,21 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   fun clear() {
     reset(null)
     connected = false
+    touch()
+  }
+
+  /**
+   * The seed and its slots from the game server's `room.json`, before any connection: the events are replayed onto
+   * them, and the first connection's `RoomInfo` finds the same seed (and keeps what is here). Another seed than the
+   * one known: nothing.
+   */
+  fun prepare(room: Room) {
+    if (room.seedName == null || (seedName != null && seedName != room.seedName)) return
+    seedName = room.seedName
+    for (slot in room.slots) when (slot.type) {
+      SlotType.GROUP -> groups.getOrPut(slot.slot) { Group(slot.name, slot.game) }
+      SlotType.PLAYER -> players.getOrPut(slot.slot) { Player(slot.slot, slot.name, slot.game) }
+    }
     touch()
   }
 
@@ -185,6 +246,57 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
+  /** What lies at [slot]'s own locations (`LocationInfo`, the answer to its scouting). */
+  fun onLocationInfo(slot: Int, packet: JsonObject) {
+    packet.array("locations").orEmpty().map(::networkItem).forEach { placements[slot to it.location] = it.player to it.flags }
+    scouted += slot
+    touch()
+  }
+
+  /** [slot] has no locations to scout. */
+  fun onNothingToScout(slot: Int) {
+    scouted += slot
+    touch()
+  }
+
+  /** [p]'s own progression locations, the checked ones, and of those the ones meant for others; `null` until scouted. */
+  private data class ProgressionChecks(val locations: Int, val checked: Int, val sent: Int)
+
+  private fun progressionChecks(p: Player): ProgressionChecks? {
+    if (p.slot !in scouted) return null
+    val own = placements.filter { (key, value) -> key.first == p.slot && value.second and ItemFlags.PROGRESSION != 0 }
+    val checked = own.filterKeys { it.second in p.checked }
+    return ProgressionChecks(own.size, checked.size, checked.count { (_, value) -> value.first != p.slot })
+  }
+
+  /**
+   * The slots to ask the session's logic about: those whose items or checks changed since it was last asked about
+   * them, with what they received (without the starting inventory: the logic has it) and checked.
+   */
+  fun availableAsks(): List<AvailableSlot> {
+    val lockSlots = lockSlots()
+    return players.values.filter { it.slot !in lockSlots && it.game != WORLD_LOCKS_GAME }.mapNotNull { p ->
+      val received = p.items.filter { it.location != STARTING_INVENTORY }.map { it.item }
+      AvailableSlot(p.slot, received, p.checked.toList()).takeIf { p.availableAsked != received.size to p.checked.size }
+    }
+  }
+
+  /** The logic's [answer] to [asked]: each slot's available checks (`null`: it has no answer for that slot). */
+  fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer) {
+    asked.forEach { a ->
+      val p = players[a.slot] ?: return@forEach
+      p.available = answer.available[a.slot]
+      p.availableAsked = a.items.size to a.checked.size
+    }
+    touch()
+  }
+
+  /** The logic was built again: every slot is asked anew. */
+  fun forgetAvailableAsks() = players.values.forEach { it.availableAsked = null }
+
+  /** Progression items [p] received from a location (not the starting inventory, not a cheat's). */
+  private fun progressionReceived(p: Player): Int = p.items.count { it.location >= 0 && it.flags and ItemFlags.PROGRESSION != 0 }
+
   fun onRoomUpdate(slot: Int, packet: JsonObject) {
     players[slot]?.let { player ->
       val new = packet.longs("checked_locations")
@@ -200,19 +312,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /**
-   * A data storage value from `Retrieved` or `SetReply`. [live]: a change that just happened (SetReply), not the
-   * replay after connecting; a live status change of a world means a game client is connected to it.
+   * A data storage value from `Retrieved` or `SetReply`. Who is connected comes from the joins and leaves the gateway
+   * hears (every one since 0.19.9), not from a status change here.
    */
-  fun onSetReply(key: String, value: JsonElement?, live: Boolean = false, now: Long = clock()) {
+  fun onSetReply(key: String, value: JsonElement?) {
     when {
       key.startsWith("_read_client_status_") -> {
         val player = players[key.substringAfterLast('_').toInt()]
         val status = (value as? JsonPrimitive)?.intOrNull
-        // Only the status: this is also the replay after every (re)connect, not an activity
-        if (player != null && status != null) {
-          if (live && status >= ClientStatus.READY && status != player.status) seenPlaying(player, now)
-          player.status = status
-        }
+        if (player != null && status != null) player.status = status
       }
 
       key.startsWith("_read_slot_data_") -> (value as? JsonObject)?.obj("locks")?.forEach { (item, world) ->
@@ -248,6 +356,42 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
+  /**
+   * One of the session's events as they are kept ([id]: its place in their order, [at]: when, [kind] and its JSON
+   * [payload]): a packet of the game server for the feed and the slots' presence, the game server's start or end
+   * (after which nobody is connected), or a cheat's feed line. Replayed in their order, they bring back everything
+   * of it; one already taken ([serverCursor]) isn't taken twice.
+   */
+  fun onServerEvent(id: Long, at: Long, kind: String, payload: String) {
+    if (id <= serverCursor) return
+    when (kind) {
+      SessionEventStore.START, SessionEventStore.STOP -> players.values.forEach {
+        // A new start: whoever was connected before isn't; an end: nobody is
+        it.online = 0
+        it.goOffline(at, cut = kind == SessionEventStore.START)
+      }
+      SessionEventStore.PACKET -> json(payload)?.let { packet ->
+        when (packet.string("cmd")) {
+          "PrintJSON" -> onPrintJson(packet, at)
+          "Bounced" -> onBounced(packet, at)
+        }
+      }
+      SessionEventStore.CHEAT -> runCatching { ApiJson.decodeFromString(CheatLine.serializer(), payload) }.getOrNull()?.let {
+        onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at)
+      }
+    }
+    serverCursor = id
+    touch()
+  }
+
+  private fun json(text: String): JsonObject? =
+    runCatching { ApiJson.parseToJsonElement(text) as? JsonObject }.getOrNull()
+
+  /** The tracker's own connection is gone; who plays is known from the gateway's events, not from it. */
+  fun onTrackerDisconnected() {
+    connected = false
+  }
+
   /** Nobody is known to be online after the connection to the server was lost. */
   fun onConnectionLost(now: Long = clock()) {
     players.values.forEach {
@@ -273,6 +417,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         if (type == "ItemSend") {
           players[item.player]?.let { sender ->
             sender.lastActivity = now
+            sender.lastCheckAt = now
             if (sender.firstCheckAt == null) sender.firstCheckAt = now
             // Only an own item proves the world is being played: collect and release send items for others
             if (item.player == receiver) seenPlaying(sender, now)
@@ -308,7 +453,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
       "Release", "Collect" -> {
         val slot = packet.int("slot")!!
-        if (type == "Release") players[slot]?.released = true
+        if (type == "Release") players[slot]?.let { if (it.releasedAt == null) it.releasedAt = now }
         event(now, if (type == "Release") EventType.RELEASE else EventType.COLLECT, slot = slot)
       }
 
@@ -327,7 +472,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       }
 
       "Part" -> {
-        // Part carries no tags; only count down what was counted up
+        // Part carries no tags, but its text ends with the client's: a tracker or text client leaving (ours too) isn't
+        // a game leaving. And only count down what was counted up
+        if (nonGameLeft(packet)) return
         val slot = packet.int("slot")!!
         val player = players[slot]?.takeIf { it.online > 0 } ?: return
         player.online--
@@ -347,6 +494,26 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       events.addLast(it)
       while (events.size > MAX_EVENTS) events.removeFirst()
     }
+    touch()
+  }
+
+  /**
+   * A link between games (a `Bounced` packet with one of [LINK_TAGS]): a death or a trap passed on to every game
+   * linked. Its texts are the sending client's own: cut, and without control characters.
+   */
+  fun onBounced(packet: JsonObject, now: Long = clock()) {
+    val tags = packet.array("tags").orEmpty().mapNotNull { tag -> (tag as? JsonPrimitive)?.takeIf { it.isString }?.content }
+    val link = LINK_TAGS.firstOrNull { it in tags } ?: return
+    val data = packet["data"] as? JsonObject ?: return
+    fun text(key: String, max: Int): String? = (data[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+      ?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
+    val source = text("source", 80)
+    val slot = source?.let { name -> players.values.firstOrNull { it.alias == name || it.name == name }?.slot }
+    val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
+    if (link == "DeathLink") deaths++ else trapLinks++
+    slot?.let { players[it] }?.let { if (link == "DeathLink") it.deaths++ else it.trapLinks++ }
+    events.addLast(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
+    while (events.size > MAX_EVENTS) events.removeFirst()
     touch()
   }
 
@@ -386,7 +553,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
    */
   fun allDone(): Boolean {
     val slots = players.values.filter { it.game != WORLD_LOCKS_GAME }
-    return slots.isNotEmpty() && slots.all { it.status == ClientStatus.GOAL || it.released }
+    return slots.isNotEmpty() && slots.all { it.status == ClientStatus.GOAL || it.goalAt != null || it.releasedAt != null }
   }
 
   /** The slot names an admin can cheat for (not the World Locks slot). */
@@ -397,7 +564,6 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     slots.isNotEmpty() && slots.all { it.complete }
   }
 
-  private val Player.complete: Boolean get() = total > 0 && missing.isEmpty()
 
   /** For cheats: every item of the slot's game, and the slot's locations not checked yet; `null` for an unknown slot. */
   fun cheatNames(slotName: String): CheatNames? {
@@ -417,6 +583,17 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   /** Each world's checked locations, by its name (World Locks' slots left out). */
   fun checkedLocations(): Map<String, Set<String>> = players.values.filter { it.game != WORLD_LOCKS_GAME }
     .associate { p -> p.name to p.checked.mapTo(mutableSetOf()) { locationName(it, p.slot) } }
+
+  /**
+   * The slots still locked, for the lock cheats: each one's name, its key, and the World Locks slot that gets the key
+   * (by their names).
+   */
+  fun lockedSlots(): List<Triple<String, String, String>> {
+    val lockSlot = lockSlots().firstNotNullOfOrNull { players[it]?.name } ?: return emptyList()
+    return players.values.filter { it.game != WORLD_LOCKS_GAME }.sortedBy { it.slot }.mapNotNull { p ->
+      lockOf(p.slot)?.takeIf { !it.unlocked }?.let { Triple(p.name, it.key, lockSlot) }
+    }
+  }
 
   /** Slots of the World Locks game: they hold keys, they are not worlds anyone plays. */
   fun lockSlots(): Set<Int> = players.values.filter { it.game == WORLD_LOCKS_GAME }.mapTo(mutableSetOf()) { it.slot }
@@ -482,6 +659,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val list = players.values.filter { it.slot !in lockSlots }.map { p ->
       val total = p.total
       val lock = lockOf(p.slot)
+      val checks = progressionChecks(p)
       PlayerSummary(
         slot = p.slot,
         name = p.alias,
@@ -491,9 +669,16 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         percent = percent(p.checked.size, total),
         status = statusOf(p, lock),
         online = p.online > 0,
+        connections = p.online,
         lastActivity = p.lastActivity,
         itemsReceived = p.items.size,
-        progressionReceived = p.items.count { it.flags and ItemFlags.PROGRESSION != 0 },
+        progressionReceived = progressionReceived(p),
+        progressionChecks = checks?.locations,
+        progressionChecked = checks?.checked ?: 0,
+        sent = checks?.sent,
+        available = p.available,
+        deaths = p.deaths,
+        trapLinks = p.trapLinks,
         hintPoints = p.hintPoints,
         // As MultiServer's Context.get_hint_cost
         hintCost = if (costPercent == 0) 0 else maxOf(1, (costPercent * 0.01 * total).toInt()),
@@ -502,10 +687,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         onlineSince = p.openSession?.start,
         firstCheckAt = p.firstCheckAt,
         goalAt = p.goalAt,
+        releasedAt = p.releasedAt,
+        lastCheckAt = p.lastCheckAt,
+        completedAt = p.lastCheckAt?.takeIf { p.complete },
         lock = lock,
       )
     }
     val checked = list.sumOf { it.checked }
+    // Found at a location, not the starting inventory (no location) or a cheat's
+    val sent = players.values.filter { it.slot !in lockSlots }.flatMap { p -> p.items.filter { it.location >= 0 } }
     val total = list.sumOf { it.total }
     return Summary(
       title = title,
@@ -523,10 +713,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         total = total,
         percent = percent(checked, total),
         players = list.size,
-        goals = list.count { it.status == PlayerStatus.GOAL || it.status == PlayerStatus.RELEASED },
+        goals = list.count { it.status.done },
         online = list.count { it.online },
         locked = list.count { it.lock?.unlocked == false },
         lockable = list.count { it.lock != null },
+        itemsSent = sent.size,
+        progressionSent = sent.count { it.flags and ItemFlags.PROGRESSION != 0 },
+        trapsSent = sent.count { it.flags and ItemFlags.TRAP != 0 },
+        deaths = deaths,
+        trapLinks = trapLinks,
       ),
       people = people(list, people),
       players = list,
@@ -537,6 +732,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
   fun playerDetail(slot: Int): PlayerDetail? {
     val p = players[slot] ?: return null
+    val checks = progressionChecks(p)
     return PlayerDetail(
       slot = slot,
       name = p.alias,
@@ -552,6 +748,13 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       missing = p.missing.map { locationName(it, slot) }.sorted(),
       checked = p.checked.size,
       total = p.total,
+      progressionReceived = progressionReceived(p),
+      progressionChecks = checks?.locations,
+      progressionChecked = checks?.checked ?: 0,
+      sent = checks?.sent,
+      available = p.available,
+      deaths = p.deaths,
+      trapLinks = p.trapLinks,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
     )
@@ -609,33 +812,33 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     )
   }.sortedWith(compareBy<HintView> { it.found }.thenBy { it.receiverName }.thenBy { it.itemName })
 
-  // -------------------------------------------------------------------------------------------------- persistence
+  // ------------------------------------------------------------------------------------------------------ baseline
 
-  /** Written atomically (temporary file + move), so a crash never leaves a half-written file. */
-  fun save(path: Path) {
-    val data = SavedState(
-      seedName, eventSeq, events.toList(),
+  /**
+   * What the tracker's history file of before held ([text], the baseline), as it wrote it every 15 s until 0.19.10;
+   * a test makes one so. The events after its [serverCursor] are replayed onto it.
+   */
+  internal fun historyJson(): String = ApiJson.encodeToString(
+    SavedState.serializer(),
+    SavedState(
+      seedName, eventSeq, events.toList(), serverCursor = serverCursor,
       lastActivity = players.mapNotNull { (s, p) -> p.lastActivity?.let { s to it } }.toMap(),
       sessions = players.filterValues { it.sessions.isNotEmpty() }.mapValues { it.value.sessions.toList() },
       firstCheckAt = players.mapNotNull { (s, p) -> p.firstCheckAt?.let { s to it } }.toMap(),
       goalAt = players.mapNotNull { (s, p) -> p.goalAt?.let { s to it } }.toMap(),
       savedAt = clock(),
-    )
-    path.toAbsolutePath().parent.createDirectories()
-    val tmp = Files.createTempFile(path.toAbsolutePath().parent, ".tracker-", ".json")
-    tmp.writeText(ApiJson.encodeToString(SavedState.serializer(), data))
-    Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-  }
+    ),
+  )
 
-  /** Reads what [save] wrote; it is only applied by [applySaved], once the seed is known to match. */
-  fun load(path: Path) {
-    saved = runCatching {
-      if (path.exists()) ApiJson.decodeFromString(SavedState.serializer(), path.readText()) else null
-    }.getOrNull()
+  /** Reads the baseline ([historyJson]); it is only applied by [applySaved], once the seed is known to match. */
+  fun loadSaved(text: String?) {
+    saved = text?.let { runCatching { ApiJson.decodeFromString(SavedState.serializer(), it) }.getOrNull() }
   }
 
   fun applySaved() {
     val data = saved ?: return
+    // The seed isn't known yet (no room.json, no connection): it stays for when it is
+    if (seedName == null) return
     saved = null
     if (data.seedName != seedName) return
     // Events that arrived before the history was restored come after it
@@ -644,6 +847,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     events.addAll(data.events + current)
     while (events.size > MAX_EVENTS) events.removeFirst()
     eventSeq += data.eventSeq
+    serverCursor = maxOf(serverCursor, data.serverCursor)
     data.lastActivity.forEach { (s, ts) ->
       players[s]?.let { p -> if (p.lastActivity.let { it == null || ts > it }) p.lastActivity = ts }
     }
@@ -655,6 +859,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
     data.firstCheckAt.forEach { (s, ts) -> players[s]?.let { p -> p.firstCheckAt = minOf(ts, p.firstCheckAt ?: ts) } }
     data.goalAt.forEach { (s, ts) -> players[s]?.let { p -> p.goalAt = minOf(ts, p.goalAt ?: ts) } }
+    // The history file had no release times: its feed has them (its last 500 events)
+    data.events.filter { it.type == EventType.RELEASE }.forEach { e ->
+      e.slot?.let { players[it] }?.let { p -> p.releasedAt = minOf(e.ts, p.releasedAt ?: e.ts) }
+    }
     touch()
   }
 }
@@ -678,7 +886,7 @@ private fun people(worlds: List<PlayerSummary>, people: Map<String, List<String>
       checked = checked,
       total = total,
       percent = percent(checked, total),
-      goals = list.count { it.status == PlayerStatus.GOAL || it.status == PlayerStatus.RELEASED },
+      goals = list.count { it.status.done },
       online = list.any { it.online },
       lastActivity = list.mapNotNull { it.lastActivity }.maxOrNull(),
       playTimeMs = list.sumOf { it.playTimeMs },
@@ -686,13 +894,26 @@ private fun people(worlds: List<PlayerSummary>, people: Map<String, List<String>
   }
 }
 
-private fun statusOf(p: Player, lock: LockInfo?): PlayerStatus = when {
-  p.status == ClientStatus.GOAL -> PlayerStatus.GOAL
-  p.released -> PlayerStatus.RELEASED
-  p.total > 0 && p.missing.isEmpty() -> PlayerStatus.COMPLETE
-  lock?.unlocked == false -> PlayerStatus.LOCKED
-  p.status >= ClientStatus.READY -> PlayerStatus.PLAYING
-  else -> PlayerStatus.IDLE
+/**
+ * A release this soon after the slot's goal is the automatic one (release mode `auto`): MultiServer sends `Goal`, then
+ * (`Collect` and) `Release` in the same moment (`on_goal_achieved`).
+ */
+private const val AUTO_RELEASE_MS = 5_000L
+
+/** The first that applies; see [PlayerStatus]. */
+internal fun statusOf(p: Player, lock: LockInfo?): PlayerStatus {
+  val goal = p.goalAt ?: if (p.status == ClientStatus.GOAL) Long.MAX_VALUE else null
+  val released = p.releasedAt
+  val atGoal = released != null && goal != null && released - goal in 0..AUTO_RELEASE_MS
+  return when {
+    released != null && !atGoal -> PlayerStatus.RELEASED
+    p.complete -> PlayerStatus.COMPLETE
+    goal != null -> PlayerStatus.GOAL
+    lock?.unlocked == false -> PlayerStatus.LOCKED
+    p.online > 0 -> PlayerStatus.ONLINE
+    p.sessions.isNotEmpty() && p.checked.isNotEmpty() -> PlayerStatus.IDLE
+    else -> PlayerStatus.NOT_STARTED
+  }
 }
 
 private fun percent(part: Int, total: Int): Double = if (total == 0) 0.0 else round(1000.0 * part / total) / 10

@@ -35,6 +35,7 @@ import net.eratiem.randogeddon.database.DEFAULT_GAME_SERVERS
 import net.eratiem.randogeddon.database.DEFAULT_IDLE_MINUTES
 import net.eratiem.randogeddon.database.DatabaseConfig
 import net.eratiem.randogeddon.database.RandogeddonDatabase
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionSetupStore
 import net.eratiem.randogeddon.database.SessionStore
@@ -78,6 +79,7 @@ data class GatewayConfig(
           customWorlds = Path.of(server("customWorlds")),
           adminPassword = server("adminPassword"),
           generationMinutes = server("generationMinutes").toInt(),
+          generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
         ),
       )
     }
@@ -94,6 +96,8 @@ data class GameServerSettings(
   val adminPassword: String,
   /** How long a generation may take before it is stopped. */
   val generationMinutes: Int,
+  /** How many Generate.py run at once (seeds and spoiler logs' later levels together). */
+  val generationsAtOnce: Int,
 )
 
 /**
@@ -143,9 +147,13 @@ fun main() {
   suspend fun rulesOf(session: SessionGameServer): SleepRules =
     readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
       ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
+  // What happens on the game servers, heard here and kept for the tracker
+  val events = SessionEvents(SessionEventStore(database), http, background)
+  // Each session's logic (the available checks), running with its game server and a while after
+  val logic = Logic(archipelago, dirs, apworlds, background)
   val sessions = Sessions(
     dirs, gameServers::get,
-    create = { _, dir, port ->
+    create = { id, dir, port ->
       val roomJson = dir.resolve("room.json")
       GameServer(
         GameServerConfig(
@@ -153,8 +161,16 @@ fun main() {
           launch = { seed -> launcher.launch(seed, roomJson, port()) },
           prepare = { seed -> launcher.prepare(seed, roomJson) },
           // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
-          onRunning = { _ -> readSeedName(roomJson)?.let { seed -> count { times.started(seed) } } },
-          onEnded = { _ -> readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } } },
+          onRunning = { _ ->
+            readSeedName(roomJson)?.let { seed -> count { times.started(seed) } }
+            events.started(id, port(), roomJson)
+            logic.serverRunning(id)
+          },
+          onEnded = { _ ->
+            readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } }
+            events.ended(id)
+            logic.serverEnded(id)
+          },
           // A finished session stays stopped, also after a gateway restart, until it is reopened
           refuse = { seed ->
             runBlocking { finishes.of(seedNameOf(seed)) }?.finishedAt?.let { "its session is finished (reopen it in the admin panel)" }
@@ -186,14 +202,24 @@ fun main() {
       runCatching { sessions.sweep(idleMinutes.get(), ::rulesOf) }
         .onSuccess { if (it.isNotEmpty()) logger.info("Asleep, nobody played: {}", it.joinToString()) }
         .onFailure { logger.warn("Could not put idle game servers to sleep: {}", it.message) }
+      // A logic stays as long again after its game server ended
+      runCatching { logic.sweep(idleMinutes.get()) }
+        .onSuccess { if (it.isNotEmpty()) logger.info("Logic ended, its game server sleeps: {}", it.joinToString()) }
     }
   }
+  // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
+  val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
+  val uploadedSeeds = UploadedSeeds(archipelago, dirs, options.dataDir)
+  apworlds.beforeChange = generator::yieldBackground
+  background.launch { generator.completeSpoilers() }
   val connections = ConnectionLimits()
   if (config.internalToken.isBlank()) logger.warn("No INTERNAL_TOKEN: the admin panel can't control the game servers")
   logger.info(
-    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit), asleep after {} min without players (0: never)",
+    "Gateway on port {} ({}), Archipelago {}, up to {} game servers at once (0: no limit), asleep after {} min without players " +
+      "(0: never), {} generations at once",
     config.port, if (config.baseDomain.isNotBlank()) "<session>.${config.baseDomain}" else "ws://<host>:${config.port}/<session>",
     archipelago.versions().joinToString(), runBlocking { gameServers.get() }, runBlocking { idleMinutes.get() },
+    options.generationsAtOnce,
   )
 
   embeddedServer(
@@ -239,6 +265,8 @@ fun main() {
             close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
             return@webSocket
           }
+          // The gateway listens before a player is in, so the tracker hears of this one too
+          events.awaitListening(session.id)
           // A player keeps it awake; a hosted slot's connection doesn't
           serve(http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections) { slot ->
             if (slot in rulesOf(session).hosted) null else session.joined()
@@ -247,11 +275,12 @@ fun main() {
       }
       // Never published or routed by Traefik: only the tracker reaches it, inside the compose network
       localPort(config.internalPort) {
-        internalApi(config.internalToken, sessions, archipelago, Generator(archipelago, dirs, apworlds, options.generationMinutes), apworlds, dirs)
+        internalApi(config.internalToken, sessions, archipelago, generator, apworlds, dirs, uploadedSeeds, logic)
       }
     }
     monitor.subscribe(ApplicationStopping) {
       // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last counts.
+      logic.stopAll()
       runBlocking {
         sessions.stopAll()
         counts.coroutineContext[Job]?.children?.forEach { it.join() }

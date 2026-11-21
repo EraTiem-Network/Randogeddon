@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,11 +23,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,7 +42,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.LockInfo
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PersonSummary
+import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.Summary
@@ -47,10 +52,10 @@ import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.ago
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.shared.i18n.texts
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
-import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.ui.AppPopup
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.Dot
@@ -58,6 +63,7 @@ import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.HoverRow
 import net.eratiem.randogeddon.webapp.ui.Icon
+import net.eratiem.randogeddon.webapp.ui.LabeledBar
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Panel
 import net.eratiem.randogeddon.webapp.ui.Pill
@@ -77,12 +83,23 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
   val p = LocalPalette.current
   val d = LocalTexts.current.dashboard
   var sort by remember { mutableStateOf(PeopleSort.PLAYER) }
+  // By name first, so equal ones (the same progress, nothing done yet) always come in the same order
+  val byName = s.people.sortedBy { it.name.lowercase() }
   val people = when (sort) {
-    PeopleSort.PLAYER -> s.people.sortedBy { it.name.lowercase() }
-    PeopleSort.PROGRESS -> s.people.sortedByDescending { it.percent }
-    PeopleSort.ACTIVITY -> s.people.sortedByDescending { it.lastActivity ?: 0 }
+    PeopleSort.PLAYER -> byName
+    PeopleSort.PROGRESS -> byName.sortedByDescending { it.percent }
+    PeopleSort.ACTIVITY -> byName.sortedByDescending { it.lastActivity ?: 0 }
   }
   val worlds = s.players.associateBy { it.slot }
+  // A person's slots in the same order as the people: by name, by progress or by what happened last
+  fun slotsOf(person: PersonSummary): List<PlayerSummary> {
+    val own = person.slots.mapNotNull { worlds[it] }.sortedBy { it.name.lowercase() }
+    return when (sort) {
+      PeopleSort.PLAYER -> own
+      PeopleSort.PROGRESS -> own.sortedByDescending { it.percent }
+      PeopleSort.ACTIVITY -> own.sortedByDescending { it.lastActivity ?: 0 }
+    }
+  }
   Section(
     d.players, subtitle = d.playersSubtitle(s.people.size, s.players.size),
     actions = {
@@ -101,8 +118,8 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
     if (people.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
-      Grid(people.size, width, 330.dp) { i, modifier ->
-        PersonCard(people[i], people[i].slots.mapNotNull { worlds[it] }, now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
+      Grid(people.size, width, 330.dp, equalHeight = false) { i, modifier ->
+        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, modifier, onOpen, onOpenPerson)
       }
     }
   }
@@ -151,21 +168,21 @@ private fun PersonCard(
           }
         }
       }
-      Column(Modifier.weight(1f)) {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         PersonName(person.name, person.userId, person.deleted, size = 16.sp)
         val played = worlds.sumOf { playTime(it, now) }
-        val parts = listOfNotNull(
-          t.sessions.slots(worlds.size),
-          locked.takeIf { it > 0 }?.let { t.dashboard.locked(it) },
-          if (person.goals > 0) t.dashboard.done(person.goals) else null,
-          if (played > 0) t.dashboard.played(t.duration(played)) else null,
-        )
-        Txt(parts.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 1)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          // Its slots and how many are done, in one
+          TipPill(Icon.FLAG, "${person.goals} / ${worlds.size}", t.dashboard.tipDone, if (person.goals > 0) p.ok else p.muted)
+          if (locked > 0) TipPill(Icon.LOCK, "$locked", t.dashboard.tipLocked, p.locked)
+          if (played > 0) TipPill(Icon.CLOCK, t.duration(played), t.dashboard.tipPlayed, p.useful)
+          ProgressPills(Progress.sum(worlds))
+        }
       }
       Txt("${t.decimal(person.percent)}%", size = 18.sp, weight = FontWeight.Bold, brush = p.brand)
      }
     }
-    ProgressBar((person.percent / 100).toFloat(), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
+    Bars(Progress.sum(worlds), Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 6.dp), height = 6.dp)
     worlds.forEach { WorldRow(it, now, hintsByPoints, onOpen) }
   }
 }
@@ -175,13 +192,28 @@ internal fun statusColor(status: PlayerStatus): Color = LocalPalette.current.let
   when (status) {
     PlayerStatus.GOAL, PlayerStatus.COMPLETE -> p.ok
     PlayerStatus.RELEASED -> p.progression
-    PlayerStatus.PLAYING -> p.useful
+    PlayerStatus.ONLINE -> p.useful
     PlayerStatus.LOCKED -> p.locked
-    PlayerStatus.IDLE -> p.muted
+    PlayerStatus.IDLE, PlayerStatus.NOT_STARTED -> p.muted
   }
 }
 
-internal fun statusLabel(t: Texts, world: PlayerSummary): String = t.dashboard.status(world.status, started = world.checked > 0)
+internal fun statusLabel(t: Texts, world: PlayerSummary): String = t.dashboard.status(world.status)
+
+/**
+ * The time beside a slot's state: since it was complete or released; since its goal and its last check; for one that
+ * is idle or online, its last check. `null`: nothing to say (not started, locked, or an archive of before 0.19.11).
+ */
+internal fun stateTime(t: Texts, world: PlayerSummary, now: Long): String? {
+  val lastCheck = world.lastCheckAt?.let { t.dashboard.lastCheck(t.ago(it, now)) }
+  return when (world.status) {
+    PlayerStatus.COMPLETE -> world.completedAt?.let { t.ago(it, now) }
+    PlayerStatus.RELEASED -> world.releasedAt?.let { t.ago(it, now) }
+    PlayerStatus.GOAL -> listOfNotNull(world.goalAt?.let { t.ago(it, now) }, lastCheck).joinToString(" · ").ifEmpty { null }
+    PlayerStatus.IDLE, PlayerStatus.ONLINE -> lastCheck
+    PlayerStatus.LOCKED, PlayerStatus.NOT_STARTED -> null
+  }
+}
 
 /**
  * For worlds that start locked, under the game icon, as wide and down to the end of the world's texts: a key once it
@@ -241,49 +273,136 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
   val t = LocalTexts.current
   val locked = world.status == PlayerStatus.LOCKED
   HoverRow(onClick = { onOpen(world.slot) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-    // As tall as the texts, so the lock badge under the game icon ends with them
-    Row(Modifier.height(IntrinsicSize.Min).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // Its own height (one taken from the content's measured minimum cut off its last lines when its pills wrapped)
+    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(Modifier.dimmedIf(locked)) { GameChip(world.game, dimmed = locked) }
-        world.lock?.let { LockBadge(it, now, Modifier.weight(1f)) }
+        world.lock?.let { LockBadge(it, now, Modifier.height(36.dp)) }
       }
       Column(Modifier.weight(1f)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
           Txt(world.game, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1,
             modifier = Modifier.weight(1f).dimmedIf(locked))
           hintBubble(t, world, hintsByPoints)?.let { Pill(it, p.progression) }
-          // "playing" in colour while a game client is connected, grey otherwise
-          val playing = world.status == PlayerStatus.PLAYING || world.online && world.status == PlayerStatus.IDLE
           // Locked: the badge under the game icon says it
           if (!locked) Pill(
-            if (playing) t.dashboard.playing else statusLabel(t, world),
-            if (playing && !world.online) p.muted else statusColor(if (playing) PlayerStatus.PLAYING else world.status),
+            statusLabel(t, world), statusColor(world.status),
             icon = if (world.status == PlayerStatus.GOAL) Icon.FLAG else null,
           )
         }
         Row(Modifier.fillMaxWidth()) {
           Txt(t.dashboard.slot(shortSlotName(world.name, world.person)), size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          if (!locked && !world.online) Txt(t.ago(world.lastActivity, now), size = 11.5.sp, maxLines = 1, color = p.muted)
+          stateTime(t, world, now)?.let { Txt(it, size = 11.5.sp, maxLines = 1, color = p.muted) }
+          // More than one game client on it (played together, or a second device)
+          if (world.connections > 1) Txt(t.dashboard.connections(world.connections), size = 11.5.sp, maxLines = 1, color = p.ok)
+        }
+        val progress = Progress.of(world)
+        val played = playTime(world, now)
+        FlowRow(
+          Modifier.padding(top = 5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          ProgressPills(progress)
+          if (played > 0) TipPill(Icon.CLOCK, t.duration(played), t.dashboard.tipPlayed, p.useful)
         }
         Spacer(Modifier.height(6.dp))
-        ProgressBar((world.percent / 100).toFloat(), height = 5.dp, dimmed = locked)
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-          Txt(t.dashboard.progress(world.checked, world.total, world.progressionReceived), size = 11.5.sp,
-            color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-          val played = playTime(world, now)
-          if (played > 0 || world.goalAt != null) {
-            Txt(
-              listOfNotNull(
-                t.dashboard.played(t.duration(played)).takeIf { played > 0 },
-                world.goalAt?.let { t.dashboard.doneAt(t.clock(it)) },
-              ).joinToString(" · "),
-              size = 11.5.sp, color = p.muted, maxLines = 1,
-            )
-          }
-        }
+        Bars(progress, dimmed = locked)
       }
     }
   }
+}
+
+/**
+ * A slot's (or several slots' together) numbers: checked of its locations, and of the progression locations among
+ * them (`null` until scouted); progression received, and sent to others (no totals: its players would learn how much
+ * is still missing).
+ */
+internal data class Progress(
+  val checked: Int,
+  val total: Int,
+  val progressionChecked: Int,
+  val progressionChecks: Int?,
+  val received: Int,
+  val sent: Int?,
+  /** Its checks available now (the session's logic counts them); `null`: not known. */
+  val available: Int? = null,
+  /** The deaths and traps it passed on (DeathLink, TrapLink). */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
+) {
+  companion object {
+    fun of(w: PlayerSummary) =
+      Progress(
+        w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent, w.available, w.deaths, w.trapLinks,
+      )
+
+    fun of(d: PlayerDetail) =
+      Progress(
+        d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent, d.available, d.deaths, d.trapLinks,
+      )
+
+    /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
+    fun sum(worlds: List<PlayerSummary>): Progress {
+      fun known(of: (PlayerSummary) -> Int?) = worlds.map(of).takeIf { all -> all.none { it == null } }?.sumOf { it ?: 0 }
+      return Progress(
+        worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionChecked }, known { it.progressionChecks },
+        worlds.sumOf { it.progressionReceived }, known { it.sent },
+        // Those of its slots that are known (a slot the logic has no answer for adds none)
+        worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
+        worlds.sumOf { it.deaths }, worlds.sumOf { it.trapLinks },
+      )
+    }
+  }
+}
+
+/** The two bars: the locations checked in its own world, and those of them that hold a progression item. */
+@Composable
+internal fun Bars(progress: Progress, modifier: Modifier = Modifier, height: Dp = 5.dp, dimmed: Boolean = false) {
+  val t = LocalTexts.current
+  fun fraction(part: Int, whole: Int) = if (whole > 0) part.toFloat() / whole else 0f
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    LabeledBar(
+      t.dashboard.checksBar, fraction(progress.checked, progress.total),
+      "${t.number(progress.checked)} / ${t.number(progress.total)}", height = height, dimmed = dimmed, icon = Icon.CHECK,
+    )
+    val checks = progress.progressionChecks
+    LabeledBar(
+      t.dashboard.progressionChecksBar, checks?.let { fraction(progress.progressionChecked, it) },
+      if (checks == null) "…" else "${t.number(progress.progressionChecked)} / ${t.number(checks)}", height = height,
+      dimmed = dimmed, icon = Icon.STAR,
+    )
+  }
+}
+
+/** Whether the session's logic runs now: the available checks are current, else the last known ones. */
+internal val LocalLogicRunning = staticCompositionLocalOf { true }
+
+/** [content] with the logic's state of [s] ([LocalLogicRunning]). */
+@Composable
+internal fun WithLogic(s: Summary?, content: @Composable () -> Unit) =
+  CompositionLocalProvider(LocalLogicRunning provides (s?.logic?.status == LogicStatus.RUNNING), content = content)
+
+/** A pill of an icon and a number, what it is as its tooltip ([tip], best one word). */
+@Composable
+internal fun TipPill(icon: Icon, text: String, tip: String, color: Color) = Tip(tip) { Pill(text, color, icon) }
+
+/**
+ * Progression received, and sent to others (once scouted), as pills: counts only. Then the checks available now (once
+ * the logic counted them), greyed out with the last known count while it doesn't run; the deaths and traps it passed
+ * on, from the first one.
+ */
+@Composable
+internal fun ProgressPills(progress: Progress) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current
+  val d = t.dashboard
+  TipPill(Icon.RECEIVED, t.number(progress.received), d.tipReceived, p.progression)
+  progress.sent?.let { TipPill(Icon.SENT, t.number(it), d.tipSent, p.useful) }
+  progress.available?.let { available ->
+    val running = LocalLogicRunning.current
+    TipPill(Icon.TARGET, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
+  }
+  if (progress.deaths > 0) TipPill(Icon.SKULL, t.number(progress.deaths), d.tipDeaths, p.trap)
+  if (progress.trapLinks > 0) TipPill(Icon.TRAP, t.number(progress.trapLinks), d.tipTraps, p.warn)
 }
 
 /** Connected time of [world] so far, including the running session. */

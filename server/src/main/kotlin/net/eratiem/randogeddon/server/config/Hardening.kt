@@ -51,6 +51,8 @@ internal fun bodyLimit(path: String): Long = when (path.trimEnd('/')) {
   "/api/admin/apworlds" -> 96 * KIB * KIB
   // A new session's YAMLs
   "/api/sessions", "/api/sessions/new/inspect" -> 8 * KIB * KIB
+  // A seed generated elsewhere as base64 (64 MB of zip) in JSON
+  "/api/sessions/new/seed" -> 96 * KIB * KIB
   else -> 256 * KIB
 }
 

@@ -131,6 +131,7 @@ private suspend fun RoutingContext.spoiler(
   val user = call.actor
   val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
   if (!helps && !live.finished) return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
+  if (!live.playthroughReady) return@session call.refuse(HttpStatusCode.Conflict, Refusal(Problem.PLAYTHROUGH_NOT_YET))
   try {
     val log = spoilers.of(live.id, live.seedName)
       ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
@@ -140,7 +141,7 @@ private suspend fun RoutingContext.spoiler(
   }
 }
 
-/** The details of the path's `{slot}` of [live]; a finished session's from its archive. */
+/** The details of the path's `{slot}` of [live]; a finished session's from its archive, else maybe its kept snapshot. */
 /** `GET …/connection`: where the person's game clients connect, with their slots' passwords (the bridge's too). */
 internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions, slotPasswords: SlotPasswords) {
   get("/connection") {
@@ -154,7 +155,8 @@ internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions
 
 internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives) {
   val slot = call.parameters["slot"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest)
-  val archived = if (live.finished) archives.read(live.id) else null
+  // A running session's kept one while its tracker isn't connected yet
+  val archived = if (live.finished) archives.read(live.id) else live.shownKept
   val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else live.tracker.read { playerDetail(slot) })
     ?: return call.respond(HttpStatusCode.NotFound)
   call.respond(detail)

@@ -1,7 +1,9 @@
 package net.eratiem.randogeddon.shared
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 /** How far a session is: running (maybe about to end by itself), or finished, paused or ended (completed). */
 @Serializable
@@ -28,6 +30,15 @@ data class Summary(
   val errorRefused: Boolean = false,
   /** Its game server sleeps (nobody played for a while): it starts when a player connects; no connection problem. */
   val serverAsleep: Boolean = false,
+  /** Its spoiler log is still being completed after the seed (the playthrough, the paths): the top panel says so. */
+  val spoilerCompleting: Boolean = false,
+  /** Its spoiler log has its playthrough: it can be opened (by who may). */
+  val spoilerReady: Boolean = true,
+  /**
+   * Its logic, which counts the slots' available checks; `null`: it has none. While it isn't running, the counts are
+   * the last known ones.
+   */
+  val logic: LogicProgress? = null,
   val seedName: String? = null,
   val serverVersion: String? = null,
   val generatorVersion: String? = null,
@@ -52,6 +63,10 @@ data class Summary(
    * are told to turn to an Administrator for what a Session-Manager does.
    */
   val managerUnavailable: Boolean = false,
+  /** When the session was made (epoch ms): the Overview shows its age. */
+  val createdAt: Long? = null,
+  /** Its release mode (`auto`, `goal`, …): with `auto`, a slot at its goal is released, so complete. */
+  val releaseMode: String? = null,
   /** Increases with every change of the session state. */
   val version: Long,
   val totals: Totals,
@@ -71,13 +86,20 @@ data class Totals(
   val percent: Double,
   /** Worlds (slots). */
   val players: Int,
-  /** Worlds that reached their goal or were released. */
+  /** Worlds that are done: complete, at their goal or released ([PlayerStatus]). */
   val goals: Int,
   val online: Int,
   /** Worlds whose key has not been found yet. */
   val locked: Int = 0,
   /** Worlds that start locked (World Locks). */
   val lockable: Int = 0,
+  /** Items sent so far (found at a location; no starting inventory), of them progression and traps. */
+  val itemsSent: Int = 0,
+  val progressionSent: Int = 0,
+  val trapsSent: Int = 0,
+  /** Deaths passed on by DeathLink, traps by TrapLink, over the whole session. */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
 )
 
 /**
@@ -112,7 +134,7 @@ data class HintSettings(
 data class PersonSummary(
   /** The name the person has in this session (the one of then, once it is finished). */
   val name: String,
-  /** Slots of [PlayerSummary.slot], in the order of `session.yaml`. */
+  /** Slots of [PlayerSummary.slot], by their names: always in the same order. */
   val slots: List<Int>,
   val checked: Int,
   val total: Int,
@@ -128,15 +150,26 @@ data class PersonSummary(
   val deleted: Boolean = false,
 )
 
+/**
+ * A world's state, the first that applies: released (given up before its goal, or by hand after it), complete (every
+ * location checked, also by the automatic release at the goal), goal (locations left), locked, online (a game client
+ * connected now), idle (connected before and has checks), not started.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 enum class PlayerStatus {
+  @SerialName("not_started") NOT_STARTED,
   @SerialName("idle") IDLE,
   /** Starts locked (World Locks) and its key has not been found yet. */
   @SerialName("locked") LOCKED,
-  @SerialName("playing") PLAYING,
+  /** Was `playing` until 0.19.11 (an archive of before says so). */
+  @SerialName("online") @JsonNames("playing") ONLINE,
   @SerialName("complete") COMPLETE,
   @SerialName("goal") GOAL,
-  @SerialName("released") RELEASED,
+  @SerialName("released") RELEASED;
+
+  /** Done: complete, at its goal, or released. */
+  val done: Boolean get() = this == COMPLETE || this == GOAL || this == RELEASED
 }
 
 @Serializable
@@ -150,10 +183,29 @@ data class PlayerSummary(
   val status: PlayerStatus,
   /** A game client (not a tracker or text client) is connected to this slot. */
   val online: Boolean,
+  /** How many game clients are connected to it now (several can be: a slot played together, a second device). */
+  val connections: Int = 0,
   /** Epoch milliseconds of the last check, goal or join; `null` if nothing happened yet. */
   val lastActivity: Long? = null,
   val itemsReceived: Int,
+  /**
+   * Progression items it received from a location (its own world's too; not the starting inventory). How many are
+   * meant for it in all isn't said: that would tell its players how much is still missing.
+   */
   val progressionReceived: Int,
+  /** Its own locations that hold a progression item (for anyone), and how many of them it checked. */
+  val progressionChecks: Int? = null,
+  val progressionChecked: Int = 0,
+  /** Progression items found in its world for other slots so far (once it is scouted); no total, as above. */
+  val sent: Int? = null,
+  /**
+   * Its unchecked locations its logic reaches with the items it has: the checks it can make now (the session's logic
+   * counts them, see [Summary.logic]); `null`: not known.
+   */
+  val available: Int? = null,
+  /** The deaths it passed on by DeathLink, and the traps by TrapLink (what it sent, not what it got). */
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
   val hintPoints: Int? = null,
   /** Points one hint costs in this world (0 = free); `hintPoints / hintCost` hints can be bought now. */
   val hintCost: Int? = null,
@@ -165,6 +217,12 @@ data class PlayerSummary(
   val onlineSince: Long? = null,
   val firstCheckAt: Long? = null,
   val goalAt: Long? = null,
+  /** When it was released (by hand, or automatically at its goal). */
+  val releasedAt: Long? = null,
+  /** Its newest check (a location it found an item at). */
+  val lastCheckAt: Long? = null,
+  /** When its last location was checked, while it is complete. */
+  val completedAt: Long? = null,
   /** For worlds that start locked: the key and what is known about it. */
   val lock: LockInfo? = null,
 )
@@ -198,6 +256,12 @@ enum class EventType {
   @SerialName("unlock") UNLOCK,
   /** An admin cheated from the admin panel; [FeedEvent.message] says who and what. */
   @SerialName("cheat") CHEAT,
+  /**
+   * A link between games: a death or a trap passed on to every game linked ([FeedEvent.link]: `DeathLink` or
+   * `TrapLink`). [FeedEvent.linkSource] is who it came from as their client says it, [FeedEvent.slot] their slot if
+   * that is a slot's name, [FeedEvent.message] the death's cause or the trap's name, if said.
+   */
+  @SerialName("link") LINK,
 }
 
 /**
@@ -231,6 +295,9 @@ data class FeedEvent(
   val cheatRole: String? = null,
   val cheatSlot: String? = null,
   val cheatValue: String? = null,
+  /** A link's tag (`DeathLink`, `TrapLink`) and who it came from, in their client's words. */
+  val link: String? = null,
+  val linkSource: String? = null,
   val playerName: String? = null,
   val senderName: String? = null,
   val receiverName: String? = null,
@@ -265,6 +332,14 @@ data class PlayerDetail(
   val missing: List<String>,
   val checked: Int,
   val total: Int,
+  /** As [PlayerSummary.progressionReceived], the progression checks, sent, available, deaths and traps. */
+  val progressionReceived: Int = 0,
+  val progressionChecks: Int? = null,
+  val progressionChecked: Int = 0,
+  val sent: Int? = null,
+  val available: Int? = null,
+  val deaths: Int = 0,
+  val trapLinks: Int = 0,
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,

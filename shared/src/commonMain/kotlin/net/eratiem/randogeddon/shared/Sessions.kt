@@ -3,7 +3,30 @@ package net.eratiem.randogeddon.shared
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** A session's game server options, set when it is created (the defaults are those of `.env.example`). */
+/**
+ * Archipelago's plando modules: what a YAML may set by hand in the generation instead of leaving it to chance. Their
+ * names are Generate.py's (`--plando`); only these are ever passed to it.
+ */
+@Serializable
+enum class PlandoModule {
+  @SerialName("bosses") BOSSES,
+  @SerialName("connections") CONNECTIONS,
+  @SerialName("texts") TEXTS,
+  @SerialName("items") ITEMS;
+
+  /** As `--plando` names it. */
+  val argument: String get() = name.lowercase()
+
+  companion object {
+    /** Archipelago's own default: all but the items. */
+    val DEFAULT: Set<PlandoModule> = setOf(BOSSES, CONNECTIONS, TEXTS)
+  }
+}
+
+/**
+ * A session's options, set when it is created: its game server's (the defaults are those of `.env.example`) and its
+ * generation's ([plando], [skipBalancing], [race]).
+ */
 @Serializable
 data class SessionOptions(
   /** Players buy hints with points (`!hint`). */
@@ -27,6 +50,12 @@ data class SessionOptions(
   val openSlots: Int? = null,
   /** Admins may give free hints from the admin panel (cheats). */
   val cheatHints: Boolean = false,
+  /** The generation: the plando modules its YAMLs may use. */
+  val plando: Set<PlandoModule> = PlandoModule.DEFAULT,
+  /** The generation: without Archipelago's progression balancing. */
+  val skipBalancing: Boolean = false,
+  /** The generation: race mode (a seed nobody can reproduce, flagged as a race for the games, no spoiler log). */
+  val race: Boolean = false,
 )
 
 /** A player YAML as uploaded in the admin panel. */
@@ -81,6 +110,11 @@ data class CreateSessionRequest(
   val options: SessionOptions = SessionOptions(),
   /** `null`: the gateway's newest Archipelago release. */
   val apVersion: String? = null,
+  /**
+   * Instead of [yamls]: the token of a seed generated elsewhere that this Administrator uploaded before
+   * ([SeedInfo.token]). Its slots are the seed's; it has no locks, and nothing is generated.
+   */
+  val seed: String? = null,
 )
 
 @Serializable
@@ -121,6 +155,8 @@ data class SessionInfo(
 data class SessionEntry(
   val id: String,
   val seedName: String,
+  /** Its spoiler log has its playthrough (completed after the seed): until then no spoiler log, no hints, no cheats. */
+  val spoilerReady: Boolean = true,
   val title: String,
   val status: SessionStatus = SessionStatus.LIVE,
   val createdAt: Long? = null,
@@ -207,6 +243,10 @@ data class GenerateRequest(
   val apVersion: String,
   /** The games of the YAMLs, to point at the one that failed. */
   val games: List<String> = emptyList(),
+  /** The generation's settings (see [SessionOptions]). */
+  val plando: Set<PlandoModule> = PlandoModule.DEFAULT,
+  val skipBalancing: Boolean = false,
+  val race: Boolean = false,
 )
 
 /**
@@ -251,11 +291,12 @@ enum class GenerationStage {
 enum class GenerationStep { CHECK, GENERATE, SET_UP, START }
 
 /**
- * `GET /api/sessions/new/progress/{id}`: how far a new session's generation is: its [stage], about [percent] in all
- * (each stage has a share; filling the items takes the longest and reports nothing on its way). No content: none runs.
+ * How far a new session's generation is: its [stage], about [percent] in all (each stage has a share; the fill counts
+ * itself up, the playthrough reports nothing on its way). [cpu]: how much of one core Generate.py used since it was
+ * asked last (a working one keeps one busy; `null`: no process right now, as while it waits or the tracker works).
  */
 @Serializable
-data class GenerationProgress(val stage: GenerationStage, val percent: Int)
+data class GenerationProgress(val stage: GenerationStage, val percent: Int, val cpu: Int? = null)
 
 /** Where a new session's creation is: generating (and setting up), done, failed or cancelled. */
 @Serializable

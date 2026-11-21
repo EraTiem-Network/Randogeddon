@@ -1,8 +1,5 @@
 package net.eratiem.randogeddon.gateway
 
-import net.eratiem.randogeddon.shared.SessionIds
-import net.eratiem.randogeddon.shared.SlotFile
-import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -13,8 +10,13 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
+import kotlin.io.path.readText
+import net.eratiem.randogeddon.shared.SessionIds
+import net.eratiem.randogeddon.shared.SlotFile
+import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.SeedFiles")
 
@@ -66,12 +68,20 @@ class SessionDirs(private val dataDir: Path) {
 
   /** The spoiler log from the session's seed zip; `null` if there is none. */
   fun spoiler(id: String): String? {
+    // Completed in the background after the seed (SpoilerStages): it replaces the seed's
+    spoilerFile(id).takeIf { it.isRegularFile() }?.let { return it.readText() }
     val zip = seed(id)?.takeIf { it.name.endsWith(".zip") } ?: return null
     return ZipFile(zip.toFile()).use { file ->
       file.entries().asSequence().firstOrNull { it.name.endsWith("_Spoiler.txt") }
         ?.let { entry -> file.getInputStream(entry).bufferedReader().readText() }
     }
   }
+
+  /** The spoiler log completed after the seed (a higher level than the seed's own), if there is one. */
+  fun spoilerFile(id: String): Path = dir(id).resolve("spoiler.txt")
+
+  /** What the seed was generated from, to complete its spoiler log later: its YAMLs and `stages.json`. */
+  fun generationDir(id: String): Path = dir(id).resolve("generation")
 
   /** The files of the session's seed that belong to a slot (patches, mods), as players may download them. */
   fun slotFiles(id: String): List<SlotFile> {

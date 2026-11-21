@@ -42,7 +42,70 @@ data class LogLines(val lines: List<LogLine>, val last: Long)
 
 /** Gateway → tracker: one session's game server, and the port MultiServer listens on while it runs. */
 @Serializable
-data class SessionServer(val id: String, val state: GameServerState, val port: Int? = null)
+data class SessionServer(
+  val id: String,
+  val state: GameServerState,
+  val port: Int? = null,
+  /** Its spoiler log while it is completed in the background (since 0.19.3); `null`: complete (or from before). */
+  val spoiler: SpoilerProgress? = null,
+  /** Its logic (the available checks); `null`: it has none (a seed from elsewhere, a race, from before 0.19.3). */
+  val logic: LogicProgress? = null,
+)
+
+/**
+ * A session's logic: its seed's worlds generated again up to the fill (with the seed's number and inputs, as for its
+ * spoiler log), kept to answer how many of each slot's locations its items reach now.
+ */
+@Serializable
+enum class LogicStatus {
+  /** Being built: no answers yet. */
+  @SerialName("starting") STARTING,
+  @SerialName("running") RUNNING,
+  /** Not running: it starts with the game server. */
+  @SerialName("stopped") STOPPED,
+  /** Its build failed (see [LogicProgress.problem] and its log): it stays so until it is built again. */
+  @SerialName("failed") FAILED,
+}
+
+/** [since]: when it got to [status] (epoch milliseconds). */
+@Serializable
+data class LogicProgress(val status: LogicStatus, val since: Long? = null, val problem: String? = null)
+
+/** One slot as the logic is asked about it: the item IDs it received (not its starting inventory), its checked locations. */
+@Serializable
+data class AvailableSlot(val slot: Int, val items: List<Long>, val checked: List<Long>)
+
+/** Tracker → gateway: `POST /internal/sessions/{id}/logic/available`. */
+@Serializable
+data class AvailableRequest(val slots: List<AvailableSlot>)
+
+/** How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it). */
+@Serializable
+data class AvailableAnswer(val available: Map<Int, Int?> = emptyMap())
+
+/** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */
+@Serializable
+data class LogicView(val progress: LogicProgress? = null)
+
+/**
+ * A session's spoiler log as the gateway completes it after the seed (with the same seed number and inputs, only the
+ * spoiler worked out again): [level] 1 the seed's (no playthrough), 2 with the playthrough (the spoiler page, the hints
+ * and the cheats wait for it), 3 with the paths to every item (complete). [running]: the level worked out now (`null`:
+ * waiting for its turn), with Generate.py's share of a core ([cpu]). [stopped]: why it stays at [level].
+ */
+/** `GET /api/sessions/{id}/manage/spoiler-run` (and `…/support/…`): how its spoiler log is completed; `null`: complete. */
+@Serializable
+data class SpoilerRunView(val progress: SpoilerProgress? = null)
+
+@Serializable
+data class SpoilerProgress(
+  val level: Int,
+  val running: Int? = null,
+  val cpu: Int? = null,
+  val stopped: String? = null,
+  /** The run is held for a new session's generation (its level-3 run only); it goes on once there is room. */
+  val paused: Boolean = false,
+)
 
 /** `GET /internal/sessions`: every session the gateway has files of. */
 @Serializable

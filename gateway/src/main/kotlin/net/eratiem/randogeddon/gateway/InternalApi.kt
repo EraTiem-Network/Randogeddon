@@ -13,14 +13,19 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.ApworldRemoval
 import net.eratiem.randogeddon.shared.ApworldTry
+import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.RandogeddonVersion
 import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.SeedInstall
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SlotFiles
 import java.security.MessageDigest
@@ -55,6 +60,8 @@ fun Route.internalApi(
   generator: Generator,
   apworlds: Apworlds,
   dirs: SessionDirs,
+  seeds: UploadedSeeds,
+  logic: Logic,
 ) {
   route("/internal") {
     install(InternalAuth) { this.token = token }
@@ -73,8 +80,25 @@ fun Route.internalApi(
         }
       }
     }
+    // A seed generated elsewhere, uploaded for a new session: checked, then kept under a token until its session is
+    // made (POST /sessions/{id}/seed) or an hour has passed
+    post("/seeds") {
+      val upload = call.receive<SeedUpload>()
+      try {
+        call.respond(withContext(Dispatchers.IO) { seeds.take(upload) })
+      } catch (e: SeedProblem) {
+        call.respond(HttpStatusCode.BadRequest, ApiError(e.message ?: "Not taken"))
+      }
+    }
+    delete("/seeds/{token}") {
+      call.respond(if (seeds.drop(call.parameters["token"].orEmpty())) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
     route("/sessions") {
-      get { call.respond(sessions.list()) }
+      get {
+        call.respond(sessions.list().let {
+          it.copy(sessions = it.sessions.map { s -> s.copy(spoiler = generator.spoiler(s.id), logic = logic.progress(s.id)) })
+        })
+      }
       route("/{id}") {
         // Takes as long as Generate.py does (up to minutes); the new seed's game server waits for a start
         post("/generate") {
@@ -88,6 +112,18 @@ fun Route.internalApi(
           if (result.seedName != null) sessions.added(id)
           call.respond(result)
         }
+        // An uploaded seed becomes its seed; its game server waits for a start, as after a generation
+        post("/seed") {
+          val id = sessionId() ?: return@post
+          val install = call.receive<SeedInstall>()
+          val info = try {
+            withContext(Dispatchers.IO) { seeds.install(id, install.token) }
+          } catch (e: IllegalStateException) {
+            return@post call.respond(HttpStatusCode.Conflict, ApiError(e.message ?: "It has a seed already"))
+          } ?: return@post call.respond(HttpStatusCode.NotFound, ApiError("No such uploaded seed (any more)"))
+          sessions.added(id)
+          call.respond(info)
+        }
         // How far its generation is, while it runs (no content: none runs)
         get("/progress") {
           val id = sessionId() ?: return@get
@@ -100,6 +136,17 @@ fun Route.internalApi(
           val max = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
           generator.log(id, since, max)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
+        // Its spoiler log's background run: its lines after ?since=
+        get("/spoiler-run/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          generator.spoilerLog(id, since, 1000)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
+        // Its spoiler log stopped: tried again from there
+        post("/spoiler-run/retry") {
+          val id = sessionId() ?: return@post
+          call.respond(if (generator.retrySpoiler(id)) HttpStatusCode.NoContent else HttpStatusCode.Conflict)
+        }
         get("/generate/log.txt") {
           val id = sessionId() ?: return@get
           generator.logText(id)?.let { call.respondText(it) } ?: call.respond(HttpStatusCode.NotFound)
@@ -109,9 +156,27 @@ fun Route.internalApi(
           val id = sessionId() ?: return@delete
           call.respond(if (generator.cancel(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
         }
+        // Its logic: how many of each slot's locations it can check now (no content: it isn't running)
+        post("/logic/available") {
+          val id = sessionId() ?: return@post
+          logic.available(id, call.receive<AvailableRequest>())?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NoContent)
+        }
+        // Built again from the start (also after a failed build)
+        post("/logic/rebuild") {
+          val id = sessionId() ?: return@post
+          call.respond(if (logic.rebuild(id)) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+        }
+        // Its logic's log: lines after ?since=
+        get("/logic/log") {
+          val id = sessionId() ?: return@get
+          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+          logic.log(id, since)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+        }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
+          generator.dropSpoiler(id)
+          logic.stop(id)
           val purge = call.request.queryParameters["purge"] == "true"
           if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
         }

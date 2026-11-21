@@ -16,7 +16,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import net.eratiem.randogeddon.database.FinishState
+import net.eratiem.randogeddon.database.SessionEventStore
+import net.eratiem.randogeddon.database.SessionSnapshotStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionRecord
 import net.eratiem.randogeddon.database.SessionSetup
@@ -29,9 +32,14 @@ import net.eratiem.randogeddon.database.legacySessionId
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.ap.TrackerService
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ArchivedSession
+import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.GameServerStatus
+import net.eratiem.randogeddon.shared.LogicStatus
+import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionServer
@@ -42,6 +50,7 @@ import java.lang.invoke.MethodHandles
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -59,11 +68,50 @@ class LiveSession(
   private val archives: Archives,
   /** Where the one poller of its [changes] runs (the sessions' own scope, not a viewer's). */
   private val streams: CoroutineScope,
+  /** What the gateway hears on the game servers. */
+  events: SessionEventStore? = null,
+  /** Where what its dashboard shows is kept, for while its tracker isn't connected. */
+  private val snapshots: SessionSnapshotStore? = null,
 ) {
   /** Written by the gateway before each start of its game server. */
   val roomJson: Path = config.dataDir.resolve("sessions").resolve(id).resolve("room.json")
 
-  val tracker = TrackerService(archives.history(id), roomJson) { server?.port?.let { "ws://${config.gatewayHost}:$it" } }
+  val tracker = TrackerService(archives.history(id), roomJson, id, events, snapshots) {
+    server?.port?.let { "ws://${config.gatewayHost}:$it" }
+  }
+
+  /**
+   * What its dashboard showed the last time it was kept ([keep]): shown until its tracker has been connected since
+   * its start (it knows its slots only from the game server; asleep after a deploy, that can take until a player
+   * comes). Read once ([loadKept]).
+   */
+  @Volatile
+  private var kept: ArchivedSession? = null
+
+  /** The snapshot kept of it, while its tracker hasn't been connected since its start; `null` then: the live state. */
+  val shownKept: ArchivedSession? get() = kept?.takeIf { !tracker.connectedOnce }
+
+  suspend fun loadKept() {
+    val snapshot = snapshots?.let { store -> runCatching { store.of(id) }.getOrNull() }?.takeIf { !it.final } ?: return
+    kept = runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), snapshot.json) }.getOrNull()
+  }
+
+  /** Every slot's details, as the tracker knows them (the World Locks slot isn't one). */
+  suspend fun details(): List<PlayerDetail> =
+    tracker.read { players.values.filter { it.game != WORLD_LOCKS_GAME }.mapNotNull { playerDetail(it.slot) } }
+
+  /**
+   * Keeps what its dashboard shows now in the database, for while its tracker isn't connected; only once the tracker
+   * has been (else it knows less than what is kept), and not over its archive.
+   */
+  suspend fun keep() {
+    val store = snapshots ?: return
+    if (finished || !tracker.connectedOnce) return
+    val snapshot = ArchivedSession(build(), details())
+    runCatching { store.saveLive(id, System.currentTimeMillis(), ApiJson.encodeToString(ArchivedSession.serializer(), snapshot)) }
+      .onSuccess { kept = snapshot }
+      .onFailure { logger.warn("Could not keep {}'s dashboard: {}", id, it.message) }
+  }
 
   @Volatile
   var record: SessionRecord = record
@@ -116,9 +164,12 @@ class LiveSession(
     if (!worlds.isNullOrEmpty() || hosted.isNotEmpty()) {
       val people = LinkedHashMap<String, MutableList<String>>()
       for ((slot, users) in worlds.orEmpty()) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+      // Always in the same order: the people by name, each one's slots by name
+      val ordered = LinkedHashMap<String, List<String>>()
+      for ((person, slots) in people.entries.sortedBy { it.key.lowercase() }) ordered[person] = slots.sortedBy { it.lowercase() }
       // The hosted slots together, as if one person played them (no account can be called so)
-      if (hosted.isNotEmpty()) people[UserNames.HOSTED] = hosted.sorted().toMutableList()
-      return people
+      if (hosted.isNotEmpty()) ordered[UserNames.HOSTED] = hosted.sortedBy { it.lowercase() }
+      return ordered
     }
     val s = archives.read(id)?.summary ?: return emptyMap()
     return s.people.associate { p -> p.name to p.slots.mapNotNull { slot -> s.players.firstOrNull { it.slot == slot }?.name } }
@@ -156,10 +207,40 @@ class LiveSession(
 
   /** Changes with the session state, with its people and options, the session time's count and its finishing. */
   suspend fun version(): Long = tracker.read { version } + people().hashCode().toLong().shl(32) +
-    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep).hashCode().toLong().shl(16)
+    listOf(time, options, finish, setup?.deleted, managerUnavailable(), asleep, spoilerCompleting, playthroughReady, server?.logic)
+      .hashCode().toLong().shl(16)
+
+  /** When its logic was last seen built: after each build every slot is asked anew. */
+  private var logicSince: Long? = null
+
+  /**
+   * Asks its logic about the slots whose items or checks changed, while it runs and the tracker is connected (only
+   * then does it know what they received).
+   */
+  suspend fun askLogic(gameServer: GameServerClient) {
+    val logic = server?.logic?.takeIf { it.status == LogicStatus.RUNNING } ?: return
+    if (finished || !tracker.read { connected }) return
+    if (logic.since != logicSince) {
+      tracker.forgetAvailableAsks()
+      logicSince = logic.since
+    }
+    val asks = tracker.read { availableAsks() }
+    if (asks.isEmpty()) return
+    val answer = gameServer.available(id, AvailableRequest(asks)) ?: return
+    tracker.onAvailable(asks, answer)
+  }
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
   val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
+
+  /**
+   * Its spoiler log has its playthrough (completed after the seed, since 0.19.3): the spoiler page, the hints and the
+   * cheats wait for it. Also when completing it stopped (they go on with the seed's own), or the gateway hasn't said.
+   */
+  val playthroughReady: Boolean get() = server?.spoiler?.let { it.level >= 2 || it.stopped != null } ?: true
+
+  /** Its spoiler log is being completed after the seed (and nothing stopped that). */
+  val spoilerCompleting: Boolean get() = server?.spoiler?.let { it.stopped == null } == true
 
   /** A Session-Manager of it can't act for it now (kept out by an Administrator, or gone), while it runs. */
   fun managerUnavailable(): Boolean = !finished &&
@@ -173,16 +254,43 @@ class LiveSession(
     val error = tracker.lastError.takeUnless { asleep }
     val time = time
     val finish = finish
-    return tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }.copy(
+    val live = tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }
+    val shown = shownKept?.summary?.let { withPresence(it, live) } ?: live
+    // The available checks not counted since the tracker's start: the last ones kept
+    val keptAvailable = kept?.summary?.players?.associate { it.slot to it.available }.orEmpty()
+    return shown.copy(
+      players = shown.players.map { if (it.available == null) it.copy(available = keptAvailable[it.slot]) else it },
+      logic = server?.logic,
       sessionId = id,
       errorRefused = error != null && tracker.lastErrorRefused,
       // As the gateway said at its last look; connected again: awake (it woke for a player since)
       serverAsleep = asleep && !tracker.read { connected },
+      spoilerCompleting = spoilerCompleting,
+      spoilerReady = playthroughReady,
       sessionTimeMs = time?.runTimeMs ?: 0,
       sessionRunningSince = time?.countedUntil?.toEpochMilli(),
       finishesAt = finish?.dueAt?.toEpochMilli(),
       finishedAt = finish?.finishedAt?.toEpochMilli(),
       managerUnavailable = managerUnavailable(),
+      createdAt = record.createdAt.toEpochMilli(),
+      releaseMode = options.releaseMode,
+    )
+  }
+
+  /**
+   * The kept summary ([kept]) as it is now: who is connected comes from the events the tracker replayed, which it has
+   * (the slots from `room.json`) before it is connected; the connection's state is the live one.
+   */
+  private suspend fun withPresence(kept: Summary, live: Summary): Summary {
+    val presence = tracker.read { players.values.associate { it.slot to (it.online to it.openSession?.start) } }
+    val worlds = kept.players.map { w ->
+      val (online, since) = presence[w.slot] ?: (0 to null)
+      w.copy(online = online > 0, connections = online, onlineSince = since)
+    }
+    val people = kept.people.map { person -> person.copy(online = worlds.any { it.slot in person.slots && it.online }) }
+    return kept.copy(
+      players = worlds, people = people, totals = kept.totals.copy(online = worlds.count { it.online }),
+      connected = live.connected, error = live.error, version = live.version, startedAt = live.startedAt,
     )
   }
 
@@ -253,20 +361,45 @@ class LiveSession(
   // --------------------------------------------------------------------------------------------------- connection
 
   private var job: Job? = null
+  private var keeper: Job? = null
 
-  /** Follows its game server until [disconnect] (or until [scope] ends). */
+  /** Follows its game server until [disconnect] (or until [scope] ends), keeping what its dashboard shows. */
   @Synchronized
   fun connect(scope: CoroutineScope) {
     if (job?.isActive != true) job = tracker.start(scope)
+    if (keeper?.isActive != true) keeper = scope.launch { keepWhenDue() }
+  }
+
+  /**
+   * Keeps its dashboard ([keep]) when the tracker's connection ends (the game server sleeps or stops: it is shown
+   * from then on, also after a restart) and, while connected, at most every [KEEP_EVERY] when something changed.
+   */
+  private suspend fun keepWhenDue() {
+    var wasConnected = false
+    var keptVersion = Long.MIN_VALUE
+    var keptAt = 0L
+    while (true) {
+      delay(KEEP_LOOK)
+      val (connected, version) = tracker.read { connected to version }
+      val now = System.currentTimeMillis()
+      val due = connected && version != keptVersion && now - keptAt >= KEEP_EVERY.inWholeMilliseconds
+      if ((wasConnected && !connected) || due) {
+        keep()
+        keptVersion = version
+        keptAt = now
+      }
+      wasConnected = connected
+    }
   }
 
   val connecting: Boolean get() = job?.isActive == true
 
-  /** Stops following it (it finished, or was deleted); the history is saved. */
+  /** Stops following it (it finished, or was deleted). */
   suspend fun disconnect() {
+    keeper?.cancelAndJoin()
+    keeper = null
     job?.cancelAndJoin()
     job = null
-    tracker.saveNow()
   }
 
   fun close() = tracker.close()
@@ -277,6 +410,10 @@ class LiveSession(
  * and right away after the admin panel changed something ([refresh]). The sessions that aren't finished get a tracker
  * connection of their own.
  */
+/** How often a session looks whether its dashboard is to be kept, and how often at most while it is connected. */
+private val KEEP_LOOK = 15.seconds
+private val KEEP_EVERY = 5.minutes
+
 /** How often a watched session's version is looked at: burst of item sends (a release) becomes one update. */
 val CHANGES_POLL = 750.milliseconds
 
@@ -292,6 +429,8 @@ class LiveSessions(
   private val finishes: SessionFinishStore,
   private val gameServer: GameServerClient,
   private val archives: Archives,
+  private val events: SessionEventStore,
+  private val snapshots: SessionSnapshotStore,
 ) {
   private val mutex = Mutex()
   private val sessions = ConcurrentHashMap<String, LiveSession>()
@@ -325,7 +464,12 @@ class LiveSessions(
       sessions.remove(gone)?.let { runCatching { it.disconnect() } }
     }
     for (record in records.filter { it.id in ids }) {
-      val live = sessions.getOrPut(record.id) { LiveSession(record.id, record, config, archives, streams) }
+      val known = sessions[record.id]
+      val live = known ?: LiveSession(record.id, record, config, archives, streams, events, snapshots).also {
+        // What was kept of it, for until its tracker is connected
+        it.loadKept()
+        sessions[record.id] = it
+      }
       live.record = record
       live.time = runCatching { times.of(record.seedName) }.getOrNull()
       live.setup = runCatching { setups.of(record.seedName) }.getOrNull()
@@ -348,7 +492,24 @@ class LiveSessions(
     runCatching {
       archives.migrate { seed -> runBlocking { runCatching { store.idOf(seed) }.getOrNull() } ?: legacySessionId(seed) }
     }.onFailure { logger.warn("Could not move the tracker's files: {}", it.message) }
+    // The finished sessions' archives (and those of before, from their files, once)
+    runCatching { archives.load() }.onFailure { logger.warn("Could not read the archives: {}", it.message) }
     this@LiveSessions.scope = scope
+    // The logic of the sessions whose game servers run is asked about what changed, every few seconds
+    launch {
+      while (true) {
+        delay(3.seconds)
+        sessions.values.forEach { live ->
+          try {
+            live.askLogic(gameServer)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            logger.debug("Could not ask {}'s logic: {}", live.id, e.message)
+          }
+        }
+      }
+    }
     while (true) {
       try {
         refresh()
@@ -361,8 +522,10 @@ class LiveSessions(
     }
   }
 
+  /** The tracker stops: what every session's dashboard shows is kept first (10 s at most for all). */
   fun close() {
     streams.cancel()
+    runBlocking { withTimeoutOrNull(10.seconds) { sessions.values.forEach { runCatching { it.keep() } } } }
     sessions.values.forEach { runCatching { it.close() } }
   }
 }

@@ -16,6 +16,7 @@ class GatewayRoleTest {
         "GRANT USAGE ON SCHEMA public TO randogeddon_gateway",
         "GRANT SELECT ON sessions, session_hosted_slots, slot_passwords, app_settings TO randogeddon_gateway",
         "GRANT UPDATE (run_time_ms, counted_until) ON sessions TO randogeddon_gateway",
+        "GRANT INSERT ON session_events TO randogeddon_gateway",
       ),
       grants,
     )

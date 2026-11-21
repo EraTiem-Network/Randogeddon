@@ -23,16 +23,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.shared.i18n.age
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.number
+import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
 
@@ -49,6 +54,11 @@ internal fun Grid(
   gap: Dp = GAP,
   balanced: Boolean = false,
   fillHeight: Boolean = false,
+  /**
+   * Cells of a row as tall as the tallest one. That height comes from the cells' measured minimum, which content
+   * that wraps (a line of pills) can underestimate: there the cells' ends would be cut off, so they keep their own.
+   */
+  equalHeight: Boolean = true,
   cell: @Composable (Int, Modifier) -> Unit,
 ) {
   val fitting = ((width + gap) / (minWidth + gap)).toInt().coerceIn(1, count.coerceAtLeast(1))
@@ -56,19 +66,35 @@ internal fun Grid(
   val columns = if (balanced && rowCount > 0) (count + rowCount - 1) / rowCount else fitting
   Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
     (0 until count).chunked(columns).forEach { row ->
-      // Cells of a row share the height of the tallest one
+      // Cells of a row share the height of the tallest one (unless they keep their own)
       Row(
-        if (fillHeight) Modifier.weight(1f) else Modifier.height(IntrinsicSize.Min),
+        when {
+          fillHeight -> Modifier.weight(1f)
+          equalHeight -> Modifier.height(IntrinsicSize.Min)
+          else -> Modifier
+        },
         horizontalArrangement = Arrangement.spacedBy(gap),
       ) {
-        row.forEach { cell(it, Modifier.weight(1f).fillMaxHeight()) }
+        row.forEach { cell(it, if (equalHeight || fillHeight) Modifier.weight(1f).fillMaxHeight() else Modifier.weight(1f)) }
         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
       }
     }
   }
 }
 
-private data class Tile(val label: String, val value: String, val sub: String, val color: Color, val icon: Icon?)
+/** A tile: [label], [value], below it [pills], or [sub] where there are none. */
+private data class Tile(
+  val label: String,
+  val value: String,
+  val sub: String,
+  val color: Color,
+  val icon: Icon,
+  val tip: String? = null,
+  val pills: List<TilePill> = emptyList(),
+)
+
+/** A part of a tile: its [icon] and [text] (a number; empty: the icon alone), what it is as its [tip]. */
+private data class TilePill(val icon: Icon, val text: String, val tip: String, val color: Color)
 
 @Composable
 internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifier, fillHeight: Boolean = false) {
@@ -76,24 +102,79 @@ internal fun Stats(s: Summary, now: Long, width: Dp, modifier: Modifier = Modifi
   val t = LocalTexts.current
   val totals = s.totals
   val open = s.hints.count { !it.found }
+  // The slots' states, counted from the slots (also right for an archive from before these counts)
+  val states = s.players.groupingBy { it.status }.eachCount()
+  fun count(status: PlayerStatus) = states[status] ?: 0
   val tiles = buildList {
     val d = t.dashboard
-    add(Tile(d.goals, "${totals.goals} / ${totals.players}", d.slotsFinished, p.ok, Icon.FLAG))
-    add(Tile(d.online, "${totals.online}", d.clientsConnected, p.useful, null))
+    // Done: complete, at the goal, released; with release mode auto a goal becomes complete (said only if there is one)
+    val done = s.players.count { it.status.done }
+    // A state's pill, its name as the tip
+    fun state(status: PlayerStatus, icon: Icon, color: Color) =
+      TilePill(icon, "${count(status)}", d.status(status).replaceFirstChar { it.uppercase() }, color)
+    val parts = listOfNotNull(
+      state(PlayerStatus.COMPLETE, Icon.CHECK, p.ok),
+      state(PlayerStatus.GOAL, Icon.FLAG, p.ok).takeIf { s.releaseMode != "auto" || count(PlayerStatus.GOAL) > 0 },
+      state(PlayerStatus.RELEASED, Icon.RELEASE, p.progression).takeIf { count(PlayerStatus.RELEASED) > 0 },
+    )
+    add(Tile(d.finished, "$done / ${s.players.size}", d.slotsFinished, p.ok, Icon.FLAG, pills = parts))
+    val online = s.players.count { it.online }
+    val waiting = listOfNotNull(
+      state(PlayerStatus.IDLE, Icon.PAUSE, p.muted).takeIf { count(PlayerStatus.IDLE) > 0 },
+      state(PlayerStatus.NOT_STARTED, Icon.CIRCLE, p.muted).takeIf { count(PlayerStatus.NOT_STARTED) > 0 },
+    )
+    add(Tile(d.slots, "$online / ${s.players.size}", d.everyoneOnline, p.useful, Icon.USER, pills = waiting))
     if (totals.lockable > 0) {
       add(Tile(d.unlocked, "${totals.lockable - totals.locked} / ${totals.lockable}", d.slotsOpened, p.key, Icon.KEY))
     }
-    if (showHints(s)) add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, null))
-    add(Tile(d.playTime, t.duration(s.players.sumOf { playTime(it, now) }), d.allSlotsTogether, p.useful, null))
-    // The game server's running time for this seed, without the times it was stopped
+    if (showHints(s)) {
+      add(Tile(d.hints, "${s.hints.size}", d.notFoundYet(open), p.progression, Icon.BULB, pills = listOf(TilePill(Icon.SEARCH, "$open", d.tipOpen, p.warn))))
+    }
+    // Items sent; an archive from before has its slots' received items only
+    val sent = totals.itemsSent.takeIf { it > 0 } ?: s.players.sumOf { it.itemsReceived }
+    val progression = totals.progressionSent.takeIf { totals.itemsSent > 0 } ?: s.players.sumOf { it.progressionReceived }
+    if (sent > 0) {
+      add(
+        Tile(
+          d.items, t.number(sent), d.itemsOf(t.number(progression), t.number(totals.trapsSent)), p.progression, Icon.GIFT,
+          pills = listOf(
+            TilePill(Icon.STAR, t.number(progression), d.tipProgression, p.progression),
+            TilePill(Icon.TRAP, t.number(totals.trapsSent), d.tipTraps, p.trap),
+          ),
+        )
+      )
+    }
+    // Links from the first one on
+    val links = totals.deaths + totals.trapLinks
+    if (links > 0) {
+      add(
+        Tile(
+          d.links, t.number(links), d.linksOf(t.number(totals.deaths), t.number(totals.trapLinks)), p.trap, Icon.LINK,
+          pills = listOf(
+            TilePill(Icon.SKULL, t.number(totals.deaths), d.tipDeaths, p.trap),
+            TilePill(Icon.TRAP, t.number(totals.trapLinks), d.tipTraps, p.warn),
+          ),
+        )
+      )
+    }
+    add(Tile(d.playTime, t.duration(s.players.sumOf { playTime(it, now) }), d.allSlotsTogether, p.useful, Icon.CLOCK))
+    // Its age; below the game server's running time for this seed, without the times it was stopped
     val since = s.sessionRunningSince
-    val session = s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0
-    add(Tile(d.session, t.duration(session), if (since != null) d.serverRunning else d.serverStopped, p.brandStart, null))
+    val ran = t.duration(s.sessionTimeMs + if (since != null) (now - since).coerceAtLeast(0) else 0)
+    val created = s.createdAt
+    add(
+      Tile(
+        d.session, if (created != null) t.age(now - created) else ran, d.serverTime(ran, since != null), p.brandStart, Icon.HOURGLASS,
+        tip = created?.let { d.madeOn(t.date(it)) },
+        // The game server's state (the icon alone), then how long it ran for this seed
+        pills = listOf(
+          if (since != null) TilePill(Icon.POWER, "", d.serverOn, p.ok) else TilePill(Icon.POWER, "", d.serverOff, p.muted),
+          TilePill(Icon.SERVER, ran, d.tipUptime, p.useful),
+        ),
+      )
+    )
   }
-  Section(
-    t.dashboard.overview, modifier,
-    subtitle = t.dashboard.overviewSubtitle(totals.players, t.number(totals.checked), t.number(totals.total)),
-  ) {
+  Section(t.dashboard.overview, modifier) {
     Grid(
       tiles.size, width, 160.dp, if (fillHeight) Modifier.weight(1f) else Modifier,
       gap = 12.dp, balanced = true, fillHeight = fillHeight,
@@ -111,12 +192,22 @@ private fun StatTile(tile: Tile, modifier: Modifier) {
       Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(tile.color.copy(alpha = 0.15f)),
       contentAlignment = Alignment.Center,
     ) {
-      if (tile.icon != null) DrawnIcon(tile.icon, tile.color, 16.dp) else Dot(tile.color, 10.dp)
+      DrawnIcon(tile.icon, tile.color, 16.dp)
     }
     Column {
       Txt(tile.label, size = 12.sp, color = p.muted, weight = FontWeight.Medium)
-      Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
-      Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 1)
+      val tip = tile.tip
+      if (tip != null) Tip(tip) { Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1) }
+      else Txt(tile.value, size = 22.sp, weight = FontWeight.Bold, maxLines = 1)
+      if (tile.pills.isEmpty()) {
+        Txt(tile.sub, size = 11.5.sp, color = p.muted, maxLines = 2)
+      } else {
+        // Its parts as pills, one below the other: the tiles of a row take the tallest one's height, measured from
+        // their content, which a wrapping row of pills would come short of (its last pill cut off)
+        Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          tile.pills.forEach { pill -> Tip(pill.tip) { Pill(pill.text, pill.color, pill.icon) } }
+        }
+      }
     }
   }
 }

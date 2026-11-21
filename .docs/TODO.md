@@ -785,35 +785,151 @@ The target of this project, phase by phase. Items within a phase are roughly in 
       diagrams, in the README (0.18.13: *Sessions and their game servers*)
 - Generation stays on one core (asked about): Archipelago's fill is single-threaded Python and has no option for more
 
-## Phase 19: Generating Like the Launcher
+## Phase 19: Generating, Keeping, Showing (done)
 
 *A seed that the Launcher generates generates here too (asked for after 0.18.13: a session that the Launcher
-generates didn't generate on the server, and an APWorld that loaded before was refused).*
+generates didn't generate on the server, and an APWorld that loaded before was refused); then a session's state kept
+in the database, and how the dashboard shows it. Renamed from "Generating Like the Launcher" with 0.19.15.*
 
-- [ ] Find out why first: the failed generation's log (its download, with the command, since 0.18.12) and the refused
+- [x] Find out why first (closed with 0.19.7): the failed generation's log (its download, with the command, since 0.18.12) and the refused
       APWorld's message. What differs from a Launcher: no packages installed while it runs (and no compilers since
       0.18.4), an empty `host.yaml` (Archipelago's defaults, as an untouched Launcher's, but nothing that asks for a
       file: a ROM, EnemizerCLI), every uploaded APWorld loaded at once (also tools such as the Universal Tracker),
-      release 0.6.8
-- [ ] An APWorld's Python packages installed on its upload (decided: not while it runs): an Administrator's upload
+      release 0.6.8, and Linux instead of Windows: file names are case-sensitive here, so an APWorld that imports
+      `.Items` for its `items.py` (or builds paths with `\`) works in the Launcher only
+    - Found for Skyward Sword HD (after 0.19.4, from its log): the APWorld wants the extracted ROM on the generating
+      machine; without it, it generates with fallbacks, and its fallback item pool has one *Progressive Loftwing*
+      where the logic needs two for *Spiral Charge*, so four locations can't be reached (`FillError` with
+      `accessibility: full`). A bug of the APWorld (one line: `"Progressive Loftwing": 2` in its fallback
+      `POOL_ITEM_COUNTS`); until it is fixed, `start_inventory: {Progressive Loftwing: 2}` in the YAML generates here.
+      Reproduced with the gateway's image, both ways tried
+    - The refused APWorld: not a fault here. Its version had been changed by hand (a `-patched` at its end)
+    - Found on the way (0.19.7): a playthrough Archipelago can't reduce left a session without its later spoiler
+      levels; they run through `archipelago/spoiler_run.py` now, which falls back to the unreduced spheres
+- [x] An APWorld's Python packages installed on its upload: not built, not needed (closed with 0.19.7; no refused
+      APWorld wanted a package, and the Launcher installs none for a zipped APWorld either). As it was planned
+      (decided: not while it runs): an Administrator's upload
       names the packages it wants, and after a confirmation the gateway installs them as ready-made wheels only
       (`--only-binary=:all:`, no build code run) into a folder of its own per release under `data/`, which
-      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. First to check: how
-      Archipelago 0.6.8 names a zipped APWorld's requirements (or only a world folder's)
-- [ ] Generator settings per session (decided: chosen settings, no raw `host.yaml`): in the new session's form the
-      spoiler level, race mode, plando options and skipping progression balancing, checked and passed as
-      `Generate.py`'s arguments (`--spoiler`, `--race`, `--plando`, `--skip_prog_balancing`); file and program paths
-      never come from the form
-- [ ] ROMs and tools for the worlds that need them (decided: kept encrypted in the database): an Administrator uploads
-      a base ROM (or a tool such as EnemizerCLI) for a world; stored encrypted (AES-GCM, its key from the
-      environment, not in the database, so a database dump alone doesn't hold them), never downloadable, the panel
-      shows only what is there (world, file name, checksum, who, when). Decrypted for one generation only into its
-      own temp directory, named in a `host.yaml` made for that generation, deleted after; a tool only one a world
-      names, run as the gateway's user. Our own dumps only: they aren't shared
-- [ ] A session from a seed generated elsewhere (asked for later): instead of the YAMLs, the `AP_<seed>.zip` that
+      `Generate.py` and MultiServer find; removing the APWorld removes what only it needed. Checked (0.19.1): Archipelago
+      0.6.8 reads a `requirements.txt` only from a world folder under `worlds/`, never from a zipped APWorld, so the
+      Launcher installs nothing for one either (such APWorlds bring their packages inside); needed only if a refused
+      APWorld turns out to want a package
+- [x] Back to the generation's bar (asked for, 0.19.1): *Generate and start* is at the form's end; the form shrinks
+      to the bar, which left the page far below it. The page goes back up to it
+- [x] It isn't stuck (asked for, 0.19.2): under the generation's bar how long it runs (each second) and what it does
+      (*working* with Generate.py's share of a core, *waiting for its turn*, *no response* after a minute without
+      CPU); the playthrough, not the fill, is named the longest part, and the bar's shares fit that
+- [x] The spoiler log in stages, for every generation (decided, 0.19.3): the seed with a spoiler without playthrough
+      (level 1) first, so the session starts; then in the background `--spoiler_only` with the same `--seed` and
+      inputs at level 2 (the playthrough: the spoiler page, the hints and the cheats wait for it) and level 3 (the
+      paths: the full log). Tried (0.19.2, the demo's 1,934 locations): the same seed name and every placement the
+      same at all three levels. Each later spoiler replaces the earlier one only when its placements match the
+      seed's (an APWorld with an unseeded random source would differ); race mode can't (it reseeds at random). The
+      inputs kept with the session (its YAMLs, the seed number, the APWorlds it was generated with), so a restart of
+      the gateway goes on. A pill with a working symbol on the session's top panel for everyone while it completes;
+      its state and the run's log in the Management panel for Session-Managers, Administrators and Support
+- [x] Generations at once (decided, 0.19.4): as many as the gateway has cores less one (the server has 4: three;
+      `GENERATIONS_AT_ONCE`). A new session waits only for a level-2 run; a level-3 run is paused for it (`SIGSTOP`,
+      `SIGCONT` once there is room again; ended and started over if pausing doesn't hold). The runs share the
+      release's `custom_worlds/` as it is while they run (not a set of its own each: Archipelago reads it from its own
+      directory); a change of the library waits for them. Memory: each needs its own (a big one gigabytes; a paused one
+      keeps its), a killed one says "probably out of memory"
+- [x] No *Spoiler log* button and no *Cheats* section before the spoiler log has its playthrough (asked for, 0.19.4)
+- [x] Generator settings per session (decided: chosen settings, no raw `host.yaml`; 0.19.5): in the new session's
+      form the plando modules the YAMLs may use, no progression balancing, and race mode, passed as `Generate.py`'s
+      arguments (`--plando` with the known names only, `--skip_prog_balancing`, `--race --spoiler 0`); file and
+      program paths never come from the form. A seed's settings are kept for its spoiler log's later levels; a race
+      has no spoiler log and no later levels. The spoiler level isn't one of them (decided: every generation goes
+      through all three, see above)
+- ROMs for the worlds that need them: undecided, thought about later. No ROM is uploaded to the server (said after
+      0.19.4; the earlier plan to keep them encrypted in the database is dropped)
+- [x] A session from a seed generated elsewhere (asked for later; 0.19.8, Administrators only, its files for the
+      players kept as they are: both decided): instead of the YAMLs, the `AP_<seed>.zip` that
       Archipelago's Launcher (or `Generate.py`) made, uploaded in the new session's form. Checked before anything of it
       runs, since a zip and the `.archipelago` in it come from outside: its size and file names (no paths out of it),
       only the files a seed has, the multidata read without running it (it is a pickle: only Archipelago's own
       classes allowed, as MultiServer does), its release against the gateway's, its games against the release's
       APWorlds; then its slots for the players and locks as with YAMLs (locks need the World Locks slot generated
       in, so a seed from elsewhere has none)
+- [x] What the tracker misses while it isn't connected (asked for; 0.19.9, as proposed: the gateway listens and
+      writes into the database, the tracker reads it there). As it was: it hears of joins, releases, goals and chat only
+      from the messages that come while its connection to the game server is up. Seen: a slot released early wasn't
+      in the live feed, and the player whose connection wakes a sleeping session isn't shown as online (the game
+      server is up and takes the player in about two seconds before the tracker is back). Proposed, to be decided:
+      the gateway, which starts every game server and is there whenever one runs, keeps the connection that listens
+      and writes what happens into the database; the tracker and the dashboard read it from there (so nothing is lost
+      over a tracker restart or a wake-up either). Smaller, and only narrowing the gap: the gateway tells the tracker
+      the moment a game server is up and lets no player in before the tracker is connected
+- [x] A session's state in the database (0.19.10, from the planning of the state panels): a snapshot of what its
+      dashboard shows, kept when the tracker's connection ends (the dashboard isn't empty while the game server
+      sleeps), the history replayed from the events instead of a file, finished sessions' archives in the database
+- [x] The dashboard's states and tiles (0.19.11, planned with the user): a slot's states in a new order (released
+      before or by hand after its goal > complete > goal > locked > online > idle > not started; the automatic
+      release at the goal counts as complete; "playing" becomes "online"), the times beside them (since complete,
+      released, goal; the last check), the Overview's tiles (Finished with its parts, Slots with online, Items, Links,
+      the Session's age) and "x of y checks done" in the top card
+- [x] The slot / player panels themselves (asked for; the cards stay, reworked step by step, each step its own PR so
+      it can be taken back): 0.19.12 checks and progression as two bars; 0.19.13 progression checks as the second
+      bar, received and sent as pills, the person header as pills; 0.19.14 nothing cut off, icons on the bars; 0.19.15
+      received and sent without totals (the players aren't to learn how much is missing), slots and done in one pill,
+      icons and pills in the Overview; 0.19.16 the Overview's pills as icons with a one-word tooltip, the game
+      server's uptime said as such; then 0.19.17 to 0.19.19 as items of their own (below). Closed with the phase; the
+      panels as floating windows are Phase 21
+- [x] Available checks per slot and person (asked for after 0.19.15; 0.19.17): a pill with how many of a slot's
+      locations can be checked now, by its world's logic with the items it has (as a Universal Tracker shows them),
+      summed on the person card. The logic exists only in a generated multiworld (the seed's `.archipelago` has the
+      placements, not the rules): a logic process generates the seed again from its kept inputs (as the spoiler levels
+      do), but only up to the fill (the worlds, their rules, events and locked items; where the items lie comes from
+      the seed), then answers. Measured on the server (10 slots, 2,868 locations, one core): 2.6 s and 195 MB up to the
+      fill against 15.7 s for the whole generation; counting every slot 0.27 s. Decided with the user:
+    - It runs while the session is played and stays twice as long as the game server's sleep setting; then it ends
+      (no CRIU: tried, it works, but needs rights close to root; rebuilding is fast enough)
+    - Its state in the top panel like the game server's (starting, running, stopped), with a note that the available
+      checks aren't known again until it runs completely
+    - The last counts kept in the database and shown while it doesn't run (as the last known ones)
+    - A button to build it again (Session-Manager and up), and its log (pages, search; Administrators only)
+    - The user's condition for more rights (a container of its own) doesn't apply: it needs none
+    - Not for: seeds uploaded from elsewhere (no YAMLs), race mode, sessions generated before 0.19.3; a slot whose
+      locations or events differ from the seed's gets no pill
+- [x] Deaths and traps on the slots too (asked for after 0.19.17; 0.19.18, with icons on the players' pills): as the Overview's *Links* tile counts them for the
+      session, each slot and person its own, by what it sent (the deaths it shared by DeathLink, the traps it sent by
+      TrapLink), not by what it received
+- [x] Cheatable locks (asked for after 0.19.18; 0.19.19): two cheats for a locked slot in the *Cheats* section.
+      *Check its key's location*: the location that holds its key is checked as if its player found it (the key goes to
+      the World Locks slot, the slot opens, the check counts for the world it is in); with the spoiler log's
+      placements. *Unlock*: its key is given to the World Locks slot (`/send`), no location checked. Logged and in the
+      live feed like every cheat, for whoever may cheat (Session-Managers, Administrators, support)
+
+## Phase 20: Hosted Minecraft Dig (planned)
+
+Decided on 2026-11-19: Randogeddon hosts the Minecraft server a *Minecraft Dig* slot needs, and its players reach it
+through Randogeddon Bridge only.
+
+- Known (the mod's README and its versions file, APWorld 0.0.11): Minecraft 1.19.4, Forge 1.19.4-45.3.15, Java 17,
+  the mod `aprandomizer-MC1.19.4-0.0.11.jar` (on the server only, never in the players' clients); one server per
+  patch file (`.apmcdig`, into the server's `APData`), and several players can join the same slot's server; in the
+  game a player connects it to Archipelago with `/connect <address> <port> <password>` and begins with `/start`;
+  the players need Minecraft Java 1.19.4
+- [ ] Find out first: whether the mod connects to the session's MultiServer by itself when both run on the server
+      (the `archipelago.json` the APWorld's client extracts for an auto-connect), so no player types `/connect` or
+      sees a password; how much memory a server needs, and how much the live machine has to spare
+- [ ] A container per Minecraft Dig slot, started by the gateway (not inside the gateway: a Java server with a
+      third-party mod, with memory of its own), from an image that has Java, Forge and the mod; the slot's `.apmcdig`
+      from the seed goes into it. The operator accepts Mojang's EULA once (a setting), or nothing is hosted
+- [ ] Started when needed, also for a hosted slot: it sleeps without players like a game server and starts when a
+      bridge opens its tunnel; the bridge's page says "starting" meanwhile (a Forge server takes a minute or more)
+- [ ] The tunnel: the bridge opens a port on 127.0.0.1 for the slot, and passes the Minecraft connection on in a
+      `wss://` connection to `<session-id>-dig.<domain>` (Traefik, 443), which the gateway passes on to the slot's
+      container. Logged in with the player's key as for a relay, so only the slot's players reach the server; no
+      Minecraft port is open to the internet. A relay of its own kind (binary, uncompressed, its own limits)
+- [ ] Who may join: Mojang's account check stays on; a whitelist from the session's players if the mod allows it (the
+      server sees every connection coming from the gateway, so limits and bans by address mean nothing)
+- [ ] The management panel: the Minecraft server's state and log beside the game server's, start and stop by hand
+
+## Phase 21: Floating Panels – Slot & Player (planned)
+
+*Asked for when Phase 19 closed: the slot and player panels as floating panels. What they float over, how they
+open, move and close, and what they show is to come from the user.*
+
+- [ ] Floating panels for a slot and for a player

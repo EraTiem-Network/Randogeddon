@@ -3,6 +3,8 @@ package net.eratiem.randogeddon.shared.i18n
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
+import net.eratiem.randogeddon.shared.LogicStatus
+import net.eratiem.randogeddon.shared.PlandoModule
 
 /** A session in the panel: its state and actions, its players, the past sessions, a new session's form. */
 interface SessionAdminTexts {
@@ -107,6 +109,10 @@ interface SessionAdminTexts {
   val automaticHintsCheck: String
   val keysEarly: String
   val cheatHints: String
+  val plando: String
+  fun plandoModule(module: PlandoModule): String
+  val skipBalancing: String
+  val raceMode: String
   val hintCost: String
   val pointsPerCheck: String
   val release: String
@@ -118,6 +124,31 @@ interface SessionAdminTexts {
   val generateAndStart: String
   val generatesSeed: String
   val generatesInBackground: String
+  val spoilerSection: String
+  val spoilerSectionSubtitle: String
+  fun spoilerLevel(level: Int): String
+  fun spoilerWorking(level: Int): String
+  val spoilerWaiting: String
+  val spoilerPaused: String
+  fun spoilerStopped(level: Int, why: String): String
+  val spoilerRetry: String
+  /** The session's logic: its state, built again, its log (Administrators). */
+  val logicSection: String
+  val logicSectionSubtitle: String
+  fun logicState(status: LogicStatus, problem: String?): String
+  val logicRebuild: String
+  val useSeed: String
+  val stepSeed: String
+  val seedChecking: String
+  fun seedFound(name: String, version: String, slots: Int, files: Int): String
+  val seedNotes: String
+  val seedNoSpoiler: String
+  val startWithSeed: String
+  fun generationTime(time: String): String
+  val generationWorking: String
+  fun generationWorkingCpu(cpu: Int): String
+  val generationWaitingTurn: String
+  fun generationQuiet(minutes: Int): String
   val cancelGeneration: String
   val generationCancelled: String
   val generationLog: String
@@ -261,6 +292,15 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatic hints"
   override val keysEarly = "Keys early"
   override val cheatHints = "Cheat hints"
+  override val plando = "YAMLs may plan"
+  override fun plandoModule(module: PlandoModule) = when (module) {
+    PlandoModule.BOSSES -> "bosses"
+    PlandoModule.CONNECTIONS -> "connections"
+    PlandoModule.TEXTS -> "texts"
+    PlandoModule.ITEMS -> "items"
+  }
+  override val skipBalancing = "No progression balancing"
+  override val raceMode = "Race mode"
   override val hintCost = "Hint cost %"
   override val pointsPerCheck = "Points per check"
   override val release = "Release"
@@ -273,6 +313,42 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val generatesSeed = "Archipelago generates the seed; that can take a minute."
   override val generatesInBackground =
     "It goes on without this page: you can close it, and find it here again until it is done."
+  override fun generationTime(time: String) = "running for $time"
+  override val spoilerSection = "Spoiler log"
+  override val spoilerSectionSubtitle = "completed in the background, after the seed"
+  override fun spoilerLevel(level: Int) = when (level) {
+    1 -> "Level 1 of 3: the seed's spoiler log, without the playthrough"
+    2 -> "Level 2 of 3: with the playthrough (the spoiler log, the hints and the cheats are there)"
+    else -> "Level $level of 3: complete"
+  }
+  override fun spoilerWorking(level: Int) =
+    if (level == 2) "working out the playthrough (level 2)" else "working out the paths to every item (level $level)"
+  override val spoilerWaiting = "waiting for its turn (a new session's generation goes first)"
+  override val spoilerPaused = "paused: a new session's generation goes first; it goes on after, where it was"
+  override fun spoilerStopped(level: Int, why: String) = "Stays at level $level: $why"
+  override val spoilerRetry = "Try again"
+  override val logicSection = "Logic"
+  override val logicSectionSubtitle = "counts each slot's available checks"
+  override fun logicState(status: LogicStatus, problem: String?) = when (status) {
+    LogicStatus.STARTING -> "Being built: the seed's worlds generated again up to the fill (seconds, for a big seed a minute)"
+    LogicStatus.RUNNING -> "Running: it counts what each slot can check now, whenever its items or checks change"
+    LogicStatus.STOPPED -> "Not running: it starts with the game server and stays as long again after it sleeps"
+    LogicStatus.FAILED -> "Couldn't be built: ${problem ?: "see its log"}"
+  }
+  override val logicRebuild = "Build again"
+  override val useSeed = "Use a generated seed…"
+  override val stepSeed = "1. The seed"
+  override val seedChecking = "Checking the seed…"
+  override fun seedFound(name: String, version: String, slots: Int, files: Int) =
+    "Seed $name, generated with Archipelago $version: $slots slots, $files files for the players"
+  override val seedNotes = "A seed generated elsewhere is used as it is: nothing is generated, and it has no locks. " +
+    "Its files for the players come from whoever generated it."
+  override val seedNoSpoiler = "It brings no spoiler log, so the session has no spoiler page and no cheats that need one."
+  override val startWithSeed = "Start with this seed"
+  override val generationWorking = "working"
+  override fun generationWorkingCpu(cpu: Int) = "working · $cpu % CPU"
+  override val generationWaitingTurn = "waiting for its turn"
+  override fun generationQuiet(minutes: Int) = "no response for ${if (minutes < 1) "a minute" else "$minutes min"}"
   override val cancelGeneration = "Cancel"
   override val generationCancelled = "The generation was cancelled; the ID is free again."
   override val generationLog = "Generate.py's output, newest on top"
@@ -293,11 +369,11 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     GenerationStage.RULES -> "Working out the rules…"
     GenerationStage.PLANDO -> "Placing the planned items…"
     GenerationStage.PREFILL -> "Placing the worlds' own items…"
-    GenerationStage.FILLING -> "Filling the items (this takes the longest)…"
+    GenerationStage.FILLING -> "Filling the items…"
     GenerationStage.BALANCING -> "Balancing the progression…"
     GenerationStage.PREOUTPUT -> "Getting ready to write…"
     GenerationStage.OUTPUT -> "Writing the files…"
-    GenerationStage.PLAYTHROUGH -> "Working out the playthrough…"
+    GenerationStage.PLAYTHROUGH -> "Working out the playthrough (in a big multiworld the longest part; Archipelago says nothing meanwhile)…"
     GenerationStage.ARCHIVE -> "Packing the seed…"
     GenerationStage.DONE -> "The seed is done…"
     GenerationStage.SAVING -> "Setting up the slots, players and passwords…"
@@ -440,6 +516,15 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val automaticHintsCheck = "Automatische Hinweise"
   override val keysEarly = "Schlüssel früh"
   override val cheatHints = "Cheat-Hinweise"
+  override val plando = "YAMLs dürfen planen"
+  override fun plandoModule(module: PlandoModule) = when (module) {
+    PlandoModule.BOSSES -> "Bosse"
+    PlandoModule.CONNECTIONS -> "Verbindungen"
+    PlandoModule.TEXTS -> "Texte"
+    PlandoModule.ITEMS -> "Items"
+  }
+  override val skipBalancing = "Ohne Progression-Balancing"
+  override val raceMode = "Race-Modus"
   override val hintCost = "Hinweiskosten %"
   override val pointsPerCheck = "Punkte pro Check"
   override val release = "Release"
@@ -452,6 +537,42 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val generatesSeed = "Archipelago generiert den Seed; das kann eine Minute dauern."
   override val generatesInBackground =
     "Es geht ohne diese Seite weiter: Du kannst sie schließen und findest es hier wieder, bis es fertig ist."
+  override fun generationTime(time: String) = "läuft seit $time"
+  override val spoilerSection = "Spoiler-Log"
+  override val spoilerSectionSubtitle = "im Hintergrund vervollständigt, nach dem Seed"
+  override fun spoilerLevel(level: Int) = when (level) {
+    1 -> "Stufe 1 von 3: das Spoiler-Log des Seeds, ohne Lösungsweg"
+    2 -> "Stufe 2 von 3: mit Lösungsweg (Spoiler-Log, Hinweise und Cheats sind da)"
+    else -> "Stufe $level von 3: vollständig"
+  }
+  override fun spoilerWorking(level: Int) =
+    if (level == 2) "berechnet den Lösungsweg (Stufe 2)" else "berechnet die Wege zu jedem Item (Stufe $level)"
+  override val spoilerWaiting = "wartet, bis es dran ist (die Generierung einer neuen Session geht vor)"
+  override val spoilerPaused = "pausiert: Die Generierung einer neuen Session geht vor; danach geht es dort weiter, wo es war"
+  override fun spoilerStopped(level: Int, why: String) = "Bleibt auf Stufe $level: $why"
+  override val spoilerRetry = "Erneut versuchen"
+  override val logicSection = "Logik"
+  override val logicSectionSubtitle = "zählt die verfügbaren Checks jedes Slots"
+  override fun logicState(status: LogicStatus, problem: String?) = when (status) {
+    LogicStatus.STARTING -> "Wird aufgebaut: Die Welten des Seeds werden bis vor dem Verteilen neu generiert (Sekunden, bei einem großen Seed eine Minute)"
+    LogicStatus.RUNNING -> "Läuft: Sie zählt, was jeder Slot jetzt checken kann, sobald sich seine Items oder Checks ändern"
+    LogicStatus.STOPPED -> "Läuft nicht: Sie startet mit dem Spielserver und bleibt noch einmal so lange, nachdem er schläft"
+    LogicStatus.FAILED -> "Konnte nicht aufgebaut werden: ${problem ?: "siehe ihr Log"}"
+  }
+  override val logicRebuild = "Neu aufbauen"
+  override val useSeed = "Generierten Seed verwenden…"
+  override val stepSeed = "1. Der Seed"
+  override val seedChecking = "Seed wird geprüft…"
+  override fun seedFound(name: String, version: String, slots: Int, files: Int) =
+    "Seed $name, generiert mit Archipelago $version: $slots Slots, $files Dateien für die Spieler"
+  override val seedNotes = "Ein woanders generierter Seed wird so verwendet, wie er ist: nichts wird generiert, und er hat " +
+    "keine Sperren. Seine Dateien für die Spieler stammen von dem, der ihn generiert hat."
+  override val seedNoSpoiler = "Er bringt kein Spoiler-Log mit, die Session hat also keine Spoiler-Seite und keine Cheats, die eins brauchen."
+  override val startWithSeed = "Mit diesem Seed starten"
+  override val generationWorking = "arbeitet"
+  override fun generationWorkingCpu(cpu: Int) = "arbeitet · $cpu % CPU"
+  override val generationWaitingTurn = "wartet, bis es dran ist"
+  override fun generationQuiet(minutes: Int) = "keine Reaktion seit ${if (minutes < 1) "einer Minute" else "$minutes min"}"
   override val cancelGeneration = "Abbrechen"
   override val generationCancelled = "Die Generierung wurde abgebrochen; die ID ist wieder frei."
   override val generationLog = "Ausgabe von Generate.py, neueste oben"
@@ -472,11 +593,11 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     GenerationStage.RULES -> "Berechnet die Regeln…"
     GenerationStage.PLANDO -> "Platziert die geplanten Items…"
     GenerationStage.PREFILL -> "Platziert die eigenen Items der Welten…"
-    GenerationStage.FILLING -> "Verteilt die Items (das dauert am längsten)…"
+    GenerationStage.FILLING -> "Verteilt die Items…"
     GenerationStage.BALANCING -> "Balanciert die Progression…"
     GenerationStage.PREOUTPUT -> "Bereitet das Schreiben vor…"
     GenerationStage.OUTPUT -> "Schreibt die Dateien…"
-    GenerationStage.PLAYTHROUGH -> "Berechnet den Lösungsweg…"
+    GenerationStage.PLAYTHROUGH -> "Berechnet den Lösungsweg (in einer großen Multiworld der längste Teil; Archipelago meldet währenddessen nichts)…"
     GenerationStage.ARCHIVE -> "Packt den Seed…"
     GenerationStage.DONE -> "Der Seed ist fertig…"
     GenerationStage.SAVING -> "Richtet Slots, Spieler und Passwörter ein…"

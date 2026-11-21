@@ -87,9 +87,11 @@ class BridgeTest {
     val dir = Files.createTempDirectory("bridge")
     assertNull(bridgeDownloads(dir).version)
     dir.resolve("VERSION").writeText("0.12.2\n")
-    dir.resolve("randogeddon-bridge-windows-amd64.exe").writeText("exe")
+    dir.resolve("randogeddon-bridge-0.12.2-windows-amd64.exe").writeText("exe")
+    // One from before 0.19.7, without its version in the name
     dir.resolve("randogeddon-bridge-linux-arm64").writeText("elf")
     dir.resolve("notes.txt").writeText("not a build")
+    dir.resolve("randogeddon-bridge-notaversion-linux-amd64").writeText("not a build either")
     val offered = bridgeDownloads(dir)
     assertEquals("0.12.2", offered.version)
     assertEquals(listOf("linux" to "arm64", "windows" to "amd64"), offered.downloads.map { it.os to it.arch })
@@ -97,11 +99,12 @@ class BridgeTest {
     // Their checksums as sha256sum writes them (of "elf" and "exe"); nothing else of the directory
     assertEquals(64, bridgeChecksums(dir).lines().first().substringBefore("  ").length)
     assertEquals(
-      listOf("randogeddon-bridge-linux-arm64", "randogeddon-bridge-windows-amd64.exe"),
+      listOf("randogeddon-bridge-linux-arm64", "randogeddon-bridge-0.12.2-windows-amd64.exe"),
       bridgeChecksums(dir).trim().lines().map { it.substringAfter("  ") },
     )
     val exe = java.security.MessageDigest.getInstance("SHA-256").digest("exe".toByteArray()).joinToString("") { "%02x".format(it) }
-    assertEquals("$exe  randogeddon-bridge-windows-amd64.exe", bridgeChecksums(dir).trim().lines().last())
+    assertEquals("$exe  randogeddon-bridge-0.12.2-windows-amd64.exe", bridgeChecksums(dir).trim().lines().last())
+    assertEquals("randogeddon-bridge-0.12.2-windows-amd64.exe", offered.downloads.last().file)
   }
 
   @Test

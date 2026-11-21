@@ -180,7 +180,9 @@ private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler
     }
     Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
   }
-  CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) })
+  SpoilerRunSection(session.id, "support")
+  // Not before the spoiler log has its playthrough: the hints and cheats need it
+  if (session.spoilerReady) CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) })
   // Who watches, and the share link: support hands them out as the players do
   WatchersSection(session.id)
 }
@@ -219,8 +221,11 @@ private fun SelectedSession(
     server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
   )
   PeopleSection(id)
+  SpoilerRunSection(id, "manage")
+  LogicSection(id, administrator)
   PatchFilesSection(id)
-  CheatSection(id, server, cache)
+  // Not before the spoiler log has its playthrough: the hints and cheats need it
+  if (overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false) CheatSection(id, server, cache)
   ConsoleSection(onSend = { line -> run { repository.command(line) } })
   LogSection(repository.log)
 }

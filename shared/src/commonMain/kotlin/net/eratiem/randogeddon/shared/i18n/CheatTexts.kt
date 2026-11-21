@@ -34,6 +34,10 @@ interface CheatTexts {
   fun incoming(item: String, location: String, world: String): String
   val noIncoming: String
   val noPlacements: String
+  /** The lock cheats: no locked slot; where its key lies (or that the spoiler log doesn't say). */
+  val noLocked: String
+  fun keyAt(location: String, world: String): String
+  val keyUnknown: String
   /** After it was sent: `Done: gave Mantis Claw to Alice-HK`. */
   fun done(action: CheatAction, slot: String, value: String?): String
   fun logTitle(support: Boolean): String
@@ -51,6 +55,8 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.COLLECT -> "Collect"
     CheatAction.HINT -> "Hint an item"
     CheatAction.HINT_LOCATION -> "Hint a location"
+    CheatAction.KEY_LOCATION -> "Check its key's location"
+    CheatAction.UNLOCK -> "Unlock"
   }
   override fun tip(action: CheatAction) = when (action) {
     CheatAction.ITEM -> "The slot gets the item from the server, as if it was found."
@@ -60,6 +66,9 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.COLLECT -> "The slot gets its items that are still in other slots."
     CheatAction.HINT -> "A free hint: where the slot's item is."
     CheatAction.HINT_LOCATION -> "A free hint: what is at the slot's location."
+    CheatAction.KEY_LOCATION -> "A locked slot: the location that holds its key is checked, as if its player found it. " +
+      "The key opens the slot; the check counts for the world it is in."
+    CheatAction.UNLOCK -> "A locked slot: its key is given to the World Locks slot, and the slot opens. No location is checked."
   }
   override val support = "Support"
   override val cheats = "Cheats"
@@ -91,6 +100,9 @@ internal object EnglishCheats : CheatTexts {
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "None of its items is left in other worlds"
   override val noPlacements = "The spoiler log doesn't say where items are"
+  override val noLocked = "No slot is locked"
+  override fun keyAt(location: String, world: String) = "Its key is at $location (in $world)"
+  override val keyUnknown = "The spoiler log doesn't say where its key is (or it was checked)"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "gave $value to $slot"
     CheatAction.LOCATION -> "checked $value in $slot"
@@ -98,6 +110,8 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.COLLECT -> "collected for $slot"
     CheatAction.HINT -> "hinted $value for $slot"
     CheatAction.HINT_LOCATION -> "hinted what is at $value in $slot"
+    CheatAction.KEY_LOCATION -> "checked the key to $slot at $value"
+    CheatAction.UNLOCK -> "unlocked $slot"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Done: ${what(action, slot, value)}"
   override fun logTitle(support: Boolean) = if (support) "Help and cheats of this session" else "Cheats of this session"
@@ -119,6 +133,8 @@ internal object GermanCheats : CheatTexts {
     CheatAction.COLLECT -> "Einsammeln"
     CheatAction.HINT -> "Hinweis auf ein Item"
     CheatAction.HINT_LOCATION -> "Hinweis auf einen Ort"
+    CheatAction.KEY_LOCATION -> "Ort seines Schlüssels checken"
+    CheatAction.UNLOCK -> "Entsperren"
   }
   override fun tip(action: CheatAction) = when (action) {
     CheatAction.ITEM -> "Der Slot bekommt das Item vom Server, als wäre es gefunden worden."
@@ -128,6 +144,9 @@ internal object GermanCheats : CheatTexts {
     CheatAction.COLLECT -> "Der Slot bekommt seine Items, die noch in anderen Slots liegen."
     CheatAction.HINT -> "Ein Gratis-Hinweis: wo das Item des Slots liegt."
     CheatAction.HINT_LOCATION -> "Ein Gratis-Hinweis: was am Ort des Slots liegt."
+    CheatAction.KEY_LOCATION -> "Ein gesperrter Slot: Der Ort, an dem sein Schlüssel liegt, wird gecheckt, als hätte ihn sein " +
+      "Spieler gefunden. Der Schlüssel öffnet den Slot; der Check zählt für die Welt, in der er liegt."
+    CheatAction.UNLOCK -> "Ein gesperrter Slot: Sein Schlüssel geht an den World-Locks-Slot, und der Slot öffnet sich. Kein Ort wird gecheckt."
   }
   override val support = "Support"
   override val cheats = "Cheats"
@@ -160,6 +179,9 @@ internal object GermanCheats : CheatTexts {
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "Keins seiner Items liegt noch in anderen Welten"
   override val noPlacements = "Das Spoiler-Log sagt nicht, wo die Items liegen"
+  override val noLocked = "Kein Slot ist gesperrt"
+  override fun keyAt(location: String, world: String) = "Sein Schlüssel liegt bei $location (in $world)"
+  override val keyUnknown = "Das Spoiler-Log sagt nicht, wo sein Schlüssel liegt (oder er wurde gecheckt)"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "$slot hat $value bekommen"
     CheatAction.LOCATION -> "$value in $slot gecheckt"
@@ -167,6 +189,8 @@ internal object GermanCheats : CheatTexts {
     CheatAction.COLLECT -> "für $slot eingesammelt"
     CheatAction.HINT -> "Hinweis auf $value für $slot"
     CheatAction.HINT_LOCATION -> "Hinweis, was bei $value in $slot liegt"
+    CheatAction.KEY_LOCATION -> "Schlüssel zu $slot bei $value gecheckt"
+    CheatAction.UNLOCK -> "$slot entsperrt"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Erledigt: ${what(action, slot, value)}"
   override fun logTitle(support: Boolean) = if (support) "Hilfe und Cheats dieser Session" else "Cheats dieser Session"

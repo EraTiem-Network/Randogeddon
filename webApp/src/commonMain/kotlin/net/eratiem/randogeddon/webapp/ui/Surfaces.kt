@@ -1,7 +1,12 @@
 package net.eratiem.randogeddon.webapp.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -10,11 +15,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -27,9 +34,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -37,6 +49,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -155,16 +169,41 @@ fun Section(
 ) {
   val p = LocalPalette.current
   Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Row(
+    // The title with its actions at the right; where they don't fit beside the whole title, the actions go below it
+    // (beside it they squeezed it, on a phone "Hints" into two lines)
+    Layout(
+      contents = listOf(
+        { Txt(title, size = 17.sp, weight = FontWeight.Bold, maxLines = 1) },
+        { if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1) },
+        { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
+      ),
       Modifier.heightIn(min = 34.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Column(Modifier.weight(1f)) {
-        Txt(title, size = 17.sp, weight = FontWeight.Bold)
-        if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1)
+    ) { (titles, subtitles, actionRows), constraints ->
+      val loose = constraints.copy(minWidth = 0, minHeight = 0)
+      val gap = 8.dp.roundToPx()
+      val row = actionRows.first().measure(loose)
+      val needed = titles.first().maxIntrinsicWidth(Constraints.Infinity)
+      val width = if (constraints.hasBoundedWidth) constraints.maxWidth else needed + gap + row.width
+      val below = row.width > 0 && needed + gap + row.width > width
+      val textWidth = if (below) width else (width - row.width - gap).coerceAtLeast(0)
+      val heading = titles.first().measure(loose.copy(maxWidth = textWidth))
+      val sub = subtitles.firstOrNull()?.measure(loose.copy(maxWidth = textWidth))
+      val text = heading.height + (sub?.height ?: 0)
+      if (below) {
+        val top = maxOf(text, constraints.minHeight)
+        layout(width, top + gap + row.height) {
+          heading.place(0, (top - text) / 2)
+          sub?.place(0, (top - text) / 2 + heading.height)
+          row.place(0, top + gap)
+        }
+      } else {
+        val height = maxOf(text, row.height, constraints.minHeight)
+        layout(width, height) {
+          heading.place(0, (height - text) / 2)
+          sub?.place(0, (height - text) / 2 + heading.height)
+          row.place(width - row.width, (height - row.height) / 2)
+        }
       }
-      actions()
     }
     content()
   }
@@ -195,6 +234,31 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 8.d
   }
 }
 
+/**
+ * A labelled bar: [label] at the start (as wide as [labelWidth], so bars below each other line up), or [icon] with
+ * [label] as its tooltip; the bar, and [value] at the end. [fraction] `null`: no bar, only [value].
+ */
+@Composable
+fun LabeledBar(
+  label: String,
+  fraction: Float?,
+  value: String,
+  modifier: Modifier = Modifier,
+  labelWidth: Dp = 112.dp,
+  height: Dp = 5.dp,
+  dimmed: Boolean = false,
+  icon: Icon? = null,
+) {
+  val p = LocalPalette.current
+  Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (icon != null) Tip(label) { DrawnIcon(icon, p.muted, 12.dp) }
+    else Txt(label, size = 11.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.width(labelWidth))
+    if (fraction != null) ProgressBar(fraction, Modifier.weight(1f), height = height, dimmed = dimmed)
+    else Spacer(Modifier.weight(1f))
+    Txt(value, size = 11.5.sp, color = p.muted, maxLines = 1)
+  }
+}
+
 @Composable
 fun Dot(color: Color, size: Dp = 8.dp) {
   Box(Modifier.size(size).clip(CircleShape).background(color))
@@ -209,7 +273,8 @@ fun Pill(text: String, color: Color, icon: Icon? = null) {
     horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     if (icon != null) DrawnIcon(icon, color, 11.dp)
-    Txt(text, size = 11.5.sp, color = color, weight = FontWeight.SemiBold, maxLines = 1)
+    // Without a text: the icon alone
+    if (text.isNotEmpty()) Txt(text, size = 11.5.sp, color = color, weight = FontWeight.SemiBold, maxLines = 1)
   }
 }
 
@@ -262,4 +327,15 @@ fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspe
 @Composable
 fun SmallHeading(text: String, modifier: Modifier = Modifier) {
   Txt(text, size = 12.5.sp, weight = FontWeight.SemiBold, color = LocalPalette.current.muted, modifier = modifier)
+}
+
+/** Something works meanwhile: an arc going round, in [color]. */
+@Composable
+fun Working(color: Color, size: Dp = 12.dp) {
+  val turn by rememberInfiniteTransition().animateFloat(0f, 360f, infiniteRepeatable(tween(1000, easing = LinearEasing)))
+  Canvas(Modifier.size(size).graphicsLayer { rotationZ = turn }) {
+    val stroke = 2.dp.toPx()
+    drawArc(color, 0f, 270f, useCenter = false, style = Stroke(stroke, cap = StrokeCap.Round),
+      topLeft = Offset(stroke / 2, stroke / 2), size = Size(this.size.width - stroke, this.size.height - stroke))
+  }
 }

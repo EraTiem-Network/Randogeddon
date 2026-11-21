@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.server.session
 
 import kotlinx.serialization.json.jsonObject
+import net.eratiem.randogeddon.database.SessionSnapshotStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.server.util.logger
@@ -11,26 +12,26 @@ import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
-import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
-import kotlin.io.path.writeText
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /**
- * The tracker's files of each session, `sessions/<id>/` in its state directory: the history of the live tracker
- * (`tracker.json`), and once the session finished, what the dashboard showed then (`archive.json`: the summary with
- * every slot's details). Reopening drops the archive; the history goes on from where it was.
+ * What a finished session's dashboard showed when it finished (its archive: the summary with every slot's details),
+ * kept in the database as the session's final snapshot ([SessionSnapshotStore]), and all of them in memory, read at
+ * the tracker's start ([load]). Reopening makes it live again. Until 0.19.10 they were files in the tracker's state
+ * directory (`sessions/<id>/archive.json`, next to the live tracker's history `tracker.json`): [load] brings those in
+ * once and leaves them where they are.
  */
 @Single
-class Archives(private val config: TrackerConfig) {
+class Archives(private val config: TrackerConfig, private val snapshots: SessionSnapshotStore) {
   private val cache = ConcurrentHashMap<String, ArchivedSession>()
 
   fun dir(id: String): Path {
@@ -38,34 +39,52 @@ class Archives(private val config: TrackerConfig) {
     return config.stateDir.resolve("sessions").resolve(id)
   }
 
-  /** The live tracker's history of session [id]. */
+  /** The live tracker's history file of session [id] from before 0.19.10 (imported once, see `TrackerService`). */
   fun history(id: String): Path = dir(id).resolve("tracker.json")
 
-  fun write(id: String, archived: ArchivedSession) {
-    val file = dir(id).createDirectories().resolve("archive.json")
-    val tmp = Files.createTempFile(file.parent, ".archive-", ".json")
-    tmp.writeText(ApiJson.encodeToString(ArchivedSession.serializer(), archived))
-    Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+  /** Every archive, into memory; the files from before into the database first (those it has none of). */
+  suspend fun load() {
+    val kept = snapshots.finals()
+    importFiles(kept.keys)
+    for ((id, json) in snapshots.finals()) {
+      runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), json) }
+        .onSuccess { cache[id] = it }
+        .onFailure { logger.warn("Could not read {}'s archive: {}", id, it.message) }
+    }
+    logger.info("{} archived sessions", cache.size)
+  }
+
+  private suspend fun importFiles(kept: Set<String>) {
+    val root = config.stateDir.resolve("sessions")
+    if (!root.isDirectory()) return
+    for (dir in root.listDirectoryEntries().filter { it.isDirectory() && SessionIds.valid(it.name) && it.name !in kept }) {
+      val file = dir.resolve("archive.json").takeIf { it.exists() } ?: continue
+      runCatching {
+        val text = file.readText()
+        ApiJson.decodeFromString(ArchivedSession.serializer(), text)
+        snapshots.saveFinal(dir.name, file.getLastModifiedTime().toMillis(), text)
+      }.onSuccess { logger.info("Imported {}'s archive into the database", dir.name) }
+        .onFailure { logger.warn("Could not import {}: {}", file, it.message) }
+    }
+  }
+
+  suspend fun write(id: String, archived: ArchivedSession) {
+    snapshots.saveFinal(id, System.currentTimeMillis(), ApiJson.encodeToString(ArchivedSession.serializer(), archived))
     cache[id] = archived
   }
 
-  fun read(id: String): ArchivedSession? {
-    if (!SessionIds.valid(id)) return null
-    cache[id]?.let { return it }
-    val file = dir(id).resolve("archive.json").takeIf { it.exists() } ?: return null
-    return runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), file.readText()) }.getOrNull()
-      ?.also { cache[id] = it }
+  fun read(id: String): ArchivedSession? = cache[id]
+
+  /** The session is reopened: it is live again (its archive is its last snapshot until the tracker writes one). */
+  suspend fun forget(id: String) {
+    snapshots.reopen(id)
+    cache.remove(id)
   }
 
-  /** The session is reopened: it is live again. */
-  fun forget(id: String) {
+  /** The session is deleted: its snapshot or archive goes, and its files of before. */
+  suspend fun delete(id: String) {
     cache.remove(id)
-    if (SessionIds.valid(id)) dir(id).resolve("archive.json").deleteIfExists()
-  }
-
-  /** The session is deleted: its history and archive go. */
-  fun delete(id: String) {
-    cache.remove(id)
+    snapshots.delete(id)
     if (SessionIds.valid(id)) dir(id).toFile().deleteRecursively()
   }
 

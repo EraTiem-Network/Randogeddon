@@ -16,10 +16,14 @@ private val SPHERE_START = Regex("^(\\d+): \\{$")
  * and needs. Archipelago writes it as `Playthrough:`, then `<n>: {`, one `Location (Slot): Item (Slot)` per line, `}`.
  * Without that section (an older format, or generated without a playthrough) only the text is there.
  */
+internal const val PLAYTHROUGH_NOT_REDUCED = "Randogeddon: the playthrough is not reduced to the required items"
+
 internal fun parseSpoiler(seed: String, text: String): Spoiler {
   val lines = text.lines()
   val start = lines.indexOfFirst { it.trim() == "Playthrough:" }
   if (start < 0) return Spoiler(seed, lines = lines.size)
+  // The gateway's spoiler_run.py says so in the log's last line when Archipelago couldn't reduce the playthrough
+  val unreduced = lines.takeLast(3).any { it.trim() == PLAYTHROUGH_NOT_REDUCED }
   val spheres = mutableListOf<Sphere>()
   var number: Int? = null
   var entries = mutableListOf<String>()
@@ -43,7 +47,7 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
       entries += t
     }
   }
-  return Spoiler(seed, spheres, lines.size)
+  return Spoiler(seed, spheres, lines.size, unreduced)
 }
 
 /** A session's spoiler log as it was read: its [text], line by line ([lines]), and its playthrough ([spoiler]). */
@@ -180,14 +184,21 @@ class SpoilerSearches {
   }
 }
 
-/** The spoiler logs of the sessions, from the gateway (it reads them from the seeds' zips), kept once read. */
+/**
+ * The spoiler logs of the sessions, from the gateway (the seed's, or the one completed after it), kept once read: read
+ * again when the gateway has completed a higher level of it.
+ */
 @Single
-class Spoilers(private val gameServer: GameServerClient) {
-  private val cache = ConcurrentHashMap<String, SpoilerLog>()
+class Spoilers(private val gameServer: GameServerClient, private val sessions: LiveSessions) {
+  private val cache = ConcurrentHashMap<String, Pair<Int, SpoilerLog>>()
 
   /** Session [id]'s spoiler log; [seed]: its seed's name. */
-  suspend fun of(id: String, seed: String): SpoilerLog? =
-    cache[id] ?: gameServer.spoiler(id)?.let { SpoilerLog(seed, it) }?.also { cache[id] = it }
+  suspend fun of(id: String, seed: String): SpoilerLog? {
+    // Complete (3), or how far the gateway is with it
+    val level = sessions.get(id)?.server?.spoiler?.level ?: 3
+    cache[id]?.takeIf { it.first == level }?.let { return it.second }
+    return gameServer.spoiler(id)?.let { SpoilerLog(seed, it) }?.also { cache[id] = level to it }
+  }
 
   fun forget(id: String) {
     cache.remove(id)

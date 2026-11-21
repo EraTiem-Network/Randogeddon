@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -111,7 +112,10 @@ fun PersonDialog(
       }) { available ->
         val twoColumns = available >= 760.dp
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-          ProgressBar((person.percent / 100).toFloat())
+          Bars(Progress.sum(worlds), height = 8.dp)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ProgressPills(Progress.sum(worlds))
+          }
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Fact(t.dialogs.played, t.duration(played))
             Fact(t.dialogs.goals, "${person.goals} / ${worlds.size}", if (person.goals > 0) p.ok else p.text)
@@ -136,7 +140,7 @@ fun PersonDialog(
                       size = 11.5.sp, color = p.muted, maxLines = 1,
                     )
                     Spacer(Modifier.height(4.dp))
-                    ProgressBar((w.percent / 100).toFloat(), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
+                    Bars(Progress.of(w), height = 4.dp, dimmed = w.status == PlayerStatus.LOCKED)
                   }
                 }
               }

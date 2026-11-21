@@ -199,3 +199,29 @@ object CheatLogTable : Table("cheat_log") {
   val value = varchar("value", 255).nullable()
   override val primaryKey = PrimaryKey(id)
 }
+
+/**
+ * What happens on a session's game server, as the gateway hears it (V24): [kind] `packet` with the Archipelago
+ * packet as JSON, or `start` and `stop` of the game server. In their order ([id]); by the session's public ID.
+ */
+object SessionEventsTable : Table("session_events") {
+  val id = long("id").autoIncrement()
+  val session = varchar("session", 40)
+  val atMs = long("at_ms")
+  val kind = varchar("kind", 8)
+  val packet = text("packet")
+  override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * What a session's dashboard shows, kept by the tracker (V25): while it runs the last it knew, once it finished its
+ * archive ([final]); and once the tracker's history file from before ([baseline]). By the session's public ID.
+ */
+object SessionSnapshotsTable : Table("session_snapshots") {
+  val session = varchar("session", 40)
+  val atMs = long("at_ms")
+  val final = bool("final").default(false)
+  val snapshot = text("snapshot").nullable()
+  val baseline = text("baseline").nullable()
+  override val primaryKey = PrimaryKey(session)
+}

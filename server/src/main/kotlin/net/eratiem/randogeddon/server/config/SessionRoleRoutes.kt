@@ -21,6 +21,7 @@ import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.shared.AddPersonRequest
 import net.eratiem.randogeddon.shared.CreateSessionRequest
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InviteRequest
 import net.eratiem.randogeddon.shared.Problem
@@ -46,6 +47,12 @@ fun Route.newSessionRoutes(admin: SessionAdmin, people: SessionPeopleService) {
     }
     // The slots of the uploaded YAMLs, before the players are assigned; games the release lacks are problems
     post("/inspect") { call.respond(admin.inspect(call.receive<InspectRequest>())) }
+    // A seed generated elsewhere (Administrators): checked by the gateway and kept there for the session to come
+    post("/seed") { gatewayCall { call.respond(admin.takeSeed(call.receive<SeedUpload>(), call.actor)) } }
+    delete("/seed/{token}") {
+      admin.dropSeed(call.parameters["token"].orEmpty(), call.actor)
+      call.respond(HttpStatusCode.NoContent)
+    }
     // A new session being created (its creator's, or for an Administrator anyone's): how far, how it ended, its log.
     // Without an ID: the caller's newest, for their page after a reload (no content: none)
     route("/creation") {

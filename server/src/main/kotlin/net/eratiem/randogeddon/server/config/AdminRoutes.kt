@@ -21,14 +21,16 @@ import net.eratiem.randogeddon.database.GAME_SERVERS
 import net.eratiem.randogeddon.database.IDLE_MINUTES
 import net.eratiem.randogeddon.database.MAX_GAME_SERVERS
 import net.eratiem.randogeddon.database.MAX_IDLE_MINUTES
-import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
 import net.eratiem.randogeddon.server.admin.SessionProblem
+import net.eratiem.randogeddon.server.admin.LogicRuns
+import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
@@ -172,6 +174,8 @@ fun Route.manageRoutes(
   list: SessionList,
   logins: LoginCheck,
   gameServers: GameServerLimit,
+  spoilerRuns: SpoilerRuns,
+  logicRuns: LogicRuns,
 ) {
   get { gatewayCall { call.respond(admin.view(id(), call.actor)) } }
   delete {
@@ -198,6 +202,22 @@ fun Route.manageRoutes(
       lifecycle.reopen(id(), call.actor)
       call.respond(HttpStatusCode.NoContent)
     }
+  }
+  // How its spoiler log is completed after the seed, and that run's log
+  spoilerRunRoutes(spoilerRuns)
+  // Its logic (the available checks): its state, built again; its log only for Administrators
+  get("/logic") { gatewayCall { call.respond(logicRuns.view(id())) } }
+  post("/logic/rebuild") {
+    gatewayCall {
+      val built = logicRuns.rebuild(id())
+      if (built) logger.info("{}'s logic is built again by {}", id(), call.loggedIn.user.name)
+      call.respond(if (built) HttpStatusCode.NoContent else HttpStatusCode.NotFound)
+    }
+  }
+  get("/logic/log") {
+    if (!call.loggedIn.user.administrator) return@get call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.ONLY_ADMINISTRATORS))
+    val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+    gatewayCall { call.respond(logicRuns.log(id(), since)) }
   }
   post("/keep") {
     val keep = call.receive<KeepRequest>().keep
@@ -304,3 +324,21 @@ const val MAX_SESSIONS_PER_USER = 20
 
 /** How many running sessions one user (not an Administrator) may manage at once. */
 suspend fun sessionsPerUser(settings: AppSettingsStore): Int = settings.get(SESSIONS_PER_USER)?.toIntOrNull() ?: 1
+
+/**
+ * `…/spoiler-run`: how session `{id}`'s spoiler log is completed after its seed; `…/log?since=`: that run's log;
+ * `POST …/retry`: a stopped one is tried again.
+ */
+internal fun Route.spoilerRunRoutes(spoilerRuns: SpoilerRuns) {
+  get("/spoiler-run") { gatewayCall { call.respond(spoilerRuns.view(call.parameters["id"].orEmpty())) } }
+  post("/spoiler-run/retry") {
+    gatewayCall {
+      spoilerRuns.retry(call.parameters["id"].orEmpty())
+      call.respond(HttpStatusCode.NoContent)
+    }
+  }
+  get("/spoiler-run/log") {
+    val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+    gatewayCall { call.respond(spoilerRuns.log(call.parameters["id"].orEmpty(), since)) }
+  }
+}

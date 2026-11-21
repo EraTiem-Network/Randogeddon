@@ -43,4 +43,9 @@ data class Spoiler(
   val spheres: List<Sphere> = emptyList(),
   /** How many lines the whole log has ([SpoilerLines] reads them). */
   val lines: Int = 0,
+  /**
+   * The playthrough lists every progression item in the order it can be collected, not only the required ones:
+   * Archipelago couldn't reduce it (a world's logic contradicts itself).
+   */
+  val unreduced: Boolean = false,
 )

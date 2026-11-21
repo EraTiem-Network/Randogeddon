@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -72,9 +75,12 @@ import net.eratiem.randogeddon.shared.InspectRequest
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.PlandoModule
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionOptions
+import net.eratiem.randogeddon.shared.SeedInfo
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
@@ -100,6 +106,7 @@ import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.LogView
 import net.eratiem.randogeddon.webapp.ui.Mono
+import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
@@ -150,12 +157,24 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   val idProblem = formProblem ?: idRefused
   // While it generates, the form makes room for the ID and the bar
   var generating by remember { mutableStateOf(false) }
+  // The form shrinks to the bar when it starts generating (the button was at its end, far down): the page goes back
+  // up to it, once it has its new height
+  val card = remember { BringIntoViewRequester() }
+  LaunchedEffect(generating) {
+    if (generating) {
+      withFrameNanos { }
+      card.bringIntoView()
+    }
+  }
   // As many game servers run as the Administrators allow (0: no limit)
   val full = overview != null && overview.capacity > 0 && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
   Section(t.sessionAdmin.newSession, subtitle = overview?.capacity?.let(t.sessionAdmin::newSessionSubtitle) ?: "…") {
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+      Modifier.fillMaxWidth().bringIntoViewRequester(card).card(p).padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
       created?.let { result ->
         Created(result.locked, onDone = { created = null })
       }
@@ -203,6 +222,10 @@ private fun CreateSession(
   val t = LocalTexts.current
   val scope = rememberCoroutineScope()
   val yamls = remember { mutableStateListOf<UploadedYaml>() }
+  // A seed generated elsewhere instead of YAMLs (Administrators): what the gateway found in the uploaded zip
+  var seed by remember { mutableStateOf<SeedInfo?>(null) }
+  var seedFile by remember { mutableStateOf("") }
+  var seedChecking by remember { mutableStateOf(false) }
   var worlds by remember { mutableStateOf<List<YamlWorld>>(emptyList()) }
   var problems by remember { mutableStateOf<List<ApiError>>(emptyList()) }
   // Slot -> the IDs of its players; the accounts to pick from, with those invited from here
@@ -230,6 +253,13 @@ private fun CreateSession(
   var logLast by remember { mutableStateOf(0L) }
   // The creation that failed (its log stays to be read and downloaded), and a cancelled one's note
   var failedId by remember { mutableStateOf<String?>(null) }
+  // When it started (the creation's), and since when Generate.py has used next to no CPU (null: it works)
+  var startedAt by remember { mutableStateOf<Long?>(null) }
+  var quietSince by remember { mutableStateOf<Long?>(null) }
+  fun seen(progress: GenerationProgress?) {
+    val cpu = progress?.cpu
+    quietSince = if (cpu != null && cpu < QUIET_CPU) quietSince ?: Platform.now() else null
+  }
   var cancelledNote by remember { mutableStateOf(false) }
   var cancelling by remember { mutableStateOf(false) }
 
@@ -274,6 +304,7 @@ private fun CreateSession(
     if (busy || failedId != null) return@LaunchedEffect
     sentId = own.id
     progress = own.progress
+    startedAt = own.startedAt.takeIf { it > 0 }
     loadLog(own.id)
     if (own.state == CreationState.RUNNING) busy = true else ended(own)
   }
@@ -286,7 +317,8 @@ private fun CreateSession(
       val now = (call("GET", "api/sessions/new/creation/$creation", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
       } as? Answer.Ok)?.value
-      now?.progress?.let { progress = it }
+      now?.progress?.let { progress = it; seen(it) }
+      now?.startedAt?.takeIf { it > 0 }?.let { startedAt = it }
       loadLog(creation)
       if (now != null && now.state != CreationState.RUNNING) ended(now)
     }
@@ -362,6 +394,7 @@ private fun CreateSession(
         }
       }
     }
+    GenerationLiveness(now, startedAt, quietSince)
     Txt(t.sessionAdmin.generatesInBackground, size = 12.sp, color = p.muted)
     error?.let { Txt(it.message, size = 12.5.sp, color = p.trap) }
     GenerationLog(log)
@@ -386,9 +419,9 @@ private fun CreateSession(
     }
   }
 
-  Txt(t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
+  Txt(if (seed != null) t.sessionAdmin.stepSeed else t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Button(t.sessionAdmin.addYamls) {
+    if (seed == null) Button(t.sessionAdmin.addYamls) {
       Platform.pickFiles(".yaml,.yml") { json ->
         val picked = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
         // Choosing again adds files; one with the same name replaces the earlier one
@@ -398,6 +431,41 @@ private fun CreateSession(
       }
     }
     if (yamls.isNotEmpty() && removing == null) Button(t.sessionAdmin.clearAll, danger = true) { removing = "" }
+    // Or the zip Archipelago made elsewhere: checked by the gateway, which keeps it for the session
+    if (administrator && yamls.isEmpty() && seed == null) Button(t.sessionAdmin.useSeed, enabled = !seedChecking) {
+      Platform.pickFiles(".zip", binary = true) { json ->
+        val file = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
+          .firstOrNull() ?: return@pickFiles
+        seedChecking = true
+        refused = emptyList()
+        problems = emptyList()
+        scope.launch {
+          val body = ApiJson.encodeToString(SeedUpload.serializer(), SeedUpload(file.fileName, file.content, version))
+          when (val answer = call("POST", "api/sessions/new/seed", body, SeedInfo.serializer())) {
+            is Answer.Ok -> {
+              seed = answer.value
+              seedFile = file.fileName
+              version = answer.value.release
+              worlds = answer.value.slots.map { YamlWorld(file.fileName, it.name, it.game) }
+              users.clear(); hosted.clear(); locked.clear(); choices.clear()
+            }
+            is Answer.Failed -> problems = listOf(ApiError(listOfNotNull(answer.message, answer.detail).joinToString(": ")))
+          }
+          seedChecking = false
+        }
+      }
+    }
+  }
+  if (seedChecking) Txt(t.sessionAdmin.seedChecking, size = 12.5.sp, color = p.muted)
+  seed?.let { info ->
+    YamlChip(seedFile, emptyList()) {
+      scope.launch { post("api/sessions/new/seed/${info.token}", null, method = "DELETE") }
+      seed = null
+      worlds = emptyList(); problems = emptyList(); users.clear(); hosted.clear()
+    }
+    Txt(t.sessionAdmin.seedFound(info.seedName, info.generatedWith, info.slots.size, info.files), size = 12.5.sp)
+    Txt(t.sessionAdmin.seedNotes, size = 12.sp, color = p.muted)
+    if (!info.spoiler) Txt(t.sessionAdmin.seedNoSpoiler, size = 12.sp, color = p.warn)
   }
   // Asked once more: removing all of them right below their buttons, one of them below the YAMLs
   @Composable
@@ -451,7 +519,8 @@ private fun CreateSession(
   if (usable.isNotEmpty()) {
     // A single slot can't be locked; otherwise at least one slot starts open
     val n = usable.size
-    val lockable = n > 1
+    // A seed from elsewhere has no locks: they are generated in
+    val lockable = n > 1 && seed == null
     val mode = if (lockable) lockMode else LockMode.CHOOSE
     // A switch left to chance whose outcome is already given by the others shows that outcome: e.g. of two slots,
     // one open, the other has to be locked
@@ -573,11 +642,29 @@ private fun CreateSession(
       Labeled(t.sessionAdmin.collect, t.tips.collect, t.tips.collectChoices) { Select(RELEASE_MODES.map { it to it }, options.collectMode, { options = options.copy(collectMode = it) }, minHeight = FIELD_HEIGHT) }
       Labeled(t.sessionAdmin.remaining, t.tips.remaining, t.tips.remainingChoices) { Select(REMAINING_MODES.map { it to it }, options.remainingMode, { options = options.copy(remainingMode = it) }, minHeight = FIELD_HEIGHT) }
       when {
-        view.apVersions.size > 1 -> Labeled(t.sessionAdmin.archipelago, t.tips.releaseVersion) {
+        view.apVersions.size > 1 && seed == null -> Labeled(t.sessionAdmin.archipelago, t.tips.releaseVersion) {
           Select(view.apVersions.map { it to it }, version ?: "", { version = it }, minHeight = FIELD_HEIGHT)
         }
         version != null -> Labeled(t.sessionAdmin.archipelagoVersion(version.orEmpty()), t.tips.releaseVersion) {}
       }
+    }
+    // The generation's settings: what the YAMLs may plan by hand, the balancing, race mode (not for a seed that is
+    // there already)
+    if (seed == null) FlowRow(
+      horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Txt(t.sessionAdmin.plando, size = 12.5.sp, color = p.muted)
+        InfoTip(t.tips.plando)
+      }
+      PlandoModule.entries.forEach { module ->
+        Check(t.sessionAdmin.plandoModule(module), module in options.plando) { on ->
+          options = options.copy(plando = if (on) options.plando + module else options.plando - module)
+        }
+      }
+      Check(t.sessionAdmin.skipBalancing, options.skipBalancing, t.tips.skipBalancing) { options = options.copy(skipBalancing = it) }
+      Check(t.sessionAdmin.raceMode, options.race, t.tips.raceMode) { options = options.copy(race = it) }
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n
@@ -587,7 +674,7 @@ private fun CreateSession(
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Button(
-        t.sessionAdmin.generateAndStart,
+        if (seed != null) t.sessionAdmin.startWithSeed else t.sessionAdmin.generateAndStart,
         enabled = ready && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
           unplayed.isEmpty(),
       ) {
@@ -599,10 +686,12 @@ private fun CreateSession(
         log.clear()
         logLast = 0
         progress = null
+        startedAt = Platform.now()
+        quietSince = null
         scope.launch {
           val request = CreateSessionRequest(
             id = id,
-            yamls = yamls.filter { it.fileName !in waitingFiles },
+            yamls = if (seed != null) emptyList() else yamls.filter { it.fileName !in waitingFiles },
             worlds = usable.map {
               WorldPlan(
                 it.name, userIds = if (hosted[it.name] == true) emptyList() else users[it.name].orEmpty(),
@@ -612,6 +701,7 @@ private fun CreateSession(
             },
             options = options.copy(openSlots = open),
             apVersion = version,
+            seed = seed?.token,
           )
           val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
           // Answered at once: it generates in the background, and the page asks how far it is
@@ -627,6 +717,45 @@ private fun CreateSession(
     }
     // A refusal of the form: below it, where it was sent
     if (failedId == null) error?.let { GenerationError(it.message, it.detail) }
+  }
+}
+
+/** Below this share of one core, Generate.py does nothing; that long of it ([QUIET_FOR_MS]) is no response. */
+private const val QUIET_CPU = 5
+private const val QUIET_FOR_MS = 60_000L
+
+/** [ms] as a clock: `4:05`, `1:02:03`. */
+private fun clock(ms: Long): String {
+  val s = (ms / 1000).coerceAtLeast(0)
+  val (h, m, sec) = Triple(s / 3600, s / 60 % 60, s % 60)
+  fun two(n: Long) = n.toString().padStart(2, '0')
+  return if (h > 0) "$h:${two(m)}:${two(sec)}" else "$m:${two(sec)}"
+}
+
+/**
+ * That it isn't stuck, in two pills under the bar: how long it has run since its start (each second), and what it
+ * does: working (with Generate.py's share of one core: a working fill or playthrough keeps one busy), waiting for its
+ * turn, or no response once Generate.py has used next to no CPU for a minute.
+ */
+@Composable
+private fun GenerationLiveness(progress: GenerationProgress, startedAt: Long?, quietSince: Long?) {
+  val p = LocalPalette.current
+  val t = LocalTexts.current.sessionAdmin
+  var now by remember { mutableLongStateOf(Platform.now()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(1000)
+      now = Platform.now()
+    }
+  }
+  val quiet = quietSince?.let { now - it }?.takeIf { it >= QUIET_FOR_MS }
+  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    startedAt?.let { Pill(t.generationTime(clock(now - it)), p.muted) }
+    when {
+      progress.stage == GenerationStage.WAITING -> Pill(t.generationWaitingTurn, p.muted)
+      quiet != null -> Pill(t.generationQuiet((quiet / 60_000).toInt()), p.trap)
+      else -> Pill(progress.cpu?.let(t::generationWorkingCpu) ?: t.generationWorking, p.ok)
+    }
   }
 }
 

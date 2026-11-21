@@ -38,6 +38,7 @@ object German : Texts {
     override fun hoursAgo(n: Long) = "vor $n Std."
     override fun daysAgo(n: Long) = if (n == 1L) "vor 1 Tag" else "vor $n Tagen"
     override fun hoursMinutes(hours: Long, minutes: Long) = "$hours Std. $minutes Min."
+    override fun daysHours(days: Long, hours: Long) = "$days T. $hours Std."
     override fun minutes(n: Long) = "$n Min."
     override val underAMinute = "<1 Min."
   }
@@ -69,10 +70,14 @@ object German : Texts {
     override val pickOneOfYourSessions = "Wähle eine deiner Sessions"
     override val connecting = "Verbinde mit dem Tracker…"
     override val reconnecting = "verbinde neu…"
+    override val spoilerCompleting = "Spoiler-Log wird vervollständigt"
+    override val spoilerCompletingTip =
+      "Der Seed läuft. Sein Spoiler-Log wird im Hintergrund noch einmal berechnet: zuerst der Lösungsweg, dann die " +
+        "Wege zu jedem Item. Spoiler-Log, Hinweise und Cheats warten auf den Lösungsweg."
     override val finished = "beendet"
     override val live = "live"
     override val serverOffline = "Server offline"
-    override fun ofChecksDone(total: String) = "von $total Checks erledigt"
+    override fun ofChecksDone(checked: String, total: String) = "$checked von $total Checks erledigt"
     override fun hintMode(pointHints: Boolean, costPercent: Int, autoHints: Boolean): String {
       val points = when {
         !pointHints -> null

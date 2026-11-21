@@ -7,6 +7,294 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 19: Generating, Keeping, Showing
+It began with generating like the Launcher (a seed that the Launcher generates is to generate here too: first why one
+didn't, then what the Launcher has that the gateway hasn't), went on to keeping a session's state (nothing lost while
+the tracker isn't connected, nothing of it only in files) and ended with how the dashboard shows it (the slots'
+states, the Overview, the players' panels). Renamed from *Generating Like the Launcher* with 0.19.15.
+
+Generating: the spoiler log in three levels after the seed (the session starts at once), a playthrough that doesn't
+give up, generations at once, generator settings per session, a session from a seed generated elsewhere. Keeping:
+the gateway hears every game server and writes what happens into the database, the tracker replays it; a snapshot of
+each dashboard and the finished sessions' archives in the database too, so nothing is lost while the tracker isn't
+connected and the state volume holds nothing that matters. Showing: the slots' states in a new order with their
+times, the Overview's tiles with icons and pills, the players' panels with two bars and icon pills, the available
+checks counted by each session's logic, deaths and traps per slot, cheats for locked slots. Updating: nothing to do
+(the database's new tables come with their migrations, V24 and V25; the old `tracker.json` and `archive.json` are
+imported once and left where they are).
+
+### 0.19.20: Phase 19 done
+- TODO: Phase 19 done (the panels' item closed with it); Phase 21 (*Floating Panels – Slot & Player*) planned.
+
+### 0.19.19: Cheatable locks
+- **Two cheats for a locked slot** in the *Cheats* section (Session-Managers, Administrators, support), listed while a
+  slot is locked, with the locked slots to pick from:
+  - *Check its key's location*: the location that holds its key (from the spoiler log's placements, shown beside it)
+    is checked as if its player found it. The key opens the slot; the check counts for the world it is in.
+  - *Unlock*: its key is given to the World Locks slot (`/send`); no location is checked.
+- Logged and in the live feed like every cheat ("checked the key to Alice-Locked at Chest B (in Bob)", "unlocked
+  Alice-Locked").
+
+### 0.19.18: Icons on the players' pills; deaths and traps per slot
+- **The person cards' and slot rows' pills are an icon and a number**, what they are as their tooltip in one word, as
+  in the Overview: *Done* (a flag, "1 / 3"), *Locked* (a lock), *Played* (a clock), *Received* (an arrow into a tray),
+  *Sent* (an arrow away), *Available* (a target; while the logic doesn't run, the tooltip says it is the last known
+  count). In the dialogs too.
+- **Deaths and traps per slot**: what each slot passed on by DeathLink (a skull) and TrapLink (a warning sign), from
+  the first one, summed on the person card; counted from what it sent, not from what it got. Older links count once
+  the tracker replays them (every link since 0.19.9 is in the database).
+
+### 0.19.17: Available checks
+- **How many checks a slot can make now**, as a pill on each slot ("12 available"), summed on the person card and in
+  the dialogs: its unchecked locations its game's logic reaches with the items it has (as a Universal Tracker shows
+  them). Grey with the last known count while the logic doesn't run.
+- **The session's logic**: the gateway generates the seed once more with its number and inputs (as for the spoiler
+  log), but only up to the fill (`archipelago/logic_run.py`): its worlds with their rules, events and locked items,
+  in seconds; where the items lie comes from the seed. That process answers the tracker whenever a slot's items or
+  checks change. It starts with the game server and ends as long after it went to sleep as the game servers wait
+  before they sleep (at least 10 min). Tried on the server: 10 slots and 2,868 locations built in 2.6 s and 195 MB,
+  every slot counted in 0.27 s. Freezing it with CRIU while the game server sleeps worked too, but needs rights close
+  to root: not used.
+- **Its state in the top panel**, beside the game server's (*Logic*: being built, running, not running, failed; what
+  that means as the tooltip). The panel's new *Logic* section: its state and *Build again* (Session-Managers and
+  Administrators), its log with pages and search (Administrators).
+- **The counts are kept** with the rest of the dashboard in the database (0.19.10), shown while the logic doesn't run
+  and after a restart.
+- Not for seeds from elsewhere, races and sessions from before 0.19.3 (their inputs aren't kept), nor after one of
+  the seed's APWorlds changed. A slot whose locations differ from the seed's gets no count.
+- The top panel's controls wrap onto a second line on a phone, where they don't fit beside each other.
+
+### 0.19.16: Icons in the Overview's pills
+- **The Overview's pills are an icon and a number**, what they are as their tooltip in one word: complete (a check
+  mark), goal (a flag), released (an arrow out of a box), idle (two bars), not started (an empty ring), hints not
+  found yet (*Open*, a magnifying glass), progression (a star), traps (a warning sign), deaths (a skull).
+- **The Session tile's server time says what it is**: a power sign, green while the game server runs (*Running* or
+  *Stopped* as its tooltip), and the time beside a server's icon, *Uptime* as its tooltip: how long the game server
+  ran for this seed.
+- **A section's title isn't squeezed any more**: where its filters don't fit beside the whole title, they go below
+  it (on a phone, *Hints* broke into "Hin" and "ts").
+
+### 0.19.15: No totals for the players; icons in the Overview
+- **Received and sent without totals**: the pills say how many progression items a slot (or person) received and
+  sent, not of how many: its players would learn how much is still missing. The tracker doesn't send those totals
+  any more either (0.19.12 and 0.19.13 did). The *Progression checks* bar keeps its own world's x / y.
+- **Slots and done in one pill** on the person card: "1 / 3 done" (green once one is).
+- **Icons and pills in the Overview**: every tile has its icon (new: a bulb for hints, a gift for items, a chain link
+  for links, a clock for play time, an hourglass for the session), and its parts are pills (complete, goal,
+  released; idle, not started; not found yet; progression, traps; deaths, traps; running or stopped, and how long).
+  The pills stand one below the other, so a tile's height comes out right (a wrapping line of them was cut off).
+- Phase 19 renamed to *Generating, Keeping, Showing*.
+
+### 0.19.14: Nothing cut off
+- **The person cards and slot rows were cut off at their end**: the last slot of a card showed only its first bar,
+  and on live often not even that. Cards side by side took the height of the tallest, and a slot row its height,
+  from their content's measured minimum, which the lines of pills that wrap (0.19.13) underestimated. Now each card
+  and each slot row is as tall as its content (cards side by side may end at different heights); the lock badge under
+  a locked slot's game icon has a height of its own.
+- **Icons instead of the bars' labels**: a check mark for *Checks*, a star (new) for *Progression checks*; the label
+  shows as the icon's tooltip. The bars get the room.
+
+### 0.19.13: Progression checks, received and sent
+- **The second bar is the slot's progression checks**: of the locations in its own world, those that hold a
+  progression item (for anyone), how many it checked. 0.19.12's second bar (progression received) becomes a pill.
+- **Pills for received and sent**: *received x / y* (progression items it got of those meant for it) and *sent x / y*
+  (progression items found in its world for other slots, of all such), in a new line between the slot line and the
+  bars, with its play time. The same in the slot and person dialogs.
+- **The person header as pills**: slots, locked, done, play time, received and sent, in the line under the name
+  (was one grey line); the person's two bars below.
+- A slot's own counts are known once it is scouted (its received total once every slot is).
+
+### 0.19.12: Checks and progression, apart
+- **Two bars instead of one** in every slot row, on the person card and in the slot and person dialogs: *Checks* (the
+  locations checked in its own world, x / y) and *Progression* (the progression items received of those meant for
+  it in the whole multiworld, x / y). Before, the line "64 / 100 · 2 progression" put two different things side by
+  side. The goal's time below the bars goes (it is beside the state since 0.19.11).
+- **Each slot's progression total**: every tracker connection to a slot scouts its own locations
+  (`LocationScouts`, `create_as_hint` 0: no hints are made); together that is every placement, counted per slot it
+  is meant for. Only the counts reach the dashboard. Until every slot is scouted the bar says how many were received
+  so far. The starting inventory isn't counted on either side (received progression now leaves it out).
+- The first of the slot and player panels' rework, planned with the user (they stay cards).
+
+### 0.19.11: The dashboard's states and tiles
+- **A slot's state in a new order**, the first that applies: *released* (before its goal, or by hand after it),
+  *complete* (every location checked; the automatic release at the goal, release mode `auto`, counts as complete:
+  a release less than 5 s after the slot's goal is that one), *goal* (locations left), *locked*, *online*, *idle*,
+  *not started*. Before, `released` lived in memory only (after a restart a released slot read `complete`) and the
+  goal beat it.
+- **Online instead of playing**: a game client connected now. Whether someone really plays can't be known; the
+  client's own status isn't used any more, so the grey "playing" of a slot nobody plays is gone. An archive of before
+  is read with `playing` as online.
+- **Idle and not started**: idle only once the slot was connected and has a check, else not started.
+- **The time beside a state**: since it was complete or released, since its goal and its last check, the last check
+  of an idle or online slot. Release and last-check times come from the events, so they survive restarts; a release
+  from before 0.19.9 is taken from the feed of the imported history, older ones can't be known.
+- **The Overview's tiles**: *Finished* (done of all: complete, goal, released, with the parts below; goal only when
+  the release mode isn't `auto`), *Slots* (online of all, with idle and not started; Online merged in), *Unlocked*,
+  *Hints*, *Items* (sent, of them progression and traps; new), *Links* (deaths and traps shared; new, from the first
+  one on), *Play time*, *Session* (its age, the date as a tooltip; below the game server's running time). The
+  Overview's subtitle goes; the top card reads "x of y checks done".
+- "Done" for a person, a past session and the Finished tile counts complete slots too.
+
+### 0.19.10: A session's state in the database
+- **The dashboard isn't empty while a game server sleeps.** The tracker learnt a session's slots only from its
+  connection to the game server, and every game server sleeps after the gateway starts (since 0.18.10): after each
+  deploy every dashboard was empty until a player came. Now what a dashboard shows (the summary and every slot's
+  details) is kept in the database (`session_snapshots`, V25) when the tracker's connection ends, when the tracker
+  stops, and at most every 5 minutes while connected; until the tracker has been connected since its start, that is
+  shown, with who is connected from the events.
+- **The history is the events.** No history file any more (`tracker.json`, written every 15 s: a crash lost up to
+  15 s, and it wasn't backed up). At its start the tracker sets a session's slots up from `room.json` and replays
+  every event the gateway kept (since 0.19.9), so the feed, the connection logs, first check, goal and last
+  activity come back from the database. A cheat's feed line is written there too. The history files of before are
+  imported once as the base the newer events are replayed onto.
+- **Finished sessions' archives are in the database** (the final snapshot), so in the daily dump; the files of
+  before are imported once at the tracker's start and left where they are. Reopening makes it live again.
+- A slot's status reply no longer counts as "seen playing" (every join is heard since 0.19.9).
+- The tracker's state volume holds no session data any more (only the TOTP key file, without `TOTP_KEY`).
+
+### 0.19.9: Nothing is lost while the tracker isn't connected
+- **The gateway hears what happens on each game server and keeps it.** It starts every game server and is there
+  whenever one runs: from the moment the server accepts clients it listens (a connection like the tracker's) and
+  writes what is said to everyone into the database (`session_events`, V24): item sends, hints, goals, releases,
+  who joins and leaves, chat, death and trap links, and the game server's starts and ends.
+- **The tracker reads it from there**, about once a second, in its order, and saves how far it is with its history.
+  So a slot released while the tracker restarted is in the live feed, with the time it happened, and after a restart
+  the tracker knows who is connected from the joins and leaves since the game server's start (before: nobody, until
+  they did something).
+- **Whoever wakes a sleeping session is seen**: a player is let in once the gateway listens (3 s at most), so the
+  join isn't said before anyone hears it. Before, the tracker was back about two seconds after the player and showed
+  them as offline.
+- The gateway's database role may add rows to `session_events`, nothing else of it (not read, not delete); a
+  session's events go when it is deleted.
+
+### 0.19.8: A session from a seed generated elsewhere
+- **An Administrator makes a session from a seed Archipelago's Launcher (or `Generate.py`) made**: *Use a generated
+  seed…* in the new session's form takes its `AP_<seed>.zip` (up to 64 MB) instead of YAMLs. The slots are assigned
+  as with YAMLs; nothing is generated, and the session starts with the seed as it is.
+- **Checked before anything of it is used**, since it comes from outside: only files named as a seed's (`AP_…`, no
+  folders, each name once), one `.archipelago`, at most one spoiler log, 1,000 files and 512 MB unpacked. The gateway
+  writes the zip anew from what it read (what is kept is what was checked), and reads the multidata with
+  Archipelago's own restricted loader (`archipelago/seed_info.py`: as MultiServer reads it, no code of the file
+  runs, and its unpacked size is bounded first), which also says whether the release can serve it. A refusal names
+  the reason in the form.
+- **What such a session doesn't have**: locks (they are generated in; a seed with a World Locks slot is refused), the
+  spoiler log's later levels (it has the log the zip brings, or none and then no spoiler page), and a second
+  session of the same seed. Its files for the players are the zip's, unchecked: they come from whoever generated it.
+- The upload waits in the gateway for an hour for its session (`data/seed-uploads/`, at most eight at once), under a
+  token only the Administrator who uploaded it can use.
+- Routes: `POST /api/sessions/new/seed` (the upload, answered with what was found), `CreateSessionRequest.seed` (its
+  token instead of YAMLs).
+
+### 0.19.7: A playthrough that doesn't give up
+- **A spoiler log's playthrough when Archipelago can't reduce it.** Archipelago works the playthrough out as the
+  spheres every progression item is collected in, then reduces them to the items the goals need. That second step
+  ends with "Not all required items reachable" when a world's logic contradicts itself, and no spoiler log was
+  written: the session stayed at level 1. `Generate.py` has no option for it. The later levels now run through
+  `archipelago/spoiler_run.py`, which wraps that one function while it runs (none of Archipelago's files change) and
+  falls back to the unreduced spheres: every progression item in the order it can be collected, with the paths at
+  level 3. The seed was beatable before (Archipelago checks that when it generates) and stays as it is.
+- **The spoiler page says so** above such a playthrough (the log's last line marks it; that game's steps may be off),
+  and the run's log names Archipelago's error.
+- **A stopped spoiler run is tried again** with *Try again* under its reason (Session-Managers and Administrators;
+  `POST …/manage/spoiler-run/retry`): after a new version of the gateway, as here, or of an APWorld.
+- **Randogeddon Bridge's files say their version**: `randogeddon-bridge-<version>-<os>-<arch>` (`.exe` on Windows),
+  so a downloaded file tells which one it is; the checksums name the same files. A bridge from before asks for its
+  update by the old name and gets the build for its system.
+- Planned (in the TODO): Phase 20, a hosted Minecraft Dig server reached through the bridge.
+
+### 0.19.6: The room asks for the password
+- **Clients that send a password only when the room asks for one** (Brotato's sends an empty one otherwise) were
+  refused with `InvalidPassword`: MultiServer has no room password here, so its `RoomInfo` said `password: false`.
+  The gateway now says `password: true` in the `RoomInfo` it passes on to a client; every slot has a password, and
+  that field is where clients send it. Nothing else of the frame changes.
+- **Links in the live feed**: a DeathLink (who died, and the cause if their game says one) and a TrapLink (who set
+  off which trap). The tracker's connection has the two tags, so MultiServer passes those `Bounced` packets on to it;
+  the texts are the sending client's own, cut and without control characters. Who it came from is the slot if the
+  client names one. A new filter *Links*; RingLink isn't shown (one event per ring).
+- **The live feed in pages, with a search**: 50 events at a time, the arrows under them go to older and newer ones
+  (on the first page new events come in on top, on another one they stay put), and a search over the events' names
+  and texts beside the filters, which stay.
+- `scripts/deploy.sh --publish`: builds and pushes the images, and for a release the bridge's builds and the GitHub
+  release, without touching the server (nothing copied there, its running tag not switched). A merged version is
+  published this way from now on; the live server is updated only when asked for.
+
+### 0.19.5: The generation's settings per session
+- **In the new session's form**, with the options: *YAMLs may plan* (Archipelago's plando modules: *bosses*,
+  *connections*, *texts*, *items*; its own default, all but the items, is ticked), *No progression balancing*, and
+  *Race mode*. They are the session's options like the others, and go to `Generate.py` as arguments: `--plando` with
+  the modules' known names only (always said, also for none), `--skip_prog_balancing`, `--race`. No raw `host.yaml`,
+  and no file or program path comes from the form.
+- **A seed keeps its settings** for its spoiler log's later levels (`stages.json`), which are generated with them
+  again.
+- **Race mode** generates with a random source nobody can reproduce and without a spoiler log (`--spoiler 0`): its
+  session has none (the spoiler page says so), nothing runs in the background after it, and hints and cheats work
+  without it.
+- **A slot's connections on the dashboard**: a slot with more than one game client connected says how many
+  (*2 connections*); Archipelago, the gateway and the bridge all take several per slot. A tracker or text client
+  leaving a slot is no longer counted as a game leaving it (a `Part` has no tags, but its text ends with them).
+- **The slots stay where they are**: a session's slots and their players are read by name (the database gave them in
+  no order of its own, so a person's slots changed places from one look to the next), and the dashboard's *Sort*
+  orders each person's slots as it orders the people: by name, by progress or by last activity, equal ones by name.
+- Found on the way (in the TODO): why Skyward Sword HD doesn't generate here. Its APWorld wants the extracted game on
+  the generating machine and falls back to an item pool with one *Progressive Loftwing* where its logic needs two; a
+  bug of that APWorld, with a workaround in the YAML. And: no ROM is uploaded to the server (the plan to keep them
+  encrypted is dropped; undecided).
+
+### 0.19.4: Generations at once
+- **Several generations run at once:** as many as the gateway has cores, less one (the server: three), or as many
+  as `GENERATIONS_AT_ONCE` says. New sessions' seeds and the spoiler logs' later levels share these places; the
+  spoiler logs' runs leave one free for a new session (where there is more than one). A session beyond that waits,
+  as before.
+- **A spoiler's level-3 run is paused for a new session** when no place is free (`SIGSTOP`; the panel says
+  *paused*), and goes on where it was once there is room (`SIGCONT`); if pausing doesn't hold, it ends and starts
+  over later. A level-2 run is never paused: the new session waits for it. The time a run is paused doesn't count
+  towards its limit.
+- **The APWorlds while generations run:** they share the release's `custom_worlds/` as it is; a change of the library
+  (an upload, a removal) waits for the seeds and level-2 runs that are going, and holds off new ones until it is
+  done; level-3 runs end for it and start over after.
+- **Memory:** each generation needs its own (a big multiworld: gigabytes), and a paused one keeps its. One that is
+  killed (exit code 137) says so: "probably out of memory; fewer generations at once need less".
+- **No *Spoiler log* button and no *Cheats* (or support) section** for a session until its spoiler log has its
+  playthrough (they answered "still being worked out" before).
+
+### 0.19.3: The spoiler log in stages
+- **A session starts sooner:** its seed is generated with a spoiler log without the playthrough (Archipelago's level
+  1), which skips the longest part of a big multiworld's generation; the session's game server starts right after.
+- **The rest in the background:** the gateway generates the seed once more with the same seed number and inputs, only
+  its spoiler log (`--spoiler_only`): level 2 with the playthrough, then level 3 with the paths to every item. What it
+  was generated from is kept in the session's `generation/` (its YAMLs, the seed number, the APWorlds of its games by
+  their SHA-256, `stages.json`), so it goes on after a gateway restart; an APWorld changed since stops it. A later level
+  replaces the earlier one only when it places every item the same as the seed (`spoiler.txt` next to the seed);
+  otherwise it stays, and the panel says why.
+- **One run at a time**, and none while a new session waits for its generation; a level-3 run makes way for one (and
+  for a change of the APWorlds) and starts over after. Several generations at once come with 0.19.4.
+- **The spoiler log, the hints and the cheats wait for level 2** ("still being worked out"); with a spoiler that
+  couldn't be completed they go on with the seed's.
+- **On the dashboard** the session's top panel shows *spoiler log being completed* with a working symbol, for
+  everyone; **in the panel** a *Spoiler log* section (Session-Managers, Administrators, support) says its level, the
+  run going now with Generate.py's share of a core (or that it waits for its turn), why it stopped, and the run's log.
+- Sessions from before have their complete spoiler log; nothing changes for them.
+
+### 0.19.2: It isn't stuck
+- Under the generation's bar two pills: how long it runs since its start (each second), and what it does: *working*
+  (with Generate.py's share of one core, which the gateway measures each time the page asks: a working fill or
+  playthrough keeps one busy), *waiting for its turn*, or *no response* once it has used next to no CPU for a
+  minute. So a long stage that says nothing (the playthrough) shows that it works.
+- The texts: the fill no longer "takes the longest"; the playthrough does in a big multiworld (with Archipelago's
+  spoiler level 3, its paths to every item), and says nothing meanwhile. The bar's shares fit that: the fill 30 to
+  50 %, the output 58 to 66 %, the playthrough from 66 %.
+- Tried for what comes next: with the same `--seed` and inputs, `--spoiler_only` at levels 2 and 3 gives the same
+  seed name and every placement the same as the seed's (the demo's 1,934 locations). In the TODO: the spoiler log in
+  stages for every generation (0.19.3), and several generations at once (0.19.4).
+
+### 0.19.1: Back to the generation's bar
+- *Generate and start* is at the new session form's end; the form shrinks to the generation's bar then, which left
+  the page far below it. Now the page goes back up to the bar (also when it comes back after a reload).
+- Found out: Archipelago 0.6.8 reads an APWorld's `requirements.txt` only from a world folder under `worlds/`, never
+  from a zipped `.apworld`, so the Launcher installs no packages for one either. And the gateway runs on Linux, whose
+  file names are case-sensitive: an APWorld that imports `.Items` for its `items.py` loads in the Launcher on Windows
+  only. Both in the TODO, for what the failed generation's log will tell.
+
 ## Phase 18: Code Optimization
 Measured first, then made leaner where it paid: the web files compressed when built, one look per session for all
 its streams, the gateway image 40 % smaller and the builds cached, the code split and merged along what belongs

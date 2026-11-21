@@ -125,6 +125,7 @@ services:
       AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
       # How long a generation may take before it is stopped (minutes)
       GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
+      GENERATIONS_AT_ONCE: ${GENERATIONS_AT_ONCE:-0}
       # Without a domain, game clients name their session by the path (ws://host:38281/<id>); the Traefik overlay sets
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""
@@ -191,7 +192,7 @@ services:
       OIDC_NAME: ${OIDC_NAME:-Authentik}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
-      - tracker-state:/state         # each session's event history and archive survive restarts
+      - tracker-state:/state         # the TOTP key file (without TOTP_KEY); session files of before 0.19.10, imported once
 
 volumes:
   tracker-state:

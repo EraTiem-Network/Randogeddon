@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.shared.i18n
 
+import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PlayerStatus
 
 /** A session's dashboard: the overview tiles, the players and their slots, the hints. */
@@ -9,11 +10,23 @@ interface DashboardTexts {
   val serverAsleep: String
   // The overview
   val overview: String
-  fun overviewSubtitle(slots: Int, checked: String, total: String): String
-  val goals: String
+  val finished: String
   val slotsFinished: String
-  val online: String
-  val clientsConnected: String
+  val slots: String
+  val everyoneOnline: String
+  val items: String
+  fun itemsOf(progression: String, traps: String): String
+  val links: String
+  fun linksOf(deaths: String, traps: String): String
+  /** The tooltips of the Overview's pills (an icon and a number each): best one word. */
+  val tipProgression: String
+  val tipTraps: String
+  val tipDeaths: String
+  val tipOpen: String
+  /** The game server's state in the Session tile, and how long it ran for this seed. */
+  val serverOn: String
+  val serverOff: String
+  val tipUptime: String
   val unlocked: String
   val slotsOpened: String
   val hints: String
@@ -21,8 +34,9 @@ interface DashboardTexts {
   val playTime: String
   val allSlotsTogether: String
   val session: String
-  val serverRunning: String
-  val serverStopped: String
+  /** Below the session's age: the game server's running time. */
+  fun serverTime(duration: String, running: Boolean): String
+  fun madeOn(date: String): String
   // The players
   val players: String
   fun playersSubtitle(players: Int, slots: Int): String
@@ -32,15 +46,30 @@ interface DashboardTexts {
   val waitingForServer: String
   fun deleted(name: String): String
   fun account(id: String, deleted: Boolean): String
-  fun locked(n: Int): String
-  fun done(n: Int): String
-  fun played(duration: String): String
-  /** A slot's state; [started]: some of its checks are done. */
-  fun status(status: PlayerStatus, started: Boolean): String
-  val playing: String
+  fun connections(n: Int): String
+  /**
+   * The tooltips of the players' pills (an icon and a number each): a person's slots done of all, locked, play time;
+   * progression received and sent; the checks available now; deaths and traps it passed on (DeathLink, TrapLink).
+   */
+  val tipDone: String
+  val tipLocked: String
+  val tipPlayed: String
+  val tipReceived: String
+  val tipSent: String
+  fun status(status: PlayerStatus): String
+  /** Beside a slot's state: how long ago its last check was. */
+  fun lastCheck(ago: String): String
   fun slot(name: String): String
-  fun progress(checked: Int, total: Int, progression: Int): String
-  fun doneAt(time: String): String
+  /** The two bars: checks in its own world, and those of them that hold a progression item. */
+  val checksBar: String
+  val progressionChecksBar: String
+  /** Progression received, and sent to others (counts only: no totals for the players). */
+  /** The checks a slot can make now (its logic's count), as a pill; its tooltip, and while the logic doesn't run. */
+  val availableTip: String
+  val availableLastKnown: String
+  /** The session's logic in the top panel: its name, and its state as the tooltip. */
+  val logic: String
+  fun logicTip(status: LogicStatus): String
   fun unlockedBy(name: String): String
   fun keyHinted(where: String): String
   /** Where a hinted key is: `Crossroads (in Bob-HK)`. */
@@ -126,6 +155,17 @@ interface FeedTexts {
   val left: String
   /** After an item a client took with `!getitem`. */
   val cheatMark: String
+  val links: String
+  /** `{player} died`, after the link's name. */
+  val died: String
+  /** `{player} set off {item}`, after the link's name. */
+  val trapped: String
+  val trappedSome: String
+  val someone: String
+  val nothingFound: String
+  fun eventsOf(from: String, to: String, total: String): String
+  val newer: String
+  val older: String
 }
 
 /** Under the top card while a session finishes, and once it has. */
@@ -148,11 +188,21 @@ internal object EnglishDashboard : DashboardTexts {
   override val serverAsleep =
     "The game server sleeps: nobody has played for a while. It starts by itself as soon as a player connects."
   override val overview = "Overview"
-  override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots slots · $checked of $total checks"
-  override val goals = "Goals"
-  override val slotsFinished = "slots finished"
-  override val online = "Online"
-  override val clientsConnected = "clients connected"
+  override val finished = "Finished"
+  override val slotsFinished = "slots done"
+  override val slots = "Slots"
+  override val everyoneOnline = "online now"
+  override val items = "Items"
+  override fun itemsOf(progression: String, traps: String) = "$progression progression · $traps traps"
+  override val links = "Links"
+  override fun linksOf(deaths: String, traps: String) = "$deaths deaths · $traps traps"
+  override val tipProgression = "Progression"
+  override val tipTraps = "Traps"
+  override val tipDeaths = "Deaths"
+  override val serverOn = "Running"
+  override val serverOff = "Stopped"
+  override val tipUptime = "Uptime"
+  override val tipOpen = "Open"
   override val unlocked = "Unlocked"
   override val slotsOpened = "slots opened"
   override val hints = "Hints"
@@ -160,8 +210,9 @@ internal object EnglishDashboard : DashboardTexts {
   override val playTime = "Play time"
   override val allSlotsTogether = "all slots together"
   override val session = "Session"
-  override val serverRunning = "game server running"
-  override val serverStopped = "game server stopped"
+  override fun serverTime(duration: String, running: Boolean) =
+    if (running) "game server running · $duration" else "game server ran $duration"
+  override fun madeOn(date: String) = "made on $date"
   override val players = "Players"
   override fun playersSubtitle(players: Int, slots: Int) =
     "$players ${if (players == 1) "player" else "players"} · $slots ${if (slots == 1) "slot" else "slots"}"
@@ -171,21 +222,35 @@ internal object EnglishDashboard : DashboardTexts {
   override val waitingForServer = "Waiting for the server…"
   override fun deleted(name: String) = "$name (deleted)"
   override fun account(id: String, deleted: Boolean) = "Account $id${if (deleted) " (deleted)" else ""}"
-  override fun locked(n: Int) = "$n locked"
-  override fun done(n: Int) = "$n done"
-  override fun played(duration: String) = "$duration played"
-  override fun status(status: PlayerStatus, started: Boolean) = when (status) {
-    PlayerStatus.IDLE -> if (started) "idle" else "not started"
+  override fun connections(n: Int) = "$n connections"
+  override val tipDone = "Done"
+  override val tipLocked = "Locked"
+  override val tipPlayed = "Played"
+  override val tipReceived = "Received"
+  override val tipSent = "Sent"
+  override fun status(status: PlayerStatus) = when (status) {
+    PlayerStatus.NOT_STARTED -> "not started"
+    PlayerStatus.IDLE -> "idle"
     PlayerStatus.LOCKED -> "locked"
-    PlayerStatus.PLAYING -> "playing"
+    PlayerStatus.ONLINE -> "online"
     PlayerStatus.GOAL -> "goal"
     PlayerStatus.RELEASED -> "released"
     PlayerStatus.COMPLETE -> "complete"
   }
-  override val playing = "playing"
+  override fun lastCheck(ago: String) = "last check $ago"
   override fun slot(name: String) = "Slot: $name"
-  override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression progression"
-  override fun doneAt(time: String) = "done $time"
+  override val checksBar = "Checks"
+  override val progressionChecksBar = "Progression checks"
+  override val availableTip = "Available"
+  override val availableLastKnown =
+    "Available, the last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
+  override val logic = "Logic"
+  override fun logicTip(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "The logic is being built: the available checks come once it runs completely"
+    LogicStatus.RUNNING -> "The logic runs: it counts each slot's available checks"
+    LogicStatus.STOPPED -> "The logic isn't running: the available checks are the last known ones. It starts with the game server."
+    LogicStatus.FAILED -> "The logic couldn't be built: the available checks are the last known ones"
+  }
   override fun unlockedBy(name: String) = "Unlocked by $name"
   override fun keyHinted(where: String) = "Locked · key hinted: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -231,11 +296,21 @@ internal object GermanDashboard : DashboardTexts {
   override val serverAsleep =
     "Der Spielserver schläft: Eine Weile hat niemand gespielt. Er startet von selbst, sobald sich jemand verbindet."
   override val overview = "Überblick"
-  override fun overviewSubtitle(slots: Int, checked: String, total: String) = "$slots Slots · $checked von $total Checks"
-  override val goals = "Ziele"
+  override val finished = "Fertig"
   override val slotsFinished = "Slots fertig"
-  override val online = "Online"
-  override val clientsConnected = "Clients verbunden"
+  override val slots = "Slots"
+  override val everyoneOnline = "jetzt online"
+  override val items = "Items"
+  override fun itemsOf(progression: String, traps: String) = "$progression Progression · $traps Fallen"
+  override val links = "Links"
+  override fun linksOf(deaths: String, traps: String) = "$deaths Tode · $traps Fallen"
+  override val tipProgression = "Progression"
+  override val tipTraps = "Fallen"
+  override val tipDeaths = "Tode"
+  override val serverOn = "Läuft"
+  override val serverOff = "Gestoppt"
+  override val tipUptime = "Laufzeit"
+  override val tipOpen = "Offen"
   override val unlocked = "Entsperrt"
   override val slotsOpened = "Slots geöffnet"
   override val hints = "Hinweise"
@@ -243,8 +318,9 @@ internal object GermanDashboard : DashboardTexts {
   override val playTime = "Spielzeit"
   override val allSlotsTogether = "alle Slots zusammen"
   override val session = "Session"
-  override val serverRunning = "Spielserver läuft"
-  override val serverStopped = "Spielserver gestoppt"
+  override fun serverTime(duration: String, running: Boolean) =
+    if (running) "Spielserver läuft · $duration" else "Spielserver lief $duration"
+  override fun madeOn(date: String) = "erstellt am $date"
   override val players = "Spieler"
   override fun playersSubtitle(players: Int, slots: Int) = "$players Spieler · $slots ${if (slots == 1) "Slot" else "Slots"}"
   override val sortPlayer = "Sortieren: Spieler"
@@ -253,21 +329,35 @@ internal object GermanDashboard : DashboardTexts {
   override val waitingForServer = "Warte auf den Server…"
   override fun deleted(name: String) = "$name (gelöscht)"
   override fun account(id: String, deleted: Boolean) = "Konto $id${if (deleted) " (gelöscht)" else ""}"
-  override fun locked(n: Int) = "$n gesperrt"
-  override fun done(n: Int) = "$n fertig"
-  override fun played(duration: String) = "$duration gespielt"
-  override fun status(status: PlayerStatus, started: Boolean) = when (status) {
-    PlayerStatus.IDLE -> if (started) "inaktiv" else "nicht gestartet"
+  override fun connections(n: Int) = "$n Verbindungen"
+  override val tipDone = "Fertig"
+  override val tipLocked = "Gesperrt"
+  override val tipPlayed = "Gespielt"
+  override val tipReceived = "Erhalten"
+  override val tipSent = "Gesendet"
+  override fun status(status: PlayerStatus) = when (status) {
+    PlayerStatus.NOT_STARTED -> "nicht gestartet"
+    PlayerStatus.IDLE -> "inaktiv"
     PlayerStatus.LOCKED -> "gesperrt"
-    PlayerStatus.PLAYING -> "spielt"
+    PlayerStatus.ONLINE -> "online"
     PlayerStatus.GOAL -> "Ziel"
     PlayerStatus.RELEASED -> "freigegeben"
     PlayerStatus.COMPLETE -> "komplett"
   }
-  override val playing = "spielt"
+  override fun lastCheck(ago: String) = "letzter Check $ago"
   override fun slot(name: String) = "Slot: $name"
-  override fun progress(checked: Int, total: Int, progression: Int) = "$checked / $total · $progression Progression"
-  override fun doneAt(time: String) = "fertig $time"
+  override val checksBar = "Checks"
+  override val progressionChecksBar = "Progressions-Checks"
+  override val availableTip = "Verfügbar"
+  override val availableLastKnown =
+    "Verfügbar, die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
+  override val logic = "Logik"
+  override fun logicTip(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "Die Logik wird aufgebaut: Die verfügbaren Checks kommen, sobald sie vollständig läuft"
+    LogicStatus.RUNNING -> "Die Logik läuft: Sie zählt die verfügbaren Checks jedes Slots"
+    LogicStatus.STOPPED -> "Die Logik läuft nicht: Die verfügbaren Checks sind die zuletzt bekannten. Sie startet mit dem Spielserver."
+    LogicStatus.FAILED -> "Die Logik konnte nicht aufgebaut werden: Die verfügbaren Checks sind die zuletzt bekannten"
+  }
   override fun unlockedBy(name: String) = "Entsperrt durch $name"
   override fun keyHinted(where: String) = "Gesperrt · Schlüssel-Hinweis: $where"
   override fun hintPlace(location: String, slot: String) = "$location (in $slot)"
@@ -335,6 +425,15 @@ internal object EnglishFeed : FeedTexts {
   override val joined = "{player} joined"
   override val left = "{player} left"
   override val cheatMark = " · cheat"
+  override val links = "Links"
+  override val died = "{player} died"
+  override val trapped = "{player} set off {item}"
+  override val trappedSome = "{player} set off a trap"
+  override val someone = "Someone"
+  override val nothingFound = "Nothing found."
+  override fun eventsOf(from: String, to: String, total: String) = "Events $from–$to of $total"
+  override val newer = "Newer events"
+  override val older = "Older events"
 }
 
 internal object GermanFeed : FeedTexts {
@@ -365,6 +464,15 @@ internal object GermanFeed : FeedTexts {
   override val joined = "{player} ist beigetreten"
   override val left = "{player} ist gegangen"
   override val cheatMark = " · Cheat"
+  override val links = "Links"
+  override val died = "{player} ist gestorben"
+  override val trapped = "{player} hat {item} ausgelöst"
+  override val trappedSome = "{player} hat eine Falle ausgelöst"
+  override val someone = "Jemand"
+  override val nothingFound = "Nichts gefunden."
+  override fun eventsOf(from: String, to: String, total: String) = "Ereignisse $from–$to von $total"
+  override val newer = "Neuere Ereignisse"
+  override val older = "Ältere Ereignisse"
 }
 
 internal object EnglishFinish : FinishTexts {

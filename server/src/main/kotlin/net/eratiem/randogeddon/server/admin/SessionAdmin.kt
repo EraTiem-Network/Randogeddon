@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.database.AppSettingsStore
+import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.SessionSetupStore
@@ -53,6 +54,9 @@ import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.InspectRequest
+import net.eratiem.randogeddon.shared.SeedInfo
+import net.eratiem.randogeddon.shared.SeedUpload
+import net.eratiem.randogeddon.shared.YamlWorld
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.NewSessionView
@@ -78,6 +82,10 @@ class SessionProblem(val status: HttpStatusCode, val refusal: Refusal) : Excepti
 
 /** How long an ended creation stays to be asked about (its page shows the end, the log can be downloaded). */
 private const val CREATION_KEPT = 60 * 60_000L
+
+/** As long as the gateway keeps an uploaded seed for its session; the zip's 64 MB as base64. */
+private const val SEED_KEPT = 60 * 60_000L
+private const val MAX_SEED_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /** A creation was cancelled: the gateway ended its generation. */
 private class CreationCancelled : Exception("Cancelled")
@@ -153,6 +161,7 @@ class SessionAdmin(
   private val settings: AppSettingsStore,
   private val limit: SessionLimit,
   private val gameServers: GameServerLimit,
+  private val events: SessionEventStore,
 ) {
   /**
    * The sessions [user] manages with their game servers (an Administrator: every session) or supports (their role
@@ -245,6 +254,38 @@ class SessionAdmin(
     return inspected.copy(problems = inspected.problems + missing.map { game ->
       Refusal.of(Problem.NO_APWORLD, "game" to game, "version" to release.version).toApiError()
     })
+  }
+
+  /** An uploaded seed waiting for its session: who uploaded it, what the gateway found in it, since when. */
+  private class WaitingSeed(val by: Uuid, val info: SeedInfo, val since: Long)
+
+  /** The uploaded seeds by the gateway's token; it keeps them as long ([SEED_KEPT]). */
+  private val seeds = ConcurrentHashMap<String, WaitingSeed>()
+
+  /**
+   * A seed generated elsewhere, for a new session of this Administrator: the gateway checks the zip and its
+   * multidata and keeps it; the form then assigns its slots and creates the session with its token.
+   */
+  suspend fun takeSeed(upload: SeedUpload, user: User): SeedInfo {
+    if (!user.administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS_SEED)
+    if (upload.base64.length > MAX_SEED_BASE64) throw SessionProblem(HttpStatusCode.PayloadTooLarge, Problem.SEED_TOO_LARGE)
+    val info = gameServer.uploadSeed(upload)
+    if (setups.of(info.seedName) != null) {
+      runCatching { gameServer.dropSeed(info.token) }
+      throw SessionProblem(HttpStatusCode.Conflict, Problem.SEED_IN_USE)
+    }
+    val now = System.currentTimeMillis()
+    seeds.entries.removeIf { now - it.value.since > SEED_KEPT }
+    seeds[info.token] = WaitingSeed(user.id, info, now)
+    logger.info("{} uploaded seed {} ({}, {} slots)", user.name, info.seedName, upload.fileName.take(80), info.slots.size)
+    return info
+  }
+
+  /** The Administrator took an uploaded seed out of the form again: the gateway needn't keep it. */
+  suspend fun dropSeed(token: String, user: User) {
+    val seed = seeds[token]?.takeIf { it.by == user.id } ?: return
+    seeds.remove(token)
+    runCatching { gameServer.dropSeed(seed.info.token) }
   }
 
   /** Who creates a session right now (its seed generates for minutes); each one at a time. */
@@ -377,14 +418,22 @@ class SessionAdmin(
     stages[id] = GenerationProgress(GenerationStage.CHECKING, 1)
     // The sessions others are creating right now will take a game server each too
     gameServers.check(null, starting = creating.size - 1)
-    val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
-    inspected.problems.firstOrNull()?.let { throw SessionProblem(HttpStatusCode.BadRequest, Refusal(it.code ?: Problem.NOT_POSSIBLE, it.args)) }
-    if (inspected.worlds.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOTS)
-    val names = inspected.worlds.map { it.name }.toSet()
+    // A seed generated elsewhere (uploaded before, by this Administrator) instead of YAMLs: its slots as they are
+    val uploaded = request.seed?.let { token ->
+      if (!creator.administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS_SEED)
+      seeds[token]?.takeIf { it.by == creator.id }?.info ?: throw SessionProblem(HttpStatusCode.Gone, Problem.SEED_GONE)
+    }
+    val found = if (uploaded != null) uploaded.slots.map { YamlWorld(id, it.name, it.game) } else {
+      val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
+      inspected.problems.firstOrNull()?.let { throw SessionProblem(HttpStatusCode.BadRequest, Refusal(it.code ?: Problem.NOT_POSSIBLE, it.args)) }
+      inspected.worlds
+    }
+    if (found.isEmpty()) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOTS)
+    val names = found.map { it.name }.toSet()
     request.worlds.map { it.name }.filter { it !in names }.takeIf { it.isNotEmpty() }?.let {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_IN_YAMLS, "names" to it.joinToString())
     }
-    val plans = inspected.worlds.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
+    val plans = found.associate { world -> world.name to (request.worlds.firstOrNull { it.name == world.name } ?: WorldPlan(world.name)) }
       // A hosted slot has no players: its game's own server is joined, not Archipelago
       .mapValues { (_, plan) -> if (plan.hosted) plan.copy(userIds = emptyList()) else plan }
     // Who plays: accounts by ID, invited ones too (they sign up later; the session shows them meanwhile)
@@ -398,24 +447,38 @@ class SessionAdmin(
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.SLOT_WITHOUT_PLAYER, "slots" to it.joinToString())
     }
     val versions = gameServer.versions()
-    val version = request.apVersion ?: versions.firstOrNull()
+    val version = uploaded?.release ?: request.apVersion ?: versions.firstOrNull()
       ?: throw SessionProblem(HttpStatusCode.ServiceUnavailable, Problem.NO_RELEASE)
     if (version !in versions) {
       throw SessionProblem(HttpStatusCode.BadRequest, Problem.RELEASE_UNSUPPORTED, "version" to version, "versions" to versions.joinToString())
     }
 
-    val locked = when (val open = request.options.openSlots) {
+    val locked = if (uploaded != null) emptyList() else when (val open = request.options.openSlots) {
       null -> plans.values.filter { it.locked }.map { it.name }
       else -> if (plans.values.any { it.random }) pickMixed(plans.values.toList(), open, random) else pickLocked(plans.keys.toList(), open, random)
     }
     // Someone has to start: the keys are found in the open slots
     if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ONE_OPEN)
     logger.info("{} creates session {}: {} slots, {} players, Archipelago {}", admin, id, plans.size, people.size, version)
-    val games = inspected.worlds.flatMap { it.game.split(" / ") }.distinct()
+    val games = found.flatMap { it.game.split(" / ") }.distinct()
     return {
-      val generated = gameServer.generate(id, GenerateRequest(request.yamls, locked, request.options.earlyKeys, version, games))
-      if (generated.cancelled) throw CreationCancelled()
-      val seed = generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
+      val seed = if (uploaded != null) {
+        // Nothing to generate: the gateway makes the uploaded seed the session's
+        stages[id] = GenerationProgress(GenerationStage.SAVING, 50)
+        val installed = gameServer.installSeed(id, uploaded.token) ?: throw SessionProblem(HttpStatusCode.Gone, Problem.SEED_GONE)
+        seeds.remove(uploaded.token)
+        installed.seedName
+      } else {
+        val generated = gameServer.generate(
+          id,
+          GenerateRequest(
+            request.yamls, locked, request.options.earlyKeys, version, games,
+            plando = request.options.plando, skipBalancing = request.options.skipBalancing, race = request.options.race,
+          ),
+        )
+        if (generated.cancelled) throw CreationCancelled()
+        generated.seedName ?: throw SessionProblem(HttpStatusCode.UnprocessableEntity, failure(generated))
+      }
       stages[id] = GenerationProgress(GenerationStage.SAVING, 93)
 
       setups.create(
@@ -472,6 +535,8 @@ class SessionAdmin(
     live.tracker.clear()
     archives.delete(id)
     setups.delete(live.seedName)
+    // Its ID may be a new session's later: nothing of this one is left to be heard then
+    runCatching { events.delete(id) }
     spoilers.forget(id)
     sessions.refresh()
     logger.info("{} deleted session {} (seed {}){}", admin, id, live.seedName, if (purge) " for good" else "")

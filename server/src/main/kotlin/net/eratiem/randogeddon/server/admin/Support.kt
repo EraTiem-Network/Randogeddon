@@ -10,7 +10,8 @@ import net.eratiem.randogeddon.shared.CheatView
 import org.koin.core.annotation.Single
 
 /** What support may do of the cheats: items, checks and hints; no release or collect. */
-private val SUPPORT_ACTIONS = setOf(CheatAction.ITEM, CheatAction.LOCATION, CheatAction.HINT, CheatAction.HINT_LOCATION)
+private val SUPPORT_ACTIONS =
+  setOf(CheatAction.ITEM, CheatAction.LOCATION, CheatAction.HINT, CheatAction.HINT_LOCATION, CheatAction.KEY_LOCATION, CheatAction.UNLOCK)
 
 /**
  * Support's help in a session: giving items, checking locations and free hints, even if the session has no cheat

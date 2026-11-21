@@ -29,6 +29,9 @@ const val MAX_SESSIONS = 200
 /** A session cut by a tracker restart continues if the world is seen again within this time. */
 const val SESSION_MERGE_GAP_MS = 5 * 60_000L
 
+/** The location of an item in the starting inventory, as MultiServer sends it. */
+const val STARTING_INVENTORY = -2L
+
 /** One `NetworkItem`: the item, the location it was found at, the player it came from (or went to) and its flags. */
 data class NetworkItem(val item: Long, val location: Long, val player: Int, val flags: Int)
 
@@ -43,14 +46,27 @@ class Player(val slot: Int, val name: String, val game: String) {
 
   /** Game clients connected to this slot, counted from Join/Part since the tracker connected. */
   var online: Int = 0
-  var released: Boolean = false
+  /** When it was released ([Release] message); with [goalAt] it tells the automatic release at the goal. */
+  var releasedAt: Long? = null
+  /** Its newest check: the newest `ItemSend` it found. */
+  var lastCheckAt: Long? = null
   var lastActivity: Long? = null
   var hintPoints: Int? = null
   var sessions: MutableList<ConnectionSession> = mutableListOf()
   var firstCheckAt: Long? = null
   var goalAt: Long? = null
+  /** The deaths it passed on by DeathLink, the traps by TrapLink. */
+  var deaths: Int = 0
+  var trapLinks: Int = 0
+  /** Its checks available now, as the session's logic last counted them; `null`: not known. */
+  var available: Int? = null
+  /** Its received items and checks when the logic was last asked about it (asked again once they change). */
+  var availableAsked: Pair<Int, Int>? = null
 
   val openSession: ConnectionSession? get() = sessions.lastOrNull()?.takeIf { it.end == null }
+
+  /** Every location checked (by playing, or by a release). */
+  val complete: Boolean get() = total > 0 && missing.isEmpty()
 
   /** Finished sessions only; the open one is added by whoever knows the current time. */
   val playTimeMs: Long get() = sessions.sumOf { s -> s.end?.let { it - s.start } ?: 0 }
