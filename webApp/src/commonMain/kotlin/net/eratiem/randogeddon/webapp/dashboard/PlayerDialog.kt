@@ -41,6 +41,7 @@ import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.DialogSection
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.Dot
+import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
@@ -144,8 +145,18 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         if (d.missing.isEmpty()) Txt(t.dialogs.allDone, size = 13.sp, color = p.ok)
         else {
           FilterField(missingQuery, { missingQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth().padding(bottom = 8.dp))
+          // The ones its logic reaches now first, marked; then the rest
+          val available = d.availableLocations.toSet()
           val missing = d.missing.filter { missingQuery.isBlank() || it.contains(missingQuery, ignoreCase = true) }
-          Paged(missing, 50, reset = missingQuery) { ListRow { Txt(it, size = 13.sp) } }
+            .sortedBy { it !in available }
+          Paged(missing, 50, reset = missingQuery) { location ->
+            ListRow {
+              if (location in available) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Tip(t.dashboard.availableTip) { DrawnIcon(Icon.SIGNPOST, p.ok, 12.dp) }
+                Txt(location, size = 13.sp, color = p.ok)
+              } else Txt(location, size = 13.sp)
+            }
+          }
         }
       }
       TwoColumns(twoColumns, 16.dp, items, missing)
