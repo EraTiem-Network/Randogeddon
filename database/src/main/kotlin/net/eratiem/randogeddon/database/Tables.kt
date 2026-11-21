@@ -149,6 +149,13 @@ object SessionHostedSlotsTable : Table("session_hosted_slots") {
   override val primaryKey = PrimaryKey(sessionId, slotName)
 }
 
+/** A session's slots open to all of its players (V27): played by every one of them, or for a hosted slot, theirs to join. */
+object SessionOpenSlotsTable : Table("session_open_slots") {
+  val sessionId = uuid("session_id") references SessionsTable.id
+  val slotName = varchar("slot_name", 64)
+  override val primaryKey = PrimaryKey(sessionId, slotName)
+}
+
 object SlotPasswordsTable : Table("slot_passwords") {
   val sessionId = uuid("session_id") references SessionsTable.id
   val slotName = varchar("slot_name", 64)

@@ -84,6 +84,11 @@ data class SessionSetup(
   val keepRunning: Boolean = false,
   /** Of its hosted slots, the Minecraft Dig ones whose server Randogeddon runs itself (through the bridge's tunnel). */
   val direct: Set<String> = emptySet(),
+  /**
+   * Its slots open to all of its players: played by every one of them, or for a hosted one, theirs to join (a hosted
+   * slot not open goes to the players [worlds] names for it).
+   */
+  val open: Set<String> = emptySet(),
 )
 
 /**
@@ -121,6 +126,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     hosted: Set<String> = emptySet(),
     createdBy: Uuid? = null,
     direct: Set<String> = emptySet(),
+    open: Set<String> = emptySet(),
   ) =
     db.query {
       val id = sessionId(seedName, now, publicId)
@@ -146,6 +152,12 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
           it[sessionId] = id
           it[slotName] = slot
           it[SessionHostedSlotsTable.direct] = slot in direct
+        }
+      }
+      for (slot in open) {
+        SessionOpenSlotsTable.insert {
+          it[sessionId] = id
+          it[slotName] = slot
         }
       }
     }
@@ -238,6 +250,8 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
       seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
       deleted, roles, hosted, row[SessionsTable.createdBy], row[SessionsTable.keepRunning],
       direct = hostedRows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
+      open = SessionOpenSlotsTable.selectAll().where { SessionOpenSlotsTable.sessionId eq row[SessionsTable.id] }
+        .map { it[SessionOpenSlotsTable.slotName] }.toSet(),
     )
   }
 
