@@ -17,6 +17,8 @@ const TEXTS = {
       "the bridge fills in yours.",
     states: { waiting: "Waiting for the game", connecting: "Connecting…", connected: "Connected", error: "Error" },
     games: (n) => n > 1 ? ` (${n} clients)` : "",
+    minecraft: "Minecraft 1.19.4: Multiplayer, Direct Connection, this address. The server starts when you join " +
+      "(about a minute; Logging in… meanwhile).",
     quitted: "Randogeddon Bridge has quit. You can close this tab.",
     unreachable: "The bridge doesn't answer: is it still running?",
   },
@@ -35,6 +37,8 @@ const TEXTS = {
       "und kein Passwort: Die Bridge trägt deine ein.",
     states: { waiting: "Wartet auf das Spiel", connecting: "Verbindet…", connected: "Verbunden", error: "Fehler" },
     games: (n) => n > 1 ? ` (${n} Clients)` : "",
+    minecraft: "Minecraft 1.19.4: Mehrspieler, Direkt verbinden, diese Adresse. Der Server startet, wenn du beitrittst " +
+      "(etwa eine Minute; solange Logging in…).",
     quitted: "Randogeddon Bridge ist beendet. Du kannst diesen Tab schließen.",
     unreachable: "Die Bridge antwortet nicht: Läuft sie noch?",
   },
@@ -145,7 +149,8 @@ function renderRows() {
     rows.append(el("tr", {},
       el("td", {}, r.title),
       el("td", {}, r.slot, el("span", { class: "game" }, r.game)),
-      el("td", {}, el("span", { class: "address" }, address), copy),
+      el("td", {}, el("span", { class: "address" }, address), copy,
+        r.game === "Minecraft Dig" ? el("span", { class: "game" }, t.minecraft) : null),
       el("td", {},
         el("span", { class: `state ${r.state}` }, el("span", { class: "dot" }), (t.states[r.state] || r.state) + t.games(r.games)),
         r.detail ? el("span", { class: "detail" }, r.detail) : null),
