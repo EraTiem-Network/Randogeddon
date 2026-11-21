@@ -894,6 +894,11 @@ in the database, and how the dashboard shows it. Renamed from "Generating Like t
 - [x] Deaths and traps on the slots too (asked for after 0.19.17; 0.19.18, with icons on the players' pills): as the Overview's *Links* tile counts them for the
       session, each slot and person its own, by what it sent (the deaths it shared by DeathLink, the traps it sent by
       TrapLink), not by what it received
+- [x] Cheatable locks (asked for after 0.19.18; 0.19.19): two cheats for a locked slot in the *Cheats* section.
+      *Check its key's location*: the location that holds its key is checked as if its player found it (the key goes to
+      the World Locks slot, the slot opens, the check counts for the world it is in); with the spoiler log's
+      placements. *Unlock*: its key is given to the World Locks slot (`/send`), no location checked. Logged and in the
+      live feed like every cheat, for whoever may cheat (Session-Managers, Administrators, support)
 
 ## Phase 20: Hosted Minecraft Dig (planned)
 
