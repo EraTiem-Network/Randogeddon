@@ -152,7 +152,7 @@ fun main() {
   // A session's: kept running, its hosted slots. Unknown (the database didn't answer): it keeps running
   suspend fun rulesOf(session: SessionGameServer): SleepRules =
     readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
-      ?.let { SleepRules(it.keepRunning, it.hosted) } ?: SleepRules()
+      ?.let { SleepRules(it.keepRunning, it.hosted, it.direct) } ?: SleepRules()
   // What happens on the game servers, heard here and kept for the tracker
   val events = SessionEvents(SessionEventStore(database), http, background)
   // Each session's logic (the available checks), running with its game server and a while after
@@ -216,7 +216,8 @@ fun main() {
   // The Minecraft Dig slots' servers, run by the minecraft service
   val minecraft = Minecraft(
     http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
-    passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() }, scope = background,
+    passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
+    rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() }, scope = background,
   )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
   val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
@@ -263,9 +264,12 @@ fun main() {
             val tunnelSession = tunnelId?.let { sessions.get(it) }
             if (tunnelSession == null || !minecraft.enabled) {
               close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "No Minecraft server here"))
-            } else if (!tunnelAllowed(call.request.headers[SLOT_PASSWORD_HEADER], slot, tunnelSession.passwords::current, tunnelSession.passwords::locked)) {
+            } else if (!tunnelAllowed(
+                call.request.headers[TUNNEL_KEY_HEADER], slot, tunnelSession.passwords::current, tunnelSession.passwords::locked,
+              ) { rulesOf(tunnelSession).direct }
+            ) {
               logger.info("Refused a Minecraft tunnel from {} to {}'s {}", call.request.origin.remoteHost, tunnelSession.id, printable(slot))
-              close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Wrong password or a locked slot"))
+              close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Wrong key, a locked slot, or not hosted here"))
             } else {
               minecraftTunnel(this, minecraft, tunnelSession.id, slot)
             }

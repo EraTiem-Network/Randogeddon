@@ -91,6 +91,8 @@ class Minecraft(
   /** The slot passwords of session `id`, by slot name. */
   private val passwords: suspend (String) -> Map<String, String>,
   private val idleMinutes: suspend () -> Int,
+  /** Session `id`'s hosted slots, and of them the ones hosted directly (only those get a server here). */
+  private val rules: suspend (String) -> SleepRules = { SleepRules() },
   scope: CoroutineScope,
 ) {
   /** The last answer of the minecraft service, by server key. */
@@ -125,8 +127,13 @@ class Minecraft(
 
   private fun key(id: String, slot: DigSlot) = "$id-p${slot.number}".lowercase()
 
-  /** Session [id]'s Minecraft Dig slots and their servers. */
-  suspend fun servers(id: String): MinecraftServers = MinecraftServers(slotsOf(id).map { slot ->
+  /** Session [id]'s hosted Minecraft Dig slots and their servers (a slot played by an account runs its own). */
+  suspend fun servers(id: String): MinecraftServers {
+    val rules = rules(id)
+    return servers(id, rules)
+  }
+
+  private suspend fun servers(id: String, rules: SleepRules): MinecraftServers = MinecraftServers(slotsOf(id).filter { it.name in rules.hosted }.map { slot ->
     val key = key(id, slot)
     val host = known[key]
     val status = when (host?.status) {
@@ -135,7 +142,7 @@ class Minecraft(
       "crashed" -> MinecraftStatus.CRASHED
       else -> MinecraftStatus.ASLEEP
     }
-    MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problems[key])
+    MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problems[key], direct = slot.name in rules.direct)
   }, hosting = enabled && eula())
 
   /** Where session [id]'s slot [slot]'s Minecraft server listens (host, port) while it runs; `null`: it doesn't. */
@@ -150,6 +157,7 @@ class Minecraft(
     if (!enabled) return "No Minecraft is hosted here"
     val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return "$slot isn't a Minecraft Dig slot of this session"
     val key = key(id, digSlot)
+    if (slot !in rules(id).direct) return "$slot isn't hosted directly (an Administrator's switch)"
     if (known[key]?.status in setOf("starting", "running")) return null
     if (!eula()) return "Mojang's EULA isn't accepted (the operator's MINECRAFT_EULA)".also { problems[key] = it }
     val seed = dirs.seed(id)?.name ?: return "it has no seed"

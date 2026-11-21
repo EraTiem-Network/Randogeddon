@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.gateway
 
 import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.database.minecraftTunnelKey
 import java.io.ByteArrayOutputStream
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -95,12 +96,18 @@ class MinecraftTunnelTest {
   }
 
   @Test
-  fun `only the slot's password lets a tunnel in, and not while the slot is locked`() = runBlocking {
+  fun `only the slot's tunnel key lets a tunnel in, while it is hosted directly and not locked`() = runBlocking {
     val passwords = suspend { mapOf("Erin-Dig" to "secret", "Erin-HK" to "other") }
-    assertTrue(tunnelAllowed("secret", "Erin-Dig", passwords) { emptySet() })
-    assertFalse(tunnelAllowed("other", "Erin-Dig", passwords) { emptySet() })
-    assertFalse(tunnelAllowed(null, "Erin-Dig", passwords) { emptySet() })
-    assertFalse(tunnelAllowed("secret", "Nobody", passwords) { emptySet() })
-    assertFalse(tunnelAllowed("secret", "Erin-Dig", passwords) { setOf("Erin-Dig") })
+    val key = minecraftTunnelKey("secret", "Erin-Dig")
+    val direct = suspend { setOf("Erin-Dig") }
+    assertTrue(tunnelAllowed(key, "Erin-Dig", passwords, { emptySet() }, direct))
+    // Not the password itself, nor another slot's key
+    assertFalse(tunnelAllowed("secret", "Erin-Dig", passwords, { emptySet() }, direct))
+    assertFalse(tunnelAllowed(minecraftTunnelKey("other", "Erin-HK"), "Erin-Dig", passwords, { emptySet() }, direct))
+    assertFalse(tunnelAllowed(null, "Erin-Dig", passwords, { emptySet() }, direct))
+    assertFalse(tunnelAllowed(key, "Nobody", passwords, { emptySet() }, direct))
+    assertFalse(tunnelAllowed(key, "Erin-Dig", passwords, { setOf("Erin-Dig") }, direct))
+    // Its server not hosted here
+    assertFalse(tunnelAllowed(key, "Erin-Dig", passwords, { emptySet() }) { emptySet() })
   }
 }
