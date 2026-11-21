@@ -13,10 +13,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// MinecraftDig is the game whose slots get a tunnel instead of a relay: Randogeddon hosts their Minecraft server, and
-// the player's Minecraft connects to it through the bridge.
-const MinecraftDig = "Minecraft Dig"
-
 // tunnelURL is where a Minecraft Dig slot's tunnel connects: the session's address (`wss://<session>.<domain>` or
 // `ws://host:port/<session>`) with `/minecraft/<slot>` after it.
 func tunnelURL(upstream, slot string) string {
@@ -24,7 +20,7 @@ func tunnelURL(upstream, slot string) string {
 }
 
 // serveTunnel takes the Minecraft connections on [ln] (127.0.0.1): each one gets its own connection to the gateway,
-// logged in with the slot's password, and every byte passes both ways in binary messages. The gateway starts the slot's
+// logged in with the slot's tunnel key, and every byte passes both ways in binary messages. The gateway starts the slot's
 // Minecraft server when one joins and holds the join until it runs.
 func (r *Relay) serveTunnel(ln net.Listener) {
 	for {
@@ -43,7 +39,7 @@ func (r *Relay) tunnel(game net.Conn) {
 	defer game.Close()
 	r.note(func() { r.open++; r.detail = "" })
 	defer r.note(func() { r.open-- })
-	upstream, password := r.target()
+	upstream, key := r.target()
 	ctx, cancel := context.WithCancel(r.closing)
 	defer cancel()
 	// Closing the relay (or either side ending) ends the Minecraft connection too
@@ -51,8 +47,8 @@ func (r *Relay) tunnel(game net.Conn) {
 	dialCtx, dialCancel := context.WithTimeout(ctx, 20*time.Second)
 	server, _, err := websocket.Dial(dialCtx, tunnelURL(upstream, r.Slot), &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"User-Agent":                   {"RandogeddonBridge/" + version},
-			"X-Randogeddon-Slot-Password": {password},
+			"User-Agent":               {"RandogeddonBridge/" + version},
+			"X-Randogeddon-Tunnel-Key": {key},
 		},
 	})
 	dialCancel()

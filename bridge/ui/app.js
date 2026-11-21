@@ -150,7 +150,7 @@ function renderRows() {
       el("td", {}, r.title),
       el("td", {}, r.slot, el("span", { class: "game" }, r.game)),
       el("td", {}, el("span", { class: "address" }, address), copy,
-        r.game === "Minecraft Dig" ? el("span", { class: "game" }, t.minecraft) : null),
+        r.tunnel ? el("span", { class: "game" }, t.minecraft) : null),
       el("td", {},
         el("span", { class: `state ${r.state}` }, el("span", { class: "dot" }), (t.states[r.state] || r.state) + t.games(r.games)),
         r.detail ? el("span", { class: "detail" }, r.detail) : null),

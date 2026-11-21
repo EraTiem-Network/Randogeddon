@@ -13,11 +13,11 @@ import (
 	"github.com/coder/websocket"
 )
 
-// gatewayTunnel is a stand-in for the gateway's end of a tunnel: it remembers the path and the password header and
+// gatewayTunnel is a stand-in for the gateway's end of a tunnel: it remembers the path and the tunnel key header and
 // echoes every binary message.
 func gatewayTunnel(seen chan<- [2]string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seen <- [2]string{r.URL.EscapedPath(), r.Header.Get("X-Randogeddon-Slot-Password")}
+		seen <- [2]string{r.URL.EscapedPath(), r.Header.Get("X-Randogeddon-Tunnel-Key")}
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
@@ -35,11 +35,11 @@ func gatewayTunnel(seen chan<- [2]string) *httptest.Server {
 	}))
 }
 
-func TestTunnelPassesMinecraftsBytesWithTheSlotsPassword(t *testing.T) {
+func TestTunnelPassesMinecraftsBytesWithTheSlotsKey(t *testing.T) {
 	seen := make(chan [2]string, 1)
 	server := gatewayTunnel(seen)
 	defer server.Close()
-	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{Name: "Erin Dig", Game: MinecraftDig, Password: "s3cret"}, wsURL(server)+"/brave-otter", nil, 0)
+	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{Name: "Erin Dig", Game: "Minecraft Dig", Tunnel: "k3y"}, wsURL(server)+"/brave-otter", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestTunnelPassesMinecraftsBytesWithTheSlotsPassword(t *testing.T) {
 	if _, err := io.ReadFull(game, got); err != nil || string(got) != string(hello) {
 		t.Fatalf("echo %v (%v)", got, err)
 	}
-	if s := <-seen; s[0] != "/brave-otter/minecraft/Erin%20Dig" || s[1] != "s3cret" {
+	if s := <-seen; s[0] != "/brave-otter/minecraft/Erin%20Dig" || s[1] != "k3y" {
 		t.Fatalf("the gateway got %v", s)
 	}
 	waitFor(t, relay, StateConnected)
@@ -75,7 +75,7 @@ func TestTunnelWhenTheGatewayIsUnreachable(t *testing.T) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	address := ln.Addr().String()
 	_ = ln.Close()
-	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{Name: "Erin-Dig", Game: MinecraftDig, Password: "x"}, "ws://"+address, nil, 0)
+	relay, err := startRelay("1", "brave-otter", "Brave Otter", Slot{Name: "Erin-Dig", Game: "Minecraft Dig", Tunnel: "x"}, "ws://"+address, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,8 +95,8 @@ func TestTunnelWhenTheGatewayIsUnreachable(t *testing.T) {
 
 func TestTunnelURL(t *testing.T) {
 	for upstream, want := range map[string]string{
-		"wss://friday.example.org":          "wss://friday.example.org/minecraft/Erin-Dig",
-		"ws://localhost:38281/friday/":      "ws://localhost:38281/friday/minecraft/Erin-Dig",
+		"wss://friday.example.org":     "wss://friday.example.org/minecraft/Erin-Dig",
+		"ws://localhost:38281/friday/": "ws://localhost:38281/friday/minecraft/Erin-Dig",
 	} {
 		if got := tunnelURL(upstream, "Erin-Dig"); got != want {
 			t.Errorf("%s: %s", upstream, got)
