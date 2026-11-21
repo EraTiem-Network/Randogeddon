@@ -12,6 +12,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.server.util.array
+import net.eratiem.randogeddon.server.util.bool
+import net.eratiem.randogeddon.server.util.int
+import net.eratiem.randogeddon.server.util.long
+import net.eratiem.randogeddon.server.util.longs
+import net.eratiem.randogeddon.server.util.obj
+import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.AvailableSlot
@@ -29,15 +36,9 @@ import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.ReceivedItemView
+import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.Totals
-import net.eratiem.randogeddon.server.util.array
-import net.eratiem.randogeddon.server.util.bool
-import net.eratiem.randogeddon.server.util.int
-import net.eratiem.randogeddon.server.util.long
-import net.eratiem.randogeddon.server.util.longs
-import net.eratiem.randogeddon.server.util.obj
-import net.eratiem.randogeddon.server.util.string
 
 /** Tags of clients that don't play: trackers (including this one), text clients and hint games. */
 private val NON_GAME_TAGS = setOf("Tracker", "TextOnly", "HintGame")
@@ -763,6 +764,17 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       trapLinks = p.trapLinks,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
+      // Every slot's received items that came from this one's locations
+      sentItems = players.values.flatMap { receiver ->
+        receiver.items.filter { it.player == slot }.map { (item, location, _, flags) ->
+          SentItemView(
+            item = displayItemName(item, receiver.slot),
+            to = playerName(receiver.slot),
+            location = locationName(location, slot),
+            flags = flags,
+          )
+        }
+      }.sortedBy { it.location },
     )
   }
 

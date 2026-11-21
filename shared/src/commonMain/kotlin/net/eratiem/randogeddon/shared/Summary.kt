@@ -347,6 +347,16 @@ data class PlayerDetail(
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,
+  /** What its checked locations held, and whom it went to (itself too); by location. */
+  val sentItems: List<SentItemView> = emptyList(),
+)
+
+@Serializable
+data class SentItemView(
+  val item: String,
+  val to: String,
+  val location: String,
+  val flags: Int,
 )
 
 @Serializable

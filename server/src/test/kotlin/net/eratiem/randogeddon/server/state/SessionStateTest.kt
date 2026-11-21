@@ -8,6 +8,7 @@ import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.PlayerStatus
+import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.Totals
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,6 +119,16 @@ class SessionStateTest {
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)}]}""")) // reconnect resync
     assertEquals(1, s.players[1]!!.items.size)
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
+  }
+
+  @Test
+  fun `a slot's sent items are the items its locations held, to whoever got them, by location`() {
+    val s = makeState()
+    // Bob's Pot held Alice's Sword; Alice's own Chest B held her Key; the server's gift isn't anyone's
+    s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)},${item(101, 11, 1, 0)},${item(101, -2, 0, 0)}]}"""))
+    val bob = s.playerDetail(2)!!.sentItems
+    assertEquals(listOf(SentItemView("Sword", "Alice", "Pot", 1)), bob)
+    assertEquals(listOf(SentItemView("Key", "Alice", "Chest B", 0)), s.playerDetail(1)!!.sentItems)
   }
 
   @Test
