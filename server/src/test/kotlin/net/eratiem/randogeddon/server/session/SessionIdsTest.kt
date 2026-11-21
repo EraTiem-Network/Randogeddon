@@ -31,6 +31,14 @@ class SessionIdsTest {
     assertEquals("a-b", SessionIds.typed("a--b"))
     assertEquals("grn-spiel", SessionIds.typed("Grün!? Spiel"))
     assertEquals("ab-", SessionIds.typed("ab-"))
+    assertEquals("ab", SessionIds.trimEnd(SessionIds.typed("ab-")))
+    // Nothing before the first letter
+    assertEquals("run", SessionIds.typed("2024 run"))
+    assertEquals("x1", SessionIds.typed("--x1"))
+    assertEquals("", SessionIds.typed("123"))
+    // Typed key by key: the space at the end is its hyphen at once
+    assertEquals("friday-", SessionIds.typed("friday "))
+    assertEquals("friday-c", SessionIds.typed(SessionIds.typed("friday ") + "c"))
     assertEquals(SessionIds.MAX_LENGTH, SessionIds.typed("x".repeat(60)).length)
     // Every suggestion's words pass the unwanted words
     repeat(300) { n ->
