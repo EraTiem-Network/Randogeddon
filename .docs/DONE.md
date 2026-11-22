@@ -1250,3 +1250,8 @@ games' real map images moved to Later.*
       spoiler log, account), there as a floating window that can be moved and folded (the user's choice) (0.23.2.3)
 - [x] Every copy says that it copied (asked for on 2026-11-22: users were confused without): the dashboard's copy
       buttons and menus, the panel's, the bridge's page (0.23.2.3)
+- [x] The spoiler page and the hints without waiting for the playthrough (asked for on 2026-11-22, the user's
+      frame): with level 1 the page shows the whole log (Archipelago's level 1 has no spheres). Once level 2
+      finished: a tab for the playthrough as it was (tab 1 everything, tab 2 the playthrough, opened first); level
+      3: another tab for the paths. The hint's *next* is offered only with a playthrough, otherwise only by chance;
+      hints and cheats don't wait for level 2 any more. Levels 2 and 3 run in the background as before (0.23.2.4)
