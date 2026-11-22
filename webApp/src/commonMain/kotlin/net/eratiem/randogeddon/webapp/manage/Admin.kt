@@ -183,8 +183,8 @@ private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler
     Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
   }
   SpoilerRunSection(session.id, "support")
-  // Not before the spoiler log has its playthrough: the hints and cheats need it
-  if (session.spoilerReady) CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) })
+  // A hint's next copy only once the spoiler log has its playthrough
+  CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) }, playthrough = session.spoilerReady)
   // Who watches, and the share link: support hands them out as the players do
   WatchersSection(session.id)
 }
@@ -231,8 +231,8 @@ private fun SelectedSession(
     LogicSection(id, administrator)
     MinecraftSection(id, administrator)
     PatchFilesSection(id)
-    // Not before the spoiler log has its playthrough: the hints and cheats need it
-    if (overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false) CheatSection(id, server, cache)
+    // A hint's next copy only once the spoiler log has its playthrough
+    CheatSection(id, server, cache, playthrough = overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false)
     ConsoleSection(onSend = { line -> run { repository.command(line) } })
     LogSection(repository.log, logs)
   }

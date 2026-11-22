@@ -76,6 +76,8 @@ fun CheatSection(
   support: Boolean = false,
   /** Support: their spoiler log (while it runs too). */
   onSpoiler: (() -> Unit)? = null,
+  /** The spoiler log has its playthrough: an item hint can name the next copy in it (else only one by chance). */
+  playthrough: Boolean = true,
 ) {
   val path = if (support) "api/sessions/$id/support" else "api/sessions/$id/manage/cheat"
   val p = LocalPalette.current
@@ -199,7 +201,7 @@ fun CheatSection(
               )
             }
           }
-          val picksCopy = action == CheatAction.HINT && names?.placementsKnown == true
+          val picksCopy = action == CheatAction.HINT && names?.placementsKnown == true && playthrough
           val needsValue = action in WITH_ITEM || action in WITH_LOCATION
           val which: @Composable (Modifier) -> Unit = { modifier ->
             if (incoming) {
@@ -236,7 +238,7 @@ fun CheatSection(
               outcome = null
               scope.launch {
                 val world = from.takeIf { incoming }
-                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world, hintPick))
+                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world, if (playthrough) hintPick else HintPick.RANDOM))
                 outcome = when (val answer = call("POST", path, body) { }) {
                   // A key's location as the log says it: "Location (in World)"
                   is Answer.Ok -> true to t.cheats.done(
