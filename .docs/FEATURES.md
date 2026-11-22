@@ -180,7 +180,8 @@ its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothi
   big region's locations grouped by their names (`Area: Location`) into boxes of their own. Each location a dot:
   checked, open, available now; its name on hover (what it held once checked); filters by state. Only where the logic
   runs (as the available checks), kept with the slot while it sleeps.
-- **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below.
+- **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below, and
+  pinned on every view (a window over the page where a view has no place for it: moved, folded).
 - **Counts only:** progression counts per slot are its own world's; how many progression items are meant for a slot
   isn't shown (it would tell how much is missing).
 - **Layout:** as wide as the window (2 % margins); the feed a quarter of it (440–640 dp).

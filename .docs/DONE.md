@@ -1246,3 +1246,7 @@ games' real map images moved to Later.*
       for a running one; it passed outside the image
 - [x] The map sized up by a button: over the whole window, then to full screen (asked for on 2026-11-22)
       (0.23.2.2)
+- [x] The live feed pinned (asked for on 2026-11-22): a pin on the feed keeps it on every view (Management panel,
+      spoiler log, account), there as a floating window that can be moved and folded (the user's choice) (0.23.2.3)
+- [x] Every copy says that it copied (asked for on 2026-11-22: users were confused without): the dashboard's copy
+      buttons and menus, the panel's, the bridge's page (0.23.2.3)
