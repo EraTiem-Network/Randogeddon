@@ -12,6 +12,46 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.1: The gateway's decisions
+What the gateway's review left for the user to decide, built as decided (2026-11-22).
+
+- **Archipelago's Python runs as a user of its own** (uid 1100; the gateway stays uid 1000). APWorld code is
+  third-party: it ran as the gateway's own user and could read the gateway's secrets (the database login, the internal
+  token) from its environment and memory. The gateway's container now starts as root holding only `SETUID`, `SETGID`
+  and `KILL` (`cap_add`; everything else stays dropped, `no-new-privileges` stays), becomes uid 1000 at once and
+  starts every Archipelago process as uid 1100 with no capability at all. At its start the gateway gives that user
+  the session folders (group 1100, group-writable) and closes everything else in `data/` to it. What stays: all
+  sessions share that one user (a world's code can still read and change another session's files).
+- **The minecraft service has a token of its own**, `MINECRAFT_TOKEN`, and no longer the internal one (the gateway
+  calls it, never the other way round), and it mounts only `data/minecraft/`. Without the setting hosted Minecraft
+  is off, and the panel says why; `scripts/deploy.sh` sets one on the server if it has none. What the service is
+  sent is checked before it becomes a path.
+- **Each game server has a room password** only the gateway and the tracker know (new at every start, given on its
+  console, never on its command line, masked in every log). The gateway puts it in place of a slot's password it
+  checked; a connection to a game server's port past the gateway is refused.
+- **A sleeping game server is woken only by a `Connect` with a slot's right password.** A client needs the server's
+  `RoomInfo` (and often its data package) before it sends one, so the gateway keeps both while a game server runs
+  (`sessions/<id>/kept/`, per seed) and answers from them while it sleeps. A wrong password, or a connection that
+  never sends one, wakes nothing. A session whose game server hasn't run since this version wakes as before, once.
+- **At most 32 connections that haven't joined yet per address** (an IPv6 network as one), of the 1,024 in all. The
+  address is the forwarded one, believed from `TRUSTED_PROXIES` as the tracker does (the setting is the gateway's
+  too now).
+- **The gateway's database role adds only its own kinds of events** (`packet`, `start`, `stop`): migration V28
+  (row-level security on `session_events`, no data changed). A cheat's line can only come from the tracker.
+- **`!admin` is gone:** no server password is given to a game server (`AP_ADMIN_PASSWORD` is ignored, with a
+  warning); remote commands go through the panel's console, which no longer passes on a line that would set a
+  password.
+- **`init: true`** for the gateway's and the minecraft service's containers (what a process leaves behind is reaped).
+- **Out of memory, the kernel ends a generation or a logic build first, then a game server, and the gateway last**
+  (`oom_score_adj` 1000, 800, 0): a killed one fails or is started again as before, instead of every session ending
+  with the gateway.
+
+**Updating:** nothing has to be set by hand. The deploy copies the new `docker-compose.yml` (without its `cap_add` the
+new gateway refuses to start and says so) and sets `MINECRAFT_TOKEN` if `.env` has none; the tracker runs V28; the
+gateway sets the modes in `data/` at its first start. **Rolling back** to 0.23.2 or earlier: `chown -R 1000:1000 data/`
+on the server first (files made since belong to uid 1100), and hosted Minecraft stays off (the old images expect the
+internal token there).
+
 ### 0.23.2: The gateway reviewed
 47 findings (5 high, 16 medium, 26 low), listed in `.docs/DONE.md`; nine of them wait for the user's decision
 (`.docs/TODO.md`): they change the deployment, the schema or what someone sees.

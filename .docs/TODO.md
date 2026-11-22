@@ -45,38 +45,14 @@ The parts:
 - [ ] 0.23.2: the gateway and its tunnel (the relay, the slot passwords' check, the Minecraft tunnel, generating,
       the internal API, Archipelago's processes beside it). Scanned on 2026-11-22: 5 high (3 of them found by both
       scanners), 16 medium, 26 low (47 in all; G: the review's, S: the security scan's)
-    - **Waiting for the user's decision** (each changes the deployment, the schema or what someone sees):
-        - [ ] S1/G8 (high): Archipelago's Python runs as the gateway's own user, so an APWorld can read the gateway's
-              secrets (`/proc/1/environ`: the database login, the internal token) and every session's files;
-              taking them out of its environment protects nothing. Ways: Python as a user of its own in the image
-              (the gateway starts it with `setpriv`/`su-exec`, the session directories group-readable), or the
-              gateway's secrets read from files only root and the gateway can read
-        - [ ] S2/G10 (high): the minecraft service holds the internal token and mounts all of `data/` writable as the
-              gateway's user: whoever gets code to run in it (Forge, the mod) can take the gateway over. Ways: a
-              token of its own that only its two routes accept; only `data/minecraft/` mounted
-        - [ ] G9/S6: every MultiServer listens on all interfaces without a password: anything on the container's
-              networks (with the Traefik overlay, Traefik's shared one) joins any slot past the gateway. Ways:
-              bound to localhost, or a room password only the gateway knows
-        - [ ] G11/S4/S5: one or two addresses can hold all 1,024 waiting places, and anyone can wake every sleeping
-              game server (and its logic build) and so keep every place taken. Ways: a cap per address on waiting
-              connections; a wake only after a `Connect` with a slot that exists (or with its right password)
-        - [ ] G18/S8: the gateway's database role may insert any event (`cheat` too) for any session: forged feed
-              lines under any name, if Archipelago's Python got its login. Restricting it is a schema change (a
-              trigger or a check on `kind`)
-        - [ ] G2 (the rate part): a cap on how many chat lines and link events of one slot are kept per minute
-        - [ ] G24 (part): `init: true` for the gateway's and the minecraft service's containers (orphaned
-              grandchildren reaped)
-        - [ ] S9: refusals tell an anonymous client which sessions and which slot names exist (`InvalidSlot` or
-              `InvalidPassword`, as Archipelago's own server says them; the tunnel's messages)
-        - [ ] S11: one `!admin` password (`AP_ADMIN_PASSWORD`) for every session, guessed at without a limit by any
-              player
-    - [ ] Not checked end to end yet: 0.23.2 passed the gateway's, the tracker's and the shared tests, but the demo
-          on it (real clients' openings through the new rules before a `Connect`) was stopped by the system for low
-          memory while it built (2026-11-22). To be run before it is merged
+    - [ ] Left by its decisions (0.23.2.1): every session's Archipelago processes share one user, so a world's code
+          can still read and change another session's files and read another game server's memory (one user per
+          session would close it: a redesign of the directories); hosted Minecraft with `MINECRAFT_TOKEN` and the
+          deploy's setting of it weren't run (the demo has no hosted server); whether every real game client takes
+          a `RoomUpdate` right before `Connected` (sent when a session's options changed while it slept)
     - [ ] Left by its fixes: a patch for Minecraft Dig is still read whole when its slots are looked up (only its
           `data.json` has a limit); the question whether a server is finished asks the database every 3 s per
-          running Minecraft server; raising the game servers' `oom_score_adj` so the kernel ends one of them before
-          the gateway (it changes which process is killed: the user's decision)
+          running Minecraft server
 - [ ] 0.23.3: Randogeddon Bridge (the key, the relays, the tunnel, its page, the downloads' signing)
 - [ ] 0.23.4: the database (the stores, the roles, the migrations)
     - Noted by the tracker's scan: `EmailChangeStore.take` selects and then deletes (not atomic; harmless so far)

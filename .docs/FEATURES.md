@@ -26,7 +26,7 @@ stateDiagram-v2
 
 - **Game servers at once** (*Users*, default 8; empty: no limit) counts starting, running and crashed ones (a few
   hundred MB each). **Sleep after** (*Users*, default 30 min; 0: never): a game server without players saves and
-  stops; its first player wakes it (and waits). The tracker and hosted slots don't count as players. A server stopped
+  stops; its first player wakes it (and waits): a `Connect` with a slot's right password, nothing else. The tracker and hosted slots don't count as players. A server stopped
   by hand, given up or finished isn't woken that way. *Keep running without players*: an Administrator's switch.
 - At the gateway's start (a deploy) none runs: every session sleeps until its first player.
 - Generations at once: the cores less one (`GENERATIONS_AT_ONCE`); one longer than `GENERATION_MINUTES` (60) stops.
@@ -98,8 +98,8 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   slot: *Unlock* (its key's location checked in its world; the lock says the server did) and *Hint its key's
   location*. Every cheat is logged with who did it and shown in the feed. Support has items, checks and hints, and
   sees the spoiler log's run (restarting it is the Session-Managers').
-- **The console:** MultiServer's commands (`/players`, `/send <slot> <item>`, `/hint`, `/release`, `/collect`).
-  `AP_ADMIN_PASSWORD` enables `!admin`.
+- **The console:** MultiServer's commands (`/players`, `/send <slot> <item>`, `/hint`, `/release`, `/collect`); a
+  line that would set a password isn't passed on. There is no `!admin` from a game client.
 - **Administrators** also get *Users*, *Archipelago* (APWorlds) and *Versions*.
 
 ## APWorlds
@@ -136,7 +136,8 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 - **Slot passwords:** one per slot, generated with the seed; printable ASCII without spaces, quotes or backslashes. The
   gateway checks every `Connect` (`InvalidPassword`, `InvalidSlot`). Before its `Connect` a client gets 1 MiB frames,
   5 minutes, 32 frames and 32 packets (only `Connect` and `GetDataPackage` are passed on); at most 1024 wait at
-  once, a sleeping game server's wake included.
+  once (32 per address), a sleeping game server's wake included. Each game server has a room password of its own
+  that the gateway puts in a checked slot password's place: past the gateway nobody joins.
 - **Share link** (`#/watch/<token>`): the dashboard read-only without a login, no passwords, no spoiler; as many
   live streams per address as the Administrators set (*Users*, default 20; empty: no limit).
 
@@ -153,7 +154,7 @@ Session-Managers, the hosted ones; never a locked one. Command line: `login`, `s
   for a join and holds the join until it's ready (~15 s to a minute), then passes every byte. The server connects to
   the session with the slot's password once a player is on it; it sleeps after the idle time (kept by the minecraft
   service), stops with its session's finish, by hand, when no longer hosted, or when its session is deleted. Nothing
-  runs without `MINECRAFT_EULA=true`; `MINECRAFT_SERVERS` at once, each up to 3 GB.
+  runs without `MINECRAFT_EULA=true` and `MINECRAFT_TOKEN`; `MINECRAFT_SERVERS` at once, each up to 3 GB.
 - **Safe:** a key reaches only `/bridge/…`, checked every 15 s; relays listen on `127.0.0.1` only and refuse web pages
   (an `Origin` header); a tunnel ends anything that isn't a Minecraft handshake; the page answers only on its own
   address, with its link's token.
