@@ -174,12 +174,12 @@ its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothi
   progress or activity. A slot's states: released, complete, goal, locked, online, idle, not started.
 - **Panels:** a player's (totals, slots, open hints, connections, activity) and a slot's, in tabs: *Checks* (available
   now, the rest remaining), *Map*, *Transported items* (sent, received), *Connections*; every list a page at a time.
-- **The map:** generated from the logic for every game: its regions as boxes, a tree from its start (one line from
-  a box branching off to the boxes first reached from it, no line crossing a box or another; its other connections
-  on hover), scrolled sideways by its bar or by dragging; a big region's locations grouped by their names
-  (`Area: Location`) into boxes of their own. Each location a dot: checked, open, available now; its name on hover
-  (what it held once checked); filters by state.
-  Only where the logic runs (as the available checks), kept with the slot while it sleeps.
+- **The map:** generated from the logic for every game: its regions as boxes, a tree from its start (one line from a
+  box branching off to the boxes first reached from it, no line crossing a box or another; its other connections on
+  hover), scrolled both ways by its bars or by dragging, sized up over the window and to full screen by its button; a
+  big region's locations grouped by their names (`Area: Location`) into boxes of their own. Each location a dot:
+  checked, open, available now; its name on hover (what it held once checked); filters by state. Only where the logic
+  runs (as the available checks), kept with the slot while it sleeps.
 - **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below.
 - **Counts only:** progression counts per slot are its own world's; how many progression items are meant for a slot
   isn't shown (it would tell how much is missing).

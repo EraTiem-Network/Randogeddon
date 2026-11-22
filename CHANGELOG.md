@@ -12,6 +12,11 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.2: The map over the window, and in full screen
+- The map has a button that takes it a step larger: from its panel over the whole window, then with the page in full
+  screen; a second one takes it a step back. Larger than its panel it takes all the room, under a line with the
+  slot's name. Esc leaves full screen (the browser's own way): the map stays over the window then.
+
 ### 0.23.2.1: The gateway's decisions
 What the gateway's review left for the user to decide, built as decided (2026-11-22).
 

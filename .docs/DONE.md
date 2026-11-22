@@ -1244,3 +1244,5 @@ games' real map images moved to Later.*
       sleeping session answering from what was kept and waking only for a right password (2 s)
     - Found by the image's build: a test took a killed process that nobody collected (a zombie, where no init runs)
       for a running one; it passed outside the image
+- [x] The map sized up by a button: over the whole window, then to full screen (asked for on 2026-11-22)
+      (0.23.2.2)
