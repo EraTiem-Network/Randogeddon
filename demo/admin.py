@@ -12,7 +12,8 @@
 
 The admin's name and password come from DEMO_ADMIN and DEMO_PASSWORD, the tracker from DEMO_TRACKER
 (http://tracker:8000 inside the compose network). Admins log in with two-factor login: on the first login this sets it
-up and keeps the secret in /out/admin.totp (output/demo/), later logins compute the code from it.
+up and keeps the secret in /out/admin.totp (output/demo/), later logins compute the code from it. The login itself is
+kept in /out/admin.cookies and used again by the next step while it holds.
 """
 import base64
 import collections
@@ -30,7 +31,10 @@ import urllib.request
 
 TRACKER = os.environ.get("DEMO_TRACKER", "http://tracker:8000").rstrip("/")
 TOTP_FILE = pathlib.Path("/out/admin.totp")
-cookies = http.cookiejar.CookieJar()
+# The login is kept between the demo's steps (output/demo/): they come from one address, and the tracker lets an
+# address log in 5 times a minute
+COOKIE_FILE = pathlib.Path("/out/admin.cookies")
+cookies = http.cookiejar.LWPCookieJar(str(COOKIE_FILE))
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
 
 
@@ -76,6 +80,22 @@ def second_factor(pending: str):
 
 
 def login():
+    """Logged in as the demo's admin: with the login kept from the step before while it still holds, else anew."""
+    if COOKIE_FILE.exists():
+        try:
+            cookies.load(ignore_discard=True)
+        except (OSError, http.cookiejar.LoadError):
+            cookies.clear()
+        status, me = call("GET", "/api/me")
+        if status == 200 and me.get("name", "").lower() == os.environ["DEMO_ADMIN"].lower() and me.get("administrator"):
+            return
+        cookies.clear()
+    log_in()
+    cookies.save(ignore_discard=True)
+    COOKIE_FILE.chmod(0o600)
+
+
+def log_in():
     status, answer = call("POST", "/api/login", {"username": os.environ["DEMO_ADMIN"], "password": os.environ["DEMO_PASSWORD"]})
     if status == 200 and answer.get("next") == "code":
         second_factor(answer["pending"])

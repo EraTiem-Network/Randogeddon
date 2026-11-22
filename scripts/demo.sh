@@ -68,7 +68,7 @@ admin() {
 admin_password
 # A kept password that no longer works (the database was reset): a new one
 if ! admin check >/dev/null 2>&1; then
-  rm -f "$PASSWORD_FILE" output/demo/admin.totp
+  rm -f "$PASSWORD_FILE" output/demo/admin.totp output/demo/admin.cookies
   admin_password
   # Her two-factor login too: admin.py sets it up again
   docker compose exec -T tracker randogeddon admins --reset-2fa "$ADMIN" >/dev/null
