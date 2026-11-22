@@ -16,6 +16,7 @@ import kotlin.uuid.Uuid
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.server.session.REOPEN_WINDOW
 import net.eratiem.randogeddon.server.session.completed
 import net.eratiem.randogeddon.server.session.reopenUntil
@@ -83,11 +84,16 @@ class SessionLifecycle(
 
   private suspend fun tick(session: LiveSession, now: Instant = Instant.now()) = mutex.withLock {
     val seed = session.seedName
-    val state = finishes.of(seed) ?: return@withLock
-    if (state.finishedAt != null) return@withLock
+    // As the sessions were read last (every 10 s, and after each change here)
+    val known = session.finish
+    if (known?.finishedAt != null) return@withLock
     // Without the connection the tracker doesn't know; nothing changes then (e.g. while the server restarts)
     val done = session.tracker.read { if (connected) allDone() else null } ?: return@withLock
     if (!done) session.countdownCancelled = false
+    // Not done and no countdown: nothing to do, the database isn't asked; else it says how things stand right now
+    if (!done && known?.dueAt == null) return@withLock
+    val state = finishes.of(seed) ?: return@withLock
+    if (state.finishedAt != null) return@withLock
     when (finishStep(done, state.dueAt, session.countdownCancelled, now)) {
       FinishStep.ARM -> {
         finishes.setDue(seed, now.plus(FINISH_DELAY.toJavaDuration()))
@@ -105,7 +111,7 @@ class SessionLifecycle(
 
   /** Finishes session [id] now ([admin] did). */
   suspend fun finishNow(id: String, admin: String) = mutex.withLock {
-    val session = session(id)
+    val session = sessions.require(id)
     if (finishes.of(session.seedName)?.finishedAt != null) throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_FINISHED, "id" to id)
     finish(session, admin, Instant.now())
     sessions.refresh()
@@ -113,7 +119,7 @@ class SessionLifecycle(
 
   /** Stops the countdown; it starts again only after a slot wasn't done for a while. */
   suspend fun cancel(id: String, admin: String) = mutex.withLock {
-    val session = session(id)
+    val session = sessions.require(id)
     finishes.setDue(session.seedName, null)
     session.countdownCancelled = true
     sessions.refresh()
@@ -126,7 +132,7 @@ class SessionLifecycle(
    * session whose creator isn't known or is gone counts for nobody).
    */
   suspend fun reopen(id: String, by: User) = mutex.withLock {
-    val session = session(id)
+    val session = sessions.require(id)
     if (!by.administrator) {
       val creator = session.setup?.createdBy
       creator?.let { limit.of(it) }?.takeIf { it.reached }?.let {
@@ -162,9 +168,6 @@ class SessionLifecycle(
     logger.info("{} reopened session {}", by.name, id)
   }
 
-  private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
-
   /** Freezes the dashboard's view of [session] into its archive, then stops its tracker and game server for good. */
   private suspend fun finish(session: LiveSession, by: String?, now: Instant) {
     val live = session.build()
@@ -197,10 +200,11 @@ class SessionLifecycle(
     val elsewhere = sessions.all().filter { it.id != session.id && !it.finished }
       .flatMap { other -> other.setup?.let { it.members.keys + it.roles.keys }.orEmpty() }.toSet()
     val invited = (setup.members.keys + setup.roles.keys).mapNotNull { users.account(it) }
-      .filter { it.signedUpAt == null }.associateBy { it.id }
-    for (id in invitationsToCancel(setup.members.keys + setup.roles.keys, elsewhere, invited.keys)) {
+      .filter { it.signedUpAt == null }.map { it.id }.toSet()
+    for (id in invitationsToCancel(setup.members.keys + setup.roles.keys, elsewhere, invited)) {
       users.delete(id)
-      logger.info("Session {} finished: the invitation of {} is cancelled", session.id, invited.getValue(id).email)
+      // By the account's ID: no addresses in the log
+      logger.info("Session {} finished: the invitation of account {} is cancelled", session.id, id)
     }
   }
 }

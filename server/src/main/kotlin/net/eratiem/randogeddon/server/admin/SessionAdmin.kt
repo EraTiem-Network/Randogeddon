@@ -2,7 +2,6 @@ package net.eratiem.randogeddon.server.admin
 
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
-import java.security.SecureRandom
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
@@ -34,6 +33,7 @@ import net.eratiem.randogeddon.server.config.toApiError
 import net.eratiem.randogeddon.server.session.Archives
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.server.session.PlayerYamls
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.Spoilers
@@ -41,6 +41,7 @@ import net.eratiem.randogeddon.server.session.completed
 import net.eratiem.randogeddon.server.session.deletesAt
 import net.eratiem.randogeddon.server.session.reopenUntil
 import net.eratiem.randogeddon.server.util.logger
+import net.eratiem.randogeddon.server.util.secureRandom
 import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.AdminSessionView
 import net.eratiem.randogeddon.shared.ApiError
@@ -180,7 +181,7 @@ class SessionAdmin(
       sessions = managed.map { list.entry(it, it.personOf(user), admin = true, role = it.roleOf(user)) },
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = if (user.administrator) users.active().map { it.name }.sorted() else emptyList(),
-      people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
+      people = if (user.administrator) people() else users.pickable(),
       capacity = gameServers.limit(),
       suggestedId = suggestId(random) { it in taken },
       taken = taken.sorted(),
@@ -200,7 +201,7 @@ class SessionAdmin(
     return NewSessionView(
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       suggestedId = suggestId(random) { it in taken },
-      people = users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
+      people = users.pickable(),
       left = if (user.administrator) null else limit.of(user.id)?.left,
       capacity = gameServers.limit(),
       running = servers?.sessions?.count { it.port != null } ?: 0,
@@ -210,7 +211,7 @@ class SessionAdmin(
 
   /** One session as the admin panel shows it. */
   suspend fun view(id: String, user: User): AdminSessionView {
-    val live = session(id)
+    val live = sessions.require(id)
     val setup = live.setup
     val finish = live.finish
     val finishedAt = finish?.finishedAt
@@ -235,7 +236,7 @@ class SessionAdmin(
       apVersions = runCatching { gameServer.versions() }.getOrDefault(emptyList()),
       users = users.active().map { it.name }.sorted(),
       // Invited accounts (by their address) only for Administrators, as for a new session
-      people = if (user.administrator) people() else users.active().map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() },
+      people = if (user.administrator) people() else users.pickable(),
     )
   }
 
@@ -304,11 +305,16 @@ class SessionAdmin(
   suspend fun create(request: CreateSessionRequest, creator: User): Creation {
     if (!creating.add(creator.id)) throw SessionProblem(HttpStatusCode.Conflict, Problem.CREATING_ALREADY)
     val id = request.id.trim()
+    // Whether this call reserved the ID: only then are its reservation and stage its own to remove
+    var reserved = false
     val generate = try {
-      prepare(request, creator)
+      prepare(request, creator) { reserved = true }
     } catch (e: Throwable) {
       creating.remove(creator.id)
-      stages.remove(id)
+      if (reserved) {
+        stages.remove(id)
+        reservedIds.remove(id)
+      }
       throw e
     }
     val now = System.currentTimeMillis()
@@ -339,6 +345,7 @@ class SessionAdmin(
         creation.endedAt = System.currentTimeMillis()
         creating.remove(creator.id)
         stages.remove(id)
+        reservedIds.remove(id)
       }
     }
     return creation.view(generationProgress(id))
@@ -400,8 +407,17 @@ class SessionAdmin(
     if (id in takenIds()) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
   }
 
-  /** Checks a new session; what generates its seed and sets it up after (to run in the background). */
-  private suspend fun prepare(request: CreateSessionRequest, creator: User): suspend () -> CreateSessionResult {
+  /**
+   * The IDs of the new sessions being created, reserved before anything is generated: a second creation of one is
+   * refused from then on, until the first ends (then the session has it, or it is free again).
+   */
+  private val reservedIds = ConcurrentHashMap.newKeySet<String>()
+
+  /**
+   * Checks a new session and reserves its ID ([reservedIds]; [reserved] is told so); what generates its seed and sets
+   * it up after (to run in the background).
+   */
+  private suspend fun prepare(request: CreateSessionRequest, creator: User, reserved: () -> Unit): suspend () -> CreateSessionResult {
     val admin = creator.name
     if (!creator.administrator) {
       limit.of(creator.id)?.takeIf { it.reached }?.let {
@@ -414,6 +430,9 @@ class SessionAdmin(
     }
     val id = request.id.trim()
     checkId(id)
+    // At once, so that of two creations of the same ID only one gets past here
+    if (!reservedIds.add(id)) throw SessionProblem(HttpStatusCode.Conflict, Problem.ID_TAKEN, "id" to id)
+    reserved()
     stages[id] = GenerationProgress(GenerationStage.CHECKING, 1)
     // The sessions others are creating right now will take a game server each too
     gameServers.check(null, starting = creating.size - 1)
@@ -533,14 +552,14 @@ class SessionAdmin(
     .sortedBy { it.label.lowercase() }
 
   /** For the random locks and the suggested IDs. */
-  private val random: Random = SecureRandom().asKotlinRandom()
+  private val random: Random = secureRandom.asKotlinRandom()
 
   /**
    * Deletes session [id]: its game server stops, its tracker files and setup go; the logins stay. A running one's
    * seed and save go to the gateway's `old/`, a finished one's are deleted for good.
    */
   suspend fun delete(id: String, admin: String) {
-    val live = session(id)
+    val live = sessions.require(id)
     val purge = live.finished
     gameServer.delete(id, purge)
     live.disconnect()
@@ -576,7 +595,7 @@ class SessionAdmin(
 
   /** [keep] disables the session's auto-deletion; deleting it by hand stays possible. */
   suspend fun setKeep(id: String, keep: Boolean, admin: String) {
-    val live = session(id)
+    val live = sessions.require(id)
     if (!finishes.setKeep(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     sessions.refresh()
     logger.info("{} {} the auto-deletion of {}", admin, if (keep) "disabled" else "enabled", id)
@@ -584,7 +603,7 @@ class SessionAdmin(
 
   /** [keep]: its game server keeps running without players; else it sleeps when idle (the gateway decides). */
   suspend fun setKeepRunning(id: String, keep: Boolean, admin: String) {
-    val live = session(id)
+    val live = sessions.require(id)
     if (!setups.setKeepRunning(live.seedName, keep)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
     sessions.refresh()
     logger.info("{} let {} {}", admin, id, if (keep) "keep running without players" else "sleep when idle")
@@ -595,7 +614,7 @@ class SessionAdmin(
    * Administrator switches it on ([administrator]); off, its server is stopped (its world stays).
    */
   suspend fun setDirect(id: String, slot: String, direct: Boolean, administrator: Boolean, actor: String) {
-    val live = session(id)
+    val live = sessions.require(id)
     if (direct && !administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS)
     val game = Room.read(live.roomJson)?.players?.firstOrNull { it.name == slot }?.game
     if (slot !in live.setup?.hosted.orEmpty() || game != MINECRAFT_DIG) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_POSSIBLE)
@@ -611,7 +630,7 @@ class SessionAdmin(
    * (they connect again with the new one). A slot no longer hosted loses its direct switch, its Minecraft server stops.
    */
   suspend fun setSlotPlayers(id: String, slot: String, request: SlotPlayersRequest, actor: String) {
-    val live = session(id)
+    val live = sessions.require(id)
     val setup = live.setup ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_POSSIBLE)
     if (Room.read(live.roomJson)?.players?.none { it.name == slot } != false) throw SessionProblem(HttpStatusCode.NotFound, Problem.NOT_POSSIBLE)
     val wasHosted = slot in setup.hosted
@@ -639,19 +658,24 @@ class SessionAdmin(
       before == null -> now != null
       else -> now != null && !now.containsAll(before)
     }
+    // Someone named for it before who plays nothing in the session now still holds the open slots' passwords
+    val open = openSlotsToRenew(setup, slot, if (request.open) emptySet() else after, request.open, hosted, hosted && wasDirect)
+    val renewed = (if (lost) setOf(slot) else emptySet()) + open
     if (!setups.setSlotPlayers(live.seedName, slot, named, request.open)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
-    if (hosted != wasHosted) {
-      setups.setHosted(live.seedName, slot, hosted)
-      // No longer hosted: Randogeddon no longer runs its Minecraft server (its world stays)
-      if (!hosted && wasDirect) runCatching { gameServer.stopMinecraft(id, slot) }
+    try {
+      if (hosted != wasHosted) {
+        setups.setHosted(live.seedName, slot, hosted)
+        // No longer hosted: Randogeddon no longer runs its Minecraft server (its world stays)
+        if (!hosted && wasDirect) runCatching { gameServer.stopMinecraft(id, slot) }
+      }
+      renewSlots(slotPasswords, gameServer, id, live.seedName, renewed)
+    } finally {
+      // The database changed, whether the gateway could be told or not
+      sessions.refresh()
     }
-    if (lost) {
-      slotPasswords.renew(live.seedName, slot, PasswordGenerator.generate())
-      gameServer.disconnectSlot(id, slot)
-    }
-    sessions.refresh()
     logger.info("{} gave {}'s slot {} to {}{}{}", actor, id, slot, if (request.open) "everyone" else after.joinToString().ifEmpty { "nobody" },
-      if (hosted != wasHosted) (if (hosted) ", hosted" else ", no longer hosted") else "", if (lost) "; its password is new" else "")
+      if (hosted != wasHosted) (if (hosted) ", hosted" else ", no longer hosted") else "",
+      if (renewed.isNotEmpty()) "; new passwords: ${renewed.sorted().joinToString()}" else "")
   }
 
   /**
@@ -672,16 +696,13 @@ class SessionAdmin(
     }
   }
 
-  private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
-
-  /** The IDs in use: in the database, and the gateway's session directories (a deleted one's files are in old/). */
   /**
-   * Every session ID in use: the database's and the gateway's. [fresh]: the gateway asked now (before an ID is
-   * taken); else as it answered last.
+   * Every session ID in use: the database's, the creations' ([reservedIds] too) and the gateway's session directories
+   * (a deleted one's files are in old/). [fresh]: the gateway asked now (before an ID is taken); else as it answered
+   * last.
    */
   private suspend fun takenIds(fresh: Boolean = true): Set<String> = store.all().map { it.id }.toSet() +
-    creations.values.filter { it.state == CreationState.RUNNING }.map { it.id } +
+    creations.values.filter { it.state == CreationState.RUNNING }.map { it.id } + reservedIds +
     if (fresh) runCatching { gameServer.sessions().sessions.map { it.id } }.getOrDefault(emptyList()) else sessions.onGateway
 }
 

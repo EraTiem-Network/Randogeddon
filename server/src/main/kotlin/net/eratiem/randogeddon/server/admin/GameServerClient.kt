@@ -19,6 +19,7 @@ import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import net.eratiem.randogeddon.server.config.TrackerConfig
@@ -84,7 +85,7 @@ class GameServerClient(private val config: TrackerConfig) {
       val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
       throw SessionProblem(response.status, Refusal.of(Problem.GATEWAY_ANSWERED, "status" to response.status.value, detail = message))
     }
-    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    if (!response.status.isSuccess()) unexpected(response)
     return ApiJson.decodeFromString(GameServerState.serializer(), response.bodyAsText())
   }
 
@@ -111,90 +112,46 @@ class GameServerClient(private val config: TrackerConfig) {
 
   /** Generates session [id]'s seed (served once its game server starts). Takes up to minutes. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult = call {
-    http.post("${session(id)}/generate") {
-      auth()
-      // As long as the gateway lets it take (GENERATION_MINUTES), and then some: it answers when it stops one
-      timeout { requestTimeoutMillis = 4 * 60 * 60_000L }
-      contentType(ContentType.Application.Json)
-      setBody(ApiJson.encodeToString(GenerateRequest.serializer(), request))
-    }
+    // As long as the gateway lets it take (GENERATION_MINUTES), and then some: it answers when it stops one
+    postJson("${session(id)}/generate", GenerateRequest.serializer(), request, timeoutMs = 4 * 60 * 60_000L)
   }.let { ApiJson.decodeFromString(GenerateResult.serializer(), it) }
 
   /** Session [id]'s last generation's log lines after [since] (a part of it at a time); `null`: none. */
-  suspend fun generationLog(id: String, since: Long): LogLines? {
-    val response = request { http.get("${session(id)}/generate/log?since=$since&max=1000") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun generationLog(id: String, since: Long): LogLines? =
+    optional { http.get("${session(id)}/generate/log?since=$since&max=1000") { auth() } }
+      ?.let { ApiJson.decodeFromString(LogLines.serializer(), it.bodyAsText()) }
 
   /** Session [id]'s last generation's whole log as text (what ran, then its output); `null`: none. */
-  suspend fun generationLogText(id: String): String? {
-    val response = request { http.get("${session(id)}/generate/log.txt") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> response.bodyAsText()
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun generationLogText(id: String): String? =
+    optional { http.get("${session(id)}/generate/log.txt") { auth() } }?.bodyAsText()
 
   /** A seed generated elsewhere: the gateway checks it and keeps it for its session (its refusal says why not). */
   suspend fun uploadSeed(upload: SeedUpload): SeedInfo = library {
-    http.post("${config.gameServerApi}/internal/seeds") {
-      auth()
-      timeout { requestTimeoutMillis = 5 * 60_000 }
-      contentType(ContentType.Application.Json)
-      setBody(ApiJson.encodeToString(SeedUpload.serializer(), upload))
-    }
+    postJson("${config.gameServerApi}/internal/seeds", SeedUpload.serializer(), upload, timeoutMs = 5 * 60_000L)
   }.let { ApiJson.decodeFromString(SeedInfo.serializer(), it) }
 
   /** The uploaded seed kept under [token] won't become a session: the gateway deletes it (if it still has it). */
   suspend fun dropSeed(token: String) {
-    request { http.delete("${config.gameServerApi}/internal/seeds/$token") { auth() } }
+    request { http.delete("${config.gameServerApi}/internal/seeds/${token.encodeURLPathPart()}") { auth() } }
   }
 
   /** The uploaded seed kept under [token] becomes session [id]'s; `null`: the gateway has no such one (any more). */
-  suspend fun installSeed(id: String, token: String): SeedInfo? {
-    val response = request {
-      http.post("${session(id)}/seed") {
-        auth()
-        contentType(ContentType.Application.Json)
-        setBody(ApiJson.encodeToString(SeedInstall.serializer(), SeedInstall(token)))
-      }
-    }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> ApiJson.decodeFromString(SeedInfo.serializer(), response.bodyAsText())
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun installSeed(id: String, token: String): SeedInfo? =
+    optional { postJson("${session(id)}/seed", SeedInstall.serializer(), SeedInstall(token)) }
+      ?.let { ApiJson.decodeFromString(SeedInfo.serializer(), it.bodyAsText()) }
 
   /** Session [id]'s stopped spoiler log is tried again; `false`: it didn't stop (or goes on already). */
-  suspend fun retrySpoilerRun(id: String): Boolean {
-    val response = request { http.post("${session(id)}/spoiler-run/retry") { auth() } }
-    return when {
-      response.status == HttpStatusCode.Conflict || response.status == HttpStatusCode.NotFound -> false
-      response.status.isSuccess() -> true
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun retrySpoilerRun(id: String): Boolean =
+    done(HttpStatusCode.Conflict, HttpStatusCode.NotFound) { http.post("${session(id)}/spoiler-run/retry") { auth() } }
 
   /** Session [id]'s spoiler log's background run: its log lines after [since]; `null`: none. */
-  suspend fun spoilerRunLog(id: String, since: Long): LogLines? {
-    val response = request { http.get("${session(id)}/spoiler-run/log?since=$since") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun spoilerRunLog(id: String, since: Long): LogLines? =
+    optional { http.get("${session(id)}/spoiler-run/log?since=$since") { auth() } }
+      ?.let { ApiJson.decodeFromString(LogLines.serializer(), it.bodyAsText()) }
 
   /** Session [id]'s slot [slot] has a new password: the gateway reads it at once and closes the slot's connections. */
   suspend fun disconnectSlot(id: String, slot: String) {
-    val response = request { http.post("${session(id)}/slots/${slot.encodeURLPathPart()}/disconnect") { auth() } }
-    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    done { http.post("${session(id)}/slots/${slot.encodeURLPathPart()}/disconnect") { auth() } }
   }
 
   /** Session [id]'s Minecraft Dig slots' hosted servers. */
@@ -208,19 +165,13 @@ class GameServerClient(private val config: TrackerConfig) {
       response.status.isSuccess() -> null
       response.status == HttpStatusCode.Conflict ->
         runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrDefault("It can't start")
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+      else -> unexpected(response)
     }
   }
 
   /** Stops session [id]'s slot [slot]'s Minecraft server (it saves its world first); `false`: no such slot. */
-  suspend fun stopMinecraft(id: String, slot: String): Boolean {
-    val response = request { http.post("${session(id)}/minecraft/${slot.encodeURLPathPart()}/stop") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> false
-      response.status.isSuccess() -> true
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun stopMinecraft(id: String, slot: String): Boolean =
+    done(HttpStatusCode.NotFound) { http.post("${session(id)}/minecraft/${slot.encodeURLPathPart()}/stop") { auth() } }
 
   /** Session [id]'s Minecraft servers' log lines after [since], by slot. */
   suspend fun minecraftLog(id: String, since: Long): MinecraftLogs = call { http.get("${session(id)}/minecraft/log?since=$since") { auth() } }
@@ -228,47 +179,26 @@ class GameServerClient(private val config: TrackerConfig) {
 
   /** Session [id]'s logic: each asked slot's available checks; `null`: it isn't running. */
   suspend fun available(id: String, request: AvailableRequest): AvailableAnswer? {
-    val response = request {
-      http.post("${session(id)}/logic/available") {
-        auth()
-        contentType(ContentType.Application.Json)
-        setBody(ApiJson.encodeToString(AvailableRequest.serializer(), request))
-      }
-    }
+    val response = request { postJson("${session(id)}/logic/available", AvailableRequest.serializer(), request) }
     return when {
       response.status == HttpStatusCode.NoContent -> null
       response.status.isSuccess() -> ApiJson.decodeFromString(AvailableAnswer.serializer(), response.bodyAsText())
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+      else -> unexpected(response)
     }
   }
 
   /** Session [id]'s logic is built again from the start; `false`: it can have none. */
-  suspend fun rebuildLogic(id: String): Boolean {
-    val response = request { http.post("${session(id)}/logic/rebuild") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> false
-      response.status.isSuccess() -> true
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun rebuildLogic(id: String): Boolean =
+    done(HttpStatusCode.NotFound) { http.post("${session(id)}/logic/rebuild") { auth() } }
 
   /** Session [id]'s logic's log lines after [since]; `null`: none. */
-  suspend fun logicLog(id: String, since: Long): LogLines? {
-    val response = request { http.get("${session(id)}/logic/log?since=$since") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> ApiJson.decodeFromString(LogLines.serializer(), response.bodyAsText())
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun logicLog(id: String, since: Long): LogLines? =
+    optional { http.get("${session(id)}/logic/log?since=$since") { auth() } }
+      ?.let { ApiJson.decodeFromString(LogLines.serializer(), it.bodyAsText()) }
 
   /** Ends session [id]'s generation; `false`: none runs there (not yet, or no more). */
-  suspend fun cancelGeneration(id: String): Boolean {
-    val response = request { http.delete("${session(id)}/generate") { auth() } }
-    if (response.status == HttpStatusCode.NotFound) return false
-    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    return true
-  }
+  suspend fun cancelGeneration(id: String): Boolean =
+    done(HttpStatusCode.NotFound) { http.delete("${session(id)}/generate") { auth() } }
 
   /** How far session [id]'s generation is; `null`: none runs. */
   suspend fun generationProgress(id: String): GenerationProgress? = call { http.get("${session(id)}/progress") { auth() } }
@@ -281,83 +211,78 @@ class GameServerClient(private val config: TrackerConfig) {
 
   /** Adds apworlds to a release's library; lists the release again (once for all), so it takes seconds. */
   suspend fun uploadApworlds(upload: ApworldUpload): ApworldResults = library {
-    http.post("${config.gameServerApi}/internal/apworlds") {
-      auth()
-      timeout { requestTimeoutMillis = 4 * 60_000 }
-      contentType(ContentType.Application.Json)
-      setBody(ApiJson.encodeToString(ApworldUpload.serializer(), upload))
-    }
+    postJson("${config.gameServerApi}/internal/apworlds", ApworldUpload.serializer(), upload, timeoutMs = 4 * 60_000L)
   }.let { ApiJson.decodeFromString(ApworldResults.serializer(), it) }
 
   suspend fun tryApworld(request: ApworldTry): ApworldResult = library {
-    http.post("${config.gameServerApi}/internal/apworlds/try") {
-      auth()
-      timeout { requestTimeoutMillis = 4 * 60_000 }
-      contentType(ContentType.Application.Json)
-      setBody(ApiJson.encodeToString(ApworldTry.serializer(), request))
-    }
+    postJson("${config.gameServerApi}/internal/apworlds/try", ApworldTry.serializer(), request, timeoutMs = 4 * 60_000L)
   }.let { ApiJson.decodeFromString(ApworldResult.serializer(), it) }
 
   suspend fun removeApworlds(removal: ApworldRemoval) {
     library {
-      http.post("${config.gameServerApi}/internal/apworlds/remove") {
-        auth()
-        timeout { requestTimeoutMillis = 4 * 60_000 }
-        contentType(ContentType.Application.Json)
-        setBody(ApiJson.encodeToString(ApworldRemoval.serializer(), removal))
-      }
+      val url = "${config.gameServerApi}/internal/apworlds/remove"
+      postJson(url, ApworldRemoval.serializer(), removal, timeoutMs = 4 * 60_000L)
     }
   }
 
   /** Stops session [id]'s game server; its files go to the gateway's `old/`, or for good ([purge]). */
-  suspend fun delete(id: String, purge: Boolean): Boolean {
-    val response = request { http.delete("${session(id)}${if (purge) "?purge=true" else ""}") { auth() } }
-    if (response.status == HttpStatusCode.NotFound) return false
-    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    return true
-  }
+  suspend fun delete(id: String, purge: Boolean): Boolean =
+    done(HttpStatusCode.NotFound) { http.delete("${session(id)}${if (purge) "?purge=true" else ""}") { auth() } }
 
   /** The session's spoiler log; `null` if there is none (generated without one, or its files are gone). */
-  suspend fun spoiler(id: String): String? {
-    val response = request { http.get("${session(id)}/spoiler") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> response.bodyAsText()
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun spoiler(id: String): String? = optional { http.get("${session(id)}/spoiler") { auth() } }?.bodyAsText()
 
   /** Every slot's files in the session's seed (patches, mods); empty without a seed. */
   suspend fun slotFiles(id: String): List<SlotFile> = call { http.get("${session(id)}/files") { auth() } }
     .let { ApiJson.decodeFromString(SlotFiles.serializer(), it).files }
 
   /** One of [slotFiles], its bytes; `null` if the seed has no such file. */
-  suspend fun slotFile(id: String, name: String): ByteArray? {
-    val response = request { http.get("${session(id)}/files/${name.encodeURLPathPart()}") { auth() } }
-    return when {
-      response.status == HttpStatusCode.NotFound -> null
-      response.status.isSuccess() -> response.readRawBytes()
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
-  }
+  suspend fun slotFile(id: String, name: String): ByteArray? =
+    optional { http.get("${session(id)}/files/${name.encodeURLPathPart()}") { auth() } }?.readRawBytes()
 
-  /** `false` if no game server is running to take it. */
+  /**
+   * `false` if no game server is running to take it. A line with a control character (a line break would be a second
+   * command) is refused, as the route refuses it.
+   */
   suspend fun command(id: String, line: String): Boolean {
-    val response = request {
-      http.post("${session(id)}/server/command") {
-        auth()
-        contentType(ContentType.Application.Json)
-        setBody(ApiJson.encodeToString(CommandRequest.serializer(), CommandRequest(line)))
-      }
-    }
-    return when {
-      response.status == HttpStatusCode.Conflict -> false
-      response.status.isSuccess() -> true
-      else -> throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    if (line.any { it.isISOControl() }) throw SessionProblem(HttpStatusCode.BadRequest, Problem.COMMAND_CONTROL)
+    return done(HttpStatusCode.Conflict) {
+      postJson("${session(id)}/server/command", CommandRequest.serializer(), CommandRequest(line))
     }
   }
 
   private fun io.ktor.client.request.HttpRequestBuilder.auth() = header("Authorization", "Bearer ${config.internalToken}")
+
+  /** [value] as JSON to [url], with the internal token; [timeoutMs]: longer than the client's own. */
+  private suspend fun <T> postJson(url: String, serializer: KSerializer<T>, value: T, timeoutMs: Long? = null): HttpResponse =
+    http.post(url) {
+      auth()
+      if (timeoutMs != null) timeout { requestTimeoutMillis = timeoutMs }
+      contentType(ContentType.Application.Json)
+      setBody(ApiJson.encodeToString(serializer, value))
+    }
+
+  /** An answer the gateway shouldn't give. */
+  private fun unexpected(response: HttpResponse): Nothing =
+    throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+
+  /** The gateway's answer; `null` for a 404 (there is none of it). */
+  private suspend fun optional(block: suspend () -> HttpResponse): HttpResponse? {
+    val response = request(block)
+    if (response.status == HttpStatusCode.NotFound) return null
+    if (!response.status.isSuccess()) unexpected(response)
+    return response
+  }
+
+  /** Whether it was done: `false` for the answers [no] (it couldn't be), `true` for a success. */
+  private suspend fun done(vararg no: HttpStatusCode, block: suspend () -> HttpResponse): Boolean {
+    val response = request(block)
+    return when {
+      response.status in no -> false
+      response.status.isSuccess() -> true
+      else -> unexpected(response)
+    }
+  }
 
   /** A library change the gateway refuses (400) is a [SessionProblem] with its reason. */
   private suspend fun library(block: suspend () -> HttpResponse): String {
@@ -366,15 +291,13 @@ class GameServerClient(private val config: TrackerConfig) {
       val message = runCatching { ApiJson.decodeFromString(ApiError.serializer(), response.bodyAsText()).message }.getOrNull()
       throw SessionProblem(HttpStatusCode.BadRequest, Refusal(Problem.GATEWAY_REFUSED, detail = message))
     }
-    if (!response.status.isSuccess()) throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
+    if (!response.status.isSuccess()) unexpected(response)
     return response.bodyAsText()
   }
 
   private suspend fun call(block: suspend () -> HttpResponse): String {
     val response = request(block)
-    if (!response.status.isSuccess()) {
-      throw GameServerUnavailable(HttpStatusCode.BadGateway, "The gateway answered ${response.status}")
-    }
+    if (!response.status.isSuccess()) unexpected(response)
     return response.bodyAsText()
   }
 
