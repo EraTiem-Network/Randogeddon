@@ -11,9 +11,11 @@ same with the same seed) gets no answers.
 Then it answers on stdin / stdout, one JSON object a line. Asked:
     {"slots": [{"slot": 3, "items": [<item IDs it received>], "checked": [<its checked location IDs>]}], "maps": [3]}
 it answers with a line that starts with PREFIX:
-    {"available": {"3": [<location IDs>]}, "maps": {"3": {"regions": [...], "links": [[0, 1], ...]}}}
+    {"available": {"3": [<location IDs>]}, "maps": {"3": {"regions": [...], "links": [[0, 1], ...]}},
+     "regions": {"3": [0, 1, 4]}}
 which of the slot's unchecked locations its logic reaches with those items and its starting inventory (`null`: no
-answer for that slot), and for the slots in "maps" their map (see slot_map). Everything else it prints is its log.
+answer for that slot), for the slots in "maps" their map (see slot_map), and which of its map's regions it reaches
+(their places in the map; the others are blocked for now). Everything else it prints is its log.
 """
 import json
 import os
@@ -23,6 +25,10 @@ import traceback
 import zipfile
 
 PREFIX = "[randogeddon-logic] "
+
+
+# Each slot's map's regions in the map's order, once its map was made
+MAP_REGIONS = {}
 
 
 class Built(Exception):
@@ -66,8 +72,8 @@ def build(arguments: list) -> object:
     return built["multiworld"]
 
 
-def available(multiworld, slot: int, items: list, checked: set) -> list:
-    """[slot]'s unchecked locations its logic reaches with [items] (and its starting inventory): their IDs."""
+def collected(multiworld, slot: int, items: list) -> object:
+    """[slot]'s state with [items] (and its starting inventory), and its events as far as that reaches."""
     from BaseClasses import CollectionState
 
     world = multiworld.worlds[slot]
@@ -87,10 +93,24 @@ def available(multiworld, slot: int, items: list, checked: set) -> list:
                 state.collect(location.item, True, location)
                 reached.add(id(location))
                 grew = True
+    return state
+
+
+def available(multiworld, slot: int, items: list, checked: set, state=None) -> list:
+    """[slot]'s unchecked locations its logic reaches with [items] (and its starting inventory): their IDs."""
+    if state is None:
+        state = collected(multiworld, slot, items)
     return [
         location.address for location in multiworld.get_locations(slot)
         if location.address is not None and location.address not in checked and location.can_reach(state)
     ]
+
+
+def reached_regions(multiworld, slot: int, state) -> list:
+    """Which of [slot]'s map's regions [state] reaches: their places in the map (see slot_map)."""
+    if slot not in MAP_REGIONS:
+        slot_map(multiworld, slot)
+    return [at for at, region in enumerate(MAP_REGIONS[slot]) if region.can_reach(state)]
 
 
 def slot_map(multiworld, slot: int) -> dict:
@@ -143,6 +163,7 @@ def slot_map(multiworld, slot: int) -> dict:
         queue.extend(by_name(neighbours[i] - seen))
     order.extend(by_name(i for i in neighbours if i not in seen))
     index = {i: at for at, i in enumerate(order)}
+    MAP_REGIONS[slot] = [regions[i] for i in order]
     links = sorted({tuple(sorted((index[a], index[b]))) for a in order for b in neighbours[a]})
     return {
         "regions": [{"name": names[i], "locations": locations[i]} for i in order],
@@ -174,13 +195,22 @@ def main() -> None:
         try:
             asked = json.loads(line)
             answers = {}
+            reached = {}
             for entry in asked.get("slots", []):
                 slot = int(entry["slot"])
                 answers[str(slot)] = None
                 if slot not in answered:
                     continue
                 try:  # a world whose rules fail gets no answer; the other slots are answered either way
-                    answers[str(slot)] = available(multiworld, slot, entry.get("items", []), set(entry.get("checked", [])))
+                    state = collected(multiworld, slot, entry.get("items", []))
+                    answers[str(slot)] = available(multiworld, slot, [], set(entry.get("checked", [])), state)
+                    try:  # its map's regions too; without them nothing on its map is marked
+                        reached[str(slot)] = reached_regions(multiworld, slot, state)
+                    except Exception as error:
+                        if ("regions", slot) not in failing:
+                            failing.add(("regions", slot))
+                            print(f"Slot {slot} ({multiworld.player_name[slot]}): which regions it reaches can't be "
+                                  f"told: {error!r}", flush=True)
                 except Exception as error:
                     if slot not in failing:  # said once, with where it failed
                         failing.add(slot)
@@ -195,7 +225,7 @@ def main() -> None:
                     maps[str(slot)] = slot_map(multiworld, slot)
                 except Exception as error:
                     print(f"No map for slot {slot} ({multiworld.player_name[slot]}): {error!r}", flush=True)
-            say({"available": answers, "maps": maps})
+            say({"available": answers, "maps": maps, "regions": reached})
         except Exception as error:  # an answer for every question, also when one fails
             print(f"Could not answer: {error!r}", flush=True)
             say({"error": str(error)[:300]})

@@ -325,6 +325,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       val p = players[a.slot] ?: return@forEach
       p.available = answer.available[a.slot]
       answer.locations[a.slot]?.let { p.availableLocations = it.toSet() }
+      answer.regions[a.slot]?.let { p.reachedRegions = it.toSet() }
       p.availableAsked = a.items.size to a.checked.size
     }
     maps.forEach { slot -> players[slot]?.mapAsked = true }
@@ -704,6 +705,8 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val costPercent = hintCost ?: 0
     val lockSlots = lockSlots()
     val personOf = people.flatMap { (person, worlds) -> worlds.map { it to person } }.toMap()
+    // Every slot's received items by the slot whose location held them
+    val sentBy = players.values.flatMap { it.items }.groupingBy { it.player }.eachCount()
     val list = players.values.filter { it.slot !in lockSlots }.map { p ->
       val total = p.total
       val lock = lockOf(p.slot)
@@ -720,6 +723,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         connections = p.online,
         lastActivity = p.lastActivity,
         itemsReceived = p.items.size,
+        itemsSent = sentBy[p.slot] ?: 0,
         progressionReceived = progressionReceived(p),
         progressionChecks = checks?.locations,
         progressionChecked = checks?.checked ?: 0,
@@ -819,7 +823,11 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         }
       }.sortedBy { it.location },
       map = p.map?.let { map ->
-        MapView(map.regions.map { region -> MapRegionView(region.name, region.locations.map { locationName(it, slot) }) }, map.links)
+        MapView(
+          map.regions.map { region -> MapRegionView(region.name, region.locations.map { locationName(it, slot) }) }, map.links,
+          // What its logic didn't reach when last asked
+          blocked = p.reachedRegions?.let { reached -> map.regions.indices.filter { it !in reached } }.orEmpty(),
+        )
       },
     )
   }

@@ -55,6 +55,8 @@ interface DialogTexts {
   fun mapRegion(checked: Int, total: Int): String
   /** What a box connects to besides the boxes its lines go to. */
   fun mapAlso(names: String): String
+  /** A region the slot's logic can't reach now (its box, the map's legend with how many there are). */
+  val mapBlocked: String
   /** The map's size: up to the whole window, then to full screen, and back a step. */
   val mapToWindow: String
   val mapToFullScreen: String
@@ -173,6 +175,7 @@ internal object EnglishDialogs : DialogTexts {
   override fun mapFound(item: String, receiver: String) = "Held $item for $receiver"
   override fun mapRegion(checked: Int, total: Int) = if (total == 0) "No locations: a way through" else "$checked of $total checked"
   override fun mapAlso(names: String) = "Also connects to: $names"
+  override val mapBlocked = "Not reachable yet"
   override val mapToWindow = "Fill the window"
   override val mapToFullScreen = "Full screen"
   override val mapSmaller = "Smaller"
@@ -231,6 +234,7 @@ internal object GermanDialogs : DialogTexts {
   override fun mapFound(item: String, receiver: String) = "Enthielt $item für $receiver"
   override fun mapRegion(checked: Int, total: Int) = if (total == 0) "Keine Orte: ein Durchgang" else "$checked von $total gecheckt"
   override fun mapAlso(names: String) = "Auch verbunden mit: $names"
+  override val mapBlocked = "Noch nicht erreichbar"
   override val mapToWindow = "Fenster füllen"
   override val mapToFullScreen = "Vollbild"
   override val mapSmaller = "Kleiner"

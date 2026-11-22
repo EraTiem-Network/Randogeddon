@@ -315,8 +315,8 @@ private fun WorldRow(world: PlayerSummary, now: Long, hintsByPoints: Boolean, on
 
 /**
  * A slot's (or several slots' together) numbers: checked of its locations, and of the progression locations among
- * them (`null` until scouted); progression received, and sent to others (no totals: its players would learn how much
- * is still missing).
+ * them (`null` until scouted); the items it received, and those its locations held (as its panel lists them; no
+ * totals: its players would learn how much is still missing).
  */
 internal data class Progress(
   val checked: Int,
@@ -324,7 +324,7 @@ internal data class Progress(
   val progressionChecked: Int,
   val progressionChecks: Int?,
   val received: Int,
-  val sent: Int?,
+  val sent: Int,
   /** Its checks available now (the session's logic counts them); `null`: not known. */
   val available: Int? = null,
   /** The deaths and traps it passed on (DeathLink, TrapLink). */
@@ -334,12 +334,12 @@ internal data class Progress(
   companion object {
     fun of(w: PlayerSummary) =
       Progress(
-        w.checked, w.total, w.progressionChecked, w.progressionChecks, w.progressionReceived, w.sent, w.available, w.deaths, w.trapLinks,
+        w.checked, w.total, w.progressionChecked, w.progressionChecks, w.itemsReceived, w.itemsSent, w.available, w.deaths, w.trapLinks,
       )
 
     fun of(d: PlayerDetail) =
       Progress(
-        d.checked, d.total, d.progressionChecked, d.progressionChecks, d.progressionReceived, d.sent, d.available, d.deaths, d.trapLinks,
+        d.checked, d.total, d.progressionChecked, d.progressionChecks, d.items.size, d.sentItems.size, d.available, d.deaths, d.trapLinks,
       )
 
     /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
@@ -347,7 +347,7 @@ internal data class Progress(
       fun known(of: (PlayerSummary) -> Int?) = worlds.map(of).takeIf { all -> all.none { it == null } }?.sumOf { it ?: 0 }
       return Progress(
         worlds.sumOf { it.checked }, worlds.sumOf { it.total }, worlds.sumOf { it.progressionChecked }, known { it.progressionChecks },
-        worlds.sumOf { it.progressionReceived }, known { it.sent },
+        worlds.sumOf { it.itemsReceived }, worlds.sumOf { it.itemsSent },
         // Those of its slots that are known (a slot the logic has no answer for adds none)
         worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
         worlds.sumOf { it.deaths }, worlds.sumOf { it.trapLinks },
@@ -388,7 +388,7 @@ internal fun WithLogic(s: Summary?, content: @Composable () -> Unit) =
 internal fun TipPill(icon: Icon, text: String, tip: String, color: Color) = Tip(tip) { Pill(text, color, icon) }
 
 /**
- * Progression received, and sent to others (once scouted), as pills: counts only. Then the checks available now (once
+ * The items received, and those its locations held, as pills: counts only. Then the checks available now (once
  * the logic counted them), greyed out with the last known count while it doesn't run; the deaths and traps it passed
  * on, from the first one.
  */
@@ -398,7 +398,7 @@ internal fun ProgressPills(progress: Progress) {
   val t = LocalTexts.current
   val d = t.dashboard
   TipPill(Icon.RECEIVED, t.number(progress.received), d.tipReceived, p.progression)
-  progress.sent?.let { TipPill(Icon.SENT, t.number(it), d.tipSent, p.useful) }
+  TipPill(Icon.SENT, t.number(progress.sent), d.tipSent, p.useful)
   progress.available?.let { available ->
     val running = LocalLogicRunning.current
     TipPill(Icon.SIGNPOST, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)

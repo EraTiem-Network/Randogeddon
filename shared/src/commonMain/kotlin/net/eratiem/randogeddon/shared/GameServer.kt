@@ -97,13 +97,16 @@ data class MapRegion(val name: String, val locations: List<Long> = emptyList())
 
 /**
  * How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it), which they
- * are ([locations], their IDs), and the maps asked for ([maps]; none for a slot it has no answers for).
+ * are ([locations], their IDs), and the maps asked for ([maps]; none for a slot it has no answers for). [regions]:
+ * which of each slot's map's regions its logic reaches now (their places in [SlotMap.regions]); a slot it doesn't
+ * say that for (a logic before 0.23.2.6) isn't in it.
  */
 @Serializable
 data class AvailableAnswer(
   val available: Map<Int, Int?> = emptyMap(),
   val locations: Map<Int, List<Long>> = emptyMap(),
   val maps: Map<Int, SlotMap> = emptyMap(),
+  val regions: Map<Int, List<Int>> = emptyMap(),
 )
 
 /** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */

@@ -188,6 +188,8 @@ data class PlayerSummary(
   /** Epoch milliseconds of the last check, goal or join; `null` if nothing happened yet. */
   val lastActivity: Long? = null,
   val itemsReceived: Int,
+  /** The items its checked locations held so far, for anyone (itself too): what its panel lists as sent. */
+  val itemsSent: Int = 0,
   /**
    * Progression items it received from a location (its own world's too; not the starting inventory). How many are
    * meant for it in all isn't said: that would tell its players how much is still missing.
@@ -353,9 +355,17 @@ data class PlayerDetail(
   val map: MapView? = null,
 )
 
-/** A slot's map: its regions with their locations' names (its start first), and which connect (pairs of indices). */
+/**
+ * A slot's map: its regions with their locations' names (its start first), and which connect (pairs of indices).
+ * [blocked]: the regions its logic can't reach now (their indices; the last known while it doesn't run), e.g. one
+ * that opens with an item still to come; empty: none, or not known.
+ */
 @Serializable
-data class MapView(val regions: List<MapRegionView> = emptyList(), val links: List<List<Int>> = emptyList())
+data class MapView(
+  val regions: List<MapRegionView> = emptyList(),
+  val links: List<List<Int>> = emptyList(),
+  val blocked: List<Int> = emptyList(),
+)
 
 @Serializable
 data class MapRegionView(val name: String, val locations: List<String> = emptyList())

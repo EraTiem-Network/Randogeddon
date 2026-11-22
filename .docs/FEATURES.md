@@ -180,8 +180,10 @@ its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothi
   box branching off to the boxes first reached from it, no line crossing a box or another; its other connections on
   hover), scrolled both ways by its bars or by dragging, sized up over the window and to full screen by its button; a
   big region's locations grouped by their names (`Area: Location`) into boxes of their own. Each location a dot:
-  checked, open, available now; its name on hover (what it held once checked); filters by state. Only where the logic
-  runs (as the available checks), kept with the slot while it sleeps.
+  checked, open, available now; its name on hover (what it held once checked); filters by state. A region the
+  slot's logic can't reach now (one that opens with an item still to come) is marked: a lock, a dashed edge, a
+  dashed line into it; not by whom or what. Only where the logic runs (as the available checks), kept with the slot
+  while it sleeps.
 - **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below, and
   pinned on every view (a window over the page where a view has no place for it: moved, folded).
 - **Counts only:** progression counts per slot are its own world's; how many progression items are meant for a slot
