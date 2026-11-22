@@ -68,6 +68,8 @@ class Player(val slot: Int, val name: String, val game: String) {
   /** Its map, as the session's logic gave it; [mapAsked]: asked for since the logic was built (once, answer or not). */
   var map: SlotMap? = null
   var mapAsked: Boolean = false
+  /** Which of its map's regions its logic reached when last asked (their indices); `null`: not known. */
+  var reachedRegions: Set<Int>? = null
 
   val openSession: ConnectionSession? get() = sessions.lastOrNull()?.takeIf { it.end == null }
 

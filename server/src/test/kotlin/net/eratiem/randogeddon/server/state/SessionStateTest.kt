@@ -395,6 +395,10 @@ class SessionStateTest {
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 12, 1, 1)},${item(100, -2, 0, 1)}]}"""))
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
     assertEquals(1, s.playerDetail(1)!!.progressionReceived)
+    // The pills count every item, as the panel lists them: received (the starting inventory too), and what its own
+    // locations held
+    assertEquals(listOf(2, 1), s.summary("t", null).players[0].let { listOf(it.itemsReceived, it.itemsSent) })
+    assertEquals(listOf(2, 1), s.playerDetail(1)!!.let { listOf(it.items.size, it.sentItems.size) })
     // A slot without locations is scouted at once
     val t = makeState()
     t.onNothingToScout(2)
