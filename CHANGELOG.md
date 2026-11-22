@@ -11,6 +11,15 @@ as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the b
 The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
 came up on the way.
 
+The map in a slot's panel, generated from the logic for every game (its regions as boxes, its locations as dots:
+checked, open, available now; a big region grouped by its locations' names), and the panel itself in tabs (checks,
+map, transported items, connections); `.docs/` rewritten as compact references (the finished phases in `DONE.md`)
+and the README's *Built with*; *Your connection* with icons and one-line fields, the bridge's page copying an
+address four ways; a session's ID kept to what a subdomain allows as it is typed, *Plando* and *Generation* apart;
+the panel going to a new session after its generation; *State and Control* on a phone; locked slots counted as not
+started. Updating: no migration; the logic's maps need the gateway and the tracker of 0.22.4 (an older gateway
+gives none: the map tab says so).
+
 ### 0.22.4: The map
 - A slot's panel has a *Map* tab: its game's map, generated for every game from the session's logic, no game
   images. Its regions are boxes in columns from its start, linked as its logic connects them; each location is a dot
