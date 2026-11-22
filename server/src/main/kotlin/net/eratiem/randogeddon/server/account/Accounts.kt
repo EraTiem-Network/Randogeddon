@@ -1,6 +1,10 @@
 package net.eratiem.randogeddon.server.account
 
 import java.lang.invoke.MethodHandles
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.FileTime
+import java.util.concurrent.ConcurrentHashMap
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -26,6 +30,7 @@ import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.server.session.lockedSlots
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.MySlot
 import net.eratiem.randogeddon.shared.Problem
@@ -53,10 +58,6 @@ const val MAX_LOGINS = 20
 fun loginDuration(method: String): Duration =
   if (method == LoginMethods.OIDC || method == LoginMethods.LINK) SSO_LOGIN_DURATION else LOGIN_DURATION
 
-/**
- * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
- * account gets in (accounts belong to people, not to a session); what they see of the sessions is checked per session.
- */
 /** Until when a time-out lasts, as the person reads it (the server's time: UTC, said so). */
 internal val UNTIL: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
@@ -68,6 +69,10 @@ internal fun keptOutRefusal(user: User, now: Instant): Refusal? {
     ?: Refusal.of(Problem.ACCOUNT_SUSPENDED, *reason)
 }
 
+/**
+ * What the access check needs: whose login a cookie token is, and which sessions that user is part of. Every active
+ * account gets in (accounts belong to people, not to a session); what they see of the sessions is checked per session.
+ */
 interface LoginCheck {
   suspend fun userOf(token: String): User?
 
@@ -78,14 +83,22 @@ interface LoginCheck {
   fun roleIn(user: User, id: String): SessionRole?
 
   /**
-   * Why [user]'s login can't act as an Administrator; `null`: it can. Without single sign-on: an Administrator with
-   * two-factor login.
+   * Why [user]'s login can't act as an Administrator; `null`: it can. Here: an Administrator with two-factor login, as
+   * without single sign-on and with [TrackerConfig.adminPasswordLogin] ([adminLoginProblem] has every case).
    */
-  fun administratorProblem(user: User): Refusal? = when {
-    !user.administrator -> Refusal(Problem.ONLY_ADMINISTRATORS)
-    !user.twoFactor -> Refusal(Problem.NEEDS_TWO_FACTOR)
-    else -> null
-  }
+  fun administratorProblem(user: User): Refusal? = adminLoginProblem(user, provider = null, passwordLogin = true)
+}
+
+/**
+ * Why [user]'s login can't act as an Administrator; `null`: it can. With single sign-on through [provider]: only a
+ * login through it ([ssoAdministratorProblem]). Without: with [passwordLogin] ([TrackerConfig.adminPasswordLogin], for
+ * local testing and the demo) an Administrator with two-factor login, without it no login at all.
+ */
+internal fun adminLoginProblem(user: User, provider: String?, passwordLogin: Boolean): Refusal? = when {
+  provider != null -> ssoAdministratorProblem(user, provider)
+  !user.administrator || !passwordLogin -> Refusal(Problem.ONLY_ADMINISTRATORS)
+  !user.twoFactor -> Refusal(Problem.NEEDS_TWO_FACTOR)
+  else -> null
 }
 
 /**
@@ -101,7 +114,8 @@ internal fun ssoAdministratorProblem(user: User, provider: String): Refusal? = w
 /**
  * Logging in and out, and which sessions the logged-in users are part of. With single sign-on configured
  * ([TrackerConfig.oidc]), Administrators act as such only after logging in through the provider, and can't log in
- * with their password.
+ * with their password. Without it, only with [TrackerConfig.adminPasswordLogin] (local testing, the demo) does a login
+ * act as an Administrator: with their password and two-factor login.
  */
 @Single
 class LoginService(
@@ -110,10 +124,20 @@ class LoginService(
   private val sessions: SessionList,
   private val config: TrackerConfig,
 ) : LoginCheck {
-  override fun administratorProblem(user: User): Refusal? {
-    val oidc = config.oidc ?: return super.administratorProblem(user)
-    return ssoAdministratorProblem(user, oidc.name)
+  init {
+    when {
+      config.oidc != null && config.adminPasswordLogin ->
+        logger.warn("ADMIN_PASSWORD_LOGIN is ignored: Administrators log in through {} alone", config.oidc?.name)
+      config.adminPasswordLogin ->
+        logger.warn("ADMIN_PASSWORD_LOGIN: Administrators log in with their password and two-factor login (never on a public server)")
+      config.oidc == null -> logger.info("No single sign-on and no ADMIN_PASSWORD_LOGIN: no login acts as an Administrator")
+    }
   }
+
+  /** Whether Administrators log in with their password (and two-factor login): no single sign-on, the setting on. */
+  val passwordAdministrators: Boolean get() = config.oidc == null && config.adminPasswordLogin
+
+  override fun administratorProblem(user: User): Refusal? = adminLoginProblem(user, config.oidc?.name, config.adminPasswordLogin)
 
   /** Why [user] can't log in with their password; `null`: they can. With single sign-on, Administrators can't. */
   fun passwordLoginProblem(user: User): Refusal? =
@@ -126,23 +150,27 @@ class LoginService(
   fun keptOutProblem(user: User, now: Instant = Instant.now()): Refusal? = keptOutRefusal(user, now)
 
   /**
-   * The token for the session cookie, or `null` if the name (or e-mail address) or the password is wrong. Invited
-   * users who haven't signed up have no password and can't log in.
+   * The account a login's name (or e-mail address) is ([UserStore.findLogin]); `null`: none. Invited users who haven't
+   * signed up have no password and can't log in.
    */
-  suspend fun login(nameOrEmail: String, password: String): String? = verify(nameOrEmail, password)?.let { start(it) }
+  suspend fun account(nameOrEmail: String): User? = users.findLogin(nameOrEmail.trim())
 
-  /** The user whose name (or address) and password these are; `null` if either is wrong. */
-  suspend fun verify(nameOrEmail: String, password: String): User? {
-    val user = users.findLogin(nameOrEmail.trim())
-    // Argon2 is CPU work; an unknown name is checked against a dummy hash so it takes as long as a wrong password
+  /**
+   * Whether [password] is [user]'s ([account]'s answer, so it is looked up once for the attempts too). An unknown name
+   * (`null`) is checked against a dummy hash, so it takes as long as a wrong password.
+   */
+  suspend fun verify(user: User?, password: String): Boolean {
+    // Argon2 is CPU work
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(password, user?.passwordHash ?: PasswordHasher.dummyHash) }
-    return user.takeIf { valid }
+    return valid && user != null
   }
 
   suspend fun user(id: Uuid): User? = users.findActive(id)
 
-  /** A new login of [user] (after the password, or right after signing up; [method]: how); its token for the cookie. */
-  /** A new login for [user]; [providerSession]: its session at the provider, for a login through it. */
+  /**
+   * A new login of [user] (after the password, or right after signing up; [method]: how); its token for the cookie.
+   * [providerSession]: its session at the provider, for a login through it.
+   */
   suspend fun start(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null): String {
     logger.info("{} logged in ({})", user.name, method)
     val token = newToken()
@@ -176,6 +204,22 @@ class LoginService(
 }
 
 /**
+ * The sessions' room.json files ([Room.read]), each read again only once it changed (the gateway writes it when the
+ * session's game server starts), not at every look: by its path, with the file's time and size when it was read.
+ */
+internal class RoomFiles {
+  private val rooms = ConcurrentHashMap<Path, Pair<Pair<FileTime, Long>, Room>>()
+
+  /** The room.json at [path]; `null` while there is none or it can't be read. */
+  fun read(path: Path): Room? {
+    val stamp = runCatching { Files.getLastModifiedTime(path) to Files.size(path) }.getOrNull()
+      ?: return null.also { rooms.remove(path) }
+    rooms[path]?.takeIf { it.first == stamp }?.let { return it.second }
+    return Room.read(path)?.also { rooms[path] = stamp to it }
+  }
+}
+
+/**
  * The game passwords of each session's seed: every slot a client can connect as gets one (the World Locks slot too,
  * for the host's hints from there). The gateway checks them; players see their own on the dashboard.
  */
@@ -183,7 +227,7 @@ class LoginService(
 class SlotPasswords(private val store: SlotPasswordStore, private val sessions: LiveSessions) {
   /** Slot name -> password of [session]'s seed, creating missing ones; empty while its room.json isn't there. */
   suspend fun current(session: LiveSession): Map<String, String> {
-    val room = Room.read(session.roomJson) ?: return emptyMap()
+    val room = room(session) ?: return emptyMap()
     val seed = room.seedName ?: return emptyMap()
     return store.ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
   }
@@ -194,12 +238,12 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
    * the game's server up), for a player the ones open to all and the ones naming them.
    */
   suspend fun of(session: LiveSession, person: String?, manages: Boolean = false): List<MySlot> {
-    val room = Room.read(session.roomJson) ?: return emptyList()
+    val room = room(session) ?: return emptyList()
     val passwords = current(session)
     val games = room.players.associate { it.name to it.game }
     val hosted = session.setup?.hosted.orEmpty()
     // A locked slot has no password until its key is found
-    val locked = lockedNow(session)
+    val locked = session.lockedSlots()
     // Their own slots and the ones open to all of the session's players
     val own = session.playedBy(person).filter { it !in hosted }
       .mapNotNull { slot ->
@@ -218,10 +262,10 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     }
   }
 
-  /** [session]'s slots still locked, as its summary sees them (their key not found yet). */
-  private suspend fun lockedNow(session: LiveSession): Set<String> = runCatching {
-    session.summary().players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
-  }.getOrDefault(emptySet())
+  private val rooms = RoomFiles()
+
+  /** [session]'s room.json, as [RoomFiles] has it. */
+  private fun room(session: LiveSession): Room? = rooms.read(session.roomJson)
 
   /** The locks as the gateway last got them, by seed: written again only when they change. */
   private val synced = mutableMapOf<String, Set<String>>()
@@ -247,7 +291,7 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
     val ready = mutableSetOf<String>()
     while (true) {
       for (session in sessions.all()) {
-        val seed = Room.read(session.roomJson)?.seedName ?: continue
+        val seed = room(session)?.seedName ?: continue
         syncLocks(session, seed)
         if (seed in ready) continue
         runCatching { current(session) }

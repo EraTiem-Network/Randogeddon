@@ -9,6 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
+import kotlin.uuid.Uuid
 
 class LimitsTest {
   private val minute = 60_000L
@@ -25,6 +26,7 @@ class LimitsTest {
     assertTrue(attempts.blocked(LoginAttempts.password("ALICE"), now = 11_000))
     assertFalse(attempts.blocked(LoginAttempts.password("bob"), now = 11_000))
     assertFalse(attempts.blocked(LoginAttempts.code("alice"), now = 11_000))
+    assertFalse(attempts.blocked(LoginAttempts.accountPassword(Uuid.random()), now = 11_000))
     // Still held just before the first try is ten minutes old, free right after
     assertTrue(attempts.blocked(alice, now = 10 * minute - 1))
     assertFalse(attempts.blocked(alice, now = 10 * minute + 1))
@@ -33,24 +35,27 @@ class LimitsTest {
   @Test
   fun `an account sends only so many mails in ten minutes, and in a day`() {
     val mails = MailLimits()
-    repeat(MailLimits.SOON) { mails.count("alice", now = it * 1000L) }
-    val refused = assertFailsWith<AccountProblem> { mails.count("alice", now = 60_000) }
+    // By the account, not its name: a new name doesn't start afresh
+    val alice = Uuid.random()
+    val bob = Uuid.random()
+    repeat(MailLimits.SOON) { mails.count(alice, now = it * 1000L) }
+    val refused = assertFailsWith<AccountProblem> { mails.count(alice, now = 60_000) }
     assertEquals(HttpStatusCode.TooManyRequests, refused.status)
     assertEquals(Problem.TOO_MANY_MAILS, refused.refusal.problem)
     // Someone else still sends; Alice again after ten minutes
-    mails.count("bob", now = 60_000)
-    mails.count("alice", now = 11 * minute)
+    mails.count(bob, now = 60_000)
+    mails.count(alice, now = 11 * minute)
     // Over the day: 10 every 11 minutes, until the day's limit
     var sent = MailLimits.SOON + 1
     var now = 22 * minute
     while (sent < MailLimits.DAILY) {
-      mails.count("alice", now)
+      mails.count(alice, now)
       sent++
       now += 2 * minute
     }
-    assertFailsWith<AccountProblem> { mails.count("alice", now + 11 * minute) }
+    assertFailsWith<AccountProblem> { mails.count(alice, now + 11 * minute) }
     // The next day she sends again
-    mails.count("alice", now + 1.days.inWholeMilliseconds + minute)
+    mails.count(alice, now + 1.days.inWholeMilliseconds + minute)
   }
 
   @Test
@@ -62,6 +67,17 @@ class LimitsTest {
     assertEquals(1, counts.of("k", now = 12 * minute))
     assertEquals(0, counts.of("k", now = 16 * minute))
     assertEquals(0, counts.of("other", now = 0))
+  }
+
+  @Test
+  fun `many keys are tidied now and then, and what is recent still counts`() {
+    val counts = Counts(10.minutes)
+    repeat(25_000) { counts.add("old-$it", now = 0) }
+    repeat(25_000) { counts.add("new-$it", now = 11 * minute) }
+    assertEquals(0, counts.of("old-1", now = 11 * minute))
+    assertEquals(1, counts.of("new-24999", now = 11 * minute))
+    counts.add("new-0", now = 12 * minute)
+    assertEquals(2, counts.of("new-0", now = 12 * minute))
   }
 
   @Test

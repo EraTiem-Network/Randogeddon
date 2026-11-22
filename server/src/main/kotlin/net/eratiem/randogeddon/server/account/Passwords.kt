@@ -3,10 +3,9 @@ package net.eratiem.randogeddon.server.account
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.Base64
-
-private val random = SecureRandom()
+import net.eratiem.randogeddon.server.util.hex
+import net.eratiem.randogeddon.server.util.secureRandom
 
 /**
  * Generated passwords (logins and game slots), see `.docs/TODO.md`, Conventions: 32 characters with lower- and
@@ -26,10 +25,10 @@ object PasswordGenerator {
     require(length >= CLASSES.size) { "A password needs at least ${CLASSES.size} characters" }
     // One of each class, the rest from all of them, then shuffled so the classes aren't at fixed places
     val chars = CLASSES.map { it.pick() } + List(length - CLASSES.size) { ALL.pick() }
-    return chars.shuffled(random).joinToString("")
+    return chars.shuffled(secureRandom).joinToString("")
   }
 
-  private fun String.pick(): Char = this[random.nextInt(length)]
+  private fun String.pick(): Char = this[secureRandom.nextInt(length)]
 }
 
 /**
@@ -51,7 +50,7 @@ object PasswordHasher {
 
   /** Other parameters than the defaults only for tests (hashes made before the parameters were raised). */
   fun hash(password: String, memoryKib: Int = MEMORY_KIB, iterations: Int = ITERATIONS): String {
-    val salt = ByteArray(SALT_BYTES).also(random::nextBytes)
+    val salt = ByteArray(SALT_BYTES).also(secureRandom::nextBytes)
     val hash = argon2(password, salt, memoryKib, iterations, PARALLELISM, HASH_BYTES)
     return "\$argon2id\$v=19\$m=$memoryKib,t=$iterations,p=$PARALLELISM\$${encoder.encodeToString(salt)}\$${encoder.encodeToString(hash)}"
   }
@@ -83,9 +82,10 @@ object PasswordHasher {
   }
 }
 
-/** A random login token for the session cookie (256 bits, URL-safe). */
-fun newToken(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
+/** A random token of [bytes] bytes, URL-safe: a login token for the session cookie (256 bits), or a bridge key. */
+fun newToken(bytes: Int = 32): String =
+  Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(bytes).also(secureRandom::nextBytes))
 
 /** What is stored of a token: its SHA-256, hex. A database leak then doesn't hand out logins. */
 fun tokenHash(token: String): String =
-  MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
+  MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).hex()

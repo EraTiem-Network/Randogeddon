@@ -7,15 +7,18 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import net.eratiem.randogeddon.database.LoginLinkStore
+import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.account.LoginMethods
 import net.eratiem.randogeddon.server.account.PasswordGenerator
 import net.eratiem.randogeddon.server.account.PasswordHasher
 import net.eratiem.randogeddon.server.account.createLoginLink
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.config.english
 import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.shared.UserNames
 import org.slf4j.LoggerFactory
@@ -26,12 +29,14 @@ private const val USAGE = """Usage: randogeddon [command]
   logins --create <person>  a login for <person> right away (local use, the demo; people are invited otherwise)
   logins --reset <person>   a new password for <person>; their logins end
   admins                    who is an Administrator
-  admins --create <person>  a new login for <person> as an Administrator (the first one)
-  admins --grant <person>   make <person> an Administrator (every session, the APWorlds, the users, the settings)
+  admins --create <person>  a new login for <person> as an Administrator (the first one; only with
+                            ADMIN_PASSWORD_LOGIN=true, without single sign-on)
+  admins --grant <person>   make <person> an Administrator (every session, the APWorlds, the users, the settings);
+                            their logins end
   admins --revoke <person>  take it back
   admins --login <person>   a one-time login link for <person> (15 minutes): when single sign-on can't be reached
-  admins --reset-2fa <person>  turn off <person>'s two-factor login (lost authenticator and recovery codes); an
-                            Administrator sets it up again at the next login
+  admins --reset-2fa <person>  turn off <person>'s two-factor login (lost authenticator and recovery codes); their
+                            logins end, an Administrator sets it up again at the next login
   sessions                  every session: its ID, seed and whether it is finished
   slots [--json] <session>  the slot passwords of a session's seed"""
 
@@ -55,13 +60,13 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
             else -> usage()
           }
           "admins" -> when {
-            args.size == 1 -> listAdmins(UserStore(db))
-            // With single sign-on, Administrators come from the provider's group alone
-            config.oidc != null && args.size == 3 && args[1] in setOf("--create", "--grant", "--login") -> onlyThroughProvider(config)
+            args.size == 1 -> listAdmins(config, UserStore(db))
+            // With single sign-on, Administrators come from the provider's group alone; without it only with the setting
+            args.size == 3 && args[1] in setOf("--create", "--grant", "--login") && !passwordAdministrators(config) -> notHere(config)
             args.size == 3 && args[1] == "--create" -> createLogin(args[2], admin = true, UserStore(db))
-            args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db))
-            args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db))
-            args.size == 3 && args[1] == "--reset-2fa" -> resetTwoFactor(args[2], UserStore(db), TwoFactorStore(db))
+            args.size == 3 && args[1] == "--grant" -> setAdmin(args[2], true, UserStore(db), LoginSessionStore(db))
+            args.size == 3 && args[1] == "--revoke" -> setAdmin(args[2], false, UserStore(db), LoginSessionStore(db))
+            args.size == 3 && args[1] == "--reset-2fa" -> resetTwoFactor(args[2], UserStore(db), TwoFactorStore(db), LoginSessionStore(db))
             args.size == 3 && args[1] == "--login" -> loginLink(config, args[2], UserStore(db), LoginLinkStore(db))
             else -> usage()
           }
@@ -83,12 +88,23 @@ fun runCommand(args: List<String>, config: TrackerConfig) {
   exitProcess(code)
 }
 
-/** With single sign-on there is no other way to an Administrator: not made here, and no login link for one. */
-private fun onlyThroughProvider(config: TrackerConfig): Int {
-  val oidc = config.oidc ?: return usage()
+/** Whether Administrators log in with their password here: no single sign-on, and `ADMIN_PASSWORD_LOGIN=true`. */
+private fun passwordAdministrators(config: TrackerConfig) = config.oidc == null && config.adminPasswordLogin
+
+/**
+ * With single sign-on there is no other way to an Administrator: not made here, and no login link for one. Without
+ * it and without `ADMIN_PASSWORD_LOGIN`, there is none at all.
+ */
+private fun notHere(config: TrackerConfig): Int {
+  val oidc = config.oidc
   System.err.println(
-    "Administrators come from ${oidc.name} alone: add the person to its group ${oidc.adminGroup} " +
-      "(they log in through ${oidc.name}, with their second factor there). --revoke still takes the flag here."
+    if (oidc != null) {
+      "Administrators come from ${oidc.name} alone: add the person to its group ${oidc.adminGroup} " +
+        "(they log in through ${oidc.name}, with their second factor there). --revoke still takes the flag here."
+    } else {
+      "Administrators come from single sign-on (OIDC_ISSUER), or from ADMIN_PASSWORD_LOGIN=true for local testing " +
+        "(never on a public server). --revoke still takes the flag here."
+    }
   )
   return 1
 }
@@ -98,7 +114,10 @@ private fun usage(): Int {
   return 2
 }
 
-/** A one-time login link for [person], printed, valid 15 minutes; not with single sign-on ([onlyThroughProvider]). */
+/**
+ * A one-time login link for [person], printed, valid 15 minutes; not with single sign-on, nor without
+ * `ADMIN_PASSWORD_LOGIN` ([notHere]).
+ */
 private suspend fun loginLink(config: TrackerConfig, person: String, users: UserStore, links: LoginLinkStore): Int {
   val user = users.findActive(person) ?: run {
     System.err.println("No login for '$person'.")
@@ -112,7 +131,7 @@ private suspend fun loginLink(config: TrackerConfig, person: String, users: User
 /** A login for [person] without an invitation: the first Administrator, or a player of the local demo. */
 private suspend fun createLogin(person: String, admin: Boolean, users: UserStore): Int {
   nameProblem(person)?.let {
-    System.err.println("Name: $it")
+    System.err.println("Name: ${it.english()}")
     return 2
   }
   users.findActive(person)?.let { user ->
@@ -152,29 +171,41 @@ private suspend fun resetLogin(person: String, users: UserStore): Int {
   return 0
 }
 
-private suspend fun listAdmins(users: UserStore): Int {
+private suspend fun listAdmins(config: TrackerConfig, users: UserStore): Int {
   val admins = users.active().filter { it.administrator }.map { it.name }
-  println(if (admins.isEmpty()) "No Administrators yet: randogeddon admins --create <person>" else "Administrators: ${admins.joinToString()}")
+  val none = "No Administrators yet" + if (passwordAdministrators(config)) ": randogeddon admins --create <person>" else ""
+  println(if (admins.isEmpty()) none else "Administrators: ${admins.joinToString()}")
   return 0
 }
 
-private suspend fun resetTwoFactor(person: String, users: UserStore, twoFactor: TwoFactorStore): Int {
+/**
+ * Turns [person]'s two-factor login off; their browser logins end, so none of them (made with the second factor or
+ * not) becomes one that may act as an Administrator once it is set up again.
+ */
+private suspend fun resetTwoFactor(person: String, users: UserStore, twoFactor: TwoFactorStore, logins: LoginSessionStore): Int {
   val user = users.findActive(person) ?: run {
     System.err.println("No login for '$person'.")
     return 1
   }
   twoFactor.disable(user.id)
-  println("${user.name}'s two-factor login is off; ${if (user.administrator) "they set it up again at their next login" else "they can set it up again"}.")
+  logins.deleteOthers(user.id, LoginMethods.BROWSER)
+  val again = if (user.administrator) "they set it up again at their next login" else "they can set it up again"
+  println("${user.name}'s two-factor login is off and their logins have ended; $again.")
   return 0
 }
 
-private suspend fun setAdmin(person: String, admin: Boolean, users: UserStore): Int {
+/**
+ * Makes [person] an Administrator ([admin]) or takes it back. Granted, their browser logins end: one made before (with
+ * a password only, say) doesn't act as an Administrator's.
+ */
+private suspend fun setAdmin(person: String, admin: Boolean, users: UserStore, logins: LoginSessionStore): Int {
   val user = users.findActive(person) ?: run {
     System.err.println("No login for '$person'. A new Administrator: randogeddon admins --create $person")
     return 1
   }
   users.setAdmin(user.id, admin)
-  println(if (admin) "${user.name} is an Administrator now." else "${user.name} is no Administrator any more.")
+  if (admin) logins.deleteOthers(user.id, LoginMethods.BROWSER)
+  println(if (admin) "${user.name} is an Administrator now; their logins have ended." else "${user.name} is no Administrator any more.")
   return 0
 }
 

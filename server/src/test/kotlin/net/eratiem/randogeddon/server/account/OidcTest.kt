@@ -120,6 +120,20 @@ class OidcTest {
   }
 
   @Test
+  fun `the discovery document is the configured provider's, a trailing slash aside`() {
+    fun document(iss: String) = """{"issuer":"$iss","authorization_endpoint":"https://auth.example.org/authorize",
+      |"token_endpoint":"https://auth.example.org/token","jwks_uri":"https://auth.example.org/jwks"}""".trimMargin()
+    val discovery = oidcDiscovery(document(issuer), issuer)
+    assertEquals(issuer, discovery.issuer)
+    assertEquals("https://auth.example.org/jwks", discovery.jwks)
+    assertEquals(issuer.trimEnd('/'), oidcDiscovery(document(issuer.trimEnd('/')), issuer).issuer)
+    // Another issuer's document (its tokens would be checked against it), one without an endpoint, no JSON
+    assertFailsWith<OidcProblem> { oidcDiscovery(document("https://evil.example.org/"), issuer) }
+    assertFailsWith<OidcProblem> { oidcDiscovery("""{"issuer":"$issuer"}""", issuer) }
+    assertFailsWith<OidcProblem> { oidcDiscovery("<html>", issuer) }
+  }
+
+  @Test
   fun `the ID token's session is read`() {
     assertEquals("s-9", verify(token(claims().replace("\"sub\":", "\"sid\":\"s-9\",\"sub\":"))).sessionId)
     assertEquals(null, verify(token()).sessionId)

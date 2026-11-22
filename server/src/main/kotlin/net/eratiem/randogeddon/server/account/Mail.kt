@@ -24,8 +24,11 @@ import javax.net.ssl.SSLSocketFactory
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
-/** A plain-text mail to one address. */
-data class Mail(val to: String, val subject: String, val text: String)
+/**
+ * A plain-text mail to one address. [about]: whose it is, for the log in place of the address (the account's name, or
+ * its ID); empty: nobody's in particular.
+ */
+data class Mail(val to: String, val subject: String, val text: String, val about: String = "")
 
 /** Sends the mails: through the SMTP server of [TrackerConfig.mail], or only into the log without one. */
 interface Mailer {
@@ -47,7 +50,7 @@ class MailSender(private val config: TrackerConfig) : Mailer {
       return
     }
     withContext(Dispatchers.IO) { smtp.send(config.mail.from, mail) }
-    logger.info("Mail to {}: {}", mail.to, mail.subject)
+    logger.info("Mail to {}: {}", mail.about.ifEmpty { "an address" }, mail.subject)
   }
 }
 
@@ -58,11 +61,16 @@ class MailSender(private val config: TrackerConfig) : Mailer {
  */
 internal class SmtpClient(private val config: MailConfig, private val timeoutMs: Int = 30_000) {
   fun send(from: String, mail: Mail) {
+    // The addresses are checked before; a line break or a bracket would end the command or the header here
+    if (listOf(from, mail.to).any { address -> address.any { it in "\r\n<>" } }) {
+      throw IOException("An address with a line break or an angle bracket")
+    }
     val target = InetSocketAddress(config.address.ifBlank { config.host }, config.port)
-    var socket: Socket = Socket().apply { connect(target, timeoutMs) }
-    if (config.security == MailSecurity.TLS) socket = tls(socket)
-    socket.soTimeout = timeoutMs
+    var socket = Socket()
     try {
+      socket.connect(target, timeoutMs)
+      if (config.security == MailSecurity.TLS) socket = tls(socket)
+      socket.soTimeout = timeoutMs
       var io = Connection(socket.getInputStream(), socket.getOutputStream())
       io.reply(220)
       var capabilities = io.ehlo()
@@ -82,8 +90,9 @@ internal class SmtpClient(private val config: MailConfig, private val timeoutMs:
         val plain = Base64.getEncoder().encodeToString("\u0000${config.user}\u0000${config.password}".toByteArray())
         io.command("AUTH PLAIN $plain", 235, shown = "AUTH PLAIN ***")
       }
-      io.command("MAIL FROM:<$from>", 250)
-      io.command("RCPT TO:<${mail.to}>", 250, 251)
+      // Not shown in the error (it goes into the log): the addresses
+      io.command("MAIL FROM:<$from>", 250, shown = "MAIL FROM")
+      io.command("RCPT TO:<${mail.to}>", 250, 251, shown = "RCPT TO")
       io.command("DATA", 354)
       io.write(message(from, mail))
       io.command(".", 250)
@@ -176,23 +185,24 @@ internal class SmtpClient(private val config: MailConfig, private val timeoutMs:
 
 /** The mails Randogeddon sends, plain text, in the recipient's language ([MailTexts]). */
 object Mails {
-  fun invitation(to: String, link: String, validDays: Int, texts: MailTexts) =
-    Mail(to, texts.invitationSubject, texts.invitation(link, validDays))
+  /** [account]: the invited account's ID, for the log. */
+  fun invitation(to: String, link: String, validDays: Int, texts: MailTexts, account: String = "") =
+    Mail(to, texts.invitationSubject, texts.invitation(link, validDays), about = account)
 
   fun emailConfirmation(to: String, name: String, link: String, validDays: Int, texts: MailTexts) =
-    Mail(to, texts.confirmationSubject, texts.confirmation(name, link, validDays))
+    Mail(to, texts.confirmationSubject, texts.confirmation(name, link, validDays), about = name)
 
   fun addressChange(to: String, name: String, newAddress: String, texts: MailTexts) =
-    Mail(to, texts.addressChangeSubject, texts.addressChange(name, newAddress))
+    Mail(to, texts.addressChangeSubject, texts.addressChange(name, newAddress), about = name)
 
   fun keptOut(to: String, name: String, until: String?, reason: String?, texts: MailTexts) =
-    Mail(to, if (until != null) texts.timedOutSubject else texts.suspendedSubject, texts.keptOut(name, until, reason))
+    Mail(to, if (until != null) texts.timedOutSubject else texts.suspendedSubject, texts.keptOut(name, until, reason), about = name)
 
-  fun letIn(to: String, name: String, texts: MailTexts) = Mail(to, texts.letInSubject, texts.letIn(name))
+  fun letIn(to: String, name: String, texts: MailTexts) = Mail(to, texts.letInSubject, texts.letIn(name), about = name)
 
   fun removed(to: String, name: String, reason: String?, texts: MailTexts) =
-    Mail(to, texts.removedSubject, texts.removed(name, reason))
+    Mail(to, texts.removedSubject, texts.removed(name, reason), about = name)
 
   fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String, texts: MailTexts) =
-    Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink))
+    Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink), about = name)
 }

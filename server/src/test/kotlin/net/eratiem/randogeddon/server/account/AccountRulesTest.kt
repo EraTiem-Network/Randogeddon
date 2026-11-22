@@ -39,6 +39,13 @@ class AccountRulesTest {
     assertFalse(EmailAddresses.valid("alice@localhost"))
     assertFalse(EmailAddresses.valid("alice example.org"))
     assertEquals("Alice.B@example.org", EmailAddresses.normalize("  Alice.B@Example.ORG "))
+    assertTrue(EmailAddresses.valid("alice.b+tracker@mail.example.org"))
+    // What SMTP or a header would split at, and control characters: such an address never worked
+    val unsendable = listOf(
+      "a<b@example.org", "alice@example.org>", "a,b@example.org", "a;b@example.org", "\"a\"@example.org",
+      "a\u0000b@example.org", "alice@exa\u007Fmple.org", "a\u001Bb@example.org",
+    )
+    for (address in unsendable) assertFalse(EmailAddresses.valid(address), address)
   }
 
   @Test

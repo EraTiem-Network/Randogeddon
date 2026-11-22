@@ -81,6 +81,8 @@ class MailTest {
         .send("a@example.org", Mail("nobody@example.org", "Hi", "Hello"))
     }
     assertTrue("550 no such user" in error.message.orEmpty(), error.message)
+    // The error goes into the log: it names the command, not the address
+    assertTrue("RCPT TO" in error.message.orEmpty() && "nobody@example.org" !in error.message.orEmpty(), error.message)
 
     val plainOnly = fakeServer(emptyMap(), mutableListOf())
     val noTls = assertFailsWith<IOException> {
@@ -88,5 +90,18 @@ class MailTest {
         .send("a@example.org", Mail("b@example.org", "Hi", "Hello"))
     }
     assertTrue("STARTTLS" in noTls.message.orEmpty(), noTls.message)
+  }
+
+  @Test
+  fun `an address with a line break or an angle bracket is never sent to the mail server`() {
+    val conversation = mutableListOf<String>()
+    val port = fakeServer(emptyMap(), conversation)
+    val client = SmtpClient(MailConfig(host = "localhost", port = port, security = MailSecurity.NONE), 5_000)
+    for (to in listOf("bob@example.org\r\nRCPT TO:<eve@example.org>", "bob@example.org>x", "<bob@example.org", "bob\n@example.org")) {
+      assertFailsWith<IOException>(to) { client.send("a@example.org", Mail(to, "Hi", "Hello")) }
+    }
+    assertFailsWith<IOException> { client.send("a@example.org>", Mail("b@example.org", "Hi", "Hello")) }
+    // Refused before connecting: the server never heard a word
+    assertEquals(emptyList(), conversation)
   }
 }
