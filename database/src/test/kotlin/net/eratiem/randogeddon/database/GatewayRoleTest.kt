@@ -33,6 +33,21 @@ class GatewayRoleTest {
   }
 
   @Test
+  fun `the gateway's role adds only the gateway's kinds of events, never a cheat`() {
+    val statements = GatewayRole.statements("randogeddon_gateway", "pw")
+    val policy = statements.single { it.startsWith("CREATE POLICY") }
+    assertEquals(
+      "CREATE POLICY gateway_event_kinds ON session_events FOR INSERT TO randogeddon_gateway " +
+        "WITH CHECK (kind IN ('packet', 'start', 'stop'))",
+      policy,
+    )
+    assertFalse(SessionEventStore.CHEAT in policy)
+    // Made again at each start: the one before goes first
+    val drop = statements.indexOf("DROP POLICY IF EXISTS gateway_event_kinds ON session_events")
+    assertTrue(drop in 0..<statements.indexOf(policy))
+  }
+
+  @Test
   fun `a password with quotes stays one string, and only a plain name is a role`() {
     val alter = GatewayRole.statements("randogeddon_gateway", "it's; DROP TABLE users; --").first { it.startsWith("ALTER ROLE") }
     assertTrue(alter.endsWith("PASSWORD 'it" + "''" + "s; DROP TABLE users; --" + "'"), alter)

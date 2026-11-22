@@ -227,6 +227,49 @@ class StoresTest {
   }
 
   @Test
+  fun `the gateway's role adds only the gateway's kinds of events, the tracker its cheats too`() = runBlocking {
+    // As on a server: the tracker logs in with a role of its own, the tables' owner, no superuser (database-roles)
+    db.query {
+      exec("CREATE ROLE kinds_tracker LOGIN NOSUPERUSER CREATEROLE PASSWORD 'tracker-password'")
+      exec("ALTER SCHEMA public OWNER TO kinds_tracker")
+      exec(
+        "DO $$ DECLARE t text; BEGIN FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP " +
+          "EXECUTE format('ALTER TABLE public.%I OWNER TO kinds_tracker', t); END LOOP; END $$",
+      )
+    }
+    RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "kinds_tracker", "tracker-password"), migrate = false, poolSize = 1)
+      .use { tracker ->
+        GatewayRole.ensure(tracker, "kinds_gateway", "gateway-password")
+        RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "kinds_gateway", "gateway-password"), migrate = false, poolSize = 1)
+          .use { gateway ->
+            val heard = SessionEventStore(gateway)
+            heard.append("loud-otter", 1_000, SessionEventStore.START)
+            heard.append("loud-otter", 2_000, SessionEventStore.PACKET, "{\"cmd\":\"PrintJSON\",\"type\":\"Join\"}")
+            heard.append("calm-heron", 2_500, SessionEventStore.STOP)
+            // Not the tracker's kind, nor one nobody writes
+            assertFailsWith<Exception> { heard.append("loud-otter", 3_000, SessionEventStore.CHEAT, "{\"admin\":\"Mallory\"}") }
+            assertFailsWith<Exception> { heard.append("loud-otter", 3_000, "seen") }
+          }
+        // The tracker adds its cheats and reads everything
+        val events = SessionEventStore(tracker)
+        events.append("loud-otter", 4_000, SessionEventStore.CHEAT, "{\"admin\":\"Ada\"}")
+        assertEquals(listOf("start", "packet", "cheat"), events.after("loud-otter", 0).map { it.kind })
+        assertEquals(listOf(SessionEventStore.STOP), events.after("calm-heron", 0).map { it.kind })
+        assertEquals("{\"admin\":\"Ada\"}", events.after("loud-otter", 0).last().packet)
+        // Made again at the next start: still one policy, still the same rights
+        GatewayRole.ensure(tracker, "kinds_gateway", "gateway-password")
+        RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "kinds_gateway", "gateway-password"), migrate = false, poolSize = 1)
+          .use { gateway ->
+            SessionEventStore(gateway).append("loud-otter", 5_000, SessionEventStore.STOP)
+            assertFailsWith<Exception> { SessionEventStore(gateway).append("loud-otter", 6_000, SessionEventStore.CHEAT, "{}") }
+          }
+        assertEquals(listOf("start", "packet", "cheat", "stop"), events.after("loud-otter", 0).map { it.kind })
+        events.delete("loud-otter")
+        events.delete("calm-heron")
+      }
+  }
+
+  @Test
   fun `a session's snapshot is kept live, made final once it finished, reopened, and goes with the session`() = runBlocking {
     val snapshots = SessionSnapshotStore(db)
     assertNull(snapshots.of("kept-otter"))
