@@ -1265,3 +1265,5 @@ games' real map images moved to Later.*
 - [x] The map more compact (asked for on 2026-11-22: "currently it's crazy spread out") (0.23.2.6)
 - [x] The sent and received pills count all items (asked for on 2026-11-22: they showed progression only and
       didn't match the slot's lists) (0.23.2.6)
+- [x] The pinned live feed moves on the dashboard too (asked for on 2026-11-22: "I cannot move it around in
+      dashboard"): pinned, it is the floating window on every view; where it was moved to is remembered (0.23.2.7)

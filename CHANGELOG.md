@@ -12,6 +12,11 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.7: The pinned live feed floats on the dashboard too
+- Pinned, the live feed is the window over the page on the dashboard as well (it stayed in its place there and
+  couldn't be moved), and the dashboard's own feed makes room for the players. The pin taken off puts it back.
+- Where the window was moved to is remembered in the browser.
+
 ### 0.23.2.6: The map says what is blocked, and is tighter
 - A region the slot's logic can't reach with the items it has (an area that opens with an item still to come, and
   what lies behind it) is marked on the map: a lock before its name, a dashed edge, its box dimmed, and a dashed line

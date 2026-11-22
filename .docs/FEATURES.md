@@ -184,8 +184,8 @@ its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothi
   slot's logic can't reach now (one that opens with an item still to come) is marked: a lock, a dashed edge, a
   dashed line into it; not by whom or what. Only where the logic runs (as the available checks), kept with the slot
   while it sleeps.
-- **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below, and
-  pinned on every view (a window over the page where a view has no place for it: moved, folded).
+- **Live feed** (filterable, 50 at a time) and **hints** (filterable); the feed beside the players or below, or
+  pinned: a window over the page on every view (moved, folded; its place remembered in the browser).
 - **Counts only:** progression counts per slot are its own world's; how many progression items are meant for a slot
   isn't shown (it would tell how much is missing).
 - **Layout:** as wide as the window (2 % margins); the feed a quarter of it (440–640 dp).
