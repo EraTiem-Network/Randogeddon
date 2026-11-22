@@ -165,25 +165,38 @@ RUN java -jar installer.jar --installServer /opt/forge > /dev/null \
  && chmod -R a+rX /opt/forge
 
 FROM archipelago AS gateway
-# MultiServer runs as this user and writes host.yaml and logs/ next to itself. Archipelago checks whether its own
-# directory is writable: if not, it moves to the home directory and copies folders there that a plain checkout doesn't
-# have (and fails). So the directory itself (not what's in it) belongs to the user. custom_worlds/ too: the gateway
-# fills it with the apworlds of the library (uploaded in the admin panel, or in the server's custom_worlds/).
-RUN useradd --uid 1000 --create-home randogeddon \
+# Two users: the gateway (randogeddon, uid 1000, the data directory's owner, in Archipelago's group too) and
+# Archipelago's Python (archipelago, uid and group 1100), which runs third-party APWorld code and so can't read the
+# gateway's environment or memory. The image starts as root (docker-entrypoint.sh, with CAP_SETUID, CAP_SETGID and
+# CAP_KILL only), which becomes the gateway's user at once; the gateway starts each of Archipelago's processes as the
+# other one with setpriv and raises its out-of-memory score with choom (both util-linux: checked here).
+# MultiServer writes host.yaml and logs/ next to itself. Archipelago checks whether its own directory is writable: if
+# not, it moves to the home directory and copies folders there that a plain checkout doesn't have (and fails). So the
+# directory itself (not what's in it) belongs to Archipelago's user. custom_worlds/ is the gateway's: it fills it with
+# the apworlds of the library (uploaded in the admin panel, or in the server's custom_worlds/), which Archipelago's
+# group only reads (setgid: what is put there is that group's)
+RUN groupadd --gid 1100 archipelago \
+ && useradd --uid 1100 --gid archipelago --create-home archipelago \
+ && useradd --uid 1000 --create-home --groups archipelago randogeddon \
  && mkdir -p logs custom_worlds \
  && touch host.yaml \
- && chown randogeddon . logs host.yaml custom_worlds
+ && chown archipelago . logs host.yaml \
+ && chown randogeddon:archipelago custom_worlds \
+ && chmod 2750 custom_worlds \
+ && setpriv --version && choom --version
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py archipelago/logic_run.py \
      archipelago/seed_info.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
-# Compiled now: the user below can't write __pycache__ here, so every listing of the games, generation and game server
-# start compiled all of Archipelago again (listing the games: 5 s, compiled 2 s; the image grows by about 40 MB)
+# Compiled now: Archipelago's user can't write __pycache__ here, so every listing of the games, generation and game
+# server start compiled all of Archipelago again (listing the games: 5 s, compiled 2 s; the image grows by about 40 MB)
 RUN python -m compileall -q -j 0 .
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
-USER randogeddon
+COPY --chmod=0755 gateway/docker-entrypoint.sh /app/
 EXPOSE 38281
-CMD ["/app/randogeddon-gateway"]
+# As root, which the script gives up at once (docker-compose.yml gives it no capability but those three)
+# hadolint ignore=DL3002
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # The hosted Minecraft servers of Minecraft Dig slots (the minecraft service): Forge with the mod on Java 17, and the
 # program that runs them on the gateway's orders (minecraft_host.py: Python's standard library only). Nothing of
