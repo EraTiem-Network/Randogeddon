@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.database
 
 import java.time.Instant
 import kotlin.uuid.Uuid
+import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
@@ -12,6 +13,7 @@ import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.or
+import org.jetbrains.exposed.v1.jdbc.Query
 import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -57,9 +59,15 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
   }
 
   suspend fun of(seedName: String): SessionTime? = db.query {
-    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()
-      ?.let { SessionTime(it[SessionsTable.runTimeMs], it[SessionsTable.countedUntil]) }
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.let(::time)
   }
+
+  /** Every seed's time, by its name, in one read (the tracker's refresh of all sessions). */
+  suspend fun all(): Map<String, SessionTime> = db.query {
+    SessionsTable.selectAll().associate { it[SessionsTable.seedName] to time(it) }
+  }
+
+  private fun time(row: ResultRow) = SessionTime(row[SessionsTable.runTimeMs], row[SessionsTable.countedUntil])
 }
 
 /**
@@ -266,34 +274,54 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
 
   suspend fun of(seedName: String): SessionSetup? = db.query {
     val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query null
+    setups(listOf(row), row[SessionsTable.id])[seedName]
+  }
+
+  /**
+   * Every session's setup, by its seed's name: each table read once for all of them (the tracker's refresh of all
+   * sessions), each setup as [of] gives it.
+   */
+  suspend fun all(): Map<String, SessionSetup> = db.query { setups(SessionsTable.selectAll().toList(), null) }
+
+  /** The setups of the sessions [rows]; [only]: their one session's ID, `null`: they are every session. */
+  private fun setups(rows: List<ResultRow>, only: Uuid?): Map<String, SessionSetup> {
+    // A table's rows of that one session, or of every session
+    fun Query.ofThese(column: Column<Uuid>): List<ResultRow> = (if (only == null) this else where { column eq only }).toList()
     // The name of then; rows from before V7 without one: the current name
     fun name(r: ResultRow) = r[SessionWorldsTable.userName] ?: r[UsersTable.name] ?: r[SessionWorldsTable.userId].toString().take(8)
     // The database gives the rows in no order of its own (it changed from one read to the next, and the dashboard's
     // slots with it): by slot, then by player
-    val rows = (SessionWorldsTable innerJoin UsersTable).selectAll()
-      .where { SessionWorldsTable.sessionId eq row[SessionsTable.id] }.toList()
+    val worldRows = (SessionWorldsTable innerJoin UsersTable).selectAll().ofThese(SessionWorldsTable.sessionId)
       .sortedWith(compareBy({ it[SessionWorldsTable.slotName].lowercase() }, { it[SessionWorldsTable.slotName] }, { name(it).lowercase() }))
-    val worlds = rows.groupBy({ it[SessionWorldsTable.slotName] }, ::name)
-    val members = rows.associate { it[SessionWorldsTable.userId] to name(it) }
-    val deleted = rows.filter { it[UsersTable.deletedAt] != null }.map { it[SessionWorldsTable.userId] }.toSet()
-    val roles = (SessionRolesTable innerJoin UsersTable).selectAll()
-      .where { SessionRolesTable.sessionId eq row[SessionsTable.id] }
-      .associate {
+      .groupBy { it[SessionWorldsTable.sessionId] }
+    val roleRows = (SessionRolesTable innerJoin UsersTable).selectAll().ofThese(SessionRolesTable.sessionId)
+      .groupBy { it[SessionRolesTable.sessionId] }
+    val hostedRows = SessionHostedSlotsTable.selectAll().ofThese(SessionHostedSlotsTable.sessionId)
+      .groupBy { it[SessionHostedSlotsTable.sessionId] }
+    val openRows = SessionOpenSlotsTable.selectAll().ofThese(SessionOpenSlotsTable.sessionId)
+      .groupBy { it[SessionOpenSlotsTable.sessionId] }
+    return rows.associate { row ->
+      val id = row[SessionsTable.id]
+      val worlds = worldRows[id].orEmpty()
+      val roles = roleRows[id].orEmpty().associate {
         val name = it[SessionRolesTable.userName] ?: it[UsersTable.name] ?: it[SessionRolesTable.userId].toString().take(8)
         it[SessionRolesTable.userId] to SessionRoleEntry(
           it[SessionRolesTable.role], name, it[UsersTable.deletedAt] != null,
           it[UsersTable.blockedAt]?.let { at -> Block(at, it[UsersTable.blockedUntil], null, null) },
         )
       }
-    val hostedRows = SessionHostedSlotsTable.selectAll().where { SessionHostedSlotsTable.sessionId eq row[SessionsTable.id] }.toList()
-    val hosted = hostedRows.map { it[SessionHostedSlotsTable.slotName] }.toSet()
-    SessionSetup(
-      seedName, row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt], worlds, members,
-      deleted, roles, hosted, row[SessionsTable.createdBy], row[SessionsTable.keepRunning],
-      direct = hostedRows.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
-      open = SessionOpenSlotsTable.selectAll().where { SessionOpenSlotsTable.sessionId eq row[SessionsTable.id] }
-        .map { it[SessionOpenSlotsTable.slotName] }.toSet(),
-    )
+      val hosted = hostedRows[id].orEmpty()
+      row[SessionsTable.seedName] to SessionSetup(
+        row[SessionsTable.seedName], row[SessionsTable.apVersion], row[SessionsTable.optionsJson], row[SessionsTable.createdAt],
+        worlds.groupBy({ it[SessionWorldsTable.slotName] }, ::name),
+        worlds.associate { it[SessionWorldsTable.userId] to name(it) },
+        worlds.filter { it[UsersTable.deletedAt] != null }.map { it[SessionWorldsTable.userId] }.toSet(),
+        roles, hosted.map { it[SessionHostedSlotsTable.slotName] }.toSet(), row[SessionsTable.createdBy],
+        row[SessionsTable.keepRunning],
+        direct = hosted.filter { it[SessionHostedSlotsTable.direct] }.map { it[SessionHostedSlotsTable.slotName] }.toSet(),
+        open = openRows[id].orEmpty().map { it[SessionOpenSlotsTable.slotName] }.toSet(),
+      )
+    }
   }
 
   /** Removes the session with its slot passwords, world assignments and session time; the users stay. */
@@ -438,13 +466,18 @@ data class FinishedSession(
 /** Finishing and reopening sessions; the tracker decides when, the gateway only asks whether one is finished. */
 class SessionFinishStore(private val db: RandogeddonDatabase) {
   suspend fun of(seedName: String): FinishState? = db.query {
-    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.let {
-      FinishState(
-        it[SessionsTable.finishedAt], it[SessionsTable.finishedBy], it[SessionsTable.finishDueAt], it[SessionsTable.keep],
-        it[SessionsTable.retainedSince],
-      )
-    }
+    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.let(::state)
   }
+
+  /** Every seed's finish state, by its name, in one read (the tracker's refresh of all sessions). */
+  suspend fun all(): Map<String, FinishState> = db.query {
+    SessionsTable.selectAll().associate { it[SessionsTable.seedName] to state(it) }
+  }
+
+  private fun state(row: ResultRow) = FinishState(
+    row[SessionsTable.finishedAt], row[SessionsTable.finishedBy], row[SessionsTable.finishDueAt], row[SessionsTable.keep],
+    row[SessionsTable.retainedSince],
+  )
 
   /** The session finishes by itself at [at]; `null`: not (any more). */
   suspend fun setDue(seedName: String, at: Instant?) = db.query {
@@ -531,6 +564,9 @@ class CheatLogStore(private val db: RandogeddonDatabase) {
   }
 }
 
+/** What [SessionRoleStore.leave] did: done, the person had no role there, or they are its last Session-Manager. */
+enum class RoleLeaving { DONE, NONE, LAST_MANAGER }
+
 /** Who has which role in a session besides the players (Session-Managers, support, watchers). */
 class SessionRoleStore(private val db: RandogeddonDatabase) {
   /**
@@ -569,6 +605,25 @@ class SessionRoleStore(private val db: RandogeddonDatabase) {
     val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
       ?: return@query false
     SessionRolesTable.deleteWhere { (sessionId eq session) and (SessionRolesTable.userId eq userId) } > 0
+  }
+
+  /**
+   * Takes [userId]'s role in the session of [publicId] away ([role] `null`), or gives them [role] in its place; the
+   * last Session-Manager keeps theirs. Checked and done in one transaction with the session's row locked, so two
+   * Session-Managers taking each other's part at once can't leave it with none.
+   */
+  suspend fun leave(publicId: String, userId: Uuid, role: String? = null): RoleLeaving = db.query {
+    val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.forUpdate().singleOrNull()
+      ?.get(SessionsTable.id) ?: return@query RoleLeaving.NONE
+    val mine = (SessionRolesTable.sessionId eq session) and (SessionRolesTable.userId eq userId)
+    val had = SessionRolesTable.selectAll().where { mine }.singleOrNull()?.get(SessionRolesTable.role)
+      ?: return@query RoleLeaving.NONE
+    if (had == role) return@query RoleLeaving.DONE
+    val managers = SessionRolesTable.selectAll()
+      .where { (SessionRolesTable.sessionId eq session) and (SessionRolesTable.role eq "manager") }.count()
+    if (had == "manager" && managers <= 1) return@query RoleLeaving.LAST_MANAGER
+    if (role == null) SessionRolesTable.deleteWhere { mine } else SessionRolesTable.update({ mine }) { it[SessionRolesTable.role] = role }
+    RoleLeaving.DONE
   }
 
   /** How many sessions that aren't finished [userId] manages (for the per-user limit). */
