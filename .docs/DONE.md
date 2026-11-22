@@ -1180,3 +1180,43 @@ games' real map images moved to Later.*
       went live; the demo ran on it with 0.23.1.1 (both sessions created and played, every slot's map, no errors)
     - Found by it: the demo's three logins met the login limit, which counts by address since 0.23.1 (by host
       name before: in Docker a container's own name); the demo's admin keeps its login now (0.23.1.1)
+- [x] 0.23.2: the gateway and its tunnel, the findings fixed without the user (0.23.2; nine more wait for the
+      user's decision, see TODO):
+        - Security:
+            - [x] G1 (high): MultiServer's output kept at any line length; any packet passed on before a `Connect`
+            - [x] G2 (high, the size part) / S7: chat lines and link events kept whole (1 MiB each) in memory, the
+                  log and the database
+            - [x] G3/S3 (high): before its `Connect` a frame may hold tens of thousands of `GetDataPackage`
+                  packets, each answered with megabytes; the wake waits outside the limit
+            - [x] G13: taking someone off a slot can miss their connection
+            - [x] G14/S10: the slot's password compared with `!=`
+            - [x] G15: the slot locks fail open at the first read
+            - [x] G16: a release's name becomes a path without being an installed release
+            - [x] G17: parts of a seed zip and of an APWorld read whole into memory
+            - [x] G25: names and console lines logged as they came
+            - [x] S12: every anonymous `Connect` costs a file read (and a database query without passwords)
+        - Correctness:
+            - [x] G4: ending a logic while it is built blocks a build place and the APWorld library for 30 minutes
+            - [x] G5: a killed game server, or one whose process can't start, leaves its state behind
+            - [x] G6: deleting a session deletes the Minecraft worlds of other sessions whose ID starts the same
+            - [x] G7: after one late answer of the logic, every later answer belongs to the question before
+            - [x] G12: the game servers' `stop` events get lost when the gateway stops or kills one
+            - [x] G19: sleep and wake look at the state before they take the lock
+            - [x] G20: the tunnel's and the minecraft service's errors aren't caught where they are expected
+            - [x] G21: a deleted session leaves its generation running and its logs to the next of the same ID
+            - [x] G22: two generations for one session at once; a cancelled one that still waits
+            - [x] G23: a cut-off seed upload answers 500
+            - [x] G24 (the rest): a process without a time limit, what a kill leaves
+            - [x] G26: the game servers end one after the other when the gateway stops
+            - [x] G27: a client's own fault logged as "MultiServer not reachable"
+        - Optimisation and duplication:
+            - [x] G28: the relay decodes and encodes every frame twice
+            - [x] G29: six places start a Python process, each its own way
+            - [x] G30: the whole APWorld library copied at every first generation
+            - [x] G31: an uploaded APWorld unpacked up to four times
+            - [x] G32, G33: `stages.json` and `room.json` read again and again
+            - [x] G34, G35: small things twice, smaller needless work
+    - How: three fixers at once, each in its own files (the public side, the processes, the files and the internal
+      API), then one that connected what they left for each other's files
+    - Chosen by the fixers: 32 packets before a `Connect`; 2,000 characters a log line, 1,000 a kept text; a
+      spoiler log of 64 MB and an APWorld of 1 GB unpacked at most

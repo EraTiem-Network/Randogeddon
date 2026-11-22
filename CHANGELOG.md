@@ -12,7 +12,44 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
-### 0.23.1.1: The map's lines, scrolled sideways, the share links' streams as a setting
+### 0.23.2: The gateway reviewed
+47 findings (5 high, 16 medium, 26 low), listed in `.docs/DONE.md`; nine of them wait for the user's decision
+(`.docs/TODO.md`): they change the deployment, the schema or what someone sees.
+
+Security:
+- Before it joins, a game client is passed on only what a client sends before it joins (`Connect`,
+  `GetDataPackage`), 32 packets in all, each a proper packet: one frame could carry tens of thousands of requests
+  that the game server answered with megabytes each, without a password, until the gateway ran out of memory (and
+  with it every session). A sleeping game server's wake counts inside the same limits.
+- A process's output is kept in lines of 2,000 characters at most, cut as they are read; chat lines and link events
+  are kept at 1,000 characters a text: a player (or anyone, through the game server's log) could fill the gateway's
+  memory, its log and the database with lines of a megabyte.
+- The slot's password is compared in constant time; the slot locks stay closed while they can't be read; taking
+  someone off a slot closes a connection that is just being made, too.
+- A release's name reaches a path only if that release is installed.
+- A seed's zip and an APWorld are read in a stream with limits (a seed's spoiler log 64 MB, an APWorld 1 GB
+  unpacked); an APWorld is unpacked once and its manifest read by one reader.
+- Names and console lines go into the logs as one line each.
+
+Fixed:
+- Ending a logic while it is built frees its place and the APWorld library at once (they were blocked for up to 30
+  minutes, and every new generation with them).
+- Deleting a session deletes only its own Minecraft servers and worlds, not those of a session whose ID starts the
+  same (`abc` and `abc-p…`); it ends its running generation and takes its logs with it.
+- A game server that had to be killed ends like any other (its events, its session time, its logic); one that can't
+  be started fails after five tries instead of staying at *starting*. Ending a process ends what it started.
+- After a late answer of the logic, each question gets its own answer again.
+- One session generates once at a time; a generation cancelled while it waits for its place ends at once.
+- The game servers' stops are written when the gateway stops, and for every session at its start (players left
+  *connected* by a killed gateway show as offline); the game servers end at the same time, not one after another.
+- A seed upload that broke off is refused as no seed's zip (it answered a server error).
+
+Faster, less of it:
+- `room.json` and `stages.json` are read when they change, not at every `Connect` and tick; the APWorld library is
+  copied only where it changed, and swapped in whole; after its `Connect` a client's frames pass as they came.
+- One way to start, limit, read and end a Python process (six had their own); the processes' temporary files in one
+  directory, emptied at the gateway's start.
+
 - The map is a tree from its start: a box's line leaves its right edge, runs down the middle of the gap beside it
   and branches off to the boxes first reached from it, which stand below each other in the next column. The lines
   stay in the gaps: none crosses a box or another line, and they turn at right angles. What a box connects to
