@@ -37,10 +37,6 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 The parts:
 
 - [ ] Left from 0.23.1 (the tracker's review):
-    - [ ] `GET /api/me` says `administrator` from the account's flag, not from whether this login may act as one: a
-          login that may not (no single sign-on and no `ADMIN_PASSWORD_LOGIN`, or a password login beside single
-          sign-on) sees the panel's Administrator parts and gets 403 from them. Changing it changes what such a
-          login sees: the user's decision
     - [ ] `X-Forwarded-Proto` and `X-Forwarded-Host` are still taken from any peer (Ktor's handler can't be gated
           by peer); only the client address follows `TRUSTED_PROXIES`. Nothing in the tracker reads them
     - [ ] Tests that need a database in the tracker's module (it has no harness for one): the mail limit's probes,

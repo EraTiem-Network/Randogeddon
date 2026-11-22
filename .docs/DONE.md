@@ -1167,3 +1167,16 @@ games' real map images moved to Later.*
         - O1: as the user decided (the opt-in setting), not a second factor per login
 - [x] The top panel's status pills say what they are: `<icon> Game server: <state>`, `<icon> Logic: <state>` (asked
       for on 2026-11-22) (0.23.1)
+- [x] The check maps are cut off to the right: scrollable (reported by the user on 2026-11-22): a bar along the
+      map's bottom, and the map dragged with the mouse (0.23.1.1)
+- [x] The share links' streams per address set by Administrators like the other settings (asked for on
+      2026-11-22) (0.23.1.1)
+- [x] `GET /api/me` says `administrator` by whether this login may act as one, not by the account's flag (left from
+      0.23.1; decided by the user on 2026-11-22: "WebApp and BE are ours") (0.23.1.1)
+- [x] The map's lines (asked for on 2026-11-22): they don't cross boxes or each other, run straight with tight
+      turns, and a box with several targets sends one line that branches off to them (0.23.1.1)
+    - Done as a tree from the start; a box's other connections have no line and are marked on hover
+- [x] 0.23.1 checked end to end (2026-11-22): its published images started and logged the demo's admin in before it
+      went live; the demo ran on it with 0.23.1.1 (both sessions created and played, every slot's map, no errors)
+    - Found by it: the demo's three logins met the login limit, which counts by address since 0.23.1 (by host
+      name before: in Docker a container's own name); the demo's admin keeps its login now (0.23.1.1)
