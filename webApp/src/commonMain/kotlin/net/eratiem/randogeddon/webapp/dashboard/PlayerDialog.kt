@@ -1,17 +1,20 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +83,20 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
   var itemsQuery by remember(slot) { mutableStateOf("") }
   LaunchedEffect(slot, version) {
     repository.player(slot)?.let { detail = it }
+  }
+  // The map's size: larger than its panel it lies over the whole window, and at its largest the page is in full
+  // screen. Esc leaves full screen past the page: the map stays over the window then
+  var mapSize by remember(slot) { mutableStateOf(MapSize.PANEL) }
+  fun sizeMap(size: MapSize) {
+    if ((size == MapSize.FULL_SCREEN) != (mapSize == MapSize.FULL_SCREEN)) Platform.fullScreen(size == MapSize.FULL_SCREEN)
+    mapSize = size
+  }
+  DisposableEffect(slot) {
+    val stop = Platform.onFullScreenChange { on -> if (!on && mapSize == MapSize.FULL_SCREEN) mapSize = MapSize.WINDOW }
+    onDispose {
+      stop()
+      if (mapSize == MapSize.FULL_SCREEN) Platform.fullScreen(false)
+    }
   }
 
   val d = detail
@@ -150,7 +167,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         WorldTab.MAP -> {
           val map = d.map
           if (map == null || map.regions.isEmpty()) Txt(t.dialogs.mapNone, size = 13.sp, color = p.muted)
-          else WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems)
+          else WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems, MapSize.PANEL, ::sizeMap)
         }
         WorldTab.TRANSPORTED -> {
           FilterField(itemsQuery, { itemsQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth())
@@ -202,6 +219,22 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
               }
             }
           }
+        }
+      }
+    }
+  }
+  // The map over the whole window (and in full screen): the slot's name above it, its own buttons take it back
+  val map = d?.map
+  if (mapSize != MapSize.PANEL && d != null && map != null && map.regions.isNotEmpty()) {
+    Dialog(onDismissRequest = { sizeMap(MapSize.PANEL) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+      SelectionContainer {
+        Column(Modifier.fillMaxSize().background(p.panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GameChip(d.game, size = 30.dp)
+            Txt(d.name, size = 15.sp, weight = FontWeight.SemiBold, maxLines = 1)
+            Txt(t.dialogs.slotHeading(d.game, d.checked, d.total, t.decimal(percent)), size = 12.5.sp, color = p.muted, maxLines = 1)
+          }
+          WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems, mapSize, ::sizeMap)
         }
       }
     }
