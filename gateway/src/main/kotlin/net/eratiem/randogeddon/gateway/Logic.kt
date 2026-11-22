@@ -201,10 +201,15 @@ class Logic(
       val maps = answer["maps"]?.jsonObject?.entries?.mapNotNull { (slot, map) ->
         runCatching { slot.toInt() to ApiJson.decodeFromJsonElement(SlotMap.serializer(), map) }.getOrNull()
       }?.toMap().orEmpty()
+      // Which of each slot's map's regions it reaches (none from a logic before 0.23.2.6)
+      val regions = answer["regions"]?.jsonObject?.entries?.mapNotNull { (slot, reached) ->
+        (reached as? JsonArray)?.let { list -> slot.toInt() to list.mapNotNull { it.jsonPrimitive.intOrNull } }
+      }?.toMap().orEmpty()
       AvailableAnswer(
         answers.entries.associate { (slot, found) -> slot.toInt() to ((found as? JsonArray)?.size ?: (found as? JsonPrimitive)?.intOrNull) },
         locations,
         maps,
+        regions,
       )
     }
   }
