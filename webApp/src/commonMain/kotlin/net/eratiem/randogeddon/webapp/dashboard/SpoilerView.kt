@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,6 +59,7 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.wordError
+import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.FilterField
@@ -75,9 +77,13 @@ import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.hand
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
+/** The spoiler page's tabs: the whole log, and what its later levels bring once they are worked out. */
+private enum class SpoilerTab { EVERYTHING, PLAYTHROUGH, PATHS }
+
 /**
- * A session's spoiler log: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
- * step makes reachable), and the full log, searchable. [id]: the session. [onBack]: closes it.
+ * A session's spoiler log: the full log, searchable (there from the seed on), and by tabs of their own what is worked
+ * out after the seed: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
+ * step makes reachable; opened first once it is there), then the paths. [id]: the session. [onBack]: closes it.
  */
 @Composable
 fun SpoilerView(id: String, onBack: () -> Unit) {
@@ -103,7 +109,10 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
         Column(Modifier.weight(1f)) {
           Txt(t.spoiler.title, size = 20.sp, weight = FontWeight.Bold)
           Txt(
-            listOfNotNull(id, spoiler?.let { t.frame.seed(it.seedName) }, spoiler?.let { t.spoiler.spheres(it.spheres.size) }).joinToString(" · "),
+            listOfNotNull(
+              id, spoiler?.let { t.frame.seed(it.seedName) },
+              spoiler?.takeIf { it.spheres.isNotEmpty() }?.let { t.spoiler.spheres(it.spheres.size) },
+            ).joinToString(" · "),
             size = 12.5.sp, color = p.muted,
           )
         }
@@ -114,9 +123,34 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
         if (problem == null) Txt(t.dialogs.loading, color = p.muted)
         return@Column
       }
-      if (s.unreduced) Txt(t.spoiler.unreduced, size = 12.5.sp, color = p.warn)
-      if (s.spheres.isNotEmpty()) Playthrough(s.spheres, narrow)
-      FullLog(id, s.lines, narrow)
+      val tabs = listOfNotNull(
+        SpoilerTab.EVERYTHING, SpoilerTab.PLAYTHROUGH.takeIf { s.spheres.isNotEmpty() }, SpoilerTab.PATHS.takeIf { s.pathsFrom != null },
+      )
+      // The playthrough first where there is one: it is read more than the log
+      var chosen by remember(id, tabs) { mutableStateOf(if (SpoilerTab.PLAYTHROUGH in tabs) SpoilerTab.PLAYTHROUGH else SpoilerTab.EVERYTHING) }
+      if (tabs.size > 1) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          tabs.forEach { tab ->
+            val name = when (tab) {
+              SpoilerTab.EVERYTHING -> t.spoiler.tabEverything
+              SpoilerTab.PLAYTHROUGH -> t.spoiler.playthrough
+              SpoilerTab.PATHS -> t.spoiler.paths
+            }
+            PageButton(name, tab == chosen) { chosen = tab }
+          }
+        }
+      }
+      when (chosen) {
+        SpoilerTab.EVERYTHING -> FullLog(id, s.lines, narrow, t.spoiler.fullLog, t.spoiler.fullLogSubtitle)
+        SpoilerTab.PLAYTHROUGH -> {
+          if (s.unreduced) Txt(t.spoiler.unreduced, size = 12.5.sp, color = p.warn)
+          Playthrough(s.spheres, narrow)
+        }
+        // The paths' part of the log, read and searched as the whole is
+        SpoilerTab.PATHS -> key(SpoilerTab.PATHS) {
+          FullLog(id, s.lines, narrow, t.spoiler.paths, t.spoiler.pathsSubtitle, first = s.pathsFrom ?: 0)
+        }
+      }
     }
   }
 }
@@ -367,14 +401,15 @@ internal fun findings(text: String, query: String): List<Int> {
  * the arrows under it go to the lines before and after. The search asks the server (a moment after the last key,
  * and the server spaces searches out): it counts the lines found, and the arrows beside it, or Enter and
  * Shift+Enter, jump from one to the next, to whichever page it is on. What is found is marked on the page shown.
+ * [first]: the line it starts at (a part of the log to its end: its pages, and what the search finds, from there on).
  */
 @Composable
-private fun FullLog(id: String, total: Int, narrow: Boolean) {
+private fun FullLog(id: String, total: Int, narrow: Boolean, title: String, subtitle: String, first: Int = 0) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   // The page shown: its first line's number and its lines; null while the first one loads
   var page by remember(id) { mutableStateOf<SpoilerLines?>(null) }
-  var wanted by remember(id) { mutableStateOf(0) }
+  var wanted by remember(id) { mutableStateOf(first) }
   var problem by remember(id) { mutableStateOf<String?>(null) }
   LaunchedEffect(id, wanted) {
     val answer = call("GET", "api/sessions/$id/spoiler/log?from=$wanted&count=$PAGE", null) {
@@ -411,16 +446,16 @@ private fun FullLog(id: String, total: Int, narrow: Boolean) {
       is Answer.Ok -> {
         found = answer.value
         // The first finding from the page shown on, so the search doesn't jump back to the top
-        current = answer.value.lines.indexOfFirst { it >= (page?.from ?: 0) }.coerceAtLeast(0)
+        current = answer.value.lines.filter { it >= first }.indexOfFirst { it >= (page?.from ?: first) }.coerceAtLeast(0)
       }
       is Answer.Failed -> searchProblem = answer.message
     }
     searching = false
   }
-  val lines = found?.lines.orEmpty()
+  val lines = found?.lines.orEmpty().filter { it >= first }
   val currentLine = lines.getOrNull(current)
   // The page with the current finding
-  LaunchedEffect(currentLine) { currentLine?.let { wanted = it - it % PAGE } }
+  LaunchedEffect(currentLine) { currentLine?.let { wanted = it - (it - first) % PAGE } }
   fun step(by: Int) {
     if (lines.isNotEmpty()) current = (current + by).mod(lines.size)
   }
@@ -484,11 +519,11 @@ private fun FullLog(id: String, total: Int, narrow: Boolean) {
           when {
             searchProblem != null -> searchProblem.orEmpty()
             result == null -> if (searching) "…" else ""
-            result.lines.isEmpty() -> t.spoiler.none
-            else -> "${current + 1} / ${result.lines.size}${if (result.more) "+" else ""}"
+            lines.isEmpty() -> t.spoiler.none
+            else -> "${current + 1} / ${lines.size}${if (result.more) "+" else ""}"
           },
           size = 12.5.sp, maxLines = 1,
-          color = if (searchProblem != null || result?.lines?.isEmpty() == true) p.trap else p.muted,
+          color = if (searchProblem != null || (result != null && lines.isEmpty())) p.trap else p.muted,
         )
         if (lines.isNotEmpty()) {
           IconButton({ step(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f))
@@ -497,7 +532,7 @@ private fun FullLog(id: String, total: Int, narrow: Boolean) {
       }
     }
   }
-  Section(t.spoiler.fullLog, subtitle = t.spoiler.fullLogSubtitle, actions = {
+  Section(title, subtitle = subtitle, actions = {
     if (!narrow) search(Modifier)
   }) {
     if (narrow) search(Modifier.fillMaxWidth())
@@ -515,20 +550,20 @@ private fun FullLog(id: String, total: Int, narrow: Boolean) {
         }
       }
       // Which lines these are, and the pages before and after
-      if (shown != null && total > PAGE) {
+      if (shown != null && total - first > PAGE) {
         Divider()
         Row(
           Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          val first = shown.from
+          val from = shown.from
           val last = shown.from + shown.lines.size
           Txt(
-            t.spoiler.linesOf(t.number(first + 1), t.number(last), t.number(shown.total)), size = 12.5.sp, color = p.muted,
+            t.spoiler.linesOf(t.number(from + 1), t.number(last), t.number(shown.total)), size = 12.5.sp, color = p.muted,
             modifier = Modifier.weight(1f),
           )
-          if (first > 0) Tip(t.spoiler.earlierLines) {
-            IconButton({ wanted = (first - PAGE).coerceAtLeast(0) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(90f))
+          if (from > first) Tip(t.spoiler.earlierLines) {
+            IconButton({ wanted = (from - PAGE).coerceAtLeast(first) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(90f))
           }
           if (last < shown.total) Tip(t.spoiler.laterLines) {
             IconButton({ wanted = last }, Icon.CHEVRON, Modifier.size(30.dp).rotate(-90f))

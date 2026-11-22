@@ -117,7 +117,7 @@ class Cheats(
   private val spoilers: Spoilers,
 ) {
   suspend fun view(id: String): CheatView {
-    val session = sessions.require(id).withPlaythrough()
+    val session = sessions.require(id)
     val tracker = session.tracker
     val running = runCatching { gameServer.state(id).status == GameServerStatus.RUNNING }.getOrDefault(false)
     return CheatView(
@@ -201,7 +201,6 @@ class Cheats(
    * spoiler log's placements, if it has them; checking one of those sends the item to the slot).
    */
   suspend fun names(id: String, slot: String): CheatNames {
-    sessions.require(id).withPlaythrough()
     val session = sessions.require(id)
     val found = session.tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
     val hinted = session.tracker.read { hintedLocations() }
@@ -230,7 +229,7 @@ class Cheats(
    * session's cheat hints (support gives them).
    */
   suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator", freeHints: Boolean = false) {
-    val session = sessions.require(id).withPlaythrough()
+    val session = sessions.require(id)
     val tracker = session.tracker
     if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, Problem.SESSION_FINISHED)
     if (request.action in HINTS && !freeHints && session.options?.cheatHints != true) {
@@ -277,6 +276,8 @@ class Cheats(
   private suspend fun itemHint(session: LiveSession, slot: String, item: String, pick: HintPick): String {
     val placed = placed(session)
     if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item)
+    // The next copy is the playthrough's: not before the spoiler log has it (the page doesn't offer it until then)
+    if (pick == HintPick.NEXT && !session.playthroughReady) throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
     val checked = session.tracker.read { checkedLocations() }
     val hinted = session.tracker.read { hintedLocations() }
     // The playthrough's steps in order, sphere by sphere (world to location)
@@ -291,10 +292,6 @@ class Cheats(
 
   /** Which copy a hint names. */
   private val random: Random = secureRandom.asKotlinRandom()
-
-  /** The cheats (hints among them) wait for the spoiler log's playthrough, completed after the seed. */
-  private fun LiveSession.withPlaythrough(): LiveSession =
-    takeIf { it.playthroughReady } ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
 }
 
 /** Who ran a cheat as the log and the feed show it: an Administrator by name, the others with their role. */

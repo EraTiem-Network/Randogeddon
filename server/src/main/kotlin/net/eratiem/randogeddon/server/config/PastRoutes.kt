@@ -72,7 +72,8 @@ fun Route.sessionRoutes(
       }
     }
     // A full spoiler: before a session is finished only Administrators, its Session-Managers and support see it.
-    // The playthrough at once; the log itself by pages, and searched here (a big seed's is too long for a browser)
+    // The playthrough at once (once the log has one); the log itself by pages, and searched here (a big seed's is too
+    // long for a browser)
     get("/spoiler") {
       spoiler(sessions, spoilers) { live, log ->
         // The steps already checked, as the tracker sees them now
@@ -127,7 +128,6 @@ private suspend fun RoutingContext.spoiler(
   val user = call.actor
   val helps = user.administrator || live.roleOf(user) in setOf(SessionRole.MANAGER, SessionRole.SUPPORT)
   if (!helps && !live.finished) return@session call.refuse(HttpStatusCode.Forbidden, Refusal(Problem.SPOILER_LATER))
-  if (!live.playthroughReady) return@session call.refuse(HttpStatusCode.Conflict, Refusal(Problem.PLAYTHROUGH_NOT_YET))
   try {
     val log = spoilers.of(live.id, live.seedName)
       ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))

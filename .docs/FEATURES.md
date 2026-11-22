@@ -76,11 +76,13 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
 
 - **In stages:** the seed comes with a spoiler log without its playthrough (level 1), so the session starts at once.
   The gateway then generates level 2 (the playthrough) and 3 (the paths) in the background from the kept inputs;
-  a level replaces the one before only if it places every item the same. The spoiler page, hints and cheats wait for
-  level 2. These runs share the generations' places, leave one free, and a level-3 run pauses for a new session.
+  a level replaces the one before only if it places every item the same. Nothing waits for them but a hint's *next
+  in playthrough* (offered from level 2 on; until then a hint names a copy by chance). These runs share the
+  generations' places, leave one free, and a level-3 run pauses for a new session.
   A playthrough Archipelago can't reduce lists every progression item in order instead (`spoiler_run.py`).
-- **The spoiler page:** the playthrough sphere by sphere (checked steps marked) and the whole log, 300 lines at a
-  time, searched on the server. Administrators, Session-Managers and support any time (behind a warning); players and
+- **The spoiler page:** the whole log from the seed on, 300 lines at a time, searched on the server; by tabs of
+  their own once worked out: the playthrough sphere by sphere (checked steps marked; opened first), and the paths.
+  Administrators, Session-Managers and support any time (behind a warning); players and
   watchers once it's finished.
 - **The logic** counts each slot's available checks: the seed generated again up to the fill (`logic_run.py`), kept
   running from the game server's start until as long after it sleeps as the game servers wait (at least 10 min).

@@ -12,6 +12,14 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.4: The spoiler log and the cheats from the seed on
+- The spoiler page, the hints and the cheats no longer wait for the spoiler log's playthrough (its second level,
+  worked out in the background after the seed): they are there as soon as the session is.
+- The spoiler page has tabs: *Everything* (the whole log), *Playthrough* (sphere by sphere, as before) once the log
+  has one, and *Paths* once it has those (its third level). With a playthrough the page opens on it.
+- An item hint's *Next in playthrough* is offered only once the log has its playthrough; until then a hint names a
+  copy by chance (the tracker refuses *next* before, as it refused every hint).
+
 ### 0.23.2.3: The live feed pinned, and every copy says that it copied
 - The live feed has a pin: pinned, it is kept on every view. Where a view has no place for it (the Management panel,
   a spoiler log, Your account) it is a window over the page: at the bottom right until it is moved by its head,

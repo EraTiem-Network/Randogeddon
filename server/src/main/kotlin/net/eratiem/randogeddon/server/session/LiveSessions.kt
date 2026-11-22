@@ -252,8 +252,9 @@ class LiveSession(
   val asleep: Boolean get() = server?.state?.status == GameServerStatus.IDLE
 
   /**
-   * Its spoiler log has its playthrough (completed after the seed, since 0.19.3): the spoiler page, the hints and the
-   * cheats wait for it. Also when completing it stopped (they go on with the seed's own), or the gateway hasn't said.
+   * Its spoiler log has its playthrough (completed after the seed, since 0.19.3): a hint's *next* copy waits for it
+   * (the spoiler page and the cheats don't, since 0.23.2.4). Also when completing it stopped (the hint goes on with
+   * the seed's own log), or the gateway hasn't said.
    */
   val playthroughReady: Boolean get() = server?.spoiler?.let { it.level >= 2 || it.stopped != null } ?: true
 

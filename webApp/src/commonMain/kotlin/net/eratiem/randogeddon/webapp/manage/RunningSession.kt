@@ -107,7 +107,6 @@ fun SessionSection(
         session == null -> Txt("…", color = p.muted)
         else -> SessionSummary(
           session,
-          spoilerReady = entry?.spoilerReady != false,
           onDelete = {
             scope.launch {
               when (val answer = call("DELETE", "api/sessions/$id/manage", null) { }) {
@@ -209,7 +208,6 @@ internal fun reopenable(until: Long?): Boolean = until != null && Platform.now()
 private fun SessionSummary(
   session: SessionInfo,
   /** Its spoiler log has its playthrough: only then its button. */
-  spoilerReady: Boolean,
   onDelete: () -> Unit,
   onFinish: () -> Unit,
   onCancelFinish: () -> Unit,
@@ -283,9 +281,7 @@ private fun SessionSummary(
         Tip(t.tips.keep) { SmallButton(if (session.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = "keep" }) }
       }
       Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, onDashboard) }
-      if (spoilerReady) {
-        Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
-      }
+      Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
     })
   }
 }

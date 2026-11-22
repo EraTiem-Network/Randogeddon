@@ -56,12 +56,16 @@ class SpoilerTest {
     val text = "Playthrough:\n\n0: {\n  A (X)\n}\n1: {\n  L (X): I (Y)\n}\n\nPaths:\n\n  I (Y): [...]\n"
     val spoiler = parseSpoiler("1", text)
     assertEquals(listOf(listOf("A (X)"), listOf("L (X): I (Y)")), spoiler.spheres.map { it.entries })
+    // Where the paths start: their part of the log has a tab of its own
+    assertEquals(9, spoiler.pathsFrom)
+    assertEquals(null, parseSpoiler("1", "Playthrough:\n\n0: {\n  A (X)\n}\n").pathsFrom)
   }
 
   @Test
   fun `without a playthrough only the text is there`() {
     val spoiler = parseSpoiler("1", "Archipelago Version 0.6.8\n\nLocations:\n\n  L (X): I (Y)\n")
     assertTrue(spoiler.spheres.isEmpty())
+    assertEquals(null, spoiler.pathsFrom)
     assertEquals(6, spoiler.lines)
   }
 

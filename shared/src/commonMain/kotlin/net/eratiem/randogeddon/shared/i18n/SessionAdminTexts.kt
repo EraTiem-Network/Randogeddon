@@ -357,7 +357,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val spoilerSectionSubtitle = "completed in the background, after the seed"
   override fun spoilerLevel(level: Int) = when (level) {
     1 -> "Level 1 of 3: the seed's spoiler log, without the playthrough"
-    2 -> "Level 2 of 3: with the playthrough (the spoiler log, the hints and the cheats are there)"
+    2 -> "Level 2 of 3: with the playthrough (its tab in the spoiler log, a hint's next copy)"
     else -> "Level $level of 3: complete"
   }
   override fun spoilerWorking(level: Int) =
@@ -618,7 +618,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val spoilerSectionSubtitle = "im Hintergrund vervollständigt, nach dem Seed"
   override fun spoilerLevel(level: Int) = when (level) {
     1 -> "Stufe 1 von 3: das Spoiler-Log des Seeds, ohne Lösungsweg"
-    2 -> "Stufe 2 von 3: mit Lösungsweg (Spoiler-Log, Hinweise und Cheats sind da)"
+    2 -> "Stufe 2 von 3: mit Lösungsweg (sein Tab im Spoiler-Log, die nächste Kopie eines Hinweises)"
     else -> "Stufe $level von 3: vollständig"
   }
   override fun spoilerWorking(level: Int) =

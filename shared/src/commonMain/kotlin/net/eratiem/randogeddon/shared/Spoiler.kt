@@ -48,4 +48,6 @@ data class Spoiler(
    * Archipelago couldn't reduce it (a world's logic contradicts itself).
    */
   val unreduced: Boolean = false,
+  /** The line its paths start at (`Paths:`, from the log's third level on; they run to its end); `null`: it has none. */
+  val pathsFrom: Int? = null,
 )
