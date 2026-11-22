@@ -57,7 +57,10 @@ object PasswordRules {
 /** A rough check of an e-mail address; whether it works shows when the invitation arrives. */
 object EmailAddresses {
   const val MAX_LENGTH = 254
-  private val ADDRESS = Regex("[^@\\s]+@[^@\\s]+\\.[^@\\s.]+")
+
+  /** What no part of an address has: an `@` of its own, spaces, control characters, what SMTP and headers split at. */
+  private const val NOT = "@\\s<>,;\"\\u0000-\\u001F\\u007F"
+  private val ADDRESS = Regex("[^$NOT]+@[^$NOT]+\\.[^$NOT.]+")
 
   fun valid(address: String): Boolean = address.length <= MAX_LENGTH && ADDRESS.matches(address)
 
