@@ -8,7 +8,13 @@ Trying it locally, building, testing and the API, as a compact reference. The RE
 ./scripts/demo.sh        # starts the stack, creates two sessions (demo/a, demo/b) through the API, plays both
 ./scripts/demo.sh loop   # again and again: once both rounds are finished, new sessions start
 ./scripts/demo.sh stop   # stops the simulated players; `docker compose down` stops everything
+DEMO_IMAGES=<version> ./scripts/demo.sh   # that version's published images, only the web app built here
 ```
+
+- The demo builds its images quickly (`NATIVE_OPTIMIZATION=quick`; `release` for what a release runs). With
+  `DEMO_IMAGES` nothing native is built: the images come from the registry (`IMAGES`, as `scripts/deploy.sh` has it)
+  and the web app from Gradle here, mounted over the tracker's (`docker-compose.web.yml`). For a change to the web
+  app alone: the tracker and the gateway are that version's.
 
 - **demo-a-…:** Alice three slots (two start locked), Bob two (one locked), and Risk of Rain 2 played by Bob and Carol
   together. **demo-b-…:** Dave and Erin, two slots each, mixed locks.
@@ -59,7 +65,10 @@ AP_ROOT=<one Archipelago checkout per release> ./gradlew :gateway:run   # gatewa
 GraalVM CE 25, in `kotlin.Dockerfile` with the root `build.gradle.kts`'s setup:
 
 - `-march=x86-64-v3` (AVX2; the live server's i7-8700 has no AVX-512); `NATIVE_MARCH=native` only on that machine.
-- `-Ob` for `-SNAPSHOT`, `-O3` for releases (`-PnativeOptimization=quick|release`).
+- `-Ob` for `-SNAPSHOT`, `-O3` for releases (`-PnativeOptimization=quick|release`; an image build:
+  `NATIVE_OPTIMIZATION`, which the demo sets to `quick`).
+- native-image's heap is capped at 6 GB (`-PnativeMaxHeap`, an image build: `NATIVE_MAX_HEAP`; empty: its default,
+  three quarters of the machine's memory).
 - `--static-nolibc`: only glibc linked dynamically (built on glibc 2.34, run on 2.36).
 - Not cross-compiled: in Docker, or in WSL with GraalVM 25 (`./gradlew :server:nativeCompile :gateway:nativeCompile`).
 - Reflection and resources the libraries don't cover: `*/src/main/resources/META-INF/native-image/`. After adding a
