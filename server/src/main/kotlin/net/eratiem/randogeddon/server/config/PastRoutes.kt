@@ -1,10 +1,7 @@
 package net.eratiem.randogeddon.server.config
 
-import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
@@ -23,6 +20,7 @@ import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.SpoilerLog
+import net.eratiem.randogeddon.server.session.managedBy
 import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.server.session.markChecked
@@ -65,14 +63,11 @@ fun Route.sessionRoutes(
       }
     }
     // The seed's files of the user's slots (patches, mods; every slot's for Session-Managers and Administrators)
-    get("/files") { gatewayCall { call.respond(SlotFiles(downloads.of(id(), call.actor))) } }
+    get("/files") { apiCall { call.respond(SlotFiles(downloads.of(id(), call.actor))) } }
     get("/files/{name}") {
-      gatewayCall {
+      apiCall {
         val (file, bytes) = downloads.file(id(), call.parameters["name"].orEmpty(), call.actor)
-        call.response.header(
-          HttpHeaders.ContentDisposition,
-          ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, file.name).toString(),
-        )
+        call.attachment(file.name)
         call.respondBytes(bytes, ContentType.Application.OctetStream)
       }
     }
@@ -110,11 +105,12 @@ fun Route.sessionRoutes(
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
       val token = call.request.cookies[SESSION_COOKIE]
-      val me = call.actor
-      // Ends once its login does (the page's next request then finds it logged out), or their part in the session
-      OpenStreams.counted(call.loggedIn.user.id.toString()) {
-        follow(live, stillAllowed = { token != null && logins.userOf(token) != null && logins.maySee(me, live.id) }) { live.json() }
+      // Ends once its login does (the page's next request then finds it logged out), or their part in the session (an
+      // Administrator's too, as the account is now)
+      val stillAllowed: suspend () -> Boolean = {
+        token?.let { logins.userOf(it) }?.let { logins.maySee(logins.actorOf(it), live.id) } == true
       }
+      OpenStreams.counted(call.loggedIn.user.id.toString()) { follow(live, stillAllowed) { live.json() } }
     }
   }
 }
@@ -137,22 +133,21 @@ private suspend fun RoutingContext.spoiler(
       ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NO_SPOILER, "id" to live.id))
     this.block(live, log)
   } catch (e: GameServerUnavailable) {
-    call.refuse(e.status, Refusal(Problem.GATEWAY_UNREACHABLE, detail = e.message))
+    call.refuse(e.status, call.gatewayRefusal(e))
   }
 }
 
-/** The details of the path's `{slot}` of [live]; a finished session's from its archive, else maybe its kept snapshot. */
 /** `GET …/connection`: where the person's game clients connect, with their slots' passwords (the bridge's too). */
 internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions, slotPasswords: SlotPasswords) {
   get("/connection") {
     session(sessions) { live ->
       val user = call.actor
-      val manages = user.administrator || live.roleOf(user) == SessionRole.MANAGER
-      call.respond(Connection(config.addressOf(live.id), slotPasswords.of(live, live.personOf(user), manages)))
+      call.respond(Connection(config.addressOf(live.id), slotPasswords.of(live, live.personOf(user), live.managedBy(user))))
     }
   }
 }
 
+/** The details of the path's `{slot}` of [live]; a finished session's from its archive, else maybe its kept snapshot. */
 internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives) {
   val slot = call.parameters["slot"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest)
   // A running session's kept one while its tracker isn't connected yet

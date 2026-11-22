@@ -12,7 +12,6 @@ import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.conditionalheaders.ConditionalHeaders
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
-import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.sse.SSE
@@ -92,23 +91,25 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   install(ContentNegotiation) { json(ApiJson) }
   install(SecurityHeaders) { secure = trackerConfig.cookieSecure }
   install(RequestLimits)
-  // Behind Traefik: the client's address (for the login rate limit) comes from X-Forwarded-For
+  // Behind Traefik: how the client reached it comes from the X-Forwarded headers
   install(XForwardedHeaders) {
     // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up
     useLastProxy()
   }
+  // The client's address (for the rate limits): from X-Forwarded-For only if Traefik sent it (TRUSTED_PROXIES)
+  install(ClientAddresses) { trusted = trackerConfig.trustedProxies }
   install(RateLimit) {
     register(LOGIN_RATE_LIMIT) {
       rateLimiter(limit = 5, refillPeriod = 1.minutes)
-      requestKey { addressKey(it.request.origin.remoteHost) }
+      requestKey { it.clientKey }
     }
     register(WATCH_RATE_LIMIT) {
       rateLimiter(limit = 60, refillPeriod = 1.minutes)
-      requestKey { addressKey(it.request.origin.remoteHost) }
+      requestKey { it.clientKey }
     }
     register(SSO_RATE_LIMIT) {
       rateLimiter(limit = 30, refillPeriod = 1.minutes)
-      requestKey { addressKey(it.request.origin.remoteHost) }
+      requestKey { it.clientKey }
     }
   }
   install(SSE)

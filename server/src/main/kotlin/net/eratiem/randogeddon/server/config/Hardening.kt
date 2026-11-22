@@ -9,6 +9,7 @@ import io.ktor.server.request.path
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import java.net.InetAddress
+import net.eratiem.randogeddon.server.util.hex
 
 class SecurityHeadersConfig {
   /** Served over HTTPS (the login cookie is Secure): browsers are told to keep to it. */
@@ -97,5 +98,5 @@ internal fun addressKey(address: String): String {
   // A literal: parsed without a lookup
   val bytes = runCatching { InetAddress.getByName(host).address }.getOrNull() ?: return host
   if (bytes.size != 16) return bytes.joinToString(".") { (it.toInt() and 0xff).toString() }
-  return bytes.take(8).joinToString("") { "%02x".format(it) } + "::/64"
+  return bytes.copyOf(8).hex() + "::/64"
 }

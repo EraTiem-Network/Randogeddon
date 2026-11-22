@@ -203,6 +203,8 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       # Where the dashboard is reached, for the links in mails
       PUBLIC_URL: ${PUBLIC_URL:-https://${BASE_DOMAIN:-randogeddon.eratiem.net}}
+      # Whose X-Forwarded-For counts for the client's address (the rate limits); empty: every peer's
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # The mails (invitations, address confirmations, deletion warnings); without MAIL_HOST only in the log
       MAIL_HOST: ${MAIL_HOST:-}
       # Connect to this address instead of MAIL_HOST's, still checking the certificate against MAIL_HOST: from a VM
@@ -215,8 +217,8 @@ services:
       MAIL_FROM: ${MAIL_FROM:-}
       # Encrypts the two-factor secrets; empty: a key file in the tracker-state volume, made on the first start
       TOTP_KEY: ${TOTP_KEY:-}
-      # Administrators log in through this OpenID Connect provider (Authentik); without OIDC_ISSUER with their password
-      # and two-factor login
+      # Administrators log in through this OpenID Connect provider (Authentik); without OIDC_ISSUER no login acts as one,
+      # unless ADMIN_PASSWORD_LOGIN
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
@@ -224,6 +226,9 @@ services:
       OIDC_DELETION_TOKEN: ${OIDC_DELETION_TOKEN:-}
       OIDC_ACCOUNT_URL: ${OIDC_ACCOUNT_URL:-}
       OIDC_NAME: ${OIDC_NAME:-Authentik}
+      # Without single sign-on: Administrators with their password and two-factor login. Local testing and the demo
+      # only (the local overlay sets it), never a public server
+      ADMIN_PASSWORD_LOGIN: ${ADMIN_PASSWORD_LOGIN:-false}
     volumes:
       - ./data:/data:ro              # reads each session's room.json, written by the gateway
       - tracker-state:/state         # the TOTP key file (without TOTP_KEY); session files of before 0.19.10, imported once

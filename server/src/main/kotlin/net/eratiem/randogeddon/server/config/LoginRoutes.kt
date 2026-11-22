@@ -145,11 +145,13 @@ fun Route.loginRoutes(
       }
       call.respond(HttpStatusCode.OK)
     }
+    /** Whether the call is the provider's webhook (its token); answered 401 if not. */
+    suspend fun RoutingContext.fromProvider(): Boolean =
+      sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])
+        .also { if (!it) call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_TOKEN)) }
     // The provider's webhook: it deleted a person (`{"subject": "<their sub>"}`), their account here goes too
     post("/api/login/oidc/deleted") {
-      if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
-        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_TOKEN))
-      }
+      if (!fromProvider()) return@post
       val subject = runCatching {
         Json.parseToJsonElement(call.receiveText()).jsonObject["subject"]?.jsonPrimitive?.contentOrNull
       }.getOrNull()?.takeIf { it.isNotBlank() }
@@ -159,15 +161,19 @@ fun Route.loginRoutes(
     }
     // The provider's webhook: it changed a person (`{"subject", "username", "name", "email"}`), their account follows
     post("/api/login/oidc/updated") {
-      if (!sso.deletionAllowed(call.request.headers[HttpHeaders.Authorization])) {
-        return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_TOKEN))
-      }
+      if (!fromProvider()) return@post
       val fields = runCatching { Json.parseToJsonElement(call.receiveText()).jsonObject }.getOrNull()
       fun field(key: String) = fields?.get(key)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
       val subject = field("subject") ?: return@post call.refuse(HttpStatusCode.BadRequest, Refusal(Problem.NO_SUBJECT))
       sso.updated(subject, field("username"), field("name"), field("email"))
       call.respond(HttpStatusCode.NoContent)
     }
+  }
+  /** The pending login's user, or an answer that it's gone. */
+  suspend fun RoutingContext.pendingUser(token: String): User? {
+    val user = pending.userOf(token)?.let { logins.user(it) }
+    if (user == null) call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.LOGIN_EXPIRED))
+    return user
   }
   rateLimit(LOGIN_RATE_LIMIT) {
     post("/api/login/link") {
@@ -179,22 +185,16 @@ fun Route.loginRoutes(
       loggedIn(user, LoginMethods.LINK)
       call.respond(HttpStatusCode.NoContent)
     }
-  }
-  /** The pending login's user, or an answer that it's gone. */
-  suspend fun RoutingContext.pendingUser(token: String): User? {
-    val user = pending.userOf(token)?.let { logins.user(it) }
-    if (user == null) call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.LOGIN_EXPIRED))
-    return user
-  }
-  rateLimit(LOGIN_RATE_LIMIT) {
     post("/api/login") {
       val request = call.receive<LoginRequest>()
-      // Wrong passwords are counted per name too (the rate limit only counts per address)
-      val key = LoginAttempts.password(request.username)
-      if (attempts.blocked(key)) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
-      val user = logins.verify(request.username, request.password)
+      // Wrong passwords are counted per name as typed and per account (the rate limit only counts per address), so a
+      // name and an address of one account share a count
+      val account = logins.account(request.username)
+      val keys = listOfNotNull(LoginAttempts.password(request.username), account?.let { LoginAttempts.accountPassword(it.id) })
+      if (keys.any { attempts.blocked(it) }) return@post call.refuse(HttpStatusCode.TooManyRequests, Refusal(Problem.TOO_MANY_ATTEMPTS))
+      val user = account.takeIf { logins.verify(it, request.password) }
       if (user == null) {
-        attempts.failed(key)
+        keys.forEach { attempts.failed(it) }
         // Slows down guessing on top of the rate limit
         delay(1.seconds)
         return@post call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.WRONG_LOGIN))
@@ -202,8 +202,9 @@ fun Route.loginRoutes(
       logins.passwordLoginProblem(user)?.let { return@post call.refuse(HttpStatusCode.Forbidden, it) }
       when {
         user.twoFactor -> call.respond(LoginStep(LoginNext.CODE, pending.create(user.id)))
-        // Admins can cheat and delete sessions: they set up two-factor login before anything else
-        user.administrator -> call.respond(LoginStep(LoginNext.SETUP, pending.create(user.id)))
+        // Admins can cheat and delete sessions: they set up two-factor login before anything else (where a password
+        // login can act as one at all)
+        user.administrator && logins.passwordAdministrators -> call.respond(LoginStep(LoginNext.SETUP, pending.create(user.id)))
         else -> {
           loggedIn(user)
           call.respond(HttpStatusCode.NoContent)
@@ -229,13 +230,14 @@ fun Route.loginRoutes(
     }
     post("/api/login/setup") {
       val user = pendingUser(call.receive<PendingRequest>().pending) ?: return@post
-      accountCall { call.respond(twoFactor.setUp(user)) }
+      apiCall { call.respond(twoFactor.setUp(user)) }
     }
     post("/api/login/setup/confirm") {
       val request = call.receive<CodeRequest>()
       val token = request.pending.orEmpty()
       val user = pendingUser(token) ?: return@post
-      accountCall {
+      apiCall {
+        // The Administrator's logins of before end: the new one is the one that passed the code
         val codes = twoFactor.enable(user, request.code)
         pending.finish(token)
         loggedIn(user)

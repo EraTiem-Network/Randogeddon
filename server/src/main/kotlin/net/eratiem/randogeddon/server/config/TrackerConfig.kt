@@ -4,9 +4,13 @@ import io.ktor.server.config.ApplicationConfig
 import net.eratiem.randogeddon.database.DatabaseConfig
 import java.nio.file.Path
 
-/** The `randogeddon` section of `application.yaml`; every value can be set by an environment variable. */
+/** Whether a setting's text means on: anything but `0`, `false`, `no` and `off`. */
 private fun flag(value: String) = value.trim().lowercase() !in setOf("0", "false", "no", "off")
 
+/** Whether a setting that is off unless asked for is on: only `1`, `true`, `yes` and `on`. */
+private fun optIn(value: String) = value.trim().lowercase() in setOf("1", "true", "yes", "on")
+
+/** The `randogeddon` section of `application.yaml`; every value can be set by an environment variable. */
 data class TrackerConfig(
   val port: Int,
   val title: String,
@@ -38,10 +42,23 @@ data class TrackerConfig(
   /** The gateway's own database role and its password ([net.eratiem.randogeddon.database.GatewayRole]); no password: none is made. */
   val gatewayDbUser: String = "randogeddon_gateway",
   val gatewayDbPassword: String = "",
-  /** Administrators log in through this provider; `null`: with their password and two-factor login. */
+  /**
+   * Administrators log in through this provider; `null`: with their password and two-factor login if
+   * [adminPasswordLogin], else no login acts as an Administrator.
+   */
   val oidc: OidcConfig? = null,
+  /**
+   * Without single sign-on: Administrators log in with their password and two-factor login. For local testing and the
+   * demo, never for a public server; ignored with single sign-on.
+   */
+  val adminPasswordLogin: Boolean = false,
   /** Randogeddon Bridge's builds (`randogeddon-bridge-<os>-<arch>[.exe]` and `VERSION`), offered for download. */
   val bridgeDir: Path = Path.of("bridge/build/dist"),
+  /**
+   * The proxies (Traefik) whose `X-Forwarded-For` is believed for the client's address ([clientAddress]); empty: every
+   * peer's, as when the tracker can only be reached through the proxy.
+   */
+  val trustedProxies: List<AddressRange> = emptyList(),
 ) {
   /** Where the players of session [id] connect. */
   fun addressOf(id: String): String = publicAddress.replace("{id}", id)
@@ -64,7 +81,9 @@ data class TrackerConfig(
         cookieSecure = flag(value("tracker.cookieSecure")),
         publicUrl = value("tracker.publicUrl").trimEnd('/'),
         bridgeDir = Path.of(value("tracker.bridgeDir")),
+        trustedProxies = trustedProxies(value("tracker.trustedProxies")),
         totpKey = value("tracker.totpKey"),
+        adminPasswordLogin = optIn(value("tracker.adminPasswordLogin")),
         gatewayDbUser = value("database.gatewayUser").trim(),
         gatewayDbPassword = value("database.gatewayPassword"),
         mail = MailConfig(

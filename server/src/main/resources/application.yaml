@@ -23,10 +23,18 @@ randogeddon:
     cookieSecure: "$COOKIE_SECURE:true"
     # Where the dashboard is reached, for the links in mails (invitations, address confirmations)
     publicUrl: "$PUBLIC_URL:http://localhost:8000"
+    # The proxies (Traefik) whose X-Forwarded-For is believed for the client's address (the rate limits): addresses or
+    # CIDR ranges, comma-separated (e.g. 172.16.0.0/12,10.0.0.5). Empty: every peer's, as when only the proxy reaches
+    # the tracker
+    trustedProxies: "$TRUSTED_PROXIES:"
     # Encrypts the two-factor (TOTP) secrets: base64 of 32 random bytes (openssl rand -base64 32); empty: a key file
     # totp.key in stateDir, made on the first start (it must stay with the database: without it, every two-factor
     # login has to be set up again)
     totpKey: "$TOTP_KEY:"
+    # Without single sign-on (oidc.issuer empty): true lets Administrators log in with their password and two-factor
+    # login, for local testing and the demo only, never on a public server. false: no login acts as an Administrator.
+    # Ignored with single sign-on
+    adminPasswordLogin: "$ADMIN_PASSWORD_LOGIN:false"
   mail:
     # The SMTP server for invitations and other mails; empty: mails are only written to the log (links included)
     host: "$MAIL_HOST:"
@@ -41,8 +49,8 @@ randogeddon:
     from: "$MAIL_FROM:"
   oidc:
     # Administrators log in through this OpenID Connect provider (Authentik): its issuer, e.g.
-    # https://auth.example.org/application/o/randogeddon/ ; empty: no single sign-on, Administrators log in with their
-    # password and two-factor login
+    # https://auth.example.org/application/o/randogeddon/ ; empty: no single sign-on, and no Administrators but with
+    # tracker.adminPasswordLogin (their password and two-factor login, for local testing)
     issuer: "$OIDC_ISSUER:"
     clientId: "$OIDC_CLIENT_ID:"
     clientSecret: "$OIDC_CLIENT_SECRET:"

@@ -17,6 +17,8 @@ services:
       MAIL_PORT: "1025"
       MAIL_SECURITY: none
       PUBLIC_URL: http://localhost:8000
+      # No single sign-on here: Administrators log in with their password and two-factor login (the demo's Alice)
+      ADMIN_PASSWORD_LOGIN: ${ADMIN_PASSWORD_LOGIN:-true}
 
   # Catches every mail the tracker sends, with a web UI to read them
   mailpit:
