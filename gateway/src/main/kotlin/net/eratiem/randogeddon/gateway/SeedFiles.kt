@@ -1,6 +1,9 @@
 package net.eratiem.randogeddon.gateway
 
+import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.LocalDateTime
@@ -13,7 +16,6 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
-import kotlin.io.path.readText
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SlotFile
 import org.slf4j.LoggerFactory
@@ -27,6 +29,32 @@ private val SEED_NAME = Regex("[A-Za-z0-9_-]{1,64}")
 fun seedNameOf(file: Path): String = file.name.removePrefix("AP_").removeSuffix(".zip").removeSuffix(".archipelago")
 
 internal fun isSeed(f: Path) = f.name.endsWith(".archipelago") || (f.name.startsWith("AP_") && f.name.endsWith(".zip"))
+
+/** The newest seed file in [dir] (should there be more), or `null`. */
+internal fun newestSeed(dir: Path): Path? {
+  if (!dir.isDirectory()) return null
+  return dir.listDirectoryEntries().filter(::isSeed).maxByOrNull { it.getLastModifiedTime().toMillis() }
+}
+
+/**
+ * A session's file to hand out as it is: on its own, or the entry [entry] of a seed zip. Read in pieces ([copyTo]), so
+ * a large one is never whole in memory.
+ */
+class SessionFile(private val file: Path, private val entry: String? = null) {
+  fun copyTo(out: OutputStream) {
+    if (entry == null) {
+      Files.copy(file, out)
+      return
+    }
+    ZipFile(file.toFile()).use { zip ->
+      val found = zip.getEntry(entry) ?: throw NoSuchFileException("$file: $entry")
+      zip.getInputStream(found).use { it.copyTo(out) }
+    }
+  }
+
+  /** All of it as text (for what has to compare all of it). */
+  fun text(): String = ByteArrayOutputStream().also { copyTo(it) }.toString(Charsets.UTF_8)
+}
 
 /** A slot's output in the seed: `AP_<seed>_P<n>_<name>.<ext>`, or with `-` (Factorio: `AP-<seed>-P<n>-<name>_<version>.zip`). */
 private val SLOT_FILE = Regex("^AP[_-][A-Za-z0-9]+[_-]P(\\d+)[_-].+\\.[A-Za-z0-9]+$")
@@ -63,19 +91,21 @@ class SessionDirs(private val dataDir: Path) {
   /** The session's seed file (the newest, should there be more), or `null`. */
   fun seed(id: String): Path? {
     if (!SessionIds.valid(id)) return null
-    return files(dir(id)).filter(::isSeed).maxByOrNull { it.getLastModifiedTime().toMillis() }
+    return newestSeed(dir(id))
   }
 
-  /** The spoiler log from the session's seed zip; `null` if there is none. */
-  fun spoiler(id: String): String? {
+  /** The session's spoiler log, to hand out; `null` if there is none. */
+  fun spoilerLog(id: String): SessionFile? {
     // Completed in the background after the seed (SpoilerStages): it replaces the seed's
-    spoilerFile(id).takeIf { it.isRegularFile() }?.let { return it.readText() }
+    spoilerFile(id).takeIf { it.isRegularFile() }?.let { return SessionFile(it) }
     val zip = seed(id)?.takeIf { it.name.endsWith(".zip") } ?: return null
     return ZipFile(zip.toFile()).use { file ->
-      file.entries().asSequence().firstOrNull { it.name.endsWith("_Spoiler.txt") }
-        ?.let { entry -> file.getInputStream(entry).bufferedReader().readText() }
+      file.entries().asSequence().firstOrNull { it.name.endsWith("_Spoiler.txt") }?.let { SessionFile(zip, it.name) }
     }
   }
+
+  /** The spoiler log from the session's seed zip as text; `null` if there is none. */
+  fun spoiler(id: String): String? = spoilerLog(id)?.text()
 
   /** The spoiler log completed after the seed (a higher level than the seed's own), if there is one. */
   fun spoilerFile(id: String): Path = dir(id).resolve("spoiler.txt")
@@ -93,11 +123,13 @@ class SessionDirs(private val dataDir: Path) {
     }
   }
 
-  /** One of [slotFiles], its bytes; `null` if it isn't one. */
-  fun slotFile(id: String, name: String): ByteArray? {
+  /** One of [slotFiles], to hand out; `null` if it isn't one. */
+  fun slotFile(id: String, name: String): SessionFile? {
     if (slotOf(name) == null) return null
     val zip = seed(id)?.takeIf { it.name.endsWith(".zip") } ?: return null
-    return ZipFile(zip.toFile()).use { file -> file.getEntry(name)?.takeIf { !it.isDirectory }?.let { file.getInputStream(it).readBytes() } }
+    return ZipFile(zip.toFile()).use { file ->
+      file.getEntry(name)?.takeIf { !it.isDirectory }?.let { SessionFile(zip, it.name) }
+    }
   }
 
   /** Deletes the session's files for good ([purge]), or moves them to `old/<id>-<time>/`; `false` if there are none. */
@@ -118,7 +150,7 @@ class SessionDirs(private val dataDir: Path) {
   fun migrate(idOf: (seed: String) -> String) {
     val seeds = files(dataDir).filter(::isSeed)
     if (seeds.isNotEmpty()) {
-      val seed = readSeedName(dataDir.resolve("room.json")) ?: seedNameOf(seeds.maxBy { it.getLastModifiedTime().toMillis() })
+      val seed = readSeedName(dataDir.resolve("room.json")) ?: seedNameOf(newestSeed(dataDir)!!)
       val target = dir(idOf(seed))
       if (target.exists()) {
         logger.warn("Not moving the seed {} into {}: it exists already", seed, target)

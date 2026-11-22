@@ -1,9 +1,12 @@
 package net.eratiem.randogeddon.gateway
 
 import java.io.IOException
+import java.io.OutputStream
+import java.io.Reader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -24,6 +27,8 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.streams.asSequence
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -31,7 +36,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SessionSetupStore
@@ -61,12 +65,13 @@ class Archipelago(private val root: Path, val python: String) {
 
   val newest: String get() = versions().firstOrNull() ?: error("No Archipelago release in $root")
 
+  /** The directory of [version], one of [versions] only: the name becomes a path. */
   fun home(version: String): Path {
-    val home = root.resolve(version)
-    require(home.resolve("MultiServer.py").exists()) {
-      "Archipelago $version is not installed in this gateway (it has ${versions().joinToString().ifEmpty { "none" }})"
+    val installed = versions()
+    require(version in installed) {
+      "Archipelago ${printable(version)} is not installed in this gateway (it has ${installed.joinToString().ifEmpty { "none" }})"
     }
-    return home
+    return root.resolve(version)
   }
 }
 
@@ -100,6 +105,121 @@ private val KEPT = setOf(
 internal fun ProcessBuilder.withoutSecrets(): ProcessBuilder = apply { environment().keys.removeIf { it.uppercase() !in KEPT } }
 
 /**
+ * How long a line of a process's output is kept at most (the game server's, a generation's, the logic's): a longer one
+ * is cut as it is read, before its passwords are masked.
+ */
+internal const val MAX_LOG_LINE = 2000
+
+/**
+ * Starts one of Archipelago's processes: [command] in [home], without the gateway's secrets ([withoutSecrets]) and
+ * with [extra] variables added, its errors in its output. Its standard input is closed unless [input] (MultiServer's
+ * console, the logic's questions): after an error Generate.py waits for Enter (an atexit input()), which the closed
+ * input makes an end.
+ */
+internal fun startProcess(
+  command: List<String>, home: Path?, extra: Map<String, String> = emptyMap(), input: Boolean = false,
+): Process {
+  val proc = ProcessBuilder(command)
+    .withoutSecrets()
+    .apply {
+      home?.let { directory(it.toFile()) }
+      environment().putAll(extra)
+    }
+    .redirectErrorStream(true)
+    .start()
+  if (!input) proc.outputStream.close()
+  return proc
+}
+
+/** Ends the process and every process it started, and theirs (a world's own patcher): none of them runs on. */
+internal fun Process.endTree() {
+  runCatching { toHandle().descendants().forEach { it.destroyForcibly() } }
+  destroyForcibly()
+}
+
+/**
+ * Ends the process ([endTree]) once it ran longer than [limit], without the seconds [paused] says it was held; the
+ * answer becomes `true` then. Reading its output blocks until the output ends: the limit has to end it from outside.
+ */
+internal fun Process.endAfter(limit: Duration, paused: () -> Boolean = { false }): AtomicBoolean {
+  val stopped = AtomicBoolean(false)
+  Thread {
+    var ran = 0L
+    while (!waitFor(1, TimeUnit.SECONDS)) {
+      if (!paused()) ran++
+      if (ran > limit.inWholeSeconds) {
+        stopped.set(true)
+        endTree()
+        break
+      }
+    }
+  }.apply { isDaemon = true; name = "limit-${pid()}" }.start()
+  return stopped
+}
+
+/**
+ * Hands the process's output to [onLine], line by line, each cut to [max] characters as it is read, until it ends. A
+ * kill closes the output (Java's "Stream closed"): a read error is its end, it is ended ([endTree]) if it isn't yet,
+ * and the error goes on unless [killed] says the gateway ended it on purpose.
+ */
+internal fun Process.eachLine(max: Int = MAX_LOG_LINE, killed: () -> Boolean = { true }, onLine: (String) -> Unit) {
+  try {
+    inputStream.reader().use { reader -> reader.cutLines(max).forEach(onLine) }
+  } catch (e: IOException) {
+    endTree()
+    if (!killed()) throw e
+  }
+}
+
+/**
+ * The reader's lines as [java.io.BufferedReader.readLine] ends them (`\n`, `\r` or both), each cut to [max] characters
+ * while it is read: a longer one is never held whole.
+ */
+internal fun Reader.cutLines(max: Int): Sequence<String> = sequence {
+  val buffer = CharArray(8192)
+  val line = StringBuilder()
+  // A line has begun (an empty last line without its end isn't one); the last character was a `\r`
+  var open = false
+  var afterCr = false
+  while (true) {
+    val n = read(buffer)
+    if (n < 0) break
+    for (i in 0 until n) {
+      val c = buffer[i]
+      if (afterCr && c == '\n') {
+        afterCr = false
+        continue
+      }
+      afterCr = c == '\r'
+      if (c == '\n' || c == '\r') {
+        yield(line.toString())
+        line.setLength(0)
+        open = false
+      } else {
+        if (line.length < max) line.append(c)
+        open = true
+      }
+    }
+  }
+  if (open) yield(line.toString())
+}
+
+/** Where Archipelago's processes get their temporary directories (the players' YAMLs, Generate.py's output). */
+private val PROCESS_TEMP: Path = Path.of(System.getProperty("java.io.tmpdir"), "randogeddon")
+
+/** A new temporary directory for one of Archipelago's processes, removed by its caller after it. */
+internal fun processTempDir(prefix: String): Path = createTempDirectory(PROCESS_TEMP.createDirectories(), prefix)
+
+/** What a gateway before this one left in the processes' temporary directories (a killed one removes nothing). */
+fun clearProcessTemp() {
+  runCatching { PROCESS_TEMP.toFile().deleteRecursively() }
+    .onFailure { logger.warn("Could not empty {}: {}", PROCESS_TEMP, it.message) }
+}
+
+/** How long room_info.py may take (it reads the seed's slots and passwords). */
+private val ROOM_INFO_TIME = 2.minutes
+
+/**
  * Starts MultiServer for a seed with its session's Archipelago version and options (from the database, as the admin
  * panel created it). A seed from before without them runs on the newest release with the default options.
  */
@@ -111,18 +231,23 @@ class Launcher(
 ) {
   /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]. */
   fun prepare(seed: Path, roomJson: Path) {
-    val proc = ProcessBuilder(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
-      .withoutSecrets().directory(archipelago.home(archipelago.newest).toFile()).redirectErrorStream(true).start()
-    val output = proc.inputStream.bufferedReader().readText()
-    check(proc.waitFor() == 0) { "room_info.py failed: ${output.trim().lines().lastOrNull()}" }
+    val command = listOf(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
+    val proc = startProcess(command, archipelago.home(archipelago.newest))
+    // A hung one would hold its game server's start, and with it every other session's
+    val stopped = proc.endAfter(ROOM_INFO_TIME)
+    var last = ""
+    proc.eachLine { if (it.isNotBlank()) last = it.trimEnd() }
+    val code = proc.waitFor()
+    check(!stopped.get()) { "room_info.py took longer than $ROOM_INFO_TIME" }
+    check(code == 0) { "room_info.py failed: $last" }
   }
 
   /**
    * serve.py = MultiServer plus the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS in its environment), on [port]; the
-   * seed's name comes from [roomJson].
+   * seed's name comes from [room].
    */
-  fun launch(seed: Path, roomJson: Path, port: Int): Launch {
-    val setup = readSeedName(roomJson)?.let { name -> runBlocking { setups.launchOf(name) } }
+  fun launch(seed: Path, room: RoomJson, port: Int): Launch {
+    val setup = room.seedName()?.let { name -> runBlocking { setups.launchOf(name) } }
     val version = setup?.first ?: archipelago.newest
     val options = setup?.second?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
     val command = buildList {
@@ -188,9 +313,19 @@ fun generationsAtOnce(configured: Int = 0, cores: Int = Runtime.getRuntime().ava
 internal fun killedHint(code: Int): String =
   if (code == 137) " (killed: probably out of memory; fewer generations at once need less: GENERATIONS_AT_ONCE)" else ""
 
-/** [file]'s SHA-256, in hex. */
-internal fun sha256(file: Path): String =
-  MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)).joinToString("") { "%02x".format(it) }
+/** [file]'s SHA-256, in hex (read a part at a time: an APWorld can be large). */
+internal fun sha256(file: Path): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  DigestInputStream(Files.newInputStream(file), digest).use { it.transferTo(OutputStream.nullOutputStream()) }
+  return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+/**
+ * The first of the APWorlds a seed was generated with ([hashes]: file name to SHA-256) that is another in [release]'s
+ * library now; `null`: none changed.
+ */
+internal fun Apworlds.changedSince(release: String, hashes: Map<String, String>): String? =
+  hashes.entries.firstOrNull { (file, hash) -> fileOf(release, file)?.let(::sha256) != hash }?.key
 
 /** How many lines of a generation's output are kept, and how long after its end. */
 private const val GENERATION_LOG_LINES = 20_000
@@ -212,6 +347,8 @@ class Generator(
   private val atOnce: Int = generationsAtOnce(),
   /** How often the background looks for a spoiler log to complete (or a paused run to let go on). */
   private val lookEvery: Duration = 5.seconds,
+  /** The spoiler logs completed after their seeds (one for the gateway: the logic reads them too). */
+  private val stages: SpoilerStages = SpoilerStages(dirs),
 ) {
   /** A place for each Generate.py that runs. */
   private val places = Semaphore(atOnce)
@@ -229,8 +366,6 @@ class Generator(
   /** The last look at each running Generate.py's CPU time: (its CPU time, when), both in nanoseconds. */
   private val cpuSeen = ConcurrentHashMap<String, Pair<Long, Long>>()
 
-  /** The spoiler logs completed after their seeds. */
-  private val stages = SpoilerStages(dirs)
   /** New sessions waiting for a place: no background run starts (or goes on) meanwhile. */
   private val foregroundWaiting = AtomicInteger()
   /** The background runs going now (paused ones too), by session. */
@@ -302,15 +437,22 @@ class Generator(
     return true
   }
 
-  /** Session [id] goes (deleted): its background run ends. */
+  /**
+   * Session [id] goes (deleted): its generation (also one that waits for its turn) and its background run end, and
+   * its logs are forgotten, so a new session of the same ID doesn't get them. Its progress goes once its generation
+   * has ended (until then another generation of the ID is refused).
+   */
   fun dropSpoiler(id: String) {
+    cancel(id)
     background[id]?.let { end(id, it) }
+    logs.remove(id)
+    logs.remove(stageKey(id))
   }
 
   /** The run ends now, and starts over later (if its session is still there). */
   private fun end(id: String, run: BackgroundRun) {
     run.yields = true
-    processes[stageKey(id)]?.destroyForcibly()
+    processes[stageKey(id)]?.endTree()
   }
 
   /** No place is free for a new session: a spoiler's level-3 run (the paths) is paused and gives its place. */
@@ -349,7 +491,7 @@ class Generator(
   private fun signal(key: String, signal: String): Boolean {
     val pid = processes[key]?.takeIf { it.isAlive }?.pid() ?: return false
     return runCatching {
-      val kill = ProcessBuilder("sh", "-c", "kill -$signal $pid").redirectErrorStream(true).start()
+      val kill = ProcessBuilder("sh", "-c", "kill -$signal $pid").withoutSecrets().redirectErrorStream(true).start()
       kill.waitFor(5, TimeUnit.SECONDS) && kill.exitValue() == 0
     }.getOrDefault(false)
   }
@@ -396,8 +538,8 @@ class Generator(
       return
     }
     // Only with the very APWorlds the seed was generated with: another version would place differently
-    state.apworlds.entries.firstOrNull { (file, hash) -> apworlds.fileOf(state.release, file)?.let(::sha256) != hash }?.let {
-      stages.save(id, state.copy(stopped = "${it.key} changed since the seed was generated"))
+    apworlds.changedSince(state.release, state.apworlds)?.let {
+      stages.save(id, state.copy(stopped = "$it changed since the seed was generated"))
       return
     }
     val log = GenerationLog(state.release).also { logs[stageKey(id)] = it }
@@ -427,39 +569,21 @@ class Generator(
   /** Generate.py once more for session [id], only its spoiler log at [run]'s level; its text, or `null` (ended, failed). */
   private fun runSpoiler(id: String, state: SpoilerStages.State, run: BackgroundRun, home: Path, log: GenerationLog): String? {
     val level = run.level
-    val output = createTempDirectory("spoiler")
+    val output = processTempDir("spoiler")
     try {
       // Generate.py with a playthrough that doesn't give up (spoiler_run.py, next to it in the image)
       val script = SpoilerStages.SPOILER_RUN.takeIf { home.resolve(it).isRegularFile() } ?: "Generate.py"
-      val command = listOf(
-        archipelago.python, script, "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
-        "--outputpath", output.absolutePathString(), "--seed", state.seed.toString(), "--spoiler", level.toString(), "--spoiler_only",
-      ) + state.arguments
+      val command = generateCommand(script, dirs.generationDir(id).resolve("players"), output, state.seed) +
+        listOf("--spoiler", level.toString(), "--spoiler_only") + state.arguments
       log.lines.add("$ cd ${home.absolutePathString()}")
       log.lines.add("$ ${shown(command)}")
-      val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+      val proc = startProcess(command, home)
       processes[stageKey(id)] = proc
-      if (run.yields) proc.destroyForcibly()
-      proc.outputStream.close()
+      if (run.yields) proc.endTree()
       val limit = minutes.toLong() * BACKGROUND_TIME_FACTOR
-      val stopped = AtomicBoolean(false)
-      Thread {
-        // Its time, without the time it is paused
-        var ran = 0L
-        while (!proc.waitFor(1, TimeUnit.SECONDS)) {
-          if (!run.paused) ran++
-          if (ran > limit * 60) {
-            stopped.set(true)
-            proc.destroyForcibly()
-            break
-          }
-        }
-      }.apply { isDaemon = true }.start()
-      try {
-        proc.inputStream.bufferedReader().useLines { lines -> lines.forEach { log.lines.add(it.take(MAX_LOG_LINE)) } }
-      } catch (e: IOException) {
-        if (!run.yields && !stopped.get()) throw e
-      }
+      // Its time, without the time it is paused
+      val stopped = proc.endAfter(limit.minutes) { run.paused }
+      proc.eachLine(killed = { run.yields || stopped.get() }) { log.lines.add(it) }
       val code = proc.waitFor()
       if (run.yields) {
         log.lines.add("[gateway] Ended (a change of the APWorlds, or its session is gone): it starts over later")
@@ -482,6 +606,12 @@ class Generator(
     }
   }
 
+  /** Generate.py's (or [script]'s, which takes the same) command: the players' YAMLs, the output, the seed number. */
+  private fun generateCommand(script: String, players: Path, output: Path, seed: Long): List<String> = listOf(
+    archipelago.python, script, "--player_files_path", players.absolutePathString(),
+    "--outputpath", output.absolutePathString(), "--seed", seed.toString(),
+  )
+
   private fun stageKey(id: String) = "$id spoiler"
 
   /** Session [id]'s last generation's lines numbered above [since], at most [max]; `null`: none (or long ago). */
@@ -494,26 +624,38 @@ class Generator(
   fun cancel(id: String): Boolean {
     if (!progress.containsKey(id)) return false
     cancelled += id
-    processes[id]?.destroyForcibly()
+    processes[id]?.endTree()
     logger.info("Generating {}: cancelled", id)
     return true
   }
 
-  /** Throws [IllegalStateException] if session [id] has a seed already. */
+  /** Throws [IllegalStateException] if session [id] has a seed already, or generates one now. */
   suspend fun generate(id: String, request: GenerateRequest): GenerateResult {
+    // Until a place is free it says that it waits; a spoiler's level-3 run is paused to make one
+    check(progress.putIfAbsent(id, GenerationProgress(GenerationStage.WAITING, 0)) == null) {
+      "Session $id is generating already"
+    }
     val now = System.currentTimeMillis()
     logs.entries.removeIf { (_, log) -> log.endedAt?.let { now - it > GENERATION_LOG_KEPT } == true }
     val log = GenerationLog(request.apVersion).also { logs[id] = it }
     cancelled -= id
-    // Until a place is free it says that it waits; a spoiler's level-3 run is paused to make one
-    progress[id] = GenerationProgress(GenerationStage.WAITING, 0)
     val waiting = AtomicBoolean(true)
     foregroundWaiting.incrementAndGet()
     return try {
       makeRoom()
-      places.withPermit {
+      // Looked for again and again rather than queued for: a cancel ends the wait at once
+      while (!places.tryAcquire()) {
+        if (id in cancelled) {
+          log.lines.add("[gateway] Cancelled before its turn")
+          return GenerateResult(cancelled = true)
+        }
+        delay(PLACE_LOOK)
+      }
+      try {
         if (waiting.getAndSet(false)) foregroundWaiting.decrementAndGet()
         generateNow(id, request, log)
+      } finally {
+        places.release()
       }
     } finally {
       if (waiting.getAndSet(false)) foregroundWaiting.decrementAndGet()
@@ -550,7 +692,7 @@ class Generator(
     id: String, request: GenerateRequest, home: Path, target: Path, log: GenerationLog, apworldHashes: Map<String, String>,
     onProgress: (GenerationProgress) -> Unit,
   ): GenerateResult {
-    val work = createTempDirectory("generate")
+    val work = processTempDir("generate")
     try {
       val players = work.resolve("players").createDirectories()
       val output = work.resolve("output").createDirectories()
@@ -564,42 +706,24 @@ class Generator(
       val settings = generatorArguments(request)
       // Race mode: nobody can reproduce the seed, and it has no spoiler log (so nothing to complete after)
       val spoiler = if (request.race) listOf("--race", "--spoiler", "0") else listOf("--spoiler", "1")
-      val command = listOf(
-        archipelago.python, "Generate.py", "--player_files_path", players.absolutePathString(),
-        "--outputpath", output.absolutePathString(), "--seed", seed.toString(),
-      ) + spoiler + settings
+      val command = generateCommand("Generate.py", players, output, seed) + spoiler + settings
       // What ran, so it can be run again by hand
       log.lines.add("$ cd ${home.absolutePathString()}")
       log.lines.add("$ ${shown(command)}")
       log.lines.add("[gateway] YAMLs: ${players.listDirectoryEntries().map { it.name }.sorted().joinToString()}")
-      val proc = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+      val proc = startProcess(command, home)
       processes[id] = proc
       // Cancelled while it started
-      if (id in cancelled) proc.destroyForcibly()
-      // After an error Generate.py waits for Enter (an atexit input()); no stdin makes that an EOF, so it ends
-      proc.outputStream.close()
-      // Reading blocks until the output ends: the time limit has to end the process from outside
-      val stopped = AtomicBoolean(false)
-      Thread {
-        if (!proc.waitFor(minutes.toLong(), TimeUnit.MINUTES)) {
-          stopped.set(true)
-          proc.destroyForcibly()
-        }
-      }.apply { isDaemon = true }.start()
+      if (id in cancelled) proc.endTree()
+      val stopped = proc.endAfter(minutes.minutes)
       // Only its end is of use (the error, the seed's name): the rest of a long output isn't kept
       val lines = ArrayDeque<String>()
-      try {
-        proc.inputStream.bufferedReader().useLines { output ->
-          output.forEach { line ->
-            lines += line.take(MAX_LOG_LINE)
-            if (lines.size > MAX_LOG_LINES) lines.removeFirst()
-            log.lines.add(line.take(MAX_LOG_LINE))
-            generationProgress(line)?.let(onProgress)
-          }
-        }
-      } catch (e: IOException) {
-        // Ended from outside (cancelled, or over its time): Java closes its output then ("Stream closed")
-        if (id !in cancelled && !stopped.get()) throw e
+      // Ended from outside (cancelled, or over its time): its output ends then
+      proc.eachLine(killed = { id in cancelled || stopped.get() }) { line ->
+        lines += line
+        if (lines.size > MAX_LOG_LINES) lines.removeFirst()
+        log.lines.add(line)
+        generationProgress(line)?.let(onProgress)
       }
       val code = proc.waitFor()
       processes.remove(id)
@@ -674,9 +798,11 @@ private val STAGES = listOf(
   "Done." to GenerationProgress(GenerationStage.DONE, 100),
 )
 
-/** How much of Generate.py's output is kept: its last lines, each cut. */
+/** How much of Generate.py's output is kept for its result: its last lines (each cut to [MAX_LOG_LINE]). */
 private const val MAX_LOG_LINES = 2000
-private const val MAX_LOG_LINE = 2000
+
+/** How often a generation that waits for its place looks for one (and for its cancel). */
+private val PLACE_LOOK = 200.milliseconds
 
 private val OUTPUT_FILES = Regex("""Generating output files \((\d+)/(\d+)\)""")
 private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items placed""")

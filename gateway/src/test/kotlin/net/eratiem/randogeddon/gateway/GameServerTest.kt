@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -47,6 +48,26 @@ class GameServerTest {
     dir.resolve("fake.sh").writeText(fakeMultiServer)
     // A MultiServer that can't serve its seed: it ends with an error right away, every time
     dir.resolve("broken.sh").writeText("echo \"serving ${'$'}1\"\nexit 2\n")
+    // One that doesn't end on /exit (hung, or a slow save), with a process of its own
+    dir.resolve("deaf.sh").writeText(
+      """
+      sleep 600 &
+      echo "child ${'$'}!"
+      echo "server listening on 0.0.0.0:38282"
+      while read line; do echo "console: ${'$'}line"; done
+      sleep 600
+      """.trimIndent()
+    )
+    // One that writes a line of a MiB (as a client's packet in MultiServer's log can be)
+    dir.resolve("long.sh").writeText(
+      """
+      echo "server listening on 0.0.0.0:38282"
+      head -c 1048576 /dev/zero | tr '\0' 'a'
+      echo
+      echo "after the long one"
+      while read line; do [ "${'$'}line" = "/exit" ] && exit 0; done
+      """.trimIndent()
+    )
   }
 
   @AfterTest
@@ -56,15 +77,18 @@ class GameServerTest {
 
   private fun server(
     prepared: MutableList<String> = mutableListOf(), refuse: (Path) -> String? = { null }, script: String = "fake.sh",
+    onEnded: (String) -> Unit = {}, stopTimeout: Duration = 2.seconds,
+    launch: (Path) -> Launch = { seed -> Launch(listOf("sh", dir.resolve(script).toString(), seed.fileName.toString())) },
   ) = GameServer(
     GameServerConfig(
       dataDir = dir,
-      launch = { seed -> Launch(listOf("sh", dir.resolve(script).toString(), seed.fileName.toString())) },
+      launch = launch,
       prepare = { seed -> prepared += seed.fileName.toString() },
       seedPoll = 50.milliseconds,
       backoff = 50.milliseconds,
       maxBackoff = 200.milliseconds,
-      stopTimeout = 2.seconds,
+      stopTimeout = stopTimeout,
+      onEnded = onEnded,
       refuse = refuse,
     ),
     scope,
@@ -193,6 +217,63 @@ class GameServerTest {
     assertEquals(5, server.state.restarts, seen())
     server.stop()
     assertEquals(GameServerStatus.STOPPED, server.state.status, seen())
+  }
+
+  @Test
+  fun `one that had to be killed ends like any other, with the processes it started`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val ended = mutableListOf<String>()
+    val server = server(script = "deaf.sh", onEnded = { synchronized(ended) { ended += it } }, stopTimeout = 300.milliseconds)
+    server.start()
+    server.awaitStatus(GameServerStatus.RUNNING)
+    server.awaitLine("child ")
+    val child = server.log(0).lines.first { it.text.startsWith("child ") }.text.removePrefix("child ").trim().toLong()
+
+    withTimeout(5.seconds) { server.stop() }
+    server.awaitLine("killing it")
+    assertEquals(GameServerStatus.STOPPED, server.state.status)
+    assertEquals(listOf("AP_1.zip"), synchronized(ended) { ended.toList() })
+    // Its own process went with it
+    withTimeout(5.seconds) { while (ProcessHandle.of(child).map { it.isAlive }.orElse(false)) delay(20.milliseconds) }
+  }
+
+  @Test
+  fun `one that can't be started counts as a crash, and fails in the end`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val server = server(launch = { Launch(listOf(dir.resolve("no-such-program").toString())) })
+    server.start()
+    server.awaitStatus(GameServerStatus.FAILED)
+    assertTrue(server.log(0).lines.any { "Can't start the game server on AP_1.zip" in it.text })
+    assertEquals(-1, server.state.lastExitCode)
+    server.stop()
+  }
+
+  @Test
+  fun `a line of a MiB is kept cut, and the ones after it come`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val server = server(script = "long.sh")
+    server.start()
+    server.awaitLine("after the long one")
+    val long = server.log(0).lines.single { it.text.startsWith("aaaa") }.text
+    assertEquals(MAX_LOG_LINE, long.length)
+    server.stop()
+  }
+
+  @Test
+  fun `sleep and a player's start look at the state under the lock`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val server = server()
+    // Stopped by an admin meanwhile: the sweep's sleep (only a running one) and a player's start (only a sleeping one)
+    // leave it stopped
+    assertFalse(server.sleep("Asleep") { it.status == GameServerStatus.RUNNING })
+    server.start(onlyIdle = true)
+    assertEquals(GameServerStatus.STOPPED, server.state.status)
+    // Asleep (the gateway's start): a player's start runs it
+    assertTrue(server.sleep("Asleep"))
+    assertEquals(GameServerStatus.IDLE, server.state.status)
+    server.start(onlyIdle = true)
+    server.awaitStatus(GameServerStatus.RUNNING)
+    server.stop()
   }
 
   @Test

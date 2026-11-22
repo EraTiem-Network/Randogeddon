@@ -89,7 +89,7 @@ class SessionsTest {
     val dirs = SessionDirs(data)
     val sessions = Sessions(
       dirs, { limit },
-      create = { id, dir, port ->
+      create = { id, dir, _, port ->
         GameServer(
           GameServerConfig(
             dataDir = dir,
@@ -192,6 +192,31 @@ class SessionsTest {
     assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
     assertFalse(sessions.wake("brave-otter"))
     assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
+    sessions.stopAll()
+  }
+
+  @Test
+  fun `a stop or a player between the sweep's look and its sleep is kept`() = runBlocking {
+    val (sessions, _) = sessions(listOf("brave-otter", "friday-chaos", "quiet-fox"), limit = 0)
+    sessions.sleepAll()
+    for (id in listOf("brave-otter", "friday-chaos", "quiet-fox")) assertTrue(sessions.wake(id))
+    for (session in sessions.all()) session.idleSince = TimeSource.Monotonic.markNow() - 60.minutes
+    // While the sweep asks the database: an Administrator stops one, a player joins another
+    var leave: (() -> Unit)? = null
+    val meanwhile: suspend (SessionGameServer) -> SleepRules = { s ->
+      when (s.id) {
+        "brave-otter" -> sessions.stop(s.id)
+        "friday-chaos" -> leave = s.joined()
+      }
+      SleepRules()
+    }
+    assertEquals(listOf("quiet-fox"), sessions.sweep(30, meanwhile))
+    assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
+    assertEquals(GameServerStatus.RUNNING, sessions.get("friday-chaos")?.server?.state?.status)
+    // The stopped one doesn't wake for the next player
+    assertFalse(sessions.wake("brave-otter"))
+    assertEquals(GameServerStatus.STOPPED, sessions.get("brave-otter")?.server?.state?.status)
+    leave?.invoke()
     sessions.stopAll()
   }
 }

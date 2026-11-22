@@ -8,13 +8,14 @@ import net.eratiem.randogeddon.shared.SeedSlot
 import net.eratiem.randogeddon.shared.SeedUpload
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayInputStream
+import java.io.EOFException
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
@@ -25,6 +26,7 @@ import kotlin.io.path.deleteIfExists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.outputStream
 import kotlin.io.path.readText
+import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.UploadedSeeds")
 
@@ -33,9 +35,16 @@ const val MAX_SEED_BYTES = 64L * 1024 * 1024
 const val MAX_SEED_UNPACKED = 512L * 1024 * 1024
 const val MAX_SEED_FILES = 1000
 
+/** The largest spoiler log taken in a seed zip: it is read whole (by the tracker, and to compare a later one with it). */
+const val MAX_SEED_SPOILER = 64L * 1024 * 1024
+
 /** How long an uploaded seed waits for its session before it is deleted, and how many wait at once. */
 private const val SEED_KEPT_MS = 60 * 60_000L
 private const val MAX_WAITING = 8
+
+/** How long seed_info.py may take to read an uploaded seed, and how many of its last lines are kept (for its error). */
+private val SEED_INFO_TIME = 120.seconds
+private const val SEED_INFO_LINES = 20
 
 /** The game of the World Locks slot: its locks are set up when a seed is generated here, so not for one from elsewhere. */
 private const val WORLD_LOCKS_GAME = "World Locks"
@@ -52,13 +61,15 @@ private val SEED_FILE = Regex("AP_[^/\\\\:*?\"<>|\\p{Cntrl}]{1,200}")
 /**
  * Checks an uploaded seed zip and writes it anew to [out], entry by entry: what is kept is what was read here, whatever
  * else the upload's directory says (two readers of a crafted zip needn't see the same). Only files as Archipelago
- * names a seed's (`AP_…`, no directories), each name once, one `.archipelago`, at most one spoiler log, and no more
- * than [MAX_SEED_FILES] files or [MAX_SEED_UNPACKED] bytes unpacked.
+ * names a seed's (`AP_…`, no directories), each name once, one `.archipelago`, at most one spoiler log (of at most
+ * [MAX_SEED_SPOILER]), and no more than [MAX_SEED_FILES] files or [MAX_SEED_UNPACKED] bytes unpacked; each counted as
+ * it unpacks. A zip that ends early (an upload that broke off) is refused as one that isn't a seed's.
  */
 fun cleanSeedZip(bytes: ByteArray, out: Path): SeedEntries {
   if (bytes.size > MAX_SEED_BYTES) throw SeedProblem("it is larger than ${MAX_SEED_BYTES / 1024 / 1024} MB")
   val names = mutableSetOf<String>()
   var unpacked = 0L
+  fun notAZip(e: IOException): Nothing = throw SeedProblem("it isn't a zip file Archipelago made (${e.message})")
   try {
     ZipOutputStream(out.outputStream()).use { target ->
       ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
@@ -72,11 +83,17 @@ fun cleanSeedZip(bytes: ByteArray, out: Path): SeedEntries {
           if (!names.add(name.lowercase())) throw SeedProblem("it has ${printable(name)} twice")
           if (names.size > MAX_SEED_FILES) throw SeedProblem("it has more than $MAX_SEED_FILES files")
           target.putNextEntry(ZipEntry(name))
+          val spoiler = name.lowercase().endsWith("_spoiler.txt")
+          var size = 0L
           while (true) {
             val read = zip.read(buffer)
             if (read < 0) break
             unpacked += read
+            size += read
             if (unpacked > MAX_SEED_UNPACKED) throw SeedProblem("it unpacks to more than ${MAX_SEED_UNPACKED / 1024 / 1024} MB")
+            if (spoiler && size > MAX_SEED_SPOILER) {
+              throw SeedProblem("its spoiler log is larger than ${MAX_SEED_SPOILER / 1024 / 1024} MB")
+            }
             target.write(buffer, 0, read)
           }
           target.closeEntry()
@@ -84,14 +101,26 @@ fun cleanSeedZip(bytes: ByteArray, out: Path): SeedEntries {
       }
     }
   } catch (e: ZipException) {
-    throw SeedProblem("it isn't a zip file Archipelago made (${e.message})")
+    notAZip(e)
+  } catch (e: EOFException) {
+    // The zip ends within an entry
+    notAZip(e)
   }
   if (names.isEmpty()) throw SeedProblem("it isn't a zip file (the AP_….zip from Archipelago's output folder is)")
+  // Cut off between two entries, the files before read as a whole zip: its directory at the end is missing
+  if (!endsWithDirectory(bytes)) throw SeedProblem("it isn't a zip file Archipelago made (it ends early)")
   val multidata = names.filter { it.endsWith(".archipelago") }
   if (multidata.size != 1) throw SeedProblem("it has ${if (multidata.isEmpty()) "no" else "more than one"} .archipelago file")
   val spoilers = names.filter { it.endsWith("_spoiler.txt") }
   if (spoilers.size > 1) throw SeedProblem("it has more than one spoiler log")
   return SeedEntries(multidata.single(), spoilers.singleOrNull(), names.size - 1 - spoilers.size)
+}
+
+/** Whether [bytes] end as a zip does: with the record that closes its directory (`PK\5\6`, then at most a comment). */
+private fun endsWithDirectory(bytes: ByteArray): Boolean {
+  val first = (bytes.size - 22 - 0xFFFF).coerceAtLeast(0)
+  val record = byteArrayOf(0x50, 0x4B, 0x05, 0x06)
+  return (bytes.size - 22 downTo first).any { i -> record.indices.all { bytes[i + it] == record[it] } }
 }
 
 /** `seed_info.py`'s answer. */
@@ -135,6 +164,8 @@ class UploadedSeeds(
     forgetOld()
     if (waiting.size >= MAX_WAITING) throw SeedProblem("too many uploaded seeds wait for their session; try again later")
     val release = upload.apVersion ?: archipelago.newest
+    // Only an installed release: its name becomes a path
+    if (release !in archipelago.versions()) throw SeedProblem("Archipelago ${printable(release)} isn't here")
     val home = runCatching { archipelago.home(release) }.getOrElse { throw SeedProblem("Archipelago $release isn't here") }
     val bytes = runCatching { Base64.getDecoder().decode(upload.base64) }.getOrElse { throw SeedProblem("it isn't base64") }
     val token = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
@@ -153,7 +184,10 @@ class UploadedSeeds(
         spoiler = entries.spoiler != null, files = entries.files,
       )
       waiting[token] = Waiting(file, info, clock())
-      logger.info("Seed {} uploaded ({} slots, generated with {}): waits for its session", info.seedName, info.slots.size, info.generatedWith)
+      logger.info(
+        "Seed {} uploaded ({} slots, generated with {}): waits for its session",
+        info.seedName, info.slots.size, printable(info.generatedWith),
+      )
       return info
     } catch (e: Throwable) {
       file.deleteIfExists()
@@ -189,25 +223,28 @@ class UploadedSeeds(
   }
 
   private fun read(home: Path, zip: Path): SeedRead {
-    val answer = Files.createTempFile("seed-info", ".json")
+    val work = processTempDir("seed-info")
     try {
-      val proc = ProcessBuilder(archipelago.python, "seed_info.py", zip.absolutePathString(), answer.absolutePathString())
-        .withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
-      proc.outputStream.close()
-      val output = StringBuilder()
-      val reader = Thread { runCatching { output.append(proc.inputStream.bufferedReader().readText()) } }.apply { isDaemon = true; start() }
-      if (!proc.waitFor(120, TimeUnit.SECONDS)) {
-        proc.destroyForcibly()
-        throw SeedProblem("reading it took too long")
+      val answer = work.resolve("seed-info.json")
+      val command = listOf(archipelago.python, "seed_info.py", zip.absolutePathString(), answer.absolutePathString())
+      val proc = startProcess(command, home)
+      val stopped = proc.endAfter(SEED_INFO_TIME)
+      // Only its end is of use (the error): its last lines, each cut as it is read
+      val lines = ArrayDeque<String>()
+      proc.eachLine { line ->
+        lines += line
+        if (lines.size > SEED_INFO_LINES) lines.removeFirst()
       }
-      reader.join(2000)
-      if (proc.exitValue() != 0) {
-        logger.info("seed_info.py: {}", output.toString().trim().lines().takeLast(3).joinToString(" | "))
-        throw SeedProblem("it can't be read as a seed (${printable(output.toString().trim().lines().lastOrNull())})")
+      val code = proc.waitFor()
+      if (stopped.get()) throw SeedProblem("reading it took too long")
+      if (code != 0) {
+        val output = lines.joinToString("\n").trim().lines()
+        logger.info("seed_info.py: {}", output.takeLast(3).joinToString(" | ") { oneLine(it) })
+        throw SeedProblem("it can't be read as a seed (${printable(output.lastOrNull())})")
       }
       return ApiJson.decodeFromString(SeedRead.serializer(), answer.readText())
     } finally {
-      answer.deleteIfExists()
+      work.toFile().deleteRecursively()
     }
   }
 }

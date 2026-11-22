@@ -14,6 +14,7 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.WebSocketDeflateExtension
 import io.ktor.websocket.readText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -28,15 +29,26 @@ import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 
 /** The game clients' way in, over real sockets: the gateway's own WebSocket settings in front of a stand-in MultiServer. */
 class RelayTest {
-  private val passwords = mapOf("Alice-HK" to "s3cr3t!")
+  private val passwords = mapOf("Alice-HK" to "s3cr3t!", "Bob-Yacht" to "pw")
 
   /** What the stand-in MultiServer got. */
   private val seen = CopyOnWriteArrayList<String>()
 
   private fun connect(name: String, password: String) = """[{"cmd":"Connect","name":"$name","password":"$password","game":"","tags":["TextOnly"]}]"""
 
-  /** The gateway on a port of its own, relaying to a stand-in MultiServer that takes everyone in (as it does a group). */
-  private fun gateway(limits: Limits = Limits(), deflate: Boolean = false, block: suspend (url: String, client: HttpClient) -> Unit) = runBlocking {
+  /**
+   * The gateway on a port of its own, relaying to a stand-in MultiServer that takes everyone in (as it does a group).
+   * [wake] runs before MultiServer's address is known (a sleeping game server starts); [clients] and [joined] as the
+   * gateway gives them.
+   */
+  private fun gateway(
+    limits: Limits = Limits(),
+    deflate: Boolean = false,
+    clients: SlotClients? = null,
+    joined: suspend (String) -> (() -> Unit)? = { null },
+    wake: suspend () -> Unit = {},
+    block: suspend (url: String, client: HttpClient) -> Unit,
+  ) = runBlocking {
     val multiServer = embeddedServer(Netty, port = 0) {
       install(WebSockets) { maxFrameSize = Long.MAX_VALUE }
       routing {
@@ -61,7 +73,11 @@ class RelayTest {
     val connections = ConnectionLimits(limits)
     val server = embeddedServer(Netty, port = 0) {
       gameClientWebSockets()
-      routing { webSocket("/") { serve(client, upstream, { passwords }, { emptySet() }, connections) } }
+      routing {
+        webSocket("/") {
+          serve(client, { wake(); upstream }, { passwords }, { emptySet() }, connections, joined = joined, clients = clients)
+        }
+      }
     }.start()
     try {
       block("ws://localhost:${server.engine.resolvedConnectors().first().port}/", client)
@@ -155,6 +171,107 @@ class RelayTest {
       repeat(10) { send(Frame.Text("""[{"cmd":"Sync"}]""")) }
       assertSeen(11)
       assertFalse(closeReason.isCompleted)
+    }
+  }
+
+  @Test
+  fun `before the Connect only what a client needs then reaches MultiServer`() = gateway { url, client ->
+    client.webSocket(url) {
+      next()
+      // MultiServer ignores these from a client outside a slot: they don't get there at all
+      send(Frame.Text("""[{"cmd":"Say","text":"hello"}]"""))
+      send(Frame.Text("""[{"cmd":"GetDataPackage","games":["Hollow Knight"]},{"cmd":"LocationChecks","locations":[1]}]"""))
+      send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
+      assertEquals("""[{"cmd":"Connected"}]""", next())
+      // In the slot, everything
+      send(Frame.Text("""[{"cmd":"Say","text":"hello"}]"""))
+      assertSeen(3)
+      assertEquals(
+        listOf("""[{"cmd":"GetDataPackage","games":["Hollow Knight"]}]""", connect("Alice-HK", "s3cr3t!"), """[{"cmd":"Say","text":"hello"}]"""),
+        seen.toList(),
+      )
+    }
+  }
+
+  @Test
+  fun `a packet without a command, or a frame full of data package requests, closes before MultiServer sees it`() = gateway { url, client ->
+    client.webSocket(url) {
+      next()
+      // MultiServer would log it whole
+      send(Frame.Text("""[{"a":"${"A".repeat(1000)}"}]"""))
+      assertEquals(CloseReason.Codes.CANNOT_ACCEPT.code, closed()?.code)
+    }
+    client.webSocket(url) {
+      next()
+      // Each one the whole data package, encoded by MultiServer
+      send(Frame.Text((1..1000).joinToString(",", "[", "]") { """{"cmd":"GetDataPackage"}""" }))
+      assertEquals(CloseReason.Codes.CANNOT_ACCEPT.code, closed()?.code)
+    }
+    assertSeen(0)
+  }
+
+  @Test
+  fun `a real client's opening passes as it is`() = gateway { url, client ->
+    // Archipelago's CommonClient: the data package of the games it lacks, then its Connect with the version
+    val dataPackage = """[{"cmd":"GetDataPackage","games":["Archipelago","Hollow Knight"]}]"""
+    val connect = """[{"cmd":"Connect","password":"s3cr3t!","name":"Alice-HK","version":{"major":0,"minor":6,"build":8,"class":"Version"},""" +
+      """"tags":["AP"],"items_handling":7,"uuid":"6c1f","game":"Hollow Knight","slot_data":true}]"""
+    client.webSocket(url) {
+      assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next())
+      send(Frame.Text(dataPackage))
+      // A client that typed a wrong password first
+      send(Frame.Text(connect.replace("s3cr3t!", "typo")))
+      assertEquals(REFUSAL, next())
+      send(Frame.Text(connect))
+      assertEquals("""[{"cmd":"Connected"}]""", next())
+      send(Frame.Text("""[{"cmd":"Sync"},{"cmd":"LocationChecks","locations":[1,2]}]"""))
+      assertSeen(3)
+      assertEquals(listOf(dataPackage, connect, """[{"cmd":"Sync"},{"cmd":"LocationChecks","locations":[1,2]}]"""), seen.toList())
+    }
+  }
+
+  @Test
+  fun `taking someone off a slot closes them, also under a slot they were in before`() {
+    val clients = SlotClients()
+    gateway(clients = clients) { url, client ->
+      client.webSocket(url) {
+        next()
+        send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
+        assertEquals("""[{"cmd":"Connected"}]""", next())
+        // A Connect for another slot: MultiServer may refuse it and keep the client in the first
+        send(Frame.Text(connect("Bob-Yacht", "pw")))
+        assertEquals("""[{"cmd":"Connected"}]""", next())
+        assertEquals(1, clients.close("Alice-HK", "Your access to this slot changed"))
+        assertEquals(CloseReason.Codes.VIOLATED_POLICY.code, closed()?.code)
+      }
+    }
+  }
+
+  @Test
+  fun `taking someone off a slot while they connect closes them too`() {
+    val clients = SlotClients()
+    // Between the check and the filing: the gateway asks the database what the slot is
+    gateway(clients = clients, joined = { slot -> clients.close(slot, "Your access to this slot changed"); null }) { url, client ->
+      client.webSocket(url) {
+        next()
+        send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
+        assertEquals(CloseReason.Codes.VIOLATED_POLICY.code, closed()?.code)
+      }
+      assertSeen(0)
+    }
+  }
+
+  @Test
+  fun `a connection that waits for its game server to wake counts as waiting`() {
+    val awake = CompletableDeferred<Unit>()
+    gateway(Limits(waiting = 1), wake = { awake.await() }) { url, client ->
+      client.webSocket(url) {
+        // Its place is taken while the game server starts
+        delay(300)
+        client.webSocket(url) { assertEquals(CloseReason.Codes.TRY_AGAIN_LATER.code, closed()?.code) }
+        awake.complete(Unit)
+        assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next())
+      }
     }
   }
 

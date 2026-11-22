@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.gateway
 import java.nio.file.Files
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
+import kotlin.io.path.deleteExisting
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -55,5 +56,22 @@ class SpoilerStagesTest {
     assertNull(stages.next())
     assertNull(stages.read("wild-hare"))
     assertEquals(4L, stages.read("sunny-owl")?.seed)
+  }
+
+  @Test
+  fun `a state is read again when its file changed, and is gone with it`() {
+    val data = Files.createTempDirectory("data")
+    val dirs = SessionDirs(data)
+    val stages = SpoilerStages(dirs)
+    data.resolve("sessions/brave-otter").createDirectories().resolve("AP_1.zip").createFile()
+    stages.save("brave-otter", SpoilerStages.State(1, "0.6.8", level = 1))
+    assertEquals(1, stages.read("brave-otter")?.level)
+    // Written by another (a gateway before this one, or another user of the same files)
+    SpoilerStages(dirs).save("brave-otter", SpoilerStages.State(1, "0.6.8", level = 2, stopped = "it took too long"))
+    assertEquals("it took too long", stages.read("brave-otter")?.stopped)
+    stages.save("brave-otter", SpoilerStages.State(1, "0.6.8", level = 3))
+    assertEquals(3, stages.read("brave-otter")?.level)
+    dirs.generationDir("brave-otter").resolve(SpoilerStages.FILE).deleteExisting()
+    assertNull(stages.read("brave-otter"))
   }
 }

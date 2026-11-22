@@ -4,9 +4,11 @@ import kotlinx.serialization.Serializable
 import net.eratiem.randogeddon.shared.ApiJson
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
@@ -31,26 +33,48 @@ class SpoilerStages(private val dirs: SessionDirs) {
     val arguments: List<String> = emptyList(),
   )
 
+  /**
+   * What tells a file apart from a later one: its identity (a file written anew and moved over it is another one), its
+   * modification time and its size.
+   */
+  private data class Stamp(val key: Any?, val modified: Long, val size: Long)
+
+  /** Each session's file as last read or written, with its state: read again only when it changed. */
+  private val seen = ConcurrentHashMap<String, Pair<Stamp, State?>>()
+
+  private fun stampOf(file: Path): Stamp? = runCatching { Files.readAttributes(file, BasicFileAttributes::class.java) }
+    .getOrNull()?.takeIf { it.isRegularFile }?.let { Stamp(it.fileKey(), it.lastModifiedTime().toMillis(), it.size()) }
+
   /** Session [id]'s state; `null`: it has none (generated before 0.19.3: its spoiler log is complete). */
   fun read(id: String): State? {
     val file = dirs.generationDir(id).resolve(FILE)
-    if (!file.isRegularFile()) return null
-    return runCatching { ApiJson.decodeFromString(State.serializer(), file.readText()) }
+    val stamp = stampOf(file) ?: return null.also { seen.remove(id) }
+    seen[id]?.takeIf { it.first == stamp }?.let { return it.second }
+    val state = runCatching { ApiJson.decodeFromString(State.serializer(), file.readText()) }
       .onFailure { logger.warn("{}'s {}: {}", id, FILE, it.message) }.getOrNull()
+    seen[id] = stamp to state
+    return state
   }
 
   fun save(id: String, state: State) {
     val dir = dirs.generationDir(id).createDirectories()
     val written = dir.resolve("$FILE.new")
     written.writeText(ApiJson.encodeToString(State.serializer(), state))
-    Files.move(written, dir.resolve(FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    val file = Files.move(written, dir.resolve(FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    // Kept as written: the next read needn't parse it again
+    val stamp = stampOf(file)
+    if (stamp != null) seen[id] = stamp to state else seen.remove(id)
   }
 
-  /** The next spoiler log to complete ([running]: not those): one without its playthrough first, then one without its paths. */
-  fun next(running: Set<String> = emptySet()): Pair<String, State>? = dirs.ids().filter { it !in running && dirs.seed(it) != null }
+  /**
+   * The next spoiler log to complete ([running]: not those): one without its playthrough first, then one without its
+   * paths. The kept states are looked at first, a seed only for the ones that are to be completed.
+   */
+  fun next(running: Set<String> = emptySet()): Pair<String, State>? = dirs.ids().asSequence().filter { it !in running }
     .mapNotNull { id -> read(id)?.let { id to it } }
     .filter { (_, state) -> state.level < COMPLETE && state.stopped == null }
-    .minByOrNull { (id, state) -> "${state.level} $id" }
+    .sortedBy { (id, state) -> "${state.level} $id" }
+    .firstOrNull { (id, _) -> dirs.seed(id) != null }
 
   companion object {
     const val FILE = "stages.json"

@@ -1,11 +1,16 @@
 package net.eratiem.randogeddon.gateway
 
+import net.eratiem.randogeddon.shared.SeedUpload
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
+import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createFile
 import kotlin.io.path.deleteIfExists
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -71,5 +76,50 @@ class UploadedSeedsTest {
     assertTrue("isn't a zip file" in refused("not a zip at all".toByteArray()))
     assertTrue("isn't a zip file" in refused(ByteArray(0)))
     assertTrue("more than $MAX_SEED_FILES files" in refused(zip(seed, *(1..MAX_SEED_FILES).map { "AP_1_P$it.txt" to "" }.toTypedArray())))
+  }
+
+  @Test
+  fun `an upload that broke off is refused as no seed's zip`() {
+    // Within an entry
+    val noise = ByteArray(200_000).also { Random(1).nextBytes(it) }
+    val bytes = ByteArrayOutputStream().also { out ->
+      ZipOutputStream(out).use { zip ->
+        zip.putNextEntry(ZipEntry("AP_1.archipelago")); zip.write(noise); zip.closeEntry()
+      }
+    }.toByteArray()
+    assertTrue("isn't a zip file Archipelago made" in refused(bytes.copyOf(bytes.size / 2)))
+    // Between two entries: what is before reads as a zip, but its directory at the end is missing
+    val whole = zip("AP_1.archipelago" to "multidata", "AP_1_P1_Alice.aplttp" to "patch")
+    val signature = byteArrayOf(0x50, 0x4B, 0x01, 0x02)
+    val directory = (0 until whole.size - 3).first { i -> signature.indices.all { whole[i + it] == signature[it] } }
+    assertTrue("isn't a zip file Archipelago made" in refused(whole.copyOf(directory)))
+  }
+
+  @Test
+  fun `a spoiler log larger than one is read whole is refused`() {
+    val bytes = ByteArrayOutputStream().also { out ->
+      ZipOutputStream(out).use { zip ->
+        zip.putNextEntry(ZipEntry("AP_1.archipelago")); zip.write("m".toByteArray()); zip.closeEntry()
+        zip.putNextEntry(ZipEntry("AP_1_Spoiler.txt"))
+        val chunk = ByteArray(1024 * 1024) { 'a'.code.toByte() }
+        repeat((MAX_SEED_SPOILER / chunk.size).toInt()) { zip.write(chunk) }
+        zip.write('a'.code)
+        zip.closeEntry()
+      }
+    }.toByteArray()
+    assertTrue("spoiler log is larger than" in refused(bytes))
+  }
+
+  @Test
+  fun `only a release the gateway has reads a seed`() {
+    val root = Files.createTempDirectory("archipelago")
+    root.resolve("0.6.8").createDirectories().resolve("MultiServer.py").createFile()
+    val data = Files.createTempDirectory("data")
+    val seeds = UploadedSeeds(Archipelago(root, "sh"), SessionDirs(data), data)
+    val bytes = Base64.getEncoder().encodeToString(zip("AP_1.archipelago" to "m"))
+    for (release in listOf("0.6.8/../0.6.8", "./0.6.8", "..", "0.6.9")) {
+      val problem = assertFailsWith<SeedProblem>(release) { seeds.take(SeedUpload("AP_1.zip", bytes, release)) }
+      assertTrue("isn't here" in problem.message.orEmpty(), release)
+    }
   }
 }

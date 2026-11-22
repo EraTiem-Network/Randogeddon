@@ -43,6 +43,8 @@ data class Launch(
 )
 
 private val PASSWORD_FIELD = Regex("""(['"]password['"]\s*:\s*)(['"])(.*?)\2""")
+/** A password's value that a cut line ([MAX_LOG_LINE]) left without its closing quote: up to the line's end. */
+private val PASSWORD_OPEN = Regex("""(['"]password['"]\s*:\s*)(['"])(?:(?!\2).)*$""", RegexOption.DOT_MATCHES_ALL)
 private val PASSWORD_OPTION = Regex("""((?:Set option|/option|Option)\s+(?:server_)?password(?:\s+(?:to|is set to))?\s+).+""")
 
 /**
@@ -51,13 +53,14 @@ private val PASSWORD_OPTION = Regex("""((?:Set option|/option|Option)\s+(?:serve
  * read in the panel by the session's managers, who don't get the players' slot passwords otherwise, nor the host's
  * password for `!admin` (one for every session).
  */
-internal fun withoutPasswords(line: String): String =
-  PASSWORD_OPTION.replace(PASSWORD_FIELD.replace(line) { "${it.groupValues[1]}${it.groupValues[2]}***${it.groupValues[2]}" }) {
-    "${it.groupValues[1]}***"
-  }
+internal fun withoutPasswords(line: String): String {
+  val fields = PASSWORD_FIELD.replace(line) { "${it.groupValues[1]}${it.groupValues[2]}***${it.groupValues[2]}" }
+  val open = PASSWORD_OPEN.replace(fields) { "${it.groupValues[1]}${it.groupValues[2]}***" }
+  return PASSWORD_OPTION.replace(open) { "${it.groupValues[1]}***" }
+}
 
 /** [line] as one console line: MultiServer's console takes every line break (`\r` too) as the end of a command. */
-internal fun oneLine(line: String): String = line.map { if (it.isISOControl()) ' ' else it }.joinToString("")
+internal fun oneLine(line: String): String = withoutControls(line, ' ')
 
 /**
  * How to run MultiServer: [prepare] before each start (writes room.json), then [launch] for the seed file (which may
@@ -115,13 +118,17 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   var state = GameServerState(GameServerStatus.STOPPED)
     private set
 
-  /** Starts it (again) if it isn't running; resets the restart count. */
-  suspend fun start() = mutex.withLock {
+  /**
+   * Starts it (again) if it isn't running; resets the restart count. [onlyIdle]: only if it sleeps, as looked at under
+   * its lock (a player's wake: a stop by an admin while the wake waited for its turn keeps it stopped).
+   */
+  suspend fun start(onlyIdle: Boolean = false) = mutex.withLock {
     if (supervisor?.isActive == true) return@withLock
+    if (onlyIdle && state.status != GameServerStatus.IDLE) return@withLock
     // A refused seed (its session is finished) stays stopped right away: not starting even for a moment, it takes no
     // port from a session that runs (the gateway starts them all at once)
     val seed = withContext(Dispatchers.IO) { newestSeed() }
-    val refusal = seed?.let { withContext(Dispatchers.IO) { runCatching { config.refuse(it) }.getOrNull() } }
+    val refusal = seed?.let { withContext(Dispatchers.IO) { refusalOf(it) } }
     if (seed != null && refusal != null) {
       note("Not starting ${seed.name}: $refusal")
       state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
@@ -146,18 +153,22 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
 
   /**
    * Ends it like [stop] (if it runs), as [GameServerStatus.IDLE]: nobody plays, and a player's connection starts it
-   * again ([why] in its log). A session that has no seed yet or must not be served (finished) doesn't sleep.
+   * again ([why] in its log). A session that has no seed yet or must not be served (finished) doesn't sleep, nor one
+   * whose state, as looked at under its lock, isn't [onlyIf] (the sweep's: still running, still without players).
+   * `true`: it sleeps now.
    */
-  suspend fun sleep(why: String) = mutex.withLock {
-    val seed = withContext(Dispatchers.IO) { newestSeed() } ?: return@withLock
-    val refusal = withContext(Dispatchers.IO) { runCatching { config.refuse(seed) }.getOrNull() }
+  suspend fun sleep(why: String, onlyIf: (GameServerState) -> Boolean = { true }): Boolean = mutex.withLock {
+    if (!onlyIf(state)) return@withLock false
+    val seed = withContext(Dispatchers.IO) { newestSeed() } ?: return@withLock false
+    val refusal = withContext(Dispatchers.IO) { refusalOf(seed) }
     if (refusal != null) {
       if (supervisor == null) state = state.copy(status = GameServerStatus.STOPPED, seed = seed.name, since = null)
-      return@withLock
+      return@withLock false
     }
     end()
     state = state.copy(status = GameServerStatus.IDLE, seed = seed.name, since = null)
     note(why)
+    true
   }
 
   /** Ends the supervisor and its MultiServer (under [mutex]). */
@@ -178,7 +189,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
   /** Writes [line] to the console; `false` if no server is running. */
   suspend fun command(line: String): Boolean = mutex.withLock {
     val writer = stdin ?: return@withLock false
-    note("> $line")
+    note("> ${oneLine(line)}")
     withContext(Dispatchers.IO) {
       writer.write(oneLine(line))
       writer.newLine()
@@ -200,7 +211,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
         delay(config.seedPoll)
         continue
       }
-      val refusal = runCatching { config.refuse(seed) }.getOrNull()
+      val refusal = refusalOf(seed)
       if (refusal != null) {
         // Stays stopped, as after a stop by an admin; a start asks again
         note("Not starting ${seed.name}: $refusal")
@@ -239,27 +250,29 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     note("Starting the game server on ${seed.name}")
     val proc = synchronized(processLock) {
       if (stopping) return -1
-      ProcessBuilder(launch.command)
-        .withoutSecrets()
-        .apply {
-          launch.workDir?.let { directory(it.toFile()) }
-          environment().putAll(launch.environment)
+      // One that can't be started (no memory for it, Python missing) counts as a crash: its pauses, then FAILED
+      runCatching { startProcess(launch.command, launch.workDir, launch.environment, input = true) }
+        .getOrElse {
+          note("Can't start the game server on ${seed.name}: ${it.message}")
+          return -1
         }
-        .redirectErrorStream(true)
-        .start()
         .also { process = it; stdin = it.outputStream.bufferedWriter() }
     }
-    // What the server is told before anything else (it reads them once it is up); not noted in the log
-    if (launch.firstLines.isNotEmpty()) {
-      runCatching { stdin?.apply { launch.firstLines.forEach { write(oneLine(it)); newLine() }; flush() } }
-        .onFailure { note("Could not pass the first console lines: ${it.message}") }
+    try {
+      // What the server is told before anything else (it reads them once it is up); not noted in the log
+      if (launch.firstLines.isNotEmpty()) {
+        runCatching { stdin?.apply { launch.firstLines.forEach { write(oneLine(it)); newLine() }; flush() } }
+          .onFailure { note("Could not pass the first console lines: ${it.message}") }
+      }
+      // A kill closes its output: that is its end too
+      proc.eachLine(onLine = ::output)
+      return proc.waitFor()
+    } finally {
+      process = null
+      stdin = null
+      // However it ended (also killed): what depends on it running hears of it
+      if (state.status == GameServerStatus.RUNNING) runCatching { config.onEnded(seed.name) }
     }
-    proc.inputStream.bufferedReader().useLines { lines -> lines.forEach(::output) }
-    val code = proc.waitFor()
-    process = null
-    stdin = null
-    if (state.status == GameServerStatus.RUNNING) runCatching { config.onEnded(seed.name) }
-    return code
   }
 
   private fun endProcess() {
@@ -269,7 +282,8 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     }
     if (!proc.waitFor(config.stopTimeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)) {
       note("The game server didn't end within ${config.stopTimeout}; killing it")
-      proc.destroyForcibly().waitFor()
+      proc.endTree()
+      proc.waitFor()
     }
     process = null
     stdin = null
@@ -277,12 +291,13 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
 
   private fun newestSeed(): Path? {
     if (!config.dataDir.exists()) return null
-    return config.dataDir.listDirectoryEntries()
-      .filter { it.name.endsWith(".archipelago") || (it.name.startsWith("AP_") && it.name.endsWith(".zip")) }
-      .maxByOrNull { it.getLastModifiedTime().toMillis() }
+    return config.dataDir.listDirectoryEntries().filter(::isSeed).maxByOrNull { it.getLastModifiedTime().toMillis() }
   }
 
-  /** A line of the server itself; "server listening" means it accepts clients now. */
+  /** Why [seed] must not be served now; `null`: it may (also when that can't be asked). */
+  private fun refusalOf(seed: Path): String? = runCatching { config.refuse(seed) }.getOrNull()
+
+  /** A line of the server itself (cut as it was read); "server listening" means it accepts clients now. */
   private fun output(line: String) {
     if (state.status == GameServerStatus.STARTING && "server listening" in line) {
       state = state.copy(status = GameServerStatus.RUNNING)
@@ -293,9 +308,9 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     logger.info("[ap] {}", shown)
   }
 
-  /** A line about the server, from the gateway. */
+  /** A line about the server, from the gateway (cut like the server's, then masked). */
   private fun note(text: String) {
-    val shown = withoutPasswords(text)
+    val shown = withoutPasswords(text.take(MAX_LOG_LINE))
     log.add("[gateway] $shown")
     logger.info(shown)
   }
@@ -318,8 +333,11 @@ class LogBuffer(private val capacity: Int) {
    */
   @Synchronized
   fun after(since: Long, max: Int = Int.MAX_VALUE): LogLines {
-    val after = lines.filter { it.n > since }
-    return if (after.size <= max) LogLines(after, last) else after.take(max).let { LogLines(it, it.last().n) }
+    // Numbered without gaps: the first one wanted is found by its number
+    val from = lines.firstOrNull()?.let { (since - it.n + 1).coerceIn(0L, lines.size.toLong()).toInt() } ?: 0
+    if (lines.size - from <= max) return LogLines(lines.subList(from, lines.size).toList(), last)
+    val part = lines.subList(from, from + max).toList()
+    return LogLines(part, part.lastOrNull()?.n ?: since)
   }
 
   /** Every line kept, oldest first. */

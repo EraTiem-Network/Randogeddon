@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.eratiem.randogeddon.database.AppSettingsStore
@@ -116,6 +117,8 @@ private val DATABASE_WAIT = 2.minutes
 fun main() {
   val config = GatewayConfig.from(ApplicationConfig("application.yaml"))
   val options = config.gameServer
+  // The players' YAMLs and outputs a killed gateway's processes left (nothing of this gateway's runs yet)
+  clearProcessTemp()
   // Only reads (and counts the session time); the tracker migrates and makes this login. On a new database that
   // happens a moment after both started: wait for it instead of failing and starting again
   val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3, waitFor = DATABASE_WAIT)
@@ -151,29 +154,31 @@ fun main() {
   val idleMinutes = Cached(30.seconds) { runCatching { settings.idleMinutes() }.getOrDefault(DEFAULT_IDLE_MINUTES) }
   // A session's: kept running, its hosted slots. Unknown (the database didn't answer): it keeps running
   suspend fun rulesOf(session: SessionGameServer): SleepRules =
-    readSeedName(session.roomJson)?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
+    session.room.seedName()?.let { seed -> runCatching { setups.idleRules(seed) }.getOrElse { return SleepRules(keepRunning = true) } }
       ?.let { SleepRules(it.keepRunning, it.hosted, it.direct) } ?: SleepRules()
   // What happens on the game servers, heard here and kept for the tracker
-  val events = SessionEvents(SessionEventStore(database), http, background)
+  val eventStore = SessionEventStore(database)
+  val events = SessionEvents(eventStore, http, background)
+  // How far each seed's spoiler log is, and its kept inputs: written by the generator, read by the logic too
+  val stages = SpoilerStages(dirs)
   // Each session's logic (the available checks), running with its game server and a while after
-  val logic = Logic(archipelago, dirs, apworlds, background)
+  val logic = Logic(archipelago, dirs, apworlds, background, stages = stages)
   val sessions = Sessions(
     dirs, gameServers::get,
-    create = { id, dir, port ->
-      val roomJson = dir.resolve("room.json")
+    create = { id, dir, room, port ->
       GameServer(
         GameServerConfig(
           dataDir = dir,
-          launch = { seed -> launcher.launch(seed, roomJson, port()) },
-          prepare = { seed -> launcher.prepare(seed, roomJson) },
+          launch = { seed -> launcher.launch(seed, room, port()) },
+          prepare = { seed -> launcher.prepare(seed, room.path) },
           // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
           onRunning = { _ ->
-            readSeedName(roomJson)?.let { seed -> count { times.started(seed) } }
-            events.started(id, port(), roomJson)
+            room.seedName()?.let { seed -> count { times.started(seed) } }
+            events.started(id, port(), room)
             logic.serverRunning(id)
           },
           onEnded = { _ ->
-            readSeedName(roomJson)?.let { seed -> count { times.stopped(seed) } }
+            room.seedName()?.let { seed -> count { times.stopped(seed) } }
             events.ended(id)
             logic.serverEnded(id)
           },
@@ -185,7 +190,7 @@ fun main() {
         background,
       )
     },
-    passwords = { roomJson -> SlotPasswordCache(passwordStore, roomJson) },
+    passwords = { room -> SlotPasswordCache(passwordStore, room) },
   )
   // MultiServer and Generate.py load the apworlds from each release's custom_worlds/
   runBlocking { apworlds.syncAll() }
@@ -197,7 +202,7 @@ fun main() {
     while (true) {
       delay(30.seconds)
       sessions.all().filter { it.server.state.status == GameServerStatus.RUNNING }.forEach { session ->
-        readSeedName(session.roomJson)?.let { seed -> count { times.tick(seed) } }
+        session.room.seedName()?.let { seed -> count { times.tick(seed) } }
       }
     }
   }
@@ -219,13 +224,14 @@ fun main() {
     passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
     rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() },
     finished = { id ->
-      sessions.get(id)?.let { readSeedName(it.roomJson) }
+      sessions.get(id)?.room?.seedName()
         ?.let { seed -> runCatching { finishes.of(seed)?.finishedAt != null }.getOrDefault(false) } == true
     },
     scope = background,
   )
   // Seeds are generated with a part of their spoiler log; the rest is completed in the background, after them
-  val generator = Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce)
+  val generator =
+    Generator(archipelago, dirs, apworlds, options.generationMinutes, options.generationsAtOnce, stages = stages)
   val uploadedSeeds = UploadedSeeds(archipelago, dirs, options.dataDir)
   apworlds.beforeChange = generator::yieldBackground
   background.launch { generator.completeSpoilers() }
@@ -282,30 +288,39 @@ fun main() {
           }
           val id = sessionIdOf(call.request.origin.serverHost, path, config.baseDomain)
           val session = if (id != null) sessions.get(id) else sessions.onlyActive()
-          // A sleeping game server starts for its player (if there's room), who waits meanwhile
-          if (session != null && session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {
-            val woke = try {
-              sessions.wake(session.id)
-            } catch (_: ServersBusy) {
-              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Every game server is in use: try again later"))
-              return@webSocket
-            }
-            if (!woke) {
-              close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "The game server didn't start: try again in a moment"))
-              return@webSocket
-            }
-          }
-          val port = session?.port?.takeIf { session.active }
-          if (session == null || port == null) {
-            val why = if (id == null) "Which session? Connect to <session>.<domain>" else "Session $id isn't running"
-            close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, why))
+          val notRunning = if (id == null) "Which session? Connect to <session>.<domain>" else "Session $id isn't running"
+          if (session == null) {
+            close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, notRunning))
             return@webSocket
           }
-          // The gateway listens before a player is in, so the tracker hears of this one too
-          events.awaitListening(session.id)
           // A player keeps it awake; a hosted slot's connection doesn't
           serve(
-            http, "ws://localhost:$port", session.passwords::current, session.passwords::locked, connections,
+            http,
+            // Asked once the connection has its place among the waiting ones: a wake counts against their limits
+            upstreamUrl = upstream@{
+              // A sleeping game server starts for its player (if there's room), who waits meanwhile
+              if (session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {
+                val woke = try {
+                  sessions.wake(session.id)
+                } catch (_: ServersBusy) {
+                  close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Every game server is in use: try again later"))
+                  return@upstream null
+                }
+                if (!woke) {
+                  close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "The game server didn't start: try again in a moment"))
+                  return@upstream null
+                }
+              }
+              val port = session.port?.takeIf { session.active }
+              if (port == null) {
+                close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, notRunning))
+                return@upstream null
+              }
+              // The gateway listens before a player is in, so the tracker hears of this one too
+              events.awaitListening(session.id)
+              "ws://localhost:$port"
+            },
+            passwords = session.passwords::current, locked = session.passwords::locked, connections = connections,
             joined = { slot -> if (slot in rulesOf(session).hosted) null else session.joined() }, clients = session.clients,
           )
         }
@@ -319,13 +334,23 @@ fun main() {
       // MultiServer saves on /exit; a container stop gives the gateway the time for that. Then the last counts.
       logic.stopAll()
       runBlocking {
-        sessions.stopAll()
+        // All at once: each may take its stop time to save, and the container's stop time is for all of them together
+        sessions.all().map { session -> launch { runCatching { session.server.stop() } } }.joinAll()
+        // Their stops, so the tracker doesn't show their players as connected
+        events.flush()
         counts.coroutineContext[Job]?.children?.forEach { it.join() }
       }
       http.close()
       database.close()
     }
-  }.also { runBlocking { sessions.sleepAll() } }.start(wait = true)
+  }.also {
+    runBlocking {
+      sessions.sleepAll()
+      // Nobody is connected to a game server now; the stops a killed gateway didn't write (its players would show as
+      // connected until their session's next start)
+      sessions.all().forEach { session -> events.stopped(session.id) }
+    }
+  }.start(wait = true)
 }
 
 /**

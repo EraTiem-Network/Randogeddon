@@ -15,11 +15,14 @@ import io.ktor.websocket.WebSocketDeflateExtension
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Relay")
@@ -38,12 +41,15 @@ fun Application.gameClientWebSockets() {
 
 /**
  * One game client's connection: its place among the [connections] (only so many of everyone aren't in a slot yet;
- * none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]). Once it is in a slot, [joined] hears of
- * it; what that answers is called when it leaves (`null`: nothing to call, as for a hosted slot).
+ * none free: closed), then relayed to MultiServer at [upstreamUrl] ([relay]). [upstreamUrl] is asked once the client
+ * has its place, so the wake of a sleeping game server counts against the limits of a connection before its
+ * `Connect` (the places, the time); `null`: there's none, and it closed the connection with its reason. Once the
+ * client is in a slot, [joined] hears of it; what that answers is called when it leaves (`null`: nothing to call, as
+ * for a hosted slot).
  */
 suspend fun DefaultWebSocketServerSession.serve(
   http: HttpClient,
-  upstreamUrl: String,
+  upstreamUrl: suspend () -> String?,
   passwords: suspend () -> Map<String, String>,
   locked: suspend () -> Set<String>,
   connections: ConnectionLimits,
@@ -58,7 +64,16 @@ suspend fun DefaultWebSocketServerSession.serve(
     return
   }
   try {
-    relay(http, upstreamUrl, passwords, locked, ticket, connections.limits, joined, clients)
+    val arrived = TimeSource.Monotonic.markNow()
+    val limits = connections.limits
+    var late = true
+    val url = withTimeoutOrNull(limits.connectWithin) { upstreamUrl().also { late = false } }
+    if (late) {
+      logger.info("Closed {}: no game server within {}", address, limits.connectWithin)
+      close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "No Connect: connect again when you are ready"))
+    }
+    if (url == null) return
+    relay(http, url, passwords, locked, ticket, limits, arrived, joined, clients)
   } finally {
     ticket.leave()
   }
@@ -66,8 +81,9 @@ suspend fun DefaultWebSocketServerSession.serve(
 
 /**
  * Relays one game client's connection to MultiServer, both ways, until either side closes. Frames from MultiServer
- * pass unchanged; frames from the client are checked first ([checkClientFrame]). Until its `Connect` passes, the
- * client has [limits]' time and frames ([ticket]: its place among the connections); then it is in a slot.
+ * pass unchanged (but its `RoomInfo`, [askingForPassword]); frames from the client are checked first
+ * ([checkClientFrame]). Until its `Connect` passes, the client has [limits]' time since it [arrived], frames and
+ * packets ([ticket]: its place among the connections); then it is in a slot.
  */
 private suspend fun DefaultWebSocketServerSession.relay(
   http: HttpClient,
@@ -76,23 +92,39 @@ private suspend fun DefaultWebSocketServerSession.relay(
   locked: suspend () -> Set<String>,
   ticket: ConnectionLimits.Ticket,
   limits: Limits,
+  arrived: TimeMark,
   joined: suspend (slot: String) -> (() -> Unit)?,
   clients: SlotClients?,
 ) {
   val client = this
   val address = call.request.origin.remoteHost
   var framesBefore = 0
-  // In a slot: called when it leaves (or connects to another)
-  var leave: (() -> Unit)? = null
+  val before = BeforeConnect(limits.packetsBeforeConnect)
+  // Every slot it passed a Connect for: MultiServer keeps a client in its slot when a later Connect is refused there
+  val slots = mutableSetOf<String>()
+  // In a slot that counts as a player's: called when it leaves (or connects again)
+  var left: (() -> Unit)? = null
+  var opened = false
   try {
     http.webSocket(upstreamUrl) {
+      opened = true
       val upstream = this
       coroutineScope {
-        // The room asks for a password: the slot's (see askingForPassword)
-        val down = launch { pump(from = upstream, to = client) { if (it is Frame.Text) Frame.Text(askingForPassword(it.readText())) else it } }
+        // The room asks for a password: the slot's (see askingForPassword). MultiServer sends its RoomInfo once, first
+        // of all: the frames after it aren't searched
+        var asked = false
+        val down = launch {
+          pump(from = upstream, to = client) { frame ->
+            if (asked || frame !is Frame.Text) return@pump frame
+            val text = frame.readText()
+            val asking = askingForPassword(text)
+            asked = asking !== text
+            if (asked) Frame.Text(asking) else frame
+          }
+        }
         // A connection that never gets into a slot doesn't stay
         val waiting = launch {
-          delay(limits.connectWithin)
+          delay(limits.connectWithin - arrived.elapsedNow())
           if (!ticket.joined) {
             logger.info("Closed {}: no Connect within {}", address, limits.connectWithin)
             client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "No Connect: connect again when you are ready"))
@@ -100,32 +132,46 @@ private suspend fun DefaultWebSocketServerSession.relay(
         }
         val up = launch {
           pump(from = client, to = upstream) { frame ->
-            if (!ticket.joined && ++framesBefore > limits.framesBeforeConnect) {
+            val inSlot = ticket.joined
+            if (!inSlot && ++framesBefore > limits.framesBeforeConnect) {
               logger.info("Closed {}: {} frames without a Connect", address, framesBefore)
               client.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Connect to a slot first"))
               return@pump null
             }
             when (frame) {
-              is Frame.Text -> when (val verdict = checkClientFrame(frame.readText(), passwords, locked)) {
-                Verdict.Forward -> frame
-                is Verdict.Join -> {
-                  ticket.joined()
-                  leave?.invoke()
-                  val left = runCatching { joined(verdict.slot) }.getOrNull()
-                  // Known as the slot's, so taking someone off it can close their connection
-                  clients?.add(verdict.slot, client)
-                  leave = { left?.invoke(); clients?.remove(verdict.slot, client) }
-                  frame
-                }
-                is Verdict.Refuse -> {
-                  logger.info("Refused {} as {}: {}", address, printable(verdict.slot), verdict.why.logged)
-                  client.send(Frame.Text(verdict.why.answer))
-                  null
-                }
-                is Verdict.Close -> {
-                  logger.info("Closed {}: {}", address, verdict.reason)
-                  client.close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Archipelago protocol expected"))
-                  null
+              is Frame.Text -> {
+                // Decoded once; what was checked is what MultiServer gets
+                val text = frame.readText()
+                val since = clients?.mark() ?: 0L
+                when (val verdict = checkClientFrame(text, passwords, locked, before.takeIf { !inSlot })) {
+                  Verdict.Forward -> Frame.Text(text)
+                  is Verdict.Only -> verdict.text?.let { Frame.Text(it) }
+                  is Verdict.Join -> {
+                    ticket.joined()
+                    left?.invoke()
+                    left = runCatching { joined(verdict.slot) }.getOrNull()
+                    slots += verdict.slot
+                    // Known as the slot's, so taking someone off it can close their connection; taken off since the
+                    // check began: closed now, with the password it had
+                    val closed = clients?.add(verdict.slot, client, since)
+                    if (closed == null) {
+                      Frame.Text(text)
+                    } else {
+                      logger.info("Closed {} as {}: taken off the slot while connecting", address, printable(verdict.slot))
+                      client.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, closed))
+                      null
+                    }
+                  }
+                  is Verdict.Refuse -> {
+                    logger.info("Refused {} as {}: {}", address, printable(verdict.slot), verdict.why.logged)
+                    client.send(Frame.Text(verdict.why.answer))
+                    null
+                  }
+                  is Verdict.Close -> {
+                    logger.info("Closed {}: {}", address, verdict.reason)
+                    client.close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Archipelago protocol expected"))
+                    null
+                  }
                 }
               }
               // Archipelago clients send text only; MultiServer would parse binary frames too, so they never get there
@@ -152,28 +198,52 @@ private suspend fun DefaultWebSocketServerSession.relay(
   } catch (e: CancellationException) {
     throw e
   } catch (e: Exception) {
-    logger.warn("MultiServer not reachable for {}: {}", address, e.message ?: e::class.simpleName)
-    client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Game server not reachable"))
+    if (!opened) {
+      logger.warn("MultiServer not reachable for {}: {}", address, e.message ?: e::class.simpleName)
+      client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Game server not reachable"))
+    } else {
+      // Mostly the client's own end: a frame over its limit, or gone while a frame was sent to it
+      logger.info("Ended {}: {}", address, e.message ?: e::class.simpleName)
+      runCatching { client.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Connection ended: connect again")) }
+    }
   } finally {
-    leave?.invoke()
+    left?.invoke()
+    slots.forEach { clients?.remove(it, client) }
   }
 }
 
 /** A session's game clients in a slot, by slot: closed together when someone is taken off the slot. */
 class SlotClients {
-  private val bySlot = java.util.concurrent.ConcurrentHashMap<String, MutableSet<DefaultWebSocketSession>>()
+  private val bySlot = HashMap<String, MutableSet<DefaultWebSocketSession>>()
 
-  fun add(slot: String, client: DefaultWebSocketSession) {
-    bySlot.computeIfAbsent(slot) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(client)
+  /** Each slot's last [close]: its number among them, and its reason. */
+  private val closed = HashMap<String, Pair<Long, String>>()
+  private var closes = 0L
+
+  /** The [close]s so far: given to [add] by a client that is about to be checked. */
+  fun mark(): Long = synchronized(this) { closes }
+
+  /**
+   * Files [client] under [slot]; `null` when it is, else the reason [slot] was closed with since [since] (its
+   * [mark] before its `Connect` was checked, maybe with the password from before): then it is closed by the caller.
+   */
+  fun add(slot: String, client: DefaultWebSocketSession, since: Long = mark()): String? = synchronized(this) {
+    val last = closed[slot]
+    if (last != null && last.first > since) return last.second
+    bySlot.getOrPut(slot) { mutableSetOf() }.add(client)
+    null
   }
 
   fun remove(slot: String, client: DefaultWebSocketSession) {
-    bySlot[slot]?.remove(client)
+    synchronized(this) { bySlot[slot]?.remove(client) }
   }
 
-  /** Closes every connection in [slot] ([reason] to the client); how many there were. */
+  /** Closes every connection in [slot] ([reason] to the client), also one still being let in; how many there were. */
   suspend fun close(slot: String, reason: String): Int {
-    val now = bySlot.remove(slot).orEmpty().toList()
+    val now = synchronized(this) {
+      closed[slot] = ++closes to reason
+      bySlot.remove(slot).orEmpty().toList()
+    }
     now.forEach { runCatching { it.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, reason)) } }
     return now.size
   }
@@ -182,11 +252,11 @@ class SlotClients {
 /** Sends every data frame of [from] on to [to], after [map] (which may drop it by returning `null`). */
 private suspend fun pump(from: DefaultWebSocketSession, to: DefaultWebSocketSession, map: suspend (Frame) -> Frame?) {
   for (frame in from.incoming) {
-    if (frame !is Frame.Text && frame !is Frame.Binary) continue
-    // A fresh frame: the received one may still carry compression flags of its own connection
+    // A fresh frame of the same bytes: the received one may still carry compression flags of its own connection
     val copy = when (frame) {
-      is Frame.Text -> Frame.Text(frame.readText())
-      else -> Frame.Binary(true, frame.data)
+      is Frame.Text -> Frame.Text(true, frame.data)
+      is Frame.Binary -> Frame.Binary(true, frame.data)
+      else -> continue
     }
     map(copy)?.let { to.send(it) }
   }

@@ -32,4 +32,26 @@ class MinecraftTest {
     assertEquals("""{"player_name":"Erin-Dig","client_version":16}""", slots.last().data)
     Files.delete(seed)
   }
+
+  @Test
+  fun `a patch whose data json is too long is no slot, and isn't read whole`() {
+    val seed = Files.createTempFile("AP_123", ".zip")
+    seed.writeBytes(
+      zip(
+        "AP_123_P1_Huge.apmcdig" to zip("data.json" to ByteArray(MAX_DIG_DATA + 1) { 'x'.code.toByte() }),
+        "AP_123_P2_Fits.apmcdig" to zip("data.json" to ByteArray(MAX_DIG_DATA) { 'y'.code.toByte() }),
+      ),
+    )
+    assertEquals(listOf("Fits"), digSlots(seed).map { it.name })
+    Files.delete(seed)
+  }
+
+  @Test
+  fun `a deleted session's servers are its own, not those of a session whose ID starts the same`() {
+    val keys = listOf("abc-p1", "abc-p12", "abc-party-p2", "abc-p1-p1", "abcd-p1", "abc-p", "xabc-p1")
+    assertEquals(listOf("abc-p1", "abc-p12"), serverKeysOf("abc", keys))
+    assertEquals(listOf("abc-p1-p1"), serverKeysOf("abc-p1", keys))
+    assertEquals(listOf("abc-party-p2"), serverKeysOf("abc-party", keys))
+    assertEquals(emptyList(), serverKeysOf("ab", keys))
+  }
 }

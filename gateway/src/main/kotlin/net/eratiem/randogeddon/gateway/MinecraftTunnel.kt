@@ -24,6 +24,7 @@ import kotlinx.serialization.json.putJsonObject
 import net.eratiem.randogeddon.shared.MinecraftStatus
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 import net.eratiem.randogeddon.database.minecraftTunnelKey
 import kotlin.time.Duration.Companion.minutes
@@ -42,6 +43,9 @@ private const val MAX_FIRST_PACKET = 4096
 private val START_WAIT = 4.minutes
 private val KEEP_WAITING = 10.seconds
 
+/** The tunnels' connections to their Minecraft servers: one selector (a thread of its own) for all, for good. */
+private val tunnelSelector by lazy { SelectorManager(Dispatchers.IO) }
+
 /** One Minecraft packet as it came: its bytes (with its length), its ID, its body. */
 internal class Packet(val raw: ByteArray, val id: Int, val body: ByteArray)
 
@@ -59,20 +63,10 @@ internal class PacketReader(private val next: suspend () -> ByteArray?) {
     return buffer[at++].toInt() and 0xff
   }
 
-  private suspend fun varInt(): Int {
-    var value = 0
-    for (i in 0 until 5) {
-      val b = byte()
-      value = value or ((b and 0x7f) shl (7 * i))
-      if (b and 0x80 == 0) return value
-    }
-    throw IllegalStateException("a VarInt longer than 5 bytes")
-  }
-
   /** The next packet. */
   suspend fun packet(): Packet {
     val start = ByteArrayOutputStream()
-    val length = varInt()
+    val length = varInt { byte() }.first
     require(length in 1..MAX_FIRST_PACKET) { "a packet of $length bytes" }
     writeVarInt(start, length)
     val body = ByteArray(length) { byte().toByte() }
@@ -129,15 +123,24 @@ internal fun writeVarInt(out: ByteArrayOutputStream, value: Int) {
   }
 }
 
-/** A VarInt at [from] in [bytes]: its value and its length. */
-internal fun readVarInt(bytes: ByteArray, from: Int): Pair<Int, Int> {
+/** A VarInt read byte by byte from [next]: its value and its length. */
+internal inline fun varInt(next: () -> Int): Pair<Int, Int> {
   var value = 0
   for (i in 0 until 5) {
-    val b = bytes[from + i].toInt() and 0xff
+    val b = next()
     value = value or ((b and 0x7f) shl (7 * i))
     if (b and 0x80 == 0) return value to i + 1
   }
-  throw IllegalStateException("a VarInt longer than 5 bytes")
+  throw IllegalArgumentException("a VarInt longer than 5 bytes")
+}
+
+/** A VarInt at [from] in [bytes]: its value and its length. */
+internal fun readVarInt(bytes: ByteArray, from: Int): Pair<Int, Int> {
+  var at = from
+  return varInt {
+    require(at in bytes.indices) { "a VarInt past the packet's end" }
+    bytes[at++].toInt() and 0xff
+  }
 }
 
 /** A packet of [id] with [body], as it goes over the wire (no compression). */
@@ -156,6 +159,8 @@ internal fun nextState(handshake: Packet): Int? {
   if (handshake.id != 0) return null
   var at = readVarInt(handshake.body, 0).second // protocol
   val (addressLength, lengthBytes) = readVarInt(handshake.body, at)
+  // The packet is at most MAX_FIRST_PACKET long: a length past it leads out of the handshake
+  require(addressLength in 0..MAX_FIRST_PACKET) { "an address of $addressLength bytes" }
   at += lengthBytes + addressLength + 2 // address, port
   return readVarInt(handshake.body, at).first
 }
@@ -243,6 +248,9 @@ suspend fun minecraftTunnel(ws: WebSocketSession, minecraft: Minecraft, id: Stri
     // The client went while it waited
   } catch (e: IllegalArgumentException) {
     logger.debug("A tunnel for {}'s {}: {}", id, slot, e.message)
+  } catch (e: IOException) {
+    // The client's connection broke, or the Minecraft server's (it ended, or can't be reached)
+    logger.debug("A tunnel for {}'s {}: {}", id, slot, e.message ?: e::class.simpleName)
   } finally {
     ws.close(CloseReason(CloseReason.Codes.NORMAL, ""))
   }
@@ -251,27 +259,25 @@ suspend fun minecraftTunnel(ws: WebSocketSession, minecraft: Minecraft, id: Stri
 /** The server takes over: [held] first, then every byte both ways until either side ends. */
 private suspend fun pass(ws: WebSocketSession, minecraft: Minecraft, id: String, slot: String, held: List<ByteArray>, rest: ByteArray) {
   val (host, port) = minecraft.address(id, slot) ?: return
-  SelectorManager(Dispatchers.IO).use { selector ->
-    aSocket(selector).tcp().connect(host, port).use { socket ->
-      val toServer = socket.openWriteChannel(autoFlush = true)
-      val fromServer = socket.openReadChannel()
-      held.forEach { toServer.writeFully(it) }
-      if (rest.isNotEmpty()) toServer.writeFully(rest)
-      coroutineScope {
-        val down = launch {
-          val buffer = ByteArray(16 * 1024)
-          while (true) {
-            val n = fromServer.readAvailable(buffer)
-            if (n < 0) break
-            if (n > 0) ws.send(Frame.Binary(true, buffer.copyOf(n)))
-          }
-          ws.close(CloseReason(CloseReason.Codes.NORMAL, ""))
+  aSocket(tunnelSelector).tcp().connect(host, port).use { socket ->
+    val toServer = socket.openWriteChannel(autoFlush = true)
+    val fromServer = socket.openReadChannel()
+    held.forEach { toServer.writeFully(it) }
+    if (rest.isNotEmpty()) toServer.writeFully(rest)
+    coroutineScope {
+      val down = launch {
+        val buffer = ByteArray(16 * 1024)
+        while (true) {
+          val n = fromServer.readAvailable(buffer)
+          if (n < 0) break
+          if (n > 0) ws.send(Frame.Binary(true, buffer.copyOf(n)))
         }
-        for (frame in ws.incoming) {
-          if (frame is Frame.Binary) toServer.writeFully(frame.readBytes())
-        }
-        down.cancel()
+        ws.close(CloseReason(CloseReason.Codes.NORMAL, ""))
       }
+      for (frame in ws.incoming) {
+        if (frame is Frame.Binary) toServer.writeFully(frame.readBytes())
+      }
+      down.cancel()
     }
   }
 }

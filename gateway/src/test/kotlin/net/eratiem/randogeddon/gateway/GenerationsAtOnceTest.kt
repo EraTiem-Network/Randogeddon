@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.UploadedYaml
 import org.junit.Assume.assumeFalse
 import java.nio.file.Files
@@ -25,6 +26,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -84,6 +86,35 @@ class GenerationsAtOnceTest {
     val counted = root.resolve("most.txt").readText().lines().filter { it.isNotBlank() }.map { it.trim().toInt() }
     assertEquals(3, counted.size)
     assertEquals(2, counted.max(), "at once: $counted")
+  }
+
+  @Test
+  fun `one waiting for its place ends at once when cancelled, and a session generates once at a time`() = runBlocking<Unit> {
+    home.resolve("Generate.py").writeText("out=\"${'$'}4\"\nsleep 3\ntouch \"${'$'}out/AP_${'$'}${'$'}.zip\"\n")
+    val generator = generator(atOnce = 1)
+    val first = scope.async { generator.generate("brave-otter", request) }
+    await { generator.log("brave-otter", 0, 100)?.lines.orEmpty().any { it.text.startsWith("$ cd ") } }
+    // A doubled request: refused while the first runs
+    assertFailsWith<IllegalStateException> { generator.generate("brave-otter", request) }
+
+    val second = scope.async { generator.generate("quiet-fox", request) }
+    await { generator.progress("quiet-fox")?.stage == GenerationStage.WAITING }
+    assertTrue(generator.cancel("quiet-fox"))
+    assertTrue(withTimeout(1.seconds) { second.await() }.cancelled)
+    assertNull(generator.progress("quiet-fox"))
+    assertNotNull(first.await().seedName)
+  }
+
+  @Test
+  fun `a session deleted while it is generated ends its generation and leaves no log to a new one of its ID`() = runBlocking {
+    home.resolve("Generate.py").writeText("out=\"${'$'}4\"\nsleep 30\ntouch \"${'$'}out/AP_${'$'}${'$'}.zip\"\n")
+    val generator = generator(atOnce = 1)
+    val run = scope.async { generator.generate("brave-otter", request) }
+    await { generator.log("brave-otter", 0, 100)?.lines.orEmpty().any { it.text.startsWith("$ cd ") } }
+    generator.dropSpoiler("brave-otter")
+    assertTrue(withTimeout(5.seconds) { run.await() }.cancelled)
+    assertNull(generator.log("brave-otter", 0, 100))
+    assertNull(SessionDirs(data).seed("brave-otter"))
   }
 
   @Test

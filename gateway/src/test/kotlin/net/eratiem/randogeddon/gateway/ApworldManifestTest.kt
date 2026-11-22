@@ -43,4 +43,23 @@ class ApworldManifestTest {
     // Not a zip at all
     assertNull(apworldManifest(Files.createTempFile("broken", ".apworld").also { Files.writeString(it, "PK fake") }))
   }
+
+  @Test
+  fun `the upload's check reads the same manifest as the library's list`() {
+    val manifest = """{"game": "Anno 1800", "world_version": "1.5.1"}"""
+    val worlds = listOf(
+      apworld("a1800/__init__.py" to "", "a1800/archipelago.json" to manifest),
+      apworld("a1800/__init__.py" to "", "archipelago.json" to manifest),
+      // Both: the shorter path wins
+      apworld(
+        "a1800/__init__.py" to "", "a1800/archipelago.json" to """{"game": "Other"}""", "archipelago.json" to manifest,
+      ),
+      apworld("a1800/__init__.py" to "", "a1800/data/archipelago.json" to manifest),
+      apworld("a1800/__init__.py" to "", "a1800/archipelago.json" to "not json"),
+      apworld("a1800/__init__.py" to ""),
+    )
+    val anno = ApworldManifest("Anno 1800", "1.5.1", null)
+    assertEquals(listOf(anno, anno, anno, null, null, null), worlds.map { apworldManifest(it) })
+    assertEquals(worlds.map { apworldManifest(it) }, worlds.map { lookAt(Files.readAllBytes(it)).manifest })
+  }
 }

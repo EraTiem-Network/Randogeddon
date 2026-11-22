@@ -118,6 +118,76 @@ class ConnectCheckTest {
     assertIs<Verdict.Close>(checkClientFrame("not json", passwords))
   }
 
+  /** The check before the client's Connect passed, with [before] for what it may still send. */
+  private fun checkBefore(text: String, before: BeforeConnect = BeforeConnect(32)) =
+    runBlocking { net.eratiem.randogeddon.gateway.checkClientFrame(text, { passwords }, before = before) }
+
+  @Test
+  fun `a packet that isn't an object with a command closes the connection`() {
+    // MultiServer would log each whole, then end the connection
+    for (frame in listOf("""[{}]""", """[[1]]""", """[1]""", """[{"cmd":"GetDataPackage"},{"text":"x"}]""")) {
+      assertIs<Verdict.Close>(checkBefore(frame), frame)
+      assertIs<Verdict.Close>(checkClientFrame(frame, passwords), frame)
+    }
+    // Before the Connect the command is a string; after it, MultiServer answers anything else itself
+    assertIs<Verdict.Close>(checkBefore("""[{"cmd":5}]"""))
+    assertEquals(Verdict.Forward, checkClientFrame("""[{"cmd":5}]""", passwords))
+  }
+
+  @Test
+  fun `before the Connect only the data package and the Connect go on`() {
+    assertEquals(Verdict.Forward, checkBefore("""[{"cmd":"GetDataPackage","games":["Hollow Knight"]}]"""))
+    assertEquals(Verdict.Forward, checkBefore("""[]"""))
+    assertEquals(Verdict.Only(null), checkBefore("""[{"cmd":"Say","text":"Connect me pls"}]"""))
+    assertEquals(
+      Verdict.Only("""[{"cmd":"GetDataPackage","games":["A"]}]"""),
+      checkBefore("""[{"cmd":"LocationChecks","locations":[1]},{"cmd":"GetDataPackage","games":["A"]},{"cmd":"Sync"}]"""),
+    )
+    // A frame with a Connect that passes goes on whole: the packets after it are the slot's
+    val withConnect = """[{"cmd":"GetDataPackage"},{"cmd":"Connect","name":"Alice-HK","password":"s3cr3t!"},{"cmd":"Sync"}]"""
+    assertEquals(Verdict.Join("Alice-HK"), checkBefore(withConnect))
+    // After the Connect, everything
+    assertEquals(Verdict.Forward, checkClientFrame("""[{"cmd":"Say","text":"hi"}]""", passwords))
+  }
+
+  @Test
+  fun `before the Connect the packets are counted over every frame`() {
+    val before = BeforeConnect(3)
+    assertEquals(Verdict.Forward, checkBefore("""[{"cmd":"GetDataPackage"},{"cmd":"GetDataPackage"}]""", before))
+    assertEquals(1, before.packetsLeft)
+    assertIs<Verdict.Close>(checkBefore("""[{"cmd":"GetDataPackage"},{"cmd":"GetDataPackage"}]""", before))
+    // One frame full of them
+    assertIs<Verdict.Close>(checkBefore((1..33).joinToString(",", "[", "]") { """{"cmd":"GetDataPackage"}""" }))
+  }
+
+  @Test
+  fun `real clients' openings pass`() {
+    // CommonClient: the games it lacks in one request, then the Connect
+    val before = BeforeConnect(Limits().packetsBeforeConnect)
+    assertEquals(Verdict.Forward, checkBefore("""[{"cmd":"GetDataPackage","games":["Archipelago","Hollow Knight"]}]""", before))
+    val connect = """[{"cmd":"Connect","password":"s3cr3t!","name":"Alice-HK","version":{"major":0,"minor":6,"build":8,"class":"Version"},""" +
+      """"tags":["AP"],"items_handling":7,"uuid":"6c1f","game":"Hollow Knight","slot_data":true}]"""
+    assertEquals(Verdict.Join("Alice-HK"), checkBefore(connect, before))
+    // A client asking one game a frame, for a multiworld of twenty games
+    val oneByOne = BeforeConnect(Limits().packetsBeforeConnect)
+    repeat(20) { assertEquals(Verdict.Forward, checkBefore("""[{"cmd":"GetDataPackage","games":["Game $it"]}]""", oneByOne)) }
+    assertEquals(Verdict.Join("Alice-HK"), checkBefore(connect, oneByOne))
+    // The Connect in the same frame as the request
+    assertEquals(
+      Verdict.Join("Alice-HK"),
+      checkBefore("""[{"cmd":"GetDataPackage","games":["Hollow Knight"]},{"cmd":"Connect","name":"Alice-HK","password":"s3cr3t!","game":""}]"""),
+    )
+  }
+
+  @Test
+  fun `the password is compared as a whole, in any script`() {
+    val unicode = mapOf("Alice-HK" to "pässwörd-日本")
+    assertEquals(Verdict.Join("Alice-HK"), checkClientFrame(connect("Alice-HK", "pässwörd-日本"), unicode))
+    assertEquals(Verdict.Refuse("Alice-HK"), checkClientFrame(connect("Alice-HK", "pässwörd-日"), unicode))
+    assertEquals(Verdict.Refuse("Alice-HK"), checkClientFrame(connect("Alice-HK", "pässwörd-日本x"), unicode))
+    assertEquals(Verdict.Refuse("Alice-HK"), checkClientFrame(connect("Alice-HK", "passwörd-日本"), unicode))
+  }
+
   @Test
   fun `duplicate keys are read like MultiServer reads them`() {
     // Python's json.loads keeps the last of duplicate keys, and so does this parser: both see the same password
