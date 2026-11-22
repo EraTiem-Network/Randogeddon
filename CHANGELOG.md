@@ -12,6 +12,18 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.6: The map says what is blocked, and is tighter
+- A region the slot's logic can't reach with the items it has (an area that opens with an item still to come, and
+  what lies behind it) is marked on the map: a lock before its name, a dashed edge, its box dimmed, and a dashed line
+  into it and on from it; *Not reachable yet* on hover and, with how many, beside the map's filters. From the logic's
+  own state, with the available checks: it says nothing about who or what blocks it. A region reached another way
+  than the line drawn to it stays open (the line from a blocked box to it is dashed). After an update a session's
+  logic says so once it was built again.
+- The *received* and *sent* pills of a slot count every item, as its *Transported items* lists them (they counted
+  progression items only, without saying so).
+- The map is tighter: smaller dots (12 a row), lower boxes, less room between them, and a box that leads nowhere
+  stands right below the one before it, beside what that one leads to, instead of below all of it.
+
 ### 0.23.2.5: Lighter builds
 - native-image builds the tracker and the gateway with a heap of 6 GB at most (`NATIVE_MAX_HEAP`): by itself it took
   three quarters of the machine's memory (12 GB of 16), and a PC doing other things ran out.

@@ -1258,3 +1258,10 @@ games' real map images moved to Later.*
 - [x] Lighter builds (asked for on 2026-11-22: the demo's builds were stopped for low memory, the IDE can't be
       closed while a session runs; the user chose): native-image's heap capped (6 GB), the demo's builds quick,
       and a demo on published images with only the web app built (`DEMO_IMAGES`) (0.23.2.5)
+- [x] The map marks what is blocked (asked for on 2026-11-22): a region the slot's logic can't reach now (and the
+      line into it) is shown as blocked, e.g. an area without checks that opens with an item still to come. Not
+      by whom. For sure: from the logic run's own state (the regions it reaches with the items received), with the
+      available checks (0.23.2.6)
+- [x] The map more compact (asked for on 2026-11-22: "currently it's crazy spread out") (0.23.2.6)
+- [x] The sent and received pills count all items (asked for on 2026-11-22: they showed progression only and
+      didn't match the slot's lists) (0.23.2.6)

@@ -53,6 +53,8 @@ The parts:
     - [ ] Left by its fixes: a patch for Minecraft Dig is still read whole when its slots are looked up (only its
           `data.json` has a limit); the question whether a server is finished asks the database every 3 s per
           running Minecraft server
+- [ ] The spoiler page's full log and paths as views like the playthrough's (asked for on 2026-11-22) instead of
+      plain text
 - [ ] 0.23.3: Randogeddon Bridge (the key, the relays, the tunnel, its page, the downloads' signing)
 - [ ] 0.23.4: the database (the stores, the roles, the migrations)
     - Noted by the tracker's scan: `EmailChangeStore.take` selects and then deletes (not atomic; harmless so far)
