@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -50,6 +51,7 @@ import net.eratiem.randogeddon.webapp.app.LocalFonts
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.Dot
+import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -72,6 +74,8 @@ internal enum class MapFilter { ALL, OPEN, AVAILABLE }
  * others it connects to (said on hover, without a line: lines for them would cross).
  */
 internal class MapNode(val name: String, val locations: List<String>) {
+  /** Its region isn't reached by the slot's logic now: its box and the line into it say so. */
+  var blocked = false
   var column = 0
   var x = 0f
   var y = 0f
@@ -84,15 +88,17 @@ internal class MapNode(val name: String, val locations: List<String>) {
 /** A map laid out: its boxes (each with the ones it leads to) and its size in dp. */
 internal class MapLayout(val nodes: List<MapNode>, val width: Float, val height: Float)
 
-private const val DOTS_PER_ROW = 10
-private const val DOT = 10f
-private const val DOT_STEP = 14f
-private const val HEADER = 28f
-private const val PADDING = 10f
-private const val NODE_WIDTH = 2 * 12f + DOTS_PER_ROW * DOT_STEP - (DOT_STEP - DOT)
+private const val DOTS_PER_ROW = 12
+private const val DOT = 8f
+private const val DOT_STEP = 11f
+private const val HEADER = 22f
+private const val PADDING = 6f
+/** Beside a box's dots and its name. */
+private const val SIDE = 8f
+private const val NODE_WIDTH = 2 * SIDE + DOTS_PER_ROW * DOT_STEP - (DOT_STEP - DOT)
 /** Between two columns: room for the line that branches off to a box's targets, in its middle. */
-private const val COLUMN_GAP = 36f
-private const val ROW_GAP = 12f
+private const val COLUMN_GAP = 26f
+private const val ROW_GAP = 6f
 /** Between the parts of a map that aren't reached from each other. */
 private const val PART_GAP = 28f
 /** Left free beside the boxes for the bars that scroll the map. */
@@ -137,7 +143,8 @@ private val WORD = Regex("[ _]+")
 /**
  * [map] laid out as a tree from its start, left to right: a box's column is how far it is from the start, and the
  * boxes first reached from it (and a big region's name groups) stand in the next column, one below the other from
- * its own height on; whatever they lead to takes its room below them before the next one. So every line stays in
+ * its own height on; whatever they lead to takes its room below them before the next one that leads on (one that
+ * leads nowhere stands right below the box before it, beside what that one leads to). So every line stays in
  * the gap between two columns, beside the boxes it joins: none crosses a box or another line. What a box connects to
  * besides (a way back, a second way in) is kept as [MapNode.also]. Parts that can't be reached from the start follow
  * below it, each from its own first box.
@@ -150,13 +157,13 @@ internal fun layoutMap(map: MapView): MapLayout {
   map.regions.forEachIndexed { i, region ->
     val split = nameGroups(region.locations)
     regionNode[i] = nodes.size
-    nodes += MapNode(region.name, split?.first ?: region.locations)
+    nodes += MapNode(region.name, split?.first ?: region.locations).also { it.blocked = i in map.blocked }
     split?.second?.forEach { (name, locations) -> groups += Triple(regionNode[i], name, locations) }
   }
   val regions = nodes.size
   for ((parent, name, locations) in groups) {
     nodes[parent].children += nodes.size
-    nodes += MapNode(name, locations)
+    nodes += MapNode(name, locations).also { it.blocked = nodes[parent].blocked }
   }
   val neighbours = Array(regions) { mutableListOf<Int>() }
   for (pair in map.links) {
@@ -198,9 +205,17 @@ internal fun layoutMap(map: MapView): MapLayout {
     node.x = MARGIN + column * (NODE_WIDTH + COLUMN_GAP)
     node.y = top
     deepest = max(deepest, column)
-    var y = top
-    for (child in node.children) y += place(child, column + 1, y) + ROW_GAP
-    return max(node.height, y - top - if (node.children.isEmpty()) 0f else ROW_GAP)
+    // Where the next column's next box goes at the earliest, and where everything the boxes before lead to ends
+    var below = top
+    var deep = top
+    for (child in node.children) {
+      // One that leads on needs the columns behind it free; one that doesn't only its own place
+      val y = if (nodes[child].children.isEmpty()) below else max(below, deep)
+      val room = place(child, column + 1, y)
+      below = y + nodes[child].height + ROW_GAP
+      deep = max(deep, y + room + ROW_GAP)
+    }
+    return max(node.height, max(below, deep) - top - if (node.children.isEmpty()) 0f else ROW_GAP)
   }
   var y = MARGIN
   for (root in roots) y += place(root, 0, y) + PART_GAP
@@ -249,6 +264,7 @@ internal fun WorldMap(
   val counts = remember(layout, missing, available) {
     layout.nodes.flatMap { it.locations }.groupingBy { stateOf(it) }.eachCount()
   }
+  val blocked = map.blocked.size
   val stateText = { state: MapState ->
     when (state) {
       MapState.CHECKED -> t.dialogs.mapChecked
@@ -264,8 +280,8 @@ internal fun WorldMap(
     }
   }
   val measurer = rememberTextMeasurer()
-  val nameStyle = TextStyle(color = p.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = fonts.text)
-  val countStyle = TextStyle(color = p.muted, fontSize = 11.sp, fontFamily = fonts.text)
+  val nameStyle = TextStyle(color = p.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = fonts.text)
+  val countStyle = TextStyle(color = p.muted, fontSize = 10.5.sp, fontFamily = fonts.text)
 
   val large = size != MapSize.PANEL
   Column(if (large) Modifier.fillMaxSize() else Modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -294,6 +310,13 @@ internal fun WorldMap(
           Txt("${stateText(state)} (${t.number(counts[state] ?: 0)})", size = 12.sp, color = p.muted)
         }
       }
+      // The regions its logic doesn't reach now, if any: a lock and a dashed edge
+      if (blocked > 0) {
+        Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+          DrawnIcon(Icon.LOCK, p.muted, 11.dp)
+          Txt("${t.dialogs.mapBlocked} (${t.number(blocked)})", size = 12.sp, color = p.muted)
+        }
+      }
     }
     // A view onto the map, as tall as it at most: larger than it, the map is scrolled by the view's bars or by
     // dragging it (room for the bars beside the boxes)
@@ -313,8 +336,8 @@ internal fun WorldMap(
                 val y = at.y / density
                 val node = layout.nodes.firstOrNull { x in it.x..(it.x + NODE_WIDTH) && y in it.y..(it.y + it.height) }
                 hovered = node?.let { n ->
-                  val i = ((y - n.y - HEADER) / DOT_STEP).toInt() * DOTS_PER_ROW + ((x - n.x - 12f) / DOT_STEP).toInt()
-                  val inDots = y >= n.y + HEADER && x >= n.x + 12f && x < n.x + 12f + DOTS_PER_ROW * DOT_STEP
+                  val i = ((y - n.y - HEADER) / DOT_STEP).toInt() * DOTS_PER_ROW + ((x - n.x - SIDE) / DOT_STEP).toInt()
+                  val inDots = y >= n.y + HEADER && x >= n.x + SIDE && x < n.x + SIDE + DOTS_PER_ROW * DOT_STEP
                   val location = n.locations.getOrNull(i)?.takeIf { inDots }
                   if (location != null) Hovered(location, stateOf(location), Offset(x, y), n) else Hovered(n.name, null, Offset(x, y), n)
                 }
@@ -326,6 +349,9 @@ internal fun WorldMap(
           // One line from each box to what it leads to: out of its right edge into the gap, down the gap's middle,
           // and off to each target's left edge (its first target stands at its own height: straight across)
           val line = Stroke(1.5f * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
+          // The way into a box the logic doesn't reach now (and on from one): dashed
+          val dashes = PathEffect.dashPathEffect(floatArrayOf(4f * d, 4f * d))
+          val closed = Stroke(1.5f * d, cap = StrokeCap.Butt, join = StrokeJoin.Round, pathEffect = dashes)
           for (node in layout.nodes) {
             if (node.children.isEmpty()) continue
             val from = node.y + HEADER / 2
@@ -336,43 +362,59 @@ internal fun WorldMap(
                 moveTo((node.x + NODE_WIDTH) * d, from * d)
                 lineTo(trunk * d, from * d)
                 lineTo(trunk * d, (targets.maxOf { it.y } + HEADER / 2) * d)
-                for (target in targets) {
-                  moveTo(trunk * d, (target.y + HEADER / 2) * d)
-                  lineTo(target.x * d, (target.y + HEADER / 2) * d)
-                }
               },
-              p.muted.copy(alpha = 0.55f), style = line,
+              p.muted.copy(alpha = if (node.blocked) 0.4f else 0.55f), style = if (node.blocked) closed else line,
             )
+            for (target in targets) {
+              val shut = node.blocked || target.blocked
+              drawLine(
+                p.muted.copy(alpha = if (shut) 0.4f else 0.55f), Offset(trunk * d, (target.y + HEADER / 2) * d),
+                Offset(target.x * d, (target.y + HEADER / 2) * d), 1.5f * d, StrokeCap.Butt,
+                pathEffect = if (shut) dashes else null,
+              )
+            }
           }
           // What the box under the pointer connects to besides: their edges say so
           val also = hovered?.node?.also.orEmpty()
           for (node in layout.nodes) {
             val states = node.locations.map { stateOf(it) }
             val anyShown = states.any { shown(it) } || filter == MapFilter.ALL
-            val dim = if (anyShown) 1f else 0.35f
+            val dim = (if (anyShown) 1f else 0.35f) * if (node.blocked) 0.6f else 1f
             val topLeft = Offset(node.x * d, node.y * d)
             val size = Size(NODE_WIDTH * d, node.height * d)
-            drawRoundRect(p.panel.copy(alpha = dim), topLeft, size, CornerRadius(10 * d))
-            // Something available in it: its edge says so
-            val edge = if (MapState.AVAILABLE in states) p.ok else p.border
-            drawRoundRect(edge.copy(alpha = dim), topLeft, size, CornerRadius(10 * d), style = Stroke(1.2f * d))
+            drawRoundRect(p.panel.copy(alpha = dim), topLeft, size, CornerRadius(8 * d))
+            // Something available in it: its edge says so; not reached by the logic now: a dashed one
+            val edge = if (MapState.AVAILABLE in states) p.ok else if (node.blocked) p.muted else p.border
+            drawRoundRect(
+              edge.copy(alpha = dim), topLeft, size, CornerRadius(8 * d),
+              style = Stroke(1.2f * d, pathEffect = if (node.blocked) dashes else null),
+            )
             if (layout.nodes.indexOf(node) in also) {
-              drawRoundRect(p.accent, topLeft, size, CornerRadius(10 * d), style = Stroke(2f * d))
+              drawRoundRect(p.accent, topLeft, size, CornerRadius(8 * d), style = Stroke(2f * d))
             }
             val done = states.count { it == MapState.CHECKED }
             val count = if (node.locations.isEmpty()) "" else "$done/${node.locations.size}"
             val countWidth = if (count.isEmpty()) 0f else measurer.measure(count, countStyle).size.width.toFloat()
+            // A lock before its name: not reached now (its body, and its shackle above)
+            val lock = if (node.blocked) 11f else 0f
+            if (node.blocked) {
+              val c = p.muted.copy(alpha = if (anyShown) 0.9f else 0.35f)
+              val left = (node.x + SIDE) * d
+              val top = (node.y + 6f) * d
+              drawRoundRect(c, Offset(left, top + 4f * d), Size(8f * d, 6f * d), CornerRadius(1.5f * d))
+              drawArc(c, 180f, 180f, false, Offset(left + 1.5f * d, top), Size(5f * d, 7f * d), style = Stroke(1.3f * d))
+            }
             drawText(
-              measurer, node.name, Offset((node.x + 10f) * d, (node.y + 6f) * d),
+              measurer, node.name, Offset((node.x + SIDE + lock) * d, (node.y + 3f) * d),
               nameStyle.copy(color = p.text.copy(alpha = dim)), TextOverflow.Ellipsis, softWrap = false, maxLines = 1,
-              size = Size(max(1f, (NODE_WIDTH - 20f) * d - countWidth - 6 * d), 18 * d),
+              size = Size(max(1f, (NODE_WIDTH - 2 * SIDE - lock) * d - countWidth - 6 * d), 17 * d),
             )
-            if (count.isNotEmpty()) drawText(measurer, count, Offset((node.x + NODE_WIDTH - 10f) * d - countWidth, (node.y + 7f) * d), countStyle)
+            if (count.isNotEmpty()) drawText(measurer, count, Offset((node.x + NODE_WIDTH - SIDE) * d - countWidth, (node.y + 4f) * d), countStyle)
             states.forEachIndexed { i, state ->
-              val cx = node.x + 12f + (i % DOTS_PER_ROW) * DOT_STEP + DOT / 2
+              val cx = node.x + SIDE + (i % DOTS_PER_ROW) * DOT_STEP + DOT / 2
               val cy = node.y + HEADER + (i / DOTS_PER_ROW) * DOT_STEP + DOT / 2
               val c = colour(state).copy(alpha = if (shown(state)) 1f else 0.15f)
-              if (state == MapState.OPEN) drawCircle(c, DOT / 2 * d - 0.8f * d, Offset(cx * d, cy * d), style = Stroke(1.6f * d))
+              if (state == MapState.OPEN) drawCircle(c, DOT / 2 * d - 0.7f * d, Offset(cx * d, cy * d), style = Stroke(1.4f * d))
               else drawCircle(c, DOT / 2 * d, Offset(cx * d, cy * d))
             }
           }
@@ -392,6 +434,7 @@ internal fun WorldMap(
               else -> stateText(h.state)
             }
             Txt(detail, size = 12.sp, color = if (h.state == MapState.AVAILABLE) p.ok else p.muted)
+            if (h.node.blocked) Txt(t.dialogs.mapBlocked, size = 12.sp, color = p.warn)
             // A box's other connections, which have no line
             if (h.state == null && h.node.also.isNotEmpty()) {
               Txt(t.dialogs.mapAlso(h.node.also.joinToString(", ") { layout.nodes[it].name }), size = 12.sp, color = p.accent)
