@@ -96,46 +96,55 @@ def slot_map(multiworld, slot: int) -> dict:
     """
     [slot]'s map as its logic has it: its regions, each with its locations' IDs (its start first, then as they are
     reached from it), and which of them connect (pairs of their indices, either way once). A region without a location
-    that leads nowhere else (a dead end only rules pass through) is left out, again and again.
+    that leads nowhere else (a dead end only rules pass through) is left out, again and again. The regions are told
+    apart by themselves, not by their names: a world may name them with anything (a tuple, a number), and twice the
+    same.
     """
     world = multiworld.worlds[slot]
-    regions = [region for region in multiworld.get_regions(slot)]
-    locations = {
-        region.name: [location.address for location in region.locations if location.address is not None]
+    regions = list(multiworld.get_regions(slot))
+    number = {id(region): i for i, region in enumerate(regions)}
+    names = [region.name if isinstance(region.name, str) else str(region.name) for region in regions]
+    locations = [
+        [location.address for location in region.locations if isinstance(location.address, int)]
         for region in regions
-    }
-    neighbours = {region.name: set() for region in regions}
-    for region in regions:
+    ]
+    neighbours = {i: set() for i in range(len(regions))}
+    for i, region in enumerate(regions):
         for exit in region.exits:
-            target = exit.connected_region
-            if target is not None and target.player == slot and target.name != region.name and target.name in neighbours:
-                neighbours[region.name].add(target.name)
-                neighbours[target.name].add(region.name)
-    start = getattr(world, "origin_region_name", "Menu")
+            target = number.get(id(exit.connected_region))
+            if target is not None and target != i:
+                neighbours[i].add(target)
+                neighbours[target].add(i)
+    origin = getattr(world, "origin_region_name", "Menu")
+    start = next((i for i, region in enumerate(regions) if region.name == origin), None)
     pruned = True
     while pruned:
         pruned = False
-        for name in list(neighbours):
-            if name != start and not locations[name] and len(neighbours[name]) <= 1:
-                for other in neighbours.pop(name):
-                    neighbours[other].discard(name)
+        for i in list(neighbours):
+            if i != start and not locations[i] and len(neighbours[i]) <= 1:
+                for other in neighbours.pop(i):
+                    neighbours[other].discard(i)
                 pruned = True
+
+    def by_name(some) -> list:
+        return sorted(some, key=lambda i: (names[i], i))
+
     # Its start first, then breadth first from it; what can't be reached from it after
     order = []
     seen = set()
     queue = [start] if start in neighbours else []
     while queue:
-        name = queue.pop(0)
-        if name in seen:
+        i = queue.pop(0)
+        if i in seen:
             continue
-        seen.add(name)
-        order.append(name)
-        queue.extend(sorted(neighbours[name] - seen))
-    order.extend(sorted(name for name in neighbours if name not in seen))
-    index = {name: i for i, name in enumerate(order)}
+        seen.add(i)
+        order.append(i)
+        queue.extend(by_name(neighbours[i] - seen))
+    order.extend(by_name(i for i in neighbours if i not in seen))
+    index = {i: at for at, i in enumerate(order)}
     links = sorted({tuple(sorted((index[a], index[b]))) for a in order for b in neighbours[a]})
     return {
-        "regions": [{"name": name, "locations": locations[name]} for name in order],
+        "regions": [{"name": names[i], "locations": locations[i]} for i in order],
         "links": [list(link) for link in links],
     }
 
@@ -167,7 +176,14 @@ def main() -> None:
                 slot = int(entry["slot"])
                 answers[str(slot)] = available(multiworld, slot, entry.get("items", []), set(entry.get("checked", []))) \
                     if slot in answered else None
-            maps = {str(slot): slot_map(multiworld, slot) for slot in map(int, asked.get("maps", [])) if slot in answered}
+            maps = {}
+            for slot in map(int, asked.get("maps", [])):
+                if slot not in answered:
+                    continue
+                try:  # a map that can't be made is left out: the available checks are answered either way
+                    maps[str(slot)] = slot_map(multiworld, slot)
+                except Exception as error:
+                    print(f"No map for slot {slot} ({multiworld.player_name[slot]}): {error!r}", flush=True)
             say({"available": answers, "maps": maps})
         except Exception as error:  # an answer for every question, also when one fails
             print(f"Could not answer: {error!r}", flush=True)
