@@ -36,6 +36,25 @@ interface DialogTexts {
   /** After the item: `from Bob-HK · Crossroads`. */
   fun from(sender: String, location: String?): String
   fun remainingChecks(n: Int): String
+  /** The slot panel's tabs, by key: checks, transported, connections (and map). */
+  fun tab(key: String): String
+  fun availableChecks(n: Int): String
+  /** Its logic isn't known: not running for it (a seed from elsewhere, a race), or not yet. */
+  val availableUnknown: String
+  fun sentItems(n: Int): String
+  /** A sent item's receiver and the location it was at. */
+  fun to(receiver: String, location: String): String
+  /** The map's filter that shows every location; [mapOpen] and [mapAvailable] are its states (and its other filters). */
+  val mapAll: String
+  val mapChecked: String
+  val mapOpen: String
+  val mapAvailable: String
+  /** What a checked location held, and whom it went to. */
+  fun mapFound(item: String, receiver: String): String
+  /** A box of the map: how many of its locations are checked. */
+  fun mapRegion(checked: Int, total: Int): String
+  /** No map known for the slot. */
+  val mapNone: String
   val allDone: String
 }
 
@@ -130,6 +149,25 @@ internal object EnglishDialogs : DialogTexts {
   override val nextPage = "Next"
   override fun from(sender: String, location: String?) = "  from $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Remaining checks ($n)"
+  override fun tab(key: String) = when (key) {
+    "checks" -> "Checks"
+    "transported" -> "Transported items"
+    "connections" -> "Connections"
+    "map" -> "Map"
+    else -> key
+  }
+  override fun availableChecks(n: Int) = "Available now ($n)"
+  override val availableUnknown = "Not known: the session's logic doesn't run for this slot."
+  override fun sentItems(n: Int) = "Sent items ($n)"
+  override fun to(receiver: String, location: String) = "  to $receiver · $location"
+  override val mapAll = "All"
+  override val mapChecked = "Checked"
+  override val mapOpen = "Open"
+  override val mapAvailable = "Available now"
+  override fun mapFound(item: String, receiver: String) = "Held $item for $receiver"
+  override fun mapRegion(checked: Int, total: Int) = if (total == 0) "No locations: a way through" else "$checked of $total checked"
+  override val mapNone =
+    "No map yet: it comes from the session's logic while that runs (not for a seed from elsewhere or a race)."
   override val allDone = "All done!"
 }
 
@@ -165,6 +203,25 @@ internal object GermanDialogs : DialogTexts {
   override val nextPage = "Weiter"
   override fun from(sender: String, location: String?) = "  von $sender${location?.let { " · $it" } ?: ""}"
   override fun remainingChecks(n: Int) = "Offene Checks ($n)"
+  override fun tab(key: String) = when (key) {
+    "checks" -> "Checks"
+    "transported" -> "Transportierte Items"
+    "connections" -> "Verbindungen"
+    "map" -> "Karte"
+    else -> key
+  }
+  override fun availableChecks(n: Int) = "Jetzt erreichbar ($n)"
+  override val availableUnknown = "Nicht bekannt: Die Logik der Session läuft für diesen Slot nicht."
+  override fun sentItems(n: Int) = "Gesendete Items ($n)"
+  override fun to(receiver: String, location: String) = "  an $receiver · $location"
+  override val mapAll = "Alle"
+  override val mapChecked = "Gecheckt"
+  override val mapOpen = "Offen"
+  override val mapAvailable = "Jetzt erreichbar"
+  override fun mapFound(item: String, receiver: String) = "Enthielt $item für $receiver"
+  override fun mapRegion(checked: Int, total: Int) = if (total == 0) "Keine Orte: ein Durchgang" else "$checked von $total gecheckt"
+  override val mapNone =
+    "Noch keine Karte: Sie kommt von der Logik der Session, solange diese läuft (nicht bei einem Seed von anderswo oder einem Race)."
   override val allDone = "Alles erledigt!"
 }
 

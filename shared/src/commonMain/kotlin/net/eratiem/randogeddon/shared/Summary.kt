@@ -347,6 +347,25 @@ data class PlayerDetail(
   /** Connection log, oldest first. */
   val sessions: List<ConnectionSession> = emptyList(),
   val hintPoints: Int? = null,
+  /** What its checked locations held, and whom it went to (itself too); by location. */
+  val sentItems: List<SentItemView> = emptyList(),
+  /** Its map from the session's logic (the last known while it doesn't run); `null`: none known. */
+  val map: MapView? = null,
+)
+
+/** A slot's map: its regions with their locations' names (its start first), and which connect (pairs of indices). */
+@Serializable
+data class MapView(val regions: List<MapRegionView> = emptyList(), val links: List<List<Int>> = emptyList())
+
+@Serializable
+data class MapRegionView(val name: String, val locations: List<String> = emptyList())
+
+@Serializable
+data class SentItemView(
+  val item: String,
+  val to: String,
+  val location: String,
+  val flags: Int,
 )
 
 @Serializable

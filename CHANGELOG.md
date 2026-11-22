@@ -7,6 +7,60 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 22: Maps
+The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
+came up on the way.
+
+### 0.22.4: The map
+- A slot's panel has a *Map* tab: its game's map, generated for every game from the session's logic, no game
+  images. Its regions are boxes in columns from its start, linked as its logic connects them; each location is a dot
+  in its box: checked, open, or available now (green; a box with one has a green edge). On hover a location's name,
+  and once checked what it held and for whom (nothing before: no spoiler); a box's name and how much of it is
+  checked. Filters: all, open, available now, with how many there are.
+- A region with many locations is split by their names into boxes of their own, linked to it: by the part before
+  `: ` or `-` (`Lake Desolation (Lower): Chicken chest`, `Grub-Crossroads_Acid`), then by a first or last word
+  they share (`Unbreakable_Heart`, `Dirtmouth_Stag`). A game whose regions say little still gets a map: Hollow
+  Knight's one region of 203 becomes 19 groups and its 51 unique locations.
+- The panel is as wide as the window on the *Map* tab; a column taller than the panel wraps into narrower ones.
+- The logic (`logic_run.py`) answers a slot's map with its available checks: its regions with their locations, its
+  start first, and which connect (a region without locations that leads nowhere else is left out). The tracker asks
+  once per slot and build and keeps it with the slot, so the map shows while the logic sleeps. Like the available
+  checks, not for seeds from elsewhere, races and sessions from before 0.19.3.
+
+### 0.22.3: The slot panel in tabs, locked slots as not started
+- A slot's panel: under its progress and its time, tabs. *Checks*: what its logic reaches now on the left, the rest
+  of its remaining checks on the right. *Transported items*: what it sent on the left (what its checked locations
+  held, and to whom), what it received on the right. *Connections*: its connection log. One filter above both
+  columns of a tab.
+- The Overview's *Slots* tile counts a locked slot as not started (it can't connect before its key turns up): with
+  locks, its *not started* no longer left them out, and *Slots* adds up again.
+
+### 0.22.2: A session's control on a phone, the ID as typed, one-line fields
+- *State and Control* on a narrow screen: its actions (pause or end, delete, *Keep running without players*) wrap
+  where they need to, and the dashboard's and the spoiler log's buttons go on a line of their own below them; they
+  were cut off at the right. On a wide screen the line stays as it was, those buttons on the right.
+- The session ID's field turns a space into `-` as it is typed. A space typed at the end was trimmed away before it
+  could become one (`friday chaos` came out as `fridaychaos`); only a pasted ID kept its hyphens.
+- The ID's field takes nothing before its first letter (`2024 run`: `run`), and a hyphen at its end is left off the
+  ID (it stays in the field while the next word comes): neither is said as a mistake any more. Under the field only
+  what the server knows: taken, reserved or unwanted, too short.
+- *Your connection*: the server, the slot, a shown password or key and the patch files' names stay on one line, cut
+  in the middle where they don't fit (the port and the file's ending still show), the whole of it on hover. The panel
+  is that much shorter, and with it the Overview's tiles beside it, which take its height.
+- Randogeddon Bridge's page: a connection's address is copied the same ways as the server on the dashboard: as
+  shown, its host, its port, or as a `ws://` address (not for a Minecraft tunnel, which takes host and port).
+
+### 0.22.1: Icons for the connection, the session ID as typed
+- *Your connection*: copy, show and hide are icons (two sheets; an eye, struck through while shown), their words as
+  tips; the server's copy icon opens its menu. The bridge's fold arrow points left to collapse and right to expand.
+- Creating a session: its ID's field takes only what a subdomain allows: capitals become small letters, a space, `_`
+  or `.` a hyphen, anything else isn't taken, no two hyphens in a row, at most 40 characters. A letter first and no
+  hyphen last are still said under it.
+- Creating a session: *Plando* (was *YAMLs may plan*) in a row of its own, its ⓘ saying shortly what a ticked kind
+  does; *No progression balancing* and *Race mode*, which have nothing to do with it, below as *Generation*.
+- Once a new session is generated, the panel goes to its page. It went there before its list had the session, took
+  it for gone, and fell back to another running session or to none, *New session* highlighted.
+
 ## Phase 21: Floating Panels – Slot & Player
 The slot and player panels as floating panels, and what came up with them: the players' panels using the space, the
 site growing with the window, a session's slots and their players, the Management panel's logs, the README.

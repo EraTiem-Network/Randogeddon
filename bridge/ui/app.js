@@ -11,6 +11,7 @@ const TEXTS = {
     key: "Key", dashboard: "Dashboard", login: "Log in",
     session: "Session", slot: "Slot", address: "Address", state: "State", close: "Close", open: "Open",
     copy: "Copy", copied: "Copied", hosted: "hosted",
+    copyAsShown: "As shown", copyHost: "Host", copyPort: "Port", copyWs: "ws:// address",
     none: "No connection open yet: pick a session and a slot below.",
     noSessions: "No running session with a slot of yours (or a hosted one you manage).",
     howTo: "In the game, connect to the address (some games call it server or host). Any slot name and no password: " +
@@ -31,6 +32,7 @@ const TEXTS = {
     key: "Schlüssel", dashboard: "Dashboard", login: "Anmelden",
     session: "Session", slot: "Slot", address: "Adresse", state: "Status", close: "Schließen", open: "Öffnen",
     copy: "Kopieren", copied: "Kopiert", hosted: "gehostet",
+    copyAsShown: "Wie angezeigt", copyHost: "Host", copyPort: "Port", copyWs: "ws://-Adresse",
     none: "Noch keine Verbindung offen: Wähle unten eine Session und einen Slot.",
     noSessions: "Keine laufende Session mit einem Slot von dir (oder einem gehosteten, den du verwaltest).",
     howTo: "Verbinde dich im Spiel mit der Adresse (manche Spiele nennen sie Server oder Host). Beliebiger Slot-Name " +
@@ -130,6 +132,35 @@ function el(tag, attrs, ...children) {
   return node;
 }
 
+// The relay whose copy menu is open: the rows are drawn again with every refresh, the menu stays open over it
+let openMenu = null;
+document.addEventListener("click", (e) => {
+  if (openMenu !== null && !e.target.closest(".copy-menu")) { openMenu = null; renderRows(); }
+});
+
+/**
+ * A relay's address to copy as shown, its host, its port, or as a ws:// address (a game asks for one or the other;
+ * the relay speaks plain WebSocket). Not as an address for a Minecraft tunnel: Minecraft takes host and port.
+ */
+function copyMenu(id, address, port, tunnel) {
+  const button = el("button", { class: "icon", type: "button", "aria-haspopup": "menu", "aria-expanded": String(openMenu === id) }, `${t.copy} ▾`);
+  button.addEventListener("click", () => { openMenu = openMenu === id ? null : id; renderRows(); });
+  const choices = [[t.copyAsShown, address], [t.copyHost, "localhost"], [t.copyPort, String(port)]];
+  if (!tunnel) choices.push([t.copyWs, `ws://${address}`]);
+  const menu = el("div", { class: "menu", role: "menu" });
+  menu.hidden = openMenu !== id;
+  for (const [label, text] of choices) {
+    const item = el("button", { type: "button", role: "menuitem" }, el("span", {}, label), el("code", {}, text));
+    item.addEventListener("click", async () => {
+      openMenu = null;
+      renderRows();
+      try { await navigator.clipboard.writeText(text); } catch (e) { /* not allowed */ }
+    });
+    menu.append(item);
+  }
+  return el("span", { class: "copy-menu" }, button, menu);
+}
+
 function renderRows() {
   const rows = $("rows");
   rows.replaceChildren();
@@ -139,11 +170,7 @@ function renderRows() {
   }
   for (const r of state.relays) {
     const address = `localhost:${r.port}`;
-    const copy = el("button", { class: "icon", type: "button" }, t.copy);
-    copy.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(address); copy.textContent = t.copied; } catch (e) { /* not allowed */ }
-      setTimeout(() => { copy.textContent = t.copy; }, 1500);
-    });
+    const copy = copyMenu(r.id, address, r.port, r.tunnel);
     const closeButton = el("button", { class: "icon", type: "button", title: t.close, "aria-label": t.close }, "✕");
     closeButton.addEventListener("click", () => act(() => api("DELETE", `/api/relays/${r.id}`)));
     rows.append(el("tr", {},

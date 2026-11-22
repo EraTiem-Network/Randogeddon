@@ -12,6 +12,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.server.session.Room
+import net.eratiem.randogeddon.server.util.array
+import net.eratiem.randogeddon.server.util.bool
+import net.eratiem.randogeddon.server.util.int
+import net.eratiem.randogeddon.server.util.long
+import net.eratiem.randogeddon.server.util.longs
+import net.eratiem.randogeddon.server.util.obj
+import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.AvailableSlot
@@ -24,20 +31,16 @@ import net.eratiem.randogeddon.shared.HintSettings
 import net.eratiem.randogeddon.shared.HintView
 import net.eratiem.randogeddon.shared.ItemFlags
 import net.eratiem.randogeddon.shared.LockInfo
+import net.eratiem.randogeddon.shared.MapRegionView
+import net.eratiem.randogeddon.shared.MapView
 import net.eratiem.randogeddon.shared.PersonSummary
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.PlayerStatus
 import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.ReceivedItemView
+import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.Totals
-import net.eratiem.randogeddon.server.util.array
-import net.eratiem.randogeddon.server.util.bool
-import net.eratiem.randogeddon.server.util.int
-import net.eratiem.randogeddon.server.util.long
-import net.eratiem.randogeddon.server.util.longs
-import net.eratiem.randogeddon.server.util.obj
-import net.eratiem.randogeddon.server.util.string
 
 /** Tags of clients that don't play: trackers (including this one), text clients and hint games. */
 private val NON_GAME_TAGS = setOf("Tracker", "TextOnly", "HintGame")
@@ -283,19 +286,32 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
   }
 
-  /** The logic's [answer] to [asked]: each slot's available checks (`null`: it has no answer for that slot). */
-  fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer) {
+  /** The slots whose map the logic wasn't asked for since it was built (a game it has none for isn't asked again). */
+  fun mapsWanted(): List<Int> {
+    val lockSlots = lockSlots()
+    return players.values
+      .filter { it.slot !in lockSlots && it.game != WORLD_LOCKS_GAME && it.map == null && !it.mapAsked }
+      .map { it.slot }
+  }
+
+  /**
+   * The logic's [answer] to [asked]: each slot's available checks (`null`: it has no answer for that slot), and the
+   * maps of the slots in [maps].
+   */
+  fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer, maps: List<Int> = emptyList()) {
     asked.forEach { a ->
       val p = players[a.slot] ?: return@forEach
       p.available = answer.available[a.slot]
       answer.locations[a.slot]?.let { p.availableLocations = it.toSet() }
       p.availableAsked = a.items.size to a.checked.size
     }
+    maps.forEach { slot -> players[slot]?.mapAsked = true }
+    answer.maps.forEach { (slot, map) -> players[slot]?.map = map }
     touch()
   }
 
-  /** The logic was built again: every slot is asked anew. */
-  fun forgetAvailableAsks() = players.values.forEach { it.availableAsked = null }
+  /** The logic was built again: every slot is asked anew (its map too, kept until then). */
+  fun forgetAvailableAsks() = players.values.forEach { it.availableAsked = null; it.mapAsked = false }
 
   /** Progression items [p] received from a location (not the starting inventory, not a cheat's). */
   private fun progressionReceived(p: Player): Int = p.items.count { it.location >= 0 && it.flags and ItemFlags.PROGRESSION != 0 }
@@ -763,6 +779,20 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       trapLinks = p.trapLinks,
       sessions = p.sessions.toList(),
       hintPoints = p.hintPoints,
+      // Every slot's received items that came from this one's locations
+      sentItems = players.values.flatMap { receiver ->
+        receiver.items.filter { it.player == slot }.map { (item, location, _, flags) ->
+          SentItemView(
+            item = displayItemName(item, receiver.slot),
+            to = playerName(receiver.slot),
+            location = locationName(location, slot),
+            flags = flags,
+          )
+        }
+      }.sortedBy { it.location },
+      map = p.map?.let { map ->
+        MapView(map.regions.map { region -> MapRegionView(region.name, region.locations.map { locationName(it, slot) }) }, map.links)
+      },
     )
   }
 

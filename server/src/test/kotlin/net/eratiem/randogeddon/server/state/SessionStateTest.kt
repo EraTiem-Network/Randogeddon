@@ -7,7 +7,12 @@ import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.EventType
+import net.eratiem.randogeddon.shared.MapRegion
+import net.eratiem.randogeddon.shared.MapRegionView
+import net.eratiem.randogeddon.shared.MapView
 import net.eratiem.randogeddon.shared.PlayerStatus
+import net.eratiem.randogeddon.shared.SentItemView
+import net.eratiem.randogeddon.shared.SlotMap
 import net.eratiem.randogeddon.shared.Totals
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,6 +123,33 @@ class SessionStateTest {
     s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)}]}""")) // reconnect resync
     assertEquals(1, s.players[1]!!.items.size)
     assertEquals(1, s.summary("t", null).players[0].progressionReceived)
+  }
+
+  @Test
+  fun `a slot's sent items are the items its locations held, to whoever got them, by location`() {
+    val s = makeState()
+    // Bob's Pot held Alice's Sword; Alice's own Chest B held her Key; the server's gift isn't anyone's
+    s.onReceivedItems(1, json("""{"index":0,"items":[${item(100, 20, 2, 1)},${item(101, 11, 1, 0)},${item(101, -2, 0, 0)}]}"""))
+    val bob = s.playerDetail(2)!!.sentItems
+    assertEquals(listOf(SentItemView("Sword", "Alice", "Pot", 1)), bob)
+    assertEquals(listOf(SentItemView("Key", "Alice", "Chest B", 0)), s.playerDetail(1)!!.sentItems)
+  }
+
+  @Test
+  fun `a slot's map is asked for once per build, its locations named in its detail`() {
+    val s = makeState()
+    assertEquals(listOf(1, 2), s.mapsWanted())
+    val map = SlotMap(listOf(MapRegion("Menu"), MapRegion("Cave", listOf(10, 11))), listOf(listOf(0, 1)))
+    s.onAvailable(emptyList(), AvailableAnswer(maps = mapOf(1 to map)), maps = listOf(1, 2))
+    // Slot 2 had none: not asked again until the logic is built again
+    assertEquals(emptyList(), s.mapsWanted())
+    assertEquals(
+      MapView(listOf(MapRegionView("Menu"), MapRegionView("Cave", listOf("Chest A", "Chest B"))), listOf(listOf(0, 1))),
+      s.playerDetail(1)!!.map,
+    )
+    assertEquals(null, s.playerDetail(2)!!.map)
+    s.forgetAvailableAsks()
+    assertEquals(listOf(2), s.mapsWanted())
   }
 
   @Test

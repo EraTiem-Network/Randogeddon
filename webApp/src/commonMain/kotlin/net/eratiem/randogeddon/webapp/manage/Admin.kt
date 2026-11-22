@@ -131,7 +131,9 @@ fun AdminView(
       AdminSwitch(overview, page, onPage = onPage)
       when (page) {
         null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
-        NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { onPage(it.id); load() })
+        // The new session's page once the list has it: before, its ID reads as a session that's gone, and the page
+        // went elsewhere
+        NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { created -> scope.launch { load().join(); onPage(created.id) } })
         else -> key(page) {
           val entry = all.firstOrNull { it.id == page }
           if (entry != null && supportOnly(entry, administrator)) {

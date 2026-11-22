@@ -144,7 +144,9 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   // The first suggestion stays for this form: the panel loads its overview again every 15 s, each time with a new
   // one, and the ID shown (and generated with) mustn't change under the user's hands
   val suggested = remember(round, overview != null) { overview?.suggestedId.orEmpty() }
-  val chosen = id ?: suggested
+  // As typed (a hyphen at its end while the next word comes), and the ID it stands for
+  val shown = id ?: suggested
+  val chosen = SessionIds.trimEnd(shown)
   val taken = overview?.taken?.contains(chosen) == true || overview?.sessions?.any { it.id == chosen } == true
   // What the server says about the ID (a word nobody wants in one), asked a moment after the last key
   var idRefused by remember { mutableStateOf<String?>(null) }
@@ -186,7 +188,8 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
           InfoTip(t.tips.sessionId)
-          FilterField(chosen, { id = it.lowercase().trim() }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+          // Only the start trimmed: a space typed at the end becomes its hyphen at once
+          FilterField(shown, { id = SessionIds.typed(it.trimStart()) }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
           idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
         }
       }
@@ -661,23 +664,31 @@ private fun CreateSession(
         version != null -> Labeled(t.sessionAdmin.archipelagoVersion(version.orEmpty()), t.tips.releaseVersion) {}
       }
     }
-    // The generation's settings: what the YAMLs may plan by hand, the balancing, race mode (not for a seed that is
-    // there already)
-    if (seed == null) FlowRow(
-      horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
-      itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Txt(t.sessionAdmin.plando, size = 12.5.sp, color = p.muted)
-        InfoTip(t.tips.plando)
-      }
-      PlandoModule.entries.forEach { module ->
-        Check(t.sessionAdmin.plandoModule(module), module in options.plando) { on ->
-          options = options.copy(plando = if (on) options.plando + module else options.plando - module)
+    // The generation's settings (not for a seed that is there already): what the YAMLs may plan by hand in a row of
+    // its own, then the balancing and race mode
+    if (seed == null) {
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          Txt(t.sessionAdmin.plando, size = 12.5.sp, color = p.muted)
+          InfoTip(t.tips.plando)
+        }
+        PlandoModule.entries.forEach { module ->
+          Check(t.sessionAdmin.plandoModule(module), module in options.plando) { on ->
+            options = options.copy(plando = if (on) options.plando + module else options.plando - module)
+          }
         }
       }
-      Check(t.sessionAdmin.skipBalancing, options.skipBalancing, t.tips.skipBalancing) { options = options.copy(skipBalancing = it) }
-      Check(t.sessionAdmin.raceMode, options.race, t.tips.raceMode) { options = options.copy(race = it) }
+      FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+      ) {
+        Txt(t.sessionAdmin.generation, size = 12.5.sp, color = p.muted)
+        Check(t.sessionAdmin.skipBalancing, options.skipBalancing, t.tips.skipBalancing) { options = options.copy(skipBalancing = it) }
+        Check(t.sessionAdmin.raceMode, options.race, t.tips.raceMode) { options = options.copy(race = it) }
+      }
     }
     if (view.apVersions.isEmpty()) Txt(t.apworlds.noRelease, size = 12.5.sp, color = p.trap)
     val openOk = lockedNow.size < n

@@ -130,6 +130,20 @@ Gradle 9.8.2, Kotlin 2.4, JDK 25; the native images (GraalVM 25) build on Linux,
 is typed Kotlin in English and German (`shared/…/i18n/`). A new migration goes into `index.txt` beside it. Local
 testing, the native build, measuring, the audit and the API: [development](.docs/DEVELOPMENT.md).
 
+## Built with
+
+Randogeddon stands on these, each under its own license:
+
+| Where | What |
+|---|---|
+| Games | [Archipelago](https://github.com/ArchipelagoMW/Archipelago) (`MultiServer`, `Generate.py`, its worlds); for Minecraft Dig [Minecraft Forge](https://minecraftforge.net) and the [Minecraft AP Randomizer](https://github.com/jacobmix/Minecraft_AP_Randomizer) mod, on [Eclipse Temurin](https://adoptium.net) 17 |
+| Tracker and gateway | [Kotlin](https://kotlinlang.org), [Ktor](https://ktor.io), [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) and [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization), [kaml](https://github.com/charleskorn/kaml), [Koin](https://insert-koin.io), [Exposed](https://github.com/JetBrains/Exposed), [Flyway](https://github.com/flyway/flyway), [HikariCP](https://github.com/brettwooldridge/HikariCP), the [PostgreSQL JDBC driver](https://jdbc.postgresql.org), [Bouncy Castle](https://www.bouncycastle.org) (Argon2id), [SLF4J](https://www.slf4j.org) and [Logback](https://logback.qos.ch); native images with [GraalVM](https://www.graalvm.org) Community |
+| Dashboard | [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/) on Kotlin/Wasm, [kotlinx-browser](https://github.com/Kotlin/kotlinx-browser), [QR Code generator](https://github.com/nayuki/QR-Code-generator) (the two-factor setup); its fonts from [Google Fonts](https://fonts.google.com) and others (SIL OFL 1.1, Roboto Slab Apache 2.0; each licence in `webApp/…/fonts/licences/`) |
+| Randogeddon Bridge | [Go](https://go.dev), [coder/websocket](https://github.com/coder/websocket), [x/term](https://pkg.go.dev/golang.org/x/term) |
+| Running | [Docker](https://www.docker.com) and Compose, [PostgreSQL](https://www.postgresql.org), [Python](https://www.python.org), [Traefik](https://traefik.io) in front, optionally [Authentik](https://goauthentik.io) for the Administrators' single sign-on; Artifact Keeper as the registry |
+| Building and checking | [Gradle](https://gradle.org), [Binaryen](https://github.com/WebAssembly/binaryen) (by Kotlin/Wasm), [Brotli](https://github.com/google/brotli), [Testcontainers](https://testcontainers.com), [osv-scanner](https://github.com/google/osv-scanner) (the dependencies' known flaws), [hadolint](https://github.com/hadolint/hadolint), [Playwright](https://playwright.dev) (the first screen's timing), [Mailpit](https://github.com/axllent/mailpit) (mails in the local stack), [Mermaid](https://mermaid.js.org) (the diagrams) |
+| Unwanted names | the word lists [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) (CC BY 4.0), [BadWords](https://github.com/FlacSy/badwords) (MIT), [Google Profanity Words](https://github.com/coffee-and-fun/google-profanity-words) (MIT), cleaned with [FrequencyWords](https://github.com/hermitdave/FrequencyWords) |
+
 ## License
 
 Randogeddon is released under the [EraTiem-Network Non-Commercial License 1.0](LICENSE): free to use and to pass on

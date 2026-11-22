@@ -25,6 +25,21 @@ class SessionIdsTest {
     assertNull(SessionIds.problem("friday-chaos"))
     assertEquals(Problem.ID_LETTER_FIRST, SessionIds.problem("1abc")?.problem)
     assertEquals(Problem.ID_CHARACTERS, SessionIds.problem("friDay")?.problem)
+    // Typed: only what a subdomain allows
+    assertEquals("friday-chaos", SessionIds.typed("Friday Chaos"))
+    assertEquals("my-run-2", SessionIds.typed("My_Run.2"))
+    assertEquals("a-b", SessionIds.typed("a--b"))
+    assertEquals("grn-spiel", SessionIds.typed("Grün!? Spiel"))
+    assertEquals("ab-", SessionIds.typed("ab-"))
+    assertEquals("ab", SessionIds.trimEnd(SessionIds.typed("ab-")))
+    // Nothing before the first letter
+    assertEquals("run", SessionIds.typed("2024 run"))
+    assertEquals("x1", SessionIds.typed("--x1"))
+    assertEquals("", SessionIds.typed("123"))
+    // Typed key by key: the space at the end is its hyphen at once
+    assertEquals("friday-", SessionIds.typed("friday "))
+    assertEquals("friday-c", SessionIds.typed(SessionIds.typed("friday ") + "c"))
+    assertEquals(SessionIds.MAX_LENGTH, SessionIds.typed("x".repeat(60)).length)
     // Every suggestion's words pass the unwanted words
     repeat(300) { n ->
       val id = net.eratiem.randogeddon.server.admin.suggestId(kotlin.random.Random(n)) { false }
