@@ -94,6 +94,15 @@ expect object Platform {
   /** Calls [onChange] with the new hash whenever it changes (back, forward, a link); returns a function that stops it. */
   fun onHashChange(onChange: (String) -> Unit): () -> Unit
 
+  /** Takes the page to full screen, or back out of it. The browser allows the way in only from a click. */
+  fun fullScreen(on: Boolean)
+
+  /**
+   * Calls [onChange] whenever the page enters or leaves full screen (Esc leaves it too, past the page); returns a
+   * function that stops it.
+   */
+  fun onFullScreenChange(onChange: (Boolean) -> Unit): () -> Unit
+
   /** Per-viewer settings; missing (or blocked storage) is `null`. */
   /** A static file of the app (a font) as bytes; `null` if it can't be loaded. */
   suspend fun bytes(path: String): ByteArray?

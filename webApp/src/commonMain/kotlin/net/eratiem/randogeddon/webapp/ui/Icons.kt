@@ -49,7 +49,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
 enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
-  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT, COPY, EYE, EYE_OFF }
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT, COPY, EYE, EYE_OFF, EXPAND, SHRINK }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -274,6 +274,23 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
         drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
           color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+      }
+
+      // Four corners pulled apart (larger) or pushed together (smaller)
+      Icon.EXPAND, Icon.SHRINK -> {
+        val line = Stroke(stroke * 1.1f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // Each corner's bend: at the edge for larger, towards the middle for smaller
+        val at = if (icon == Icon.EXPAND) .14f else .38f
+        val arm = .24f
+        for ((sx, sy) in listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f)) {
+          val x = if (sx < 0) at else 1 - at
+          val y = if (sy < 0) at else 1 - at
+          // Its arms point inwards for larger (a frame's corner), outwards for smaller
+          val turn = if (icon == Icon.EXPAND) 1f else -1f
+          drawPath(Path().apply {
+            moveTo(w * (x - sx * arm * turn), w * y); lineTo(w * x, w * y); lineTo(w * x, w * (y - sy * arm * turn))
+          }, color, style = line)
+        }
       }
 
       // Two sheets, one over the other: copy

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.ceil
+import kotlin.math.max
 import net.eratiem.randogeddon.shared.MapView
 import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.i18n.number
@@ -47,14 +50,18 @@ import net.eratiem.randogeddon.webapp.app.LocalFonts
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.Dot
+import net.eratiem.randogeddon.webapp.ui.Icon
+import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.scrollingBoth
-import kotlin.math.ceil
-import kotlin.math.max
 
 /** A location on the map: checked, open, or open and reached by the logic now. */
 internal enum class MapState { CHECKED, OPEN, AVAILABLE }
+
+/** How large the map is shown: in its panel, over the whole window, or with the page in full screen. */
+internal enum class MapSize { PANEL, WINDOW, FULL_SCREEN }
 
 /** What the map shows: every location, or only the open ones, or only those available now. */
 internal enum class MapFilter { ALL, OPEN, AVAILABLE }
@@ -213,7 +220,15 @@ private data class Hovered(val name: String, val state: MapState?, val at: Offse
  * have a thousand locations.
  */
 @Composable
-internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>, sent: List<SentItemView>) {
+internal fun WorldMap(
+  map: MapView,
+  missing: Set<String>,
+  available: Set<String>,
+  sent: List<SentItemView>,
+  /** [onSize]: asked for a size (its buttons); `null`: it has none. Larger than its panel, it takes all the room. */
+  size: MapSize = MapSize.PANEL,
+  onSize: ((MapSize) -> Unit)? = null,
+) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val fonts = LocalFonts.current
@@ -252,8 +267,18 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
   val nameStyle = TextStyle(color = p.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = fonts.text)
   val countStyle = TextStyle(color = p.muted, fontSize = 11.sp, fontFamily = fonts.text)
 
-  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+  val large = size != MapSize.PANEL
+  Column(if (large) Modifier.fillMaxSize() else Modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+      // A step larger (its panel, the window, full screen) and a step back
+      if (onSize != null) {
+        if (size != MapSize.FULL_SCREEN) {
+          Tip(if (size == MapSize.PANEL) t.dialogs.mapToWindow else t.dialogs.mapToFullScreen) {
+            IconButton({ onSize(MapSize.entries[size.ordinal + 1]) }, Icon.EXPAND, Modifier.size(30.dp))
+          }
+        }
+        if (large) Tip(t.dialogs.mapSmaller) { IconButton({ onSize(MapSize.entries[size.ordinal - 1]) }, Icon.SHRINK, Modifier.size(30.dp)) }
+      }
       MapFilter.entries.forEach { f ->
         val label = when (f) {
           MapFilter.ALL -> t.dialogs.mapAll
@@ -272,7 +297,10 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
     }
     // A view onto the map, as tall as it at most: larger than it, the map is scrolled by the view's bars or by
     // dragging it (room for the bars beside the boxes)
-    Box(Modifier.fillMaxWidth().heightIn(max = MAP_VIEW.dp).clip(RoundedCornerShape(12.dp)).background(p.panelAlt).scrollingBoth()) {
+    Box(
+      (if (large) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().heightIn(max = MAP_VIEW.dp))
+        .clip(RoundedCornerShape(12.dp)).background(p.panelAlt).scrollingBoth(),
+    ) {
       Box(Modifier.size((layout.width + SCROLL_BAR).dp, (layout.height + SCROLL_BAR).dp)) {
         Canvas(
           Modifier.size(layout.width.dp, layout.height.dp).pointerInput(layout) {

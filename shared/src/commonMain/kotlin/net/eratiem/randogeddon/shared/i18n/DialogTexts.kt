@@ -55,6 +55,10 @@ interface DialogTexts {
   fun mapRegion(checked: Int, total: Int): String
   /** What a box connects to besides the boxes its lines go to. */
   fun mapAlso(names: String): String
+  /** The map's size: up to the whole window, then to full screen, and back a step. */
+  val mapToWindow: String
+  val mapToFullScreen: String
+  val mapSmaller: String
   /** No map known for the slot. */
   val mapNone: String
   val allDone: String
@@ -169,6 +173,9 @@ internal object EnglishDialogs : DialogTexts {
   override fun mapFound(item: String, receiver: String) = "Held $item for $receiver"
   override fun mapRegion(checked: Int, total: Int) = if (total == 0) "No locations: a way through" else "$checked of $total checked"
   override fun mapAlso(names: String) = "Also connects to: $names"
+  override val mapToWindow = "Fill the window"
+  override val mapToFullScreen = "Full screen"
+  override val mapSmaller = "Smaller"
   override val mapNone =
     "No map yet: it comes from the session's logic while that runs (not for a seed from elsewhere or a race)."
   override val allDone = "All done!"
@@ -224,6 +231,9 @@ internal object GermanDialogs : DialogTexts {
   override fun mapFound(item: String, receiver: String) = "Enthielt $item für $receiver"
   override fun mapRegion(checked: Int, total: Int) = if (total == 0) "Keine Orte: ein Durchgang" else "$checked von $total gecheckt"
   override fun mapAlso(names: String) = "Auch verbunden mit: $names"
+  override val mapToWindow = "Fenster füllen"
+  override val mapToFullScreen = "Vollbild"
+  override val mapSmaller = "Kleiner"
   override val mapNone =
     "Noch keine Karte: Sie kommt von der Logik der Session, solange diese läuft (nicht bei einem Seed von anderswo oder einem Race)."
   override val allDone = "Alles erledigt!"

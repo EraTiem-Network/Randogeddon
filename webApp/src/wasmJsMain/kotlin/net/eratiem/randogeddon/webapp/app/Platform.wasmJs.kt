@@ -88,6 +88,13 @@ actual object Platform {
     return { jsOffHashChange(listener) }
   }
 
+  actual fun fullScreen(on: Boolean) = jsFullScreen(on)
+
+  actual fun onFullScreenChange(onChange: (Boolean) -> Unit): () -> Unit {
+    val listener = jsOnFullScreenChange(onChange)
+    return { jsOffFullScreenChange(listener) }
+  }
+
   actual fun loadSetting(key: String): String? = jsLoadSetting(key)
 
   actual fun saveSetting(key: String, value: String?) = jsSaveSetting(key, value)
@@ -213,3 +220,18 @@ private fun jsOnHashChange(onChange: (String) -> Unit): JsAny = js(
 )
 
 private fun jsOffHashChange(listener: JsAny): Unit = js("window.removeEventListener('hashchange', listener)")
+
+// A browser that refuses (no click behind it, an embedding page's policy) leaves the page as it is
+private fun jsFullScreen(on: Boolean): Unit = js(
+  """{ const page = document.documentElement;
+       if (on) { if (!document.fullscreenElement && page.requestFullscreen) page.requestFullscreen().catch(() => {}); }
+       else if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {}); }"""
+)
+
+private fun jsOnFullScreenChange(onChange: (Boolean) -> Unit): JsAny = js(
+  """{ const listener = () => onChange(!!document.fullscreenElement);
+       document.addEventListener('fullscreenchange', listener);
+       return listener; }"""
+)
+
+private fun jsOffFullScreenChange(listener: JsAny): Unit = js("document.removeEventListener('fullscreenchange', listener)")
