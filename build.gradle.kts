@@ -16,7 +16,7 @@ plugins {
 
 group = "net.eratiem.randogeddon"
 // 0.<phase>.<step>: a PR's work is <step>-SNAPSHOT, its last commit before the merge the release (see README, versions)
-version = "0.23.2.4"
+version = "0.23.2.5"
 
 // The Maven mirror if there is one, as in settings.gradle.kts
 val mirror = providers.gradleProperty("randogeddon.maven").orElse(providers.environmentVariable("RANDOGEDDON_MAVEN"))
@@ -87,6 +87,9 @@ fun Project.configureNativeImage() {
   val nativeOptimization = providers.gradleProperty("nativeOptimization")
     .orElse(if (version.toString().endsWith("-SNAPSHOT")) "quick" else "release")
     .get()
+  // native-image's own heap while it builds: by itself it takes up to three quarters of the machine's memory (12 GB
+  // of 16), which leaves a PC that does other things short; empty: its default
+  val nativeMaxHeap = providers.gradleProperty("nativeMaxHeap").getOrElse("6g")
   val nativeOptimizationArg = when (nativeOptimization) {
     "quick" -> "-Ob"
     "release" -> "-O3"
@@ -121,6 +124,7 @@ fun Project.configureNativeImage() {
           // by itself, but the Docker build image (native-image-community:25) is 25.0.2, which needs this
           "--enable-url-protocols=http,https",
         )
+        if (nativeMaxHeap.isNotBlank()) buildArgs.add("-J-Xmx$nativeMaxHeap")
       }
     }
     // `./gradlew -Pagent=standard :<module>:run`, then `:<module>:metadataCopy`

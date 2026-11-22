@@ -26,6 +26,10 @@ COPY gateway gateway
 COPY webApp webApp
 # CPU level of the native code: x86-64-v3 runs on the i7-8700 (and every AVX2 CPU); `native` only when building on it
 ARG NATIVE_MARCH=x86-64-v3
+# native-image's heap while it builds (it takes most of the machine's memory otherwise), and its optimisation: `quick`
+# (-Ob) or `release` (-O3); empty: by the version (quick for a -SNAPSHOT)
+ARG NATIVE_MAX_HEAP=6g
+ARG NATIVE_OPTIMIZATION=
 ARG RANDOGEDDON_MAVEN=
 ARG RANDOGEDDON_MAVEN_NAME=
 # Mounted with a .kts name: Gradle picks the script language from the file extension. --build-cache: the tasks' results
@@ -34,6 +38,7 @@ ARG RANDOGEDDON_MAVEN_NAME=
 RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gradle.kts \
     --mount=type=cache,target=/gradle-home \
     RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --build-cache --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
+      -PnativeMaxHeap="$NATIVE_MAX_HEAP" ${NATIVE_OPTIMIZATION:+-PnativeOptimization="$NATIVE_OPTIMIZATION"} \
       :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);

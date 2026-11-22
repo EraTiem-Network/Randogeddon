@@ -8,6 +8,13 @@
 #                            deletes every earlier demo session)
 #   ./scripts/demo.sh stop   stop the simulated players (the stack keeps running; `docker compose down` stops it)
 #
+# The images are built here, quickly (NATIVE_OPTIMIZATION=quick: -Ob; `release` for what a release runs). Lighter, for
+# looking at a change to the web app alone:
+#   DEMO_IMAGES=<version> ./scripts/demo.sh
+# takes that version's published images (from IMAGES, as scripts/deploy.sh has it) and builds only the web app, here
+# with Gradle (a JDK; no native-image), mounted over the tracker's. Right only while the tracker and the gateway are
+# as that version has them.
+#
 # Dashboard: http://localhost:8000. The simulated players connect through the gateway with their slot passwords, like
 # real ones (ws://gateway:38281/<session>), and finish in about DEMO_MINUTES (default 15). Alice is the demo's admin:
 # her password is printed once, when her login is made, and kept in output/demo/admin.password for the next runs. The
@@ -23,6 +30,8 @@ export BUILDX_BAKE_ENTITLEMENTS_FS=0
 if [[ -z "${POSTGRES_PASSWORD:-}" ]] && ! grep -qs '^POSTGRES_PASSWORD=.' .env; then export POSTGRES_PASSWORD=demo; fi
 if [[ -z "${INTERNAL_TOKEN:-}" ]] && ! grep -qs '^INTERNAL_TOKEN=.' .env; then export INTERNAL_TOKEN=demo-internal; fi
 AP_VERSION="${AP_VERSION:-0.6.8}"
+# The demo's own builds: quick ones (a release's optimisation takes far longer and more memory)
+export NATIVE_OPTIMIZATION="${NATIVE_OPTIMIZATION:-quick}"
 SIM=randogeddon-demo-sim
 GROUPS_=(a b)
 PAUSE=240 # seconds between the end of a round (100 %) and the next one: it finishes after 120, then shows that
@@ -32,13 +41,27 @@ for group in "${GROUPS_[@]}"; do docker rm -f "$SIM-$group" >/dev/null 2>&1 || t
 [[ "${1:-}" == "stop" ]] && { echo "Simulated players stopped."; exit 0; }
 mkdir -p output/demo
 
-# The gateway image has Archipelago (and Python, for the simulated players and the admin calls)
-image="randogeddon-gateway:$AP_VERSION"
-# The native tracker and gateway (minutes the first time, then cached), one after the other: each native-image
-# compile takes several GB at its peak
-docker compose build tracker
-docker compose build gateway
-docker compose build minecraft
+if [[ -n "${DEMO_IMAGES:-}" ]]; then
+  # A published version's images, and this checkout's web app over the tracker's
+  settings="${DEPLOY_SETTINGS:-$HOME/.config/randogeddon/deploy.env}"
+  if [[ -z "${IMAGES:-}" && -f "$settings" ]]; then IMAGES="$(sed -n 's/^IMAGES=//p' "$settings" | tail -1 | tr -d "\"'")"; fi
+  : "${IMAGES:?set IMAGES (the registry and path of the images) for DEMO_IMAGES}"
+  export TRACKER_IMAGE="$IMAGES/tracker" GATEWAY_IMAGE="$IMAGES/gateway" MINECRAFT_IMAGE="$IMAGES/minecraft"
+  export IMAGE_TAG="$DEMO_IMAGES" GATEWAY_TAG="$DEMO_IMAGES"
+  export COMPOSE_FILE="$COMPOSE_FILE:docker-compose.web.yml"
+  docker compose pull -q tracker gateway minecraft
+  ./gradlew -q :webApp:wasmJsBrowserDistribution
+  ./gradlew -q --stop >/dev/null 2>&1 || true
+  image="$GATEWAY_IMAGE:$GATEWAY_TAG"
+else
+  # The gateway image has Archipelago (and Python, for the simulated players and the admin calls)
+  image="randogeddon-gateway:$AP_VERSION"
+  # The native tracker and gateway (minutes the first time, then cached), one after the other: each native-image
+  # compile takes several GB at its peak
+  docker compose build tracker
+  docker compose build gateway
+  docker compose build minecraft
+fi
 # The minecraft service's folder, which it mounts alone: made here, as this user, or Docker makes it as root
 mkdir -p data/minecraft
 docker compose up -d

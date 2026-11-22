@@ -1,0 +1,7 @@
+# Overlay for the demo on published images (DEMO_IMAGES=<version> ./scripts/demo.sh): this checkout's web app, built
+# with Gradle (webApp/build/dist/wasmJs/productionExecutable), over the image's. Not compressed beforehand as the
+# image's is: the tracker sends the files as they are.
+services:
+  tracker:
+    volumes:
+      - ./webApp/build/dist/wasmJs/productionExecutable:/app/web:ro

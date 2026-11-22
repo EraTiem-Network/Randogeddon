@@ -1255,3 +1255,6 @@ games' real map images moved to Later.*
       finished: a tab for the playthrough as it was (tab 1 everything, tab 2 the playthrough, opened first); level
       3: another tab for the paths. The hint's *next* is offered only with a playthrough, otherwise only by chance;
       hints and cheats don't wait for level 2 any more. Levels 2 and 3 run in the background as before (0.23.2.4)
+- [x] Lighter builds (asked for on 2026-11-22: the demo's builds were stopped for low memory, the IDE can't be
+      closed while a session runs; the user chose): native-image's heap capped (6 GB), the demo's builds quick,
+      and a demo on published images with only the web app built (`DEMO_IMAGES`) (0.23.2.5)

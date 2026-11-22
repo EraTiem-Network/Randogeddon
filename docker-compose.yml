@@ -18,6 +18,9 @@ x-build: &build
   sbom: false
   args:
     NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
+    # native-image's heap while it builds, and its optimisation (empty: by the version; the demo builds `quick`)
+    NATIVE_MAX_HEAP: ${NATIVE_MAX_HEAP:-6g}
+    NATIVE_OPTIMIZATION: ${NATIVE_OPTIMIZATION:-}
     AP_VERSION: ${AP_VERSION:-0.6.8}
     # The commit of that release's tag (git ls-remote https://github.com/ArchipelagoMW/Archipelago refs/tags/<version>):
     # the build stops if the tag has moved

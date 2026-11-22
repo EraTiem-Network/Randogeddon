@@ -12,6 +12,13 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.5: Lighter builds
+- native-image builds the tracker and the gateway with a heap of 6 GB at most (`NATIVE_MAX_HEAP`): by itself it took
+  three quarters of the machine's memory (12 GB of 16), and a PC doing other things ran out.
+- The demo builds its images quickly (`-Ob`) whatever the version; a release is built as before.
+- `DEMO_IMAGES=<version> ./scripts/demo.sh`: the demo on that version's published images with only the web app built
+  here, for looking at a change to the web app without a native build.
+
 ### 0.23.2.4: The spoiler log and the cheats from the seed on
 - The spoiler page, the hints and the cheats no longer wait for the spoiler log's playthrough (its second level,
   worked out in the background after the seed): they are there as soon as the session is.
