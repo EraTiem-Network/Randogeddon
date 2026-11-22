@@ -14,17 +14,23 @@ import org.junit.Assume.assumeFalse
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
+import kotlin.io.path.readBytes
+import kotlin.io.path.setLastModifiedTime
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -40,39 +46,70 @@ class ApworldsTest {
     return bytes.toByteArray()
   }
 
-  /** An apworld of [world] whose manifest names [game]. */
-  private fun world(world: String, game: String): ByteArray {
+  /** An apworld of [world] whose manifest names [game]; the manifest in the world's folder, or at the [top]. */
+  private fun world(world: String, game: String, top: Boolean = false): ByteArray {
     val bytes = ByteArrayOutputStream()
     ZipOutputStream(bytes).use { zip ->
       zip.putNextEntry(ZipEntry("$world/__init__.py")); zip.closeEntry()
-      zip.putNextEntry(ZipEntry("$world/archipelago.json")); zip.write("""{"game": "$game", "world_version": "1.0.0"}""".toByteArray()); zip.closeEntry()
+      zip.putNextEntry(ZipEntry(if (top) "archipelago.json" else "$world/archipelago.json"))
+      zip.write("""{"game": "$game", "world_version": "1.0.0"}""".toByteArray()); zip.closeEntry()
     }
     return bytes.toByteArray()
   }
 
+  private fun problem(bytes: ByteArray) = lookAt(bytes).problem
+
   @Test
   fun `an apworld's world and game come from inside it`() {
-    assertEquals("celeste", worldOf(zip("celeste/__init__.py", "celeste/Items.py")))
-    assertEquals("Celeste", manifestGame(world("celeste", "Celeste")))
-    assertNull(manifestGame(zip("celeste/__init__.py")))
-    assertNotNull(checkApworld(zip("a/__init__.py", "b/__init__.py")))
-    assertNotNull(checkApworld(zip("my-game/__init__.py")))
+    assertEquals("celeste", lookAt(zip("celeste/__init__.py", "celeste/Items.py")).world)
+    assertEquals("Celeste", lookAt(world("celeste", "Celeste")).manifest?.game)
+    assertNull(lookAt(zip("celeste/__init__.py")).manifest)
+    assertNotNull(problem(zip("a/__init__.py", "b/__init__.py")))
+    assertNotNull(problem(zip("my-game/__init__.py")))
   }
 
   @Test
   fun `an apworld is a zip with one world folder`() {
-    assertNull(checkApworld(zip("celeste/__init__.py", "celeste/Items.py", "celeste/data/a.json")))
-    assertNotNull(checkApworld(zip("__init__.py")))
-    assertNotNull(checkApworld(zip("celeste/sub/__init__.py")))
-    assertNotNull(checkApworld("not a zip".toByteArray()))
+    assertNull(problem(zip("celeste/__init__.py", "celeste/Items.py", "celeste/data/a.json")))
+    assertNotNull(problem(zip("__init__.py")))
+    assertNotNull(problem(zip("celeste/sub/__init__.py")))
+    assertNotNull(problem("not a zip".toByteArray()))
   }
 
   @Test
   fun `no entry may lead out of it`() {
-    assertNotNull(checkApworld(zip("celeste/__init__.py", "../evil.py")))
-    assertNotNull(checkApworld(zip("celeste/__init__.py", "celeste/../../evil.py")))
-    assertNotNull(checkApworld(zip("celeste/__init__.py", "/etc/evil")))
-    assertNotNull(checkApworld(zip("celeste/__init__.py", "C:/evil")))
+    assertNotNull(problem(zip("celeste/__init__.py", "../evil.py")))
+    assertNotNull(problem(zip("celeste/__init__.py", "celeste/../../evil.py")))
+    assertNotNull(problem(zip("celeste/__init__.py", "/etc/evil")))
+    assertNotNull(problem(zip("celeste/__init__.py", "C:/evil")))
+  }
+
+  @Test
+  fun `an apworld that unpacks to more than a world can is refused`() {
+    // 1 GB and a little of zeros, a few MB packed
+    val bytes = ByteArrayOutputStream()
+    ZipOutputStream(bytes).use { zip ->
+      zip.putNextEntry(ZipEntry("big/__init__.py")); zip.closeEntry()
+      zip.putNextEntry(ZipEntry("big/data.bin"))
+      val chunk = ByteArray(1024 * 1024)
+      repeat(1025) { zip.write(chunk) }
+      zip.closeEntry()
+    }
+    assertEquals("it unpacks to more than 1 GB", problem(bytes.toByteArray()))
+  }
+
+  @Test
+  fun `a manifest too long for one isn't read`() {
+    val bytes = ByteArrayOutputStream()
+    ZipOutputStream(bytes).use { zip ->
+      zip.putNextEntry(ZipEntry("w/__init__.py")); zip.closeEntry()
+      zip.putNextEntry(ZipEntry("w/archipelago.json"))
+      zip.write("""{"game": "W", "x": "${"a".repeat(70_000)}"}""".toByteArray())
+      zip.closeEntry()
+    }
+    val look = lookAt(bytes.toByteArray())
+    assertNull(look.problem)
+    assertNull(look.manifest)
   }
 
   @Test
@@ -241,6 +278,45 @@ class ApworldsTest {
   }
 
   @Test
+  fun `an upload's game is known by its manifest at its top too`() {
+    assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
+    val lib = Library()
+    lib.upload("0.6.8", "celeste.apworld", world("celeste", "Celeste"))
+    val other = lib.upload("0.6.8", "celeste_top.apworld", world("celeste_top", "Celeste", top = true))
+    assertEquals(ApworldConflict(game = "Celeste", otherFile = "celeste.apworld"), other.conflict)
+    assertEquals(listOf("celeste.apworld"), lib.customWorlds("0.6.8"))
+  }
+
+  @Test
+  fun `custom_worlds gets only what changed, and loses what is gone`() {
+    val lib = Library()
+    val source = lib.manual.resolve("manual.apworld").also { it.writeBytes(zip("manual/__init__.py")) }
+    val placed = lib.root.resolve("0.6.8/custom_worlds/manual.apworld")
+    fun hold() = runBlocking { lib.apworlds.holding("0.6.8") {} }
+    hold()
+    assertContentEquals(source.readBytes(), placed.readBytes())
+
+    // Of the same size and time: left as it is (a process may import from it), so the mark stays
+    val time = source.getLastModifiedTime()
+    val marked = placed.readBytes().also { it[it.size - 1] = (it.last() + 1).toByte() }
+    placed.writeBytes(marked)
+    placed.setLastModifiedTime(time)
+    hold()
+    assertContentEquals(marked, placed.readBytes())
+
+    // Changed: copied, and nothing half-copied left beside it
+    source.writeBytes(zip("manual/__init__.py", "manual/Items.py"))
+    source.setLastModifiedTime(FileTime.fromMillis(time.toMillis() + 10_000))
+    hold()
+    assertContentEquals(source.readBytes(), placed.readBytes())
+    assertEquals(listOf("manual.apworld"), lib.customWorlds("0.6.8"))
+
+    source.deleteIfExists()
+    hold()
+    assertEquals(emptyList(), lib.customWorlds("0.6.8"))
+  }
+
+  @Test
   fun `a game the release brings itself is refused`() {
     val lib = Library()
     assumeFalse("needs sh", System.getProperty("os.name").startsWith("Windows"))
@@ -253,6 +329,14 @@ class ApworldsTest {
     assertFailsWith<ApworldProblem> { lib.upload("../0.6.8", "x.apworld", zip("x/__init__.py")) }
     assertNotNull(lib.upload("0.6.8", "x.apworld", zip("../x/__init__.py")).error)
     assertFailsWith<ApworldProblem> { lib.remove("0.6.8", "missing.apworld") }
+    // A name that leads to a release's directory, or merely looks like a release, is none
+    lib.data.resolve("apworlds/0.6.8").createDirectories().resolve("y.apworld").writeBytes(zip("y/__init__.py"))
+    for (name in listOf("0.6.8/../0.6.8", "./0.6.8", "..", "0.6.9")) {
+      assertFailsWith<ApworldProblem>(name) { runBlocking { lib.apworlds.holding(name) {} } }
+      assertFailsWith<ApworldProblem>(name) { runBlocking { lib.apworlds.release(name) } }
+      assertNull(lib.apworlds.fileOf(name, "y.apworld"), name)
+    }
+    assertNotNull(lib.apworlds.fileOf("0.6.8", "y.apworld"))
   }
 
   @Test

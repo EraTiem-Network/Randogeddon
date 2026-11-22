@@ -3,10 +3,11 @@ package net.eratiem.randogeddon.gateway
 import org.slf4j.LoggerFactory
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.withCharset
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -25,6 +26,7 @@ import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.GenerateRequest
+import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.SeedInstall
 import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.SessionIds
@@ -108,6 +110,13 @@ fun Route.internalApi(
         post("/generate") {
           val id = sessionId() ?: return@post
           val request = call.receive<GenerateRequest>()
+          // Only an installed release (its name becomes a path); answered as the generation would
+          val installed = archipelago.versions()
+          if (request.apVersion !in installed) {
+            val message = "Archipelago ${printable(request.apVersion)} is not installed in this gateway " +
+              "(it has ${installed.joinToString().ifEmpty { "none" }})"
+            return@post call.respond(GenerateResult(log = listOf(message)))
+          }
           val result = try {
             generator.generate(id, request)
           } catch (e: IllegalStateException) {
@@ -136,15 +145,12 @@ fun Route.internalApi(
         // Its last generation's log: lines after ?since= (at most ?max=), or all of it as text
         get("/generate/log") {
           val id = sessionId() ?: return@get
-          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-          val max = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
-          generator.log(id, since, max)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+          generator.log(id, since(), max())?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
         // Its spoiler log's background run: its lines after ?since=
         get("/spoiler-run/log") {
           val id = sessionId() ?: return@get
-          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-          generator.spoilerLog(id, since, 1000)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+          generator.spoilerLog(id, since(), 1000)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
         // Its spoiler log stopped: tried again from there
         post("/spoiler-run/retry") {
@@ -169,7 +175,7 @@ fun Route.internalApi(
           session.passwords.invalidate()
           val closed = session.clients.close(slot, "Your access to this slot changed")
           minecraft.reconnect(id, slot)
-          logger.info("{}'s slot {}: its password is new, {} connection(s) closed", id, slot, closed)
+          logger.info("{}'s slot {}: its password is new, {} connection(s) closed", id, printable(slot), closed)
           call.respond(HttpStatusCode.NoContent)
         }
         // Its Minecraft Dig slots' servers: their state; started and stopped by hand; their logs (by slot)
@@ -188,8 +194,7 @@ fun Route.internalApi(
         }
         get("/minecraft/log") {
           val id = sessionId() ?: return@get
-          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-          call.respond(minecraft.log(id, since))
+          call.respond(minecraft.log(id, since()))
         }
         // Its logic: how many of each slot's locations it can check now (no content: it isn't running)
         post("/logic/available") {
@@ -204,23 +209,25 @@ fun Route.internalApi(
         // Its logic's log: lines after ?since=
         get("/logic/log") {
           val id = sessionId() ?: return@get
-          val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-          logic.log(id, since)?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
+          logic.log(id, since())?.let { call.respond(it) } ?: call.respond(HttpStatusCode.NotFound)
         }
         // Stops its game server; its files go to data/old, or for good with ?purge=true
         delete {
           val id = sessionId() ?: return@delete
           generator.dropSpoiler(id)
           logic.stop(id)
+          // Its logic's log isn't handed to a new session of its ID
+          logic.forget(id)
           minecraft.remove(id)
           val purge = call.request.queryParameters["purge"] == "true"
           if (sessions.remove(id, purge)) call.respond(HttpStatusCode.NoContent) else call.respond(HttpStatusCode.NotFound)
         }
+        // Handed out in pieces as they are read: a large one is never whole in the gateway's memory
         get("/spoiler") {
           val id = sessionId() ?: return@get
-          val text = dirs.spoiler(id)
-          if (text == null) call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this session"))
-          else call.respondText(text, ContentType.Text.Plain)
+          val log = withContext(Dispatchers.IO) { dirs.spoilerLog(id) }
+            ?: return@get call.respond(HttpStatusCode.NotFound, ApiError("No spoiler log for this session"))
+          call.respondOutputStream(ContentType.Text.Plain.withCharset(Charsets.UTF_8)) { log.copyTo(this) }
         }
         // The seed's files of the slots (patches, mods), for the players to download through the tracker
         route("/files") {
@@ -230,9 +237,9 @@ fun Route.internalApi(
           }
           get("/{name}") {
             val id = sessionId() ?: return@get
-            val bytes = dirs.slotFile(id, call.parameters["name"].orEmpty())
+            val file = withContext(Dispatchers.IO) { dirs.slotFile(id, call.parameters["name"].orEmpty()) }
               ?: return@get call.respond(HttpStatusCode.NotFound, ApiError("No such file"))
-            call.respondBytes(bytes, ContentType.Application.OctetStream)
+            call.respondOutputStream(ContentType.Application.OctetStream) { file.copyTo(this) }
           }
         }
         route("/server") {
@@ -241,10 +248,7 @@ fun Route.internalApi(
           post("/stop") { control { sessions.stop(it) } }
           post("/restart") { control { sessions.restart(it) } }
           get("/log") {
-            server(sessions) {
-              val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
-              call.respond(it.server.log(since))
-            }
+            server(sessions) { call.respond(it.server.log(since())) }
           }
           post("/command") {
             server(sessions) {
@@ -272,6 +276,12 @@ private suspend fun RoutingContext.sessionId(): String? {
   }
   return id
 }
+
+/** `?since=`: only the lines after this number (0, or none given: all). */
+private fun RoutingContext.since(): Long = call.request.queryParameters["since"]?.toLongOrNull() ?: 0
+
+/** `?max=`: at most this many lines (1 to 5000; 1000 if none is given). */
+private fun RoutingContext.max(): Int = call.request.queryParameters["max"]?.toIntOrNull()?.coerceIn(1, 5000) ?: 1000
 
 /** The session's game server, or 404. */
 private suspend fun RoutingContext.server(sessions: Sessions, block: suspend (SessionGameServer) -> Unit) {

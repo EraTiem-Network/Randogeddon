@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.gateway
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class LogSecretsTest {
   @Test
@@ -16,6 +17,18 @@ class LogSecretsTest {
     // As JSON, and with the other kind of quotes
     assertEquals("""{"cmd":"Connect","password":"***","name":"Bob"}""", withoutPasswords("""{"cmd":"Connect","password":"pw","name":"Bob"}"""))
     assertEquals("""'password': "***", 'x': 1""", withoutPasswords("""'password': "it's", 'x': 1"""))
+  }
+
+  @Test
+  fun `a line cut inside a password keeps no part of it`() {
+    val line = "A client connection was refused due to: {'InvalidSlot'}, the sent connect information was " +
+      "{'cmd': 'Connect', 'name': 'Alice', 'password': '" + "s3cr3t".repeat(1000) + "', 'game': 'Wrong'}."
+    val shown = withoutPasswords(line.reader().cutLines(MAX_LOG_LINE).single())
+    assertFalse("s3c" in shown, shown)
+    assertTrue(shown.endsWith("'password': '***"), shown)
+    // Cut right after the quote, and a closed one before an open one
+    assertEquals("""{"password": "***""", withoutPasswords("""{"password": """"))
+    assertEquals("'password': '***', 'x': 'password': \"***", withoutPasswords("'password': 'a', 'x': 'password': \"bc"))
   }
 
   @Test

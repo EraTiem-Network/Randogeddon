@@ -61,8 +61,13 @@ fun sleepsNow(status: GameServerStatus, players: Int, idleFor: Duration, idleMin
  */
 data class SleepRules(val keepRunning: Boolean = false, val hosted: Set<String> = emptySet(), val direct: Set<String> = emptySet())
 
-/** One session's game server, its directory, and the port it listens on while it runs. */
-class SessionGameServer(val id: String, val dir: Path, val server: GameServer, passwordCache: () -> SlotPasswordCache) {
+/**
+ * One session's game server, its directory, and the port it listens on while it runs. [room]: its room.json (written
+ * before each start), parsed again only when it changed: its seed's name, its first slot.
+ */
+class SessionGameServer(
+  val id: String, val dir: Path, val server: GameServer, val room: RoomJson, passwordCache: () -> SlotPasswordCache,
+) {
   /** Its slot passwords, made when the first client connects. */
   val passwords: SlotPasswordCache by lazy(passwordCache)
 
@@ -72,8 +77,6 @@ class SessionGameServer(val id: String, val dir: Path, val server: GameServer, p
   @Volatile
   var port: Int? = null
     internal set
-
-  val roomJson: Path get() = dir.resolve("room.json")
 
   private val playing = AtomicInteger()
 
@@ -107,15 +110,15 @@ class ServersBusy(message: String) : Exception(message)
 
 /**
  * The game servers of every session with a seed, one MultiServer each, on a free port. Only so many run at once as
- * [limit] says (the Administrators' setting; 0: no limit). [create] makes a session's game server, [passwords] its
- * slot password cache (from its room.json), [port] picks its port ([freePort]). One nobody plays on goes to sleep
- * ([sweep]) and starts again when a player connects ([wake]).
+ * [limit] says (the Administrators' setting; 0: no limit). [create] makes a session's game server (its directory, its
+ * room.json), [passwords] its slot password cache (from its room.json), [port] picks its port ([freePort]). One nobody
+ * plays on goes to sleep ([sweep]) and starts again when a player connects ([wake]).
  */
 class Sessions(
   private val dirs: SessionDirs,
   private val limit: suspend () -> Int,
-  private val create: (id: String, dir: Path, port: () -> Int) -> GameServer,
-  private val passwords: (roomJson: Path) -> SlotPasswordCache,
+  private val create: (id: String, dir: Path, room: RoomJson, port: () -> Int) -> GameServer,
+  private val passwords: (room: RoomJson) -> SlotPasswordCache,
   private val port: (last: Int?, taken: Set<Int>) -> Int = ::freePort,
 ) {
   private val mutex = Mutex()
@@ -144,13 +147,21 @@ class Sessions(
 
   /**
    * Puts the game servers nobody played on for [idleMinutes] to sleep ([sleepsNow]), but those [rules] keep running;
-   * the IDs of those it did.
+   * the IDs of those it did. Each is looked at again under its lock: one an Administrator stopped meanwhile stays
+   * stopped, one a player joined meanwhile runs on.
    */
-  suspend fun sweep(idleMinutes: Int, rules: suspend (SessionGameServer) -> SleepRules): List<String> =
-    all().filter { sleepsNow(it.server.state.status, it.players, it.idleSince.elapsedNow(), idleMinutes, false) }
+  suspend fun sweep(idleMinutes: Int, rules: suspend (SessionGameServer) -> SleepRules): List<String> {
+    fun idle(session: SessionGameServer, status: GameServerStatus) =
+      sleepsNow(status, session.players, session.idleSince.elapsedNow(), idleMinutes, false)
+    return all().filter { idle(it, it.server.state.status) }
       .filter { !rules(it).keepRunning }
-      .onEach { it.server.sleep("Asleep: nobody played for $idleMinutes minutes; it starts when a player connects") }
+      .filter { session ->
+        session.server.sleep("Asleep: nobody played for $idleMinutes minutes; it starts when a player connects") {
+          idle(session, it.status)
+        }
+      }
       .map { it.id }
+  }
 
   /**
    * Starts a sleeping game server for a player who connects ([start]: throws [ServersBusy] when there's no room) and
@@ -161,7 +172,8 @@ class Sessions(
     val session = sessions[id] ?: return false
     if (session.server.state.status == GameServerStatus.IDLE) {
       logger.info("Waking {}: a player connects", id)
-      start(id)
+      // Only if it still sleeps once it is its turn: a stop by an Administrator meanwhile keeps it stopped
+      start(id, onlyIdle = true)
     }
     val until = TimeSource.Monotonic.markNow() + within
     while (true) {
@@ -177,16 +189,20 @@ class Sessions(
   /** A session got its seed (generated): its game server, stopped until [start]. */
   suspend fun added(id: String): SessionGameServer = mutex.withLock { register(id) }
 
-  /** Starts the session's game server on a free port; throws [ServersBusy] when as many run as [limit] allows. */
-  suspend fun start(id: String): GameServerState = mutex.withLock {
+  /**
+   * Starts the session's game server on a free port; throws [ServersBusy] when as many run as [limit] allows.
+   * [onlyIdle]: only one that sleeps, as looked at under the lock (a player's wake).
+   */
+  suspend fun start(id: String, onlyIdle: Boolean = false): GameServerState = mutex.withLock {
     val session = sessions[id] ?: throw NoSuchElementException("No session $id")
+    if (onlyIdle && session.server.state.status != GameServerStatus.IDLE) return@withLock session.server.state
     if (!session.active) {
       val others = sessions.values.filter { it !== session && it.active }
       val max = limit()
       if (max > 0 && others.size >= max) throw ServersBusy("All $max game servers are in use; finish or stop a session first")
       session.port = port(session.port, others.mapNotNull { it.port }.toSet())
       session.idleSince = TimeSource.Monotonic.markNow()
-      session.server.start()
+      session.server.start(onlyIdle)
     }
     session.server.state
   }
@@ -215,9 +231,11 @@ class Sessions(
 
   private fun register(id: String): SessionGameServer = sessions.getOrPut(id) {
     val dir = dirs.dir(id)
+    // One for all that read it: parsed once each time it changes
+    val room = RoomJson(dir.resolve("room.json"))
     lateinit var session: SessionGameServer
-    val server = create(id, dir) { session.port ?: error("$id has no port") }
-    session = SessionGameServer(id, dir, server) { passwords(dir.resolve("room.json")) }
+    val server = create(id, dir, room) { session.port ?: error("$id has no port") }
+    session = SessionGameServer(id, dir, server, room) { passwords(room) }
     session
   }
 }

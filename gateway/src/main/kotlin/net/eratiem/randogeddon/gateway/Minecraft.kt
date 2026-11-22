@@ -44,14 +44,24 @@ private val DIG_PATCH = Regex("""^AP_[^_]+_P(\d+)_(.+)\.apmcdig$""")
 /** One Minecraft Dig slot of a seed: its number, its name, its patch's `data.json`. */
 internal data class DigSlot(val number: Int, val name: String, val data: String)
 
-/** The Minecraft Dig slots of the seed zip [seed], from their patches (each a zip with its `data.json`). */
+/**
+ * The most bytes of a patch's `data.json` that are read: a real one (the slot's settings and its connection) is a few
+ * KB; a longer one, which only a made-up seed has, is no slot, and it isn't unpacked whole into the memory.
+ */
+internal const val MAX_DIG_DATA = 1024 * 1024
+
+/**
+ * The Minecraft Dig slots of the seed zip [seed], from their patches (each a zip with its `data.json`, of at most
+ * [MAX_DIG_DATA] bytes).
+ */
 internal fun digSlots(seed: Path): List<DigSlot> = buildList {
   ZipInputStream(seed.inputStream()).use { zip ->
     while (true) {
       val entry = zip.nextEntry ?: break
       val match = DIG_PATCH.matchEntire(entry.name.substringAfterLast('/')) ?: continue
       val data = ZipInputStream(zip.readBytes().inputStream()).use { patch ->
-        generateSequence { patch.nextEntry }.firstOrNull { it.name == "data.json" }?.let { patch.readBytes().decodeToString() }
+        generateSequence { patch.nextEntry }.firstOrNull { it.name == "data.json" }
+          ?.let { patch.readNBytes(MAX_DIG_DATA + 1) }?.takeIf { it.size <= MAX_DIG_DATA }?.decodeToString()
       } ?: continue
       add(DigSlot(match.groupValues[1].toInt(), match.groupValues[2], data))
     }
@@ -74,6 +84,20 @@ internal data class HostServer(
 
 @Serializable
 internal data class HostServers(val servers: List<HostServer> = emptyList())
+
+/** The minecraft service's states of a server, as [HostServer.status] says them. */
+private const val HOST_STARTING = "starting"
+private const val HOST_RUNNING = "running"
+private const val HOST_CRASHED = "crashed"
+
+/**
+ * Of the server [keys], those of session [id] (`<id>-p<number>`, as the gateway makes them), and only those: not the
+ * ones of a session whose ID starts the same (`<id>-party-p2`, `<id>-p1-p1`).
+ */
+internal fun serverKeysOf(id: String, keys: Collection<String>): List<String> {
+  val own = Regex("^${Regex.escape(id.lowercase())}-p\\d+$")
+  return keys.filter { own.matches(it) }
+}
 
 /**
  * The hosted Minecraft servers of the sessions' Minecraft Dig slots, run by the minecraft service
@@ -131,6 +155,13 @@ class Minecraft(
 
   private fun key(id: String, slot: DigSlot) = "$id-p${slot.number}".lowercase()
 
+  /** Session [id]'s Minecraft Dig slot [slot]; `null`: it has none of that name. */
+  private fun digSlot(id: String, slot: String): DigSlot? = slotsOf(id).firstOrNull { it.name == slot }
+
+  /** Asks the minecraft service to stop server [key] (its world stays); `false`: it didn't, or doesn't answer. */
+  private suspend fun stopServer(key: String): Boolean =
+    runCatching { http.post("$api/servers/$key/stop") { auth() }.status.isSuccess() }.getOrDefault(false)
+
   /** Session [id]'s hosted Minecraft Dig slots and their servers (a slot played by an account runs its own). */
   suspend fun servers(id: String): MinecraftServers {
     val rules = rules(id)
@@ -141,9 +172,9 @@ class Minecraft(
     val key = key(id, slot)
     val host = known[key]
     val status = when (host?.status) {
-      "starting" -> MinecraftStatus.STARTING
-      "running" -> MinecraftStatus.RUNNING
-      "crashed" -> MinecraftStatus.CRASHED
+      HOST_STARTING -> MinecraftStatus.STARTING
+      HOST_RUNNING -> MinecraftStatus.RUNNING
+      HOST_CRASHED -> MinecraftStatus.CRASHED
       else -> MinecraftStatus.ASLEEP
     }
     MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problems[key], direct = slot.name in rules.direct)
@@ -151,34 +182,37 @@ class Minecraft(
 
   /** Where session [id]'s slot [slot]'s Minecraft server listens (host, port) while it runs; `null`: it doesn't. */
   fun address(id: String, slot: String): Pair<String, Int>? {
-    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return null
-    val host = known[key(id, digSlot)]?.takeIf { it.status == "running" } ?: return null
+    val digSlot = digSlot(id, slot) ?: return null
+    val host = known[key(id, digSlot)]?.takeIf { it.status == HOST_RUNNING } ?: return null
     return api.substringAfter("://").substringBefore(':') to host.port
   }
 
   /** Starts session [id]'s slot [slot]'s server (its files for the seed first); `null`, or why it can't. */
   suspend fun start(id: String, slot: String): String? {
     if (!enabled) return "No Minecraft is hosted here"
-    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return "$slot isn't a Minecraft Dig slot of this session"
+    val digSlot = digSlot(id, slot) ?: return "$slot isn't a Minecraft Dig slot of this session"
     val key = key(id, digSlot)
     if (slot !in rules(id).direct) return "$slot isn't hosted directly (an Administrator's switch)"
     if (finished(id)) return "its session is finished (reopen it first)"
-    if (known[key]?.status in setOf("starting", "running")) return null
+    if (known[key]?.status in setOf(HOST_STARTING, HOST_RUNNING)) return null
     if (!eula()) return "Mojang's EULA isn't accepted (the operator's MINECRAFT_EULA)".also { problems[key] = it }
     val seed = dirs.seed(id)?.name ?: return "it has no seed"
     val files = buildJsonText(id, digSlot, seed)
-    val put = http.put("$api/servers/$key") { auth(); contentType(ContentType.Application.Json); setBody(files) }
-    if (!put.status.isSuccess()) return "The minecraft service answered ${put.status}".also { problems[key] = it }
-    val started = http.post("$api/servers/$key/start") { auth() }
-    if (!started.status.isSuccess()) {
-      val why = runCatching { HostJson.parseToJsonElement(started.bodyAsText()) as JsonObject }.getOrNull()
+    val refused = runCatching {
+      val put = http.put("$api/servers/$key") { auth(); contentType(ContentType.Application.Json); setBody(files) }
+      if (!put.status.isSuccess()) return@runCatching "The minecraft service answered ${put.status}"
+      val started = http.post("$api/servers/$key/start") { auth() }
+      if (started.status.isSuccess()) null
+      else runCatching { HostJson.parseToJsonElement(started.bodyAsText()) as JsonObject }.getOrNull()
         ?.get("message")?.jsonPrimitive?.content ?: "the minecraft service answered ${started.status}"
-      problems[key] = why
-      return why
+    }.getOrElse { "the minecraft service doesn't answer" }
+    if (refused != null) {
+      problems[key] = refused
+      return refused
     }
     problems.remove(key)
     lastPlayer[key] = System.currentTimeMillis()
-    logger.info("Minecraft server of {}'s {} starting", id, slot)
+    logger.info("Minecraft server of {}'s {} starting", id, printable(slot))
     runCatching { look() }
     return null
   }
@@ -197,8 +231,9 @@ class Minecraft(
   )
 
   suspend fun stop(id: String, slot: String): Boolean {
-    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return false
-    return http.post("$api/servers/${key(id, digSlot)}/stop") { auth() }.status.isSuccess()
+    if (!enabled) return false
+    val digSlot = digSlot(id, slot) ?: return false
+    return stopServer(key(id, digSlot))
   }
 
   /** Session [id]'s Minecraft Dig slots' server logs, their lines numbered above [since], by slot. */
@@ -208,10 +243,19 @@ class Minecraft(
     slot.name to (text?.let { HostJson.decodeFromString(LogLines.serializer(), it) } ?: LogLines(emptyList(), since))
   })
 
-  /** Session [id] is deleted: its servers and their worlds too. */
+  /**
+   * Session [id] is deleted: its servers and their worlds too, and what is kept of them here (for a new session of its
+   * ID). Only its own: not those of a session whose ID starts the same.
+   */
   suspend fun remove(id: String) {
+    val dir = dirs.dir(id)
+    slots.keys.removeIf { it.startsWith(dir) }
+    serverKeysOf(id, problems.keys + lastPlayer.keys).forEach { key ->
+      problems.remove(key)
+      lastPlayer.remove(key)
+    }
     if (!enabled) return
-    known.keys.filter { it.startsWith("$id-p") }.forEach { key ->
+    serverKeysOf(id, known.keys).forEach { key ->
       runCatching { http.delete("$api/servers/$key") { auth() } }
       known.remove(key)
     }
@@ -226,35 +270,40 @@ class Minecraft(
       val before = known.put(server.key, server)
       if (server.players.isNotEmpty()) {
         lastPlayer[server.key] = now
-        if (before?.players.isNullOrEmpty()) connect(server)
+        // One that doesn't answer now is asked again at its next first player
+        if (before?.players.isNullOrEmpty()) runCatching { connect(server) }
       }
       // Its session ended or paused: its game server is stopped, so is it (its world stays)
       val session = server.session
-      if (server.status in setOf("starting", "running") && session != null && finished(session)) {
+      if (server.status in setOf(HOST_STARTING, HOST_RUNNING) && session != null && finished(session)) {
         logger.info("Minecraft server {} stops: its session is finished", server.key)
-        http.post("$api/servers/${server.key}/stop") { auth() }
+        stopServer(server.key)
         continue
       }
       // The minecraft service's time where it has one: it goes on across the gateway's restarts
       val since = server.lastPlayer ?: lastPlayer.getOrPut(server.key) { now }
-      if (server.status == "running" && server.players.isEmpty() && idle > 0 && now - since >= idle.minutes.inWholeMilliseconds) {
+      if (server.status == HOST_RUNNING && server.players.isEmpty() && idle > 0 && now - since >= idle.minutes.inWholeMilliseconds) {
         logger.info("Minecraft server {} sleeps: no player for {} min", server.key, idle)
-        http.post("$api/servers/${server.key}/stop") { auth() }
+        stopServer(server.key)
       }
     }
   }
 
   /** Session [id]'s slot [slot]'s server, if it runs, connects to Archipelago again (with a new password). */
   suspend fun reconnect(id: String, slot: String) {
-    val digSlot = slotsOf(id).firstOrNull { it.name == slot } ?: return
-    known[key(id, digSlot)]?.takeIf { it.status == "running" }?.let { connect(it) }
+    val digSlot = digSlot(id, slot) ?: return
+    known[key(id, digSlot)]?.takeIf { it.status == HOST_RUNNING }?.let { server ->
+      runCatching { connect(server) }
+        .onFailure { logger.info("Minecraft server {} not reconnected: {}", server.key, it.message) }
+    }
   }
 
   /** Its first player is on it: it connects to Archipelago, through the relay that leads to its session's game server. */
   private suspend fun connect(server: HostServer) {
     val id = server.session ?: return
     val slot = slotsOf(id).firstOrNull { key(id, it) == server.key } ?: return
-    val password = passwords(id)[slot.name] ?: return logger.warn("No password for {}'s {}: not connected", id, slot.name)
+    val password = passwords(id)[slot.name]
+      ?: return logger.warn("No password for {}'s {}: not connected", id, printable(slot.name))
     // The password in double quotes (the mod's argument); the passwords made here have no quotes or backslashes
     val line = "connect 127.0.0.1 ${server.relay} \"$password\""
     val sent = http.post("$api/servers/${server.key}/command") {
@@ -262,7 +311,7 @@ class Minecraft(
       contentType(ContentType.Application.Json)
       setBody(HostJson.encodeToString(JsonObject.serializer(), JsonObject(mapOf("line" to JsonPrimitive(line)))))
     }
-    logger.info("Minecraft server {} connects to Archipelago as {}: {}", server.key, slot.name, sent.status)
+    logger.info("Minecraft server {} connects to Archipelago as {}: {}", server.key, printable(slot.name), sent.status)
   }
 
   private fun io.ktor.client.request.HttpRequestBuilder.auth() = bearerAuth(token)

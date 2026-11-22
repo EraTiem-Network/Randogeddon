@@ -74,6 +74,11 @@ class GeneratorTest {
     assertEquals(listOf("0.6.10", "0.6.8", "0.5.1"), archipelago.versions())
     assertEquals("0.6.10", archipelago.newest)
     assertFailsWith<IllegalArgumentException> { archipelago.home("0.9.9") }
+    // Only an installed release's name: a path that leads to one (or out) isn't one
+    for (version in listOf("..", "0.6.8/../0.6.8", "./0.6.8", "")) {
+      assertFailsWith<IllegalArgumentException>(version) { archipelago.home(version) }
+    }
+    assertEquals(root.resolve("0.6.8"), archipelago.home("0.6.8"))
   }
 
   @Test

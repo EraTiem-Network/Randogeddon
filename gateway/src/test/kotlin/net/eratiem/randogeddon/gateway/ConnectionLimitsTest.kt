@@ -41,5 +41,6 @@ class ConnectionLimitsTest {
     assertEquals("Alice?2026 INFO fake", printable("Alice\n2026 INFO fake"))
     assertEquals("", printable(null))
     assertEquals(80, printable("x".repeat(500)).length)
+    assertEquals("a b  c", withoutControls("a\nb\r\tc", ' '))
   }
 }

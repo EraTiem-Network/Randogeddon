@@ -135,7 +135,8 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
   on. *Delete account* removes login, address and settings; sessions keep the name.
 - **Slot passwords:** one per slot, generated with the seed; printable ASCII without spaces, quotes or backslashes. The
   gateway checks every `Connect` (`InvalidPassword`, `InvalidSlot`). Before its `Connect` a client gets 1 MiB frames,
-  5 minutes and 32 frames; at most 1024 wait at once.
+  5 minutes, 32 frames and 32 packets (only `Connect` and `GetDataPackage` are passed on); at most 1024 wait at
+  once, a sleeping game server's wake included.
 - **Share link** (`#/watch/<token>`): the dashboard read-only without a login, no passwords, no spoiler; as many
   live streams per address as the Administrators set (*Users*, default 20; empty: no limit).
 

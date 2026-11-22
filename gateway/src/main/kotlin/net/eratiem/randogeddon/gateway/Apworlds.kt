@@ -1,21 +1,22 @@
 package net.eratiem.randogeddon.gateway
 
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.FileTime
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
-import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
 import kotlin.io.path.fileSize
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
@@ -23,6 +24,7 @@ import kotlin.io.path.readBytes
 import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -31,7 +33,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ApworldConflict
 import net.eratiem.randogeddon.shared.ApworldFile
@@ -53,8 +54,14 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Ap
 /** The largest apworld accepted; the big ones (with their own libraries) are a few MB. */
 private const val MAX_APWORLD_BYTES = 64L * 1024 * 1024
 
+/** The most an apworld may unpack to (its data packed well): more is no world, but a zip made to keep a core busy. */
+private const val MAX_APWORLD_UNPACKED = 1024L * 1024 * 1024
+
 /** Archipelago's generic world: in every release, not a game anyone plays. */
 private const val GENERIC_WORLD = "Archipelago"
+
+/** How long list_games.py may take (it loads every world of a release). */
+private val LIST_TIME = 3.minutes
 
 /** An upload or a removal that can't be done, with what to tell the admin. */
 class ApworldProblem(message: String) : Exception(message)
@@ -71,12 +78,14 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   private val listed = ConcurrentHashMap<String, ReleaseInfo>()
   /** How many Generate.py run with each release's `custom_worlds/` as it is. */
   private val running = ConcurrentHashMap<String, AtomicInteger>()
+  private val manifests = Manifests()
 
   suspend fun info(): ArchipelagoInfo = ArchipelagoInfo(archipelago.versions().map { release(it) }, files())
 
   suspend fun release(version: String): ReleaseInfo {
     // Listed already: no wait for the generations that run
     listed[version]?.let { return it }
+    requireRelease(version)
     return alone { listed[version] ?: withContext(Dispatchers.IO) { list(version) }.also { listed[version] = it } }
   }
 
@@ -86,6 +95,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
    * library waits for them all, and holds off new ones until it is done ([alone]).
    */
   suspend fun <T> holding(version: String, block: suspend () -> T): T {
+    requireRelease(version)
     val count = running.computeIfAbsent(version) { AtomicInteger() }
     mutex.withLock {
       if (count.get() == 0) withContext(Dispatchers.IO) { sync(version) }
@@ -125,7 +135,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
 
   /** With what its `archipelago.json` says, if it has one. */
   private fun ApworldFile.described(path: Path): ApworldFile =
-    apworldManifest(path)?.let { copy(game = it.game, version = it.version, minimumAp = it.minimumAp) } ?: this
+    manifests.of(path)?.let { copy(game = it.game, version = it.version, minimumAp = it.minimumAp) } ?: this
 
   /**
    * Adds uploaded apworlds to the release's library, together (the release lists its games once for all of them). Each
@@ -154,10 +164,11 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
       try {
         val bytes = runCatching { Base64.getDecoder().decode(file.base64) }.getOrElse { throw ApworldProblem("$given: not base64") }
         if (bytes.size > MAX_APWORLD_BYTES) throw ApworldProblem("$given is larger than ${MAX_APWORLD_BYTES / 1024 / 1024} MB")
-        checkApworld(bytes)?.let { throw ApworldProblem("$given: $it") }
-        val name = "${worldOf(bytes)}.apworld"
+        val look = lookAt(bytes)
+        look.problem?.let { throw ApworldProblem("$given: $it") }
+        val name = "${look.world}.apworld"
         shown = name
-        val game = manifestGame(bytes)
+        val game = look.manifest?.game
         // Two of this upload with the same world or game: the first one counts
         taken.firstOrNull { it.second.name == name }?.let { throw ApworldProblem("$name is in this upload twice") }
         game?.let { games[it] }?.let { throw ApworldProblem("$name brings $game, as $it in this upload does") }
@@ -195,10 +206,11 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   private suspend fun ownerOf(release: String, game: String, name: String): GameInfo? {
     val listed = release(release).games.firstOrNull { it.game == game }
     if (listed?.source == GameSource.BUNDLED) return listed
-    val uploaded = uploads(release).filter { it.name != name }
-    uploaded.firstOrNull { manifestGame(it.readBytes()) == game }?.let { return GameInfo(game, GameSource.UPLOADED, it.name) }
-    manualFiles().filter { m -> m.name != name && uploads(release).none { it.name == m.name } }
-      .firstOrNull { manifestGame(it.readBytes()) == game }?.let { return GameInfo(game, GameSource.MANUAL, it.name) }
+    val uploads = uploads(release)
+    uploads.firstOrNull { it.name != name && manifests.of(it)?.game == game }
+      ?.let { return GameInfo(game, GameSource.UPLOADED, it.name) }
+    manualFiles().firstOrNull { m -> m.name != name && uploads.none { it.name == m.name } && manifests.of(m)?.game == game }
+      ?.let { return GameInfo(game, GameSource.MANUAL, it.name) }
     return listed?.takeIf { it.apworld != name }
   }
 
@@ -280,7 +292,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
       if (refused.isNotEmpty()) info = list(release)
       listed[release] = info
       changes.forEachIndexed { i, c ->
-        if (i in refused) logger.warn("Refused {} for Archipelago {}: {}", c.name, release, results[i].error)
+        if (i in refused) logger.warn("Refused {} for Archipelago {}: {}", c.name, release, oneLine(results[i].error!!))
         else logger.info("Added {} to the library of Archipelago {}{}", c.name, release, c.replacing?.let { ", instead of $it" }.orEmpty())
       }
       results
@@ -292,37 +304,60 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     if (version !in archipelago.versions()) throw ApworldProblem("Archipelago $version is not installed in this gateway")
   }
 
-  private fun uploads(version: String): List<Path> = library.resolve(version).takeIf { it.isDirectory() }
-    ?.listDirectoryEntries("*.apworld")?.sortedBy { it.name }.orEmpty()
+  /** The library of [version]: none for a name that isn't an installed release (it would be a path). */
+  private fun uploads(version: String): List<Path> {
+    if (version !in archipelago.versions()) return emptyList()
+    return library.resolve(version).takeIf { it.isDirectory() }
+      ?.listDirectoryEntries("*.apworld")?.sortedBy { it.name }.orEmpty()
+  }
 
   private fun manualFiles(): List<Path> = manual?.takeIf { it.isDirectory() }
     ?.listDirectoryEntries("*.apworld")?.sortedBy { it.name }.orEmpty()
 
   private fun origin(file: Path): String? = file.resolveSibling("${file.name}.from").takeIf { it.exists() }?.readText()?.trim()
 
-  /** The release's `custom_worlds/`: the hand-placed apworlds, then its library (which wins on equal names). */
+  /**
+   * The release's `custom_worlds/`: the hand-placed apworlds, then its library (which wins on equal names). Only a file
+   * that changed is copied (one of the same size and modification time is left), first beside its place and then moved
+   * there at once: a process that imports from it meanwhile has the old file or the new one, never half of one.
+   */
   private fun sync(version: String) {
+    requireRelease(version)
     val target = archipelago.home(version).resolve("custom_worlds").createDirectories()
     val wanted = (manualFiles() + uploads(version)).associateBy { it.name }
-    target.listDirectoryEntries("*.apworld").filter { it.name !in wanted }.forEach { it.deleteIfExists() }
-    wanted.forEach { (name, source) -> Files.copy(source, target.resolve(name), StandardCopyOption.REPLACE_EXISTING) }
+    target.listDirectoryEntries()
+      .filter { (it.name.endsWith(".apworld") && it.name !in wanted) || it.name.endsWith(".apworld.new") }
+      .forEach { it.deleteIfExists() }
+    wanted.forEach { (name, source) ->
+      val placed = target.resolve(name)
+      val same = placed.exists() && placed.fileSize() == source.fileSize()
+        && placed.getLastModifiedTime() == source.getLastModifiedTime()
+      if (same) return@forEach
+      val copy = target.resolve("$name.new")
+      Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
+      Files.move(copy, placed, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
   }
 
   /** Loads the release's worlds with list_games.py (next to serve.py) and sorts out where each game comes from. */
   private fun list(version: String): ReleaseInfo {
     val home = archipelago.home(version)
     sync(version)
-    val out = createTempFile("games", ".json")
+    val work = processTempDir("games")
     try {
-      val proc = ProcessBuilder(archipelago.python, "list_games.py", out.absolutePathString())
-        .withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
-      proc.outputStream.close()
-      // Reading blocks until the output ends: the time limit has to end the process from outside
-      Thread { if (!proc.waitFor(3, TimeUnit.MINUTES)) proc.destroyForcibly() }.apply { isDaemon = true }.start()
-      val output = proc.inputStream.bufferedReader().readText()
-      proc.waitFor()
-      if (proc.exitValue() != 0 || Files.size(out) == 0L) {
-        return ReleaseInfo(version, error = "Listing the games failed: ${output.trim().lines().takeLast(3).joinToString(" ")}")
+      val out = work.resolve("games.json")
+      val proc = startProcess(listOf(archipelago.python, "list_games.py", out.absolutePathString()), home)
+      proc.endAfter(LIST_TIME)
+      // Only its end is of use (the error)
+      val lines = ArrayDeque<String>()
+      proc.eachLine { line ->
+        lines += line
+        if (lines.size > 20) lines.removeFirst()
+      }
+      val code = proc.waitFor()
+      if (code != 0 || !out.exists() || Files.size(out) == 0L) {
+        val last = lines.joinToString("\n").trim().lines().takeLast(3).joinToString(" ")
+        return ReleaseInfo(version, error = "Listing the games failed: $last")
       }
       val listing = ApiJson.decodeFromString(Listing.serializer(), out.readText())
       val uploaded = uploads(version).map { it.name }.toSet()
@@ -336,7 +371,7 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
       }.sortedBy { it.game.lowercase() }
       return ReleaseInfo(version, games, listing.failed)
     } finally {
-      out.deleteIfExists()
+      work.toFile().deleteRecursively()
     }
   }
 
@@ -350,61 +385,67 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
 /** A file name for the library: no path, only safe characters, ending in `.apworld`. */
 internal fun apworldName(given: String): String {
   val base = given.substringAfterLast('/').substringAfterLast('\\').trim()
-  val stem = base.removeSuffix(".apworld").removeSuffix(".zip").replace(Regex("[^A-Za-z0-9._-]"), "_").trimStart('.')
+  val stem = base.removeSuffix(".apworld").removeSuffix(".zip").replace(UNSAFE_NAME, "_").trimStart('.')
   if (stem.isEmpty()) throw ApworldProblem("Not a file name: $given")
   return "$stem.apworld"
 }
 
-/** An apworld's entries (`/` as the separator), in order. */
-private fun zipEntries(bytes: ByteArray): List<String> = runCatching {
-  ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-    generateSequence { zip.nextEntry }.map { it.name.replace('\\', '/') }.toList()
-  }
-}.getOrDefault(emptyList())
-
+private val UNSAFE_NAME = Regex("[^A-Za-z0-9._-]")
 private val WORLD_ENTRY = Regex("^([^/]+)/__init__\\.py$")
+private val DRIVE = Regex("^[A-Za-z]:")
+private val MODULE_NAME = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
 
-/** The world folder of an apworld (`<world>/__init__.py`): Archipelago imports it by this name. */
-internal fun worldOf(bytes: ByteArray): String? = zipEntries(bytes).firstNotNullOfOrNull { WORLD_ENTRY.find(it)?.groupValues?.get(1) }
-
-/** The game an apworld's manifest (`<world>/archipelago.json`) names, if it has one. */
-internal fun manifestGame(bytes: ByteArray): String? = runCatching {
-  ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-    generateSequence { zip.nextEntry }.firstOrNull { Regex("^[^/]+/archipelago\\.json$").matches(it.name.replace('\\', '/')) }
-      ?.let { ApiJson.parseToJsonElement(zip.readBytes().decodeToString()).jsonObject["game"] as? JsonPrimitive }
-      ?.takeIf { it.isString }?.content
-  }
-}.getOrNull()
+/** What one pass over an apworld found: what's wrong with it (`null`: nothing), its world folder, its manifest. */
+internal data class ApworldLook(val problem: String?, val world: String?, val manifest: ApworldManifest?)
 
 /**
- * What's wrong with an apworld, or `null`: it must be a zip with one world folder (`<world>/__init__.py`), named as a
- * Python module can be (Archipelago imports it so), and no entry may lead out of it.
+ * Reads an uploaded apworld once, entry by entry. It must be a zip with one world folder (`<world>/__init__.py`;
+ * Archipelago imports it by that name, so it must be one a Python module can have), no entry may lead out of it, and it
+ * may unpack to no more than [MAX_APWORLD_UNPACKED]. Its manifest is the one [apworldManifest] reads from a file.
  */
-internal fun checkApworld(bytes: ByteArray): String? {
+internal fun lookAt(bytes: ByteArray): ApworldLook {
   var entries = 0
-  val worlds = mutableSetOf<String>()
+  var unpacked = 0L
+  val worlds = linkedSetOf<String>()
+  // The manifest's entry so far, with its bytes (`null`: too long for one)
+  var manifest: Pair<String, ByteArray?>? = null
+  val buffer = ByteArray(64 * 1024)
   try {
     ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
       while (true) {
         val entry = zip.nextEntry ?: break
         entries++
         val name = entry.name.replace('\\', '/')
-        if (name.startsWith("/") || name.split('/').any { it == ".." } || Regex("^[A-Za-z]:").containsMatchIn(name)) {
-          return "an entry leads out of the APWorld ($name)"
+        if (name.startsWith("/") || name.split('/').any { it == ".." } || DRIVE.containsMatchIn(name)) {
+          return ApworldLook("an entry leads out of the APWorld ($name)", null, null)
         }
         WORLD_ENTRY.find(name)?.let { worlds += it.groupValues[1] }
+        val shorter = name.length < (manifest?.first?.length ?: Int.MAX_VALUE)
+        val kept = ByteArrayOutputStream().takeIf { !entry.isDirectory && isManifestEntry(name) && shorter }
+        // Every entry is counted as it unpacks; of the manifest no more is kept than one may have
+        while (true) {
+          val read = zip.read(buffer)
+          if (read < 0) break
+          unpacked += read
+          if (unpacked > MAX_APWORLD_UNPACKED) {
+            return ApworldLook("it unpacks to more than ${MAX_APWORLD_UNPACKED / 1024 / 1024 / 1024} GB", null, null)
+          }
+          if (kept != null && kept.size() <= MANIFEST_BYTES) kept.write(buffer, 0, read)
+        }
+        if (kept != null) manifest = name to kept.toByteArray().takeIf { it.size <= MANIFEST_BYTES }
       }
     }
   } catch (e: Exception) {
-    return "not a valid zip (${e.message})"
+    return ApworldLook("not a valid zip (${e.message})", null, null)
   }
-  return when {
+  val problem = when {
     entries == 0 -> "not a valid zip"
     worlds.isEmpty() -> "no world inside (an APWorld holds a folder with an __init__.py)"
     worlds.size > 1 -> "more than one world inside (${worlds.sorted().joinToString(", ")})"
-    !Regex("^[A-Za-z_][A-Za-z0-9_]*$").matches(worlds.single()) -> "its world ${worlds.single()} isn't a name Archipelago can load"
+    !MODULE_NAME.matches(worlds.single()) -> "its world ${worlds.single()} isn't a name Archipelago can load"
     else -> null
   }
+  return ApworldLook(problem, worlds.firstOrNull(), manifest?.second?.let(::manifestOf))
 }
 
 /**
@@ -439,21 +480,47 @@ internal fun suspects(games: List<String>, log: List<String>, release: ReleaseIn
 data class ApworldManifest(val game: String?, val version: String?, val minimumAp: String?)
 
 /**
- * [apworld]'s `archipelago.json` (at its top or in its one directory), read without loading it; `null` without one,
- * or one that isn't JSON. Values that aren't short text are left out.
+ * [apworld]'s `archipelago.json` (at its top or in its one directory, the shortest path), read without loading it;
+ * `null` without one, or one that isn't JSON. Values that aren't short text are left out.
  */
 fun apworldManifest(apworld: Path): ApworldManifest? = runCatching {
   ZipFile(apworld.toFile()).use { zip ->
     val entry = zip.entries().asSequence()
-      .filter { !it.isDirectory && it.name.substringAfterLast('/') == "archipelago.json" && it.name.count { c -> c == '/' } <= 1 }
+      .filter { !it.isDirectory && isManifestEntry(it.name.replace('\\', '/')) }
       .minByOrNull { it.name.length } ?: return@use null
     if (entry.size > MANIFEST_BYTES) return@use null
-    val json = zip.getInputStream(entry).use { it.readNBytes(MANIFEST_BYTES.toInt()) }.decodeToString()
-    val fields = ApiJson.parseToJsonElement(json) as? JsonObject ?: return@use null
-    fun text(key: String) = (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.take(80)?.ifEmpty { null }
-    ApworldManifest(text("game"), text("world_version"), text("minimum_ap_version"))
+    val bytes = zip.getInputStream(entry).use { it.readNBytes(MANIFEST_BYTES.toInt() + 1) }
+    if (bytes.size > MANIFEST_BYTES) null else manifestOf(bytes)
   }
 }.getOrNull()
 
 /** An `archipelago.json` is a few lines: more is no manifest. */
 private const val MANIFEST_BYTES = 64 * 1024L
+
+/** An entry (`/` as the separator) that can be an apworld's manifest: `archipelago.json` at its top or one folder down. */
+private fun isManifestEntry(name: String): Boolean =
+  name.substringAfterLast('/') == "archipelago.json" && name.count { it == '/' } <= 1
+
+/** A manifest's fields; `null` for one that isn't a JSON object. Values that aren't short text are left out. */
+private fun manifestOf(bytes: ByteArray): ApworldManifest? = runCatching {
+  val fields = ApiJson.parseToJsonElement(bytes.decodeToString()) as? JsonObject ?: return null
+  fun text(key: String) =
+    (fields[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.take(80)?.ifEmpty { null }
+  ApworldManifest(text("game"), text("world_version"), text("minimum_ap_version"))
+}.getOrNull()
+
+/** The manifests of the library's files, each read again only once its file changed (by size and modification time). */
+private class Manifests {
+  private class Read(val size: Long, val modified: FileTime, val manifest: ApworldManifest?)
+
+  private val read = ConcurrentHashMap<Path, Read>()
+
+  fun of(file: Path): ApworldManifest? {
+    val (size, modified) = runCatching { file.fileSize() to file.getLastModifiedTime() }.getOrElse {
+      read.remove(file)
+      return null
+    }
+    read[file]?.takeIf { it.size == size && it.modified == modified }?.let { return it.manifest }
+    return apworldManifest(file).also { read[file] = Read(size, modified, it) }
+  }
+}

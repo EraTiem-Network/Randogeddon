@@ -1,13 +1,12 @@
 package net.eratiem.randogeddon.gateway
 
-import java.io.IOException
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
-import kotlin.io.path.createTempDirectory
 import kotlin.io.path.isRegularFile
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
@@ -52,9 +51,8 @@ private const val LOGIC_LOG_LINES = 5_000
 /** How long it stays after its game server ended, at least (with game servers that never sleep: after a stop). */
 private const val LINGER_MINUTES = 10
 
-/** How long a build may take, and an answer. */
+/** How long a build may take. */
 private val BUILD_TIME = 30.minutes
-private val ANSWER_TIME = 60.seconds
 
 /**
  * Each session's logic: its seed's worlds generated again up to the fill (`logic_run.py`, with the seed's number and
@@ -70,8 +68,11 @@ class Logic(
   private val scope: CoroutineScope,
   /** How many are built at once (each a short Generate.py without its fill). */
   atOnce: Int = 2,
+  /** The seeds' kept inputs (one for the gateway: the generator writes them). */
+  private val stages: SpoilerStages = SpoilerStages(dirs),
+  /** How long an answer may take. */
+  private val answerTime: Duration = 60.seconds,
 ) {
-  private val stages = SpoilerStages(dirs)
   private val builds = Semaphore(atOnce)
   private val runs = ConcurrentHashMap<String, Run>()
   private val logs = ConcurrentHashMap<String, LogBuffer>()
@@ -98,6 +99,9 @@ class Logic(
     val ready = CompletableFuture<Boolean>()
     val answers = Channel<JsonObject>(Channel.UNLIMITED)
     val asking = Mutex()
+
+    /** Answers still to come for questions whose wait ran out (under [asking]): the next question drops them first. */
+    var owed = 0
 
     fun to(status: LogicStatus, problem: String? = null) {
       this.status = status
@@ -150,12 +154,20 @@ class Logic(
   fun stop(id: String) {
     val run = runs.remove(id) ?: return
     run.stopping = true
-    run.process?.destroyForcibly()
+    // What a build waits for: its build place and the APWorld library are free at once
+    run.ready.complete(false)
+    run.process?.endTree()
     run.job?.cancel()
     run.answers.close()
   }
 
   fun stopAll() = runs.keys.toList().forEach(::stop)
+
+  /** Session [id] is deleted: its log and its game server's end are forgotten (after [stop]), for a new one of its ID. */
+  fun forget(id: String) {
+    logs.remove(id)
+    endedAt.remove(id)
+  }
 
   /** How many of each asked slot's unchecked locations its logic reaches; `null`: it isn't running. */
   suspend fun available(id: String, request: AvailableRequest): AvailableAnswer? {
@@ -164,6 +176,12 @@ class Logic(
     // One line, as the script reads it: {"slots": [{"slot": …, "items": […], "checked": […]}]}
     val line = ApiJson.encodeToString(AvailableRequest.serializer(), request)
     return run.asking.withLock {
+      // The script answers in order: the late answers of questions before are dropped, so this one gets its own
+      while (run.owed > 0) {
+        val late = withTimeoutOrNull(answerTime) { run.answers.receiveCatching() } ?: return@withLock null
+        if (late.isClosed) return@withLock null
+        run.owed--
+      }
       val written = runCatching {
         withContext(Dispatchers.IO) {
           process.outputStream.write((line + "\n").toByteArray())
@@ -171,7 +189,9 @@ class Logic(
         }
       }.isSuccess
       if (!written) return@withLock null
-      val answer = withTimeoutOrNull(ANSWER_TIME) { run.answers.receiveCatching().getOrNull() } ?: return@withLock null
+      val received = withTimeoutOrNull(answerTime) { run.answers.receiveCatching() }
+      if (received == null) run.owed++
+      val answer = received?.getOrNull() ?: return@withLock null
       val answers = answer["available"]?.jsonObject ?: return@withLock null
       // Each slot's reachable locations (a number from a logic before 0.21.8: only how many)
       val locations = answers.entries.mapNotNull { (slot, found) ->
@@ -199,7 +219,7 @@ class Logic(
         if (!run.stopping) {
           log.add("[gateway] Failed: ${e.message}")
           run.to(LogicStatus.FAILED, e.message)
-          run.process?.destroyForcibly()
+          run.process?.endTree()
         }
       }
     }
@@ -210,8 +230,7 @@ class Logic(
     val seed = dirs.seed(id) ?: error("it has no seed")
     val home = runCatching { archipelago.home(state.release) }.getOrElse { error("Archipelago ${state.release} is gone from the gateway") }
     // Only with the very APWorlds the seed was generated with: another version would build other worlds
-    state.apworlds.entries.firstOrNull { (file, hash) -> apworlds.fileOf(state.release, file)?.let(::sha256) != hash }
-      ?.let { error("${it.key} changed since the seed was generated") }
+    apworlds.changedSince(state.release, state.apworlds)?.let { error("$it changed since the seed was generated") }
     if (!home.resolve(LOGIC_RUN).isRegularFile()) error("$LOGIC_RUN isn't in this gateway's image")
     log.add("[gateway] Waiting for its turn to be built")
     builds.withPermit {
@@ -223,7 +242,7 @@ class Logic(
         }
         if (!built) {
           if (run.stopping) return@holding
-          run.process?.destroyForcibly()
+          run.process?.endTree()
           error(run.problem ?: "it wasn't built within ${BUILD_TIME.inWholeMinutes} min")
         }
       }
@@ -235,7 +254,7 @@ class Logic(
   }
 
   private fun launchScript(id: String, run: Run, log: LogBuffer, state: SpoilerStages.State, seed: Path, home: Path) {
-    val output = createTempDirectory("logic")
+    val output = processTempDir("logic")
     val command = listOf(
       archipelago.python, LOGIC_RUN, seed.absolutePathString(),
       "--player_files_path", dirs.generationDir(id).resolve("players").absolutePathString(),
@@ -244,30 +263,32 @@ class Logic(
     log.add("[gateway] Building: the seed's worlds up to the fill")
     log.add("$ cd ${home.absolutePathString()}")
     log.add("$ ${command.joinToString(" ")}")
-    val process = ProcessBuilder(command).withoutSecrets().directory(home.toFile()).redirectErrorStream(true).start()
+    // Its questions go to its standard input
+    val process = try {
+      startProcess(command, home, input = true)
+    } catch (e: Exception) {
+      output.toFile().deleteRecursively()
+      throw e
+    }
     run.process = process
-    if (run.stopping) process.destroyForcibly()
+    if (run.stopping) process.endTree()
     Thread {
-      try {
-        process.inputStream.bufferedReader().useLines { lines ->
-          lines.forEach { line ->
-            if (line.startsWith(PREFIX)) {
-              val message = runCatching { ApiJson.parseToJsonElement(line.removePrefix(PREFIX)).jsonObject }.getOrNull()
-              when {
-                message == null -> log.add(line.take(2000))
-                message.containsKey("ready") -> run.ready.complete(true)
-                else -> {
-                  message["error"]?.jsonPrimitive?.contentOrNull?.let { log.add("[gateway] An answer failed: $it") }
-                  run.answers.trySend(message)
-                }
-              }
-            } else {
-              log.add(line.take(2000))
+      // An answer is one line, whatever its length (a slot's map); only the log's lines are cut
+      process.eachLine(max = Int.MAX_VALUE) { line ->
+        if (line.startsWith(PREFIX)) {
+          val message = runCatching { ApiJson.parseToJsonElement(line.removePrefix(PREFIX)).jsonObject }.getOrNull()
+          when {
+            message == null -> log.add(line.take(MAX_LOG_LINE))
+            message.containsKey("ready") -> run.ready.complete(true)
+            else -> {
+              message["error"]?.jsonPrimitive?.contentOrNull
+                ?.let { log.add("[gateway] An answer failed: ${it.take(MAX_LOG_LINE)}") }
+              run.answers.trySend(message)
             }
           }
+        } else {
+          log.add(line.take(MAX_LOG_LINE))
         }
-      } catch (_: IOException) {
-        // Ended
       }
       val code = process.waitFor()
       output.toFile().deleteRecursively()
@@ -279,6 +300,8 @@ class Logic(
         run.answers.close()
         logger.warn("Logic of {}: {}", id, why)
       }
+      // Whatever ended it, its build doesn't wait any more
+      run.ready.complete(false)
     }.apply { isDaemon = true; name = "logic-$id" }.start()
   }
 }

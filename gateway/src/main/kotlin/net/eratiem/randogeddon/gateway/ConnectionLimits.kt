@@ -14,10 +14,18 @@ const val CLIENT_FRAME_LIMIT = 1024 * 1024
 data class Limits(
   /** Connections not in a slot yet, of everyone; the ones in a slot aren't limited. */
   val waiting: Int = 1024,
-  /** How long a connection may wait for its `Connect` (a text client asks for the slot's name first). */
+  /**
+   * How long a connection may wait for its `Connect` (a text client asks for the slot's name first), counted from its
+   * arrival: the wake of a sleeping game server is part of it.
+   */
   val connectWithin: Duration = 5.minutes,
   /** Frames a connection may send before its `Connect` (the data package is asked for first). */
   val framesBeforeConnect: Int = 32,
+  /**
+   * Packets in those frames, in all: each `GetDataPackage` makes MultiServer encode the data package (several MB for
+   * a large multiworld), so a frame full of them isn't let through. A real client asks once.
+   */
+  val packetsBeforeConnect: Int = 32,
 )
 
 /** Counts the game clients' connections that aren't in a slot yet against [limits]; one for the whole gateway. */
@@ -55,4 +63,8 @@ class ConnectionLimits(val limits: Limits = Limits()) {
 }
 
 /** [text] for a log line: no control characters (a name a client sent could bring line breaks). */
-internal fun printable(text: String?): String = text.orEmpty().map { if (it.isISOControl()) '?' else it }.joinToString("").take(80)
+internal fun printable(text: String?): String = withoutControls(text.orEmpty().take(80), '?')
+
+/** [text] with each control character (a line break among them) made [replacement]. */
+internal fun withoutControls(text: String, replacement: Char): String =
+  buildString(text.length) { text.forEach { append(if (it.isISOControl()) replacement else it) } }

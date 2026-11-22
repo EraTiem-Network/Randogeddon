@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.gateway
 
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipEntry
@@ -76,7 +77,11 @@ class SessionDirsTest {
       files.map { it.slot to it.name },
     )
     assertEquals(5L, files.first { it.slot == 3 }.size)
-    assertEquals("patch", dirs.slotFile("brave-otter", "AP_111_P3_Alice-SM.apsm")?.decodeToString())
+    assertEquals("patch", dirs.slotFile("brave-otter", "AP_111_P3_Alice-SM.apsm")?.text())
+    // Handed out as it is read
+    val out = ByteArrayOutputStream()
+    dirs.slotFile("brave-otter", "AP-111-P2-Carol_0.6.8.zip")!!.copyTo(out)
+    assertEquals("factorio mod", out.toString(Charsets.UTF_8))
     // Only what the list offers
     assertNull(dirs.slotFile("brave-otter", "AP_111_P3_Alice-SM_Spoiler.txt"))
     assertNull(dirs.slotFile("brave-otter", "AP_111.archipelago"))
@@ -93,6 +98,12 @@ class SessionDirsTest {
     assertEquals("Playthrough:\n\n0: {\n}\n", dirs.spoiler("brave-otter"))
     assertNull(dirs.spoiler("quiet-fox"))
     assertNull(dirs.spoiler("nobody-here"))
+    assertNull(dirs.spoilerLog("quiet-fox"))
+    // One completed later is handed out instead
+    dirs.spoilerFile("brave-otter").writeText("Playthrough:\n\n1: {\n}\n")
+    val out = ByteArrayOutputStream()
+    dirs.spoilerLog("brave-otter")!!.copyTo(out)
+    assertEquals("Playthrough:\n\n1: {\n}\n", out.toString(Charsets.UTF_8))
   }
 
   @Test

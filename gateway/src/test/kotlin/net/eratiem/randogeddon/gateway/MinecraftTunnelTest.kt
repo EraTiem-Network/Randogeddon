@@ -70,6 +70,25 @@ class MinecraftTunnelTest {
   }
 
   @Test
+  fun `a handshake that leads out of itself is let go too`() = runBlocking {
+    // An address of 2 000 000 000 bytes in a handshake of a few
+    val huge = ByteArrayOutputStream().also {
+      writeVarInt(it, 762)
+      writeVarInt(it, 2_000_000_000)
+      it.write(mcString("x"))
+    }.toByteArray()
+    assertFailsWith<IllegalArgumentException> { nextState(reader(packet(0x00, huge)).packet()) }
+    // A body of one byte that says more follows
+    assertFailsWith<IllegalArgumentException> { nextState(Packet(byteArrayOf(), 0x00, byteArrayOf(0x80.toByte()))) }
+    // A packet whose ID is cut off
+    val cut = ByteArrayOutputStream().also { writeVarInt(it, 1); it.write(0x80) }.toByteArray()
+    assertFailsWith<IllegalArgumentException> { reader(cut).packet() }
+    // A VarInt longer than five bytes
+    assertFailsWith<IllegalArgumentException> { readVarInt(ByteArray(6) { 0x80.toByte() }, 0) }
+    Unit
+  }
+
+  @Test
   fun `the answers the client gets while it waits`() = runBlocking {
     val asleep = reader(statusResponse("Randogeddon: asleep")).packet()
     assertEquals(0x00, asleep.id)
