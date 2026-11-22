@@ -5,6 +5,8 @@
 #                                   database, switch the server to the new (fixed) tag, check that it runs
 #   ./scripts/deploy.sh --publish   build and push the same, and a release's bridge and GitHub release, but leave the
 #                                   server alone: nothing is copied there and it keeps running what it runs
+#   ./scripts/deploy.sh --switch    build nothing: switch the server to this commit's images as they are in the
+#                                   registry (published before, with --publish), with the dump and the checks
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
 #                                   .docs/OPERATIONS.md, restoring)
 # A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
@@ -90,11 +92,12 @@ if [[ "${1:-}" == "--rollback" ]]; then
   exit
 fi
 
-live=1
+live=1 build=1
 case "${1:-}" in
   "") ;;
   --publish) live= ;;
-  *) echo "Unknown option $1 (--publish, --rollback)"; exit 1 ;;
+  --switch) build= ;;
+  *) echo "Unknown option $1 (--publish, --switch, --rollback)"; exit 1 ;;
 esac
 
 [[ -z "$(git status --porcelain)" ]] || { echo "Uncommitted changes: deploy a commit"; exit 1; }
@@ -115,6 +118,7 @@ else
   tag="$(git rev-parse --short=12 HEAD)" gateway_tag="$AP_VERSION-$(git rev-parse --short=12 HEAD)" moving=edge
 fi
 
+if [[ -n "$build" ]]; then
 echo "== Building $tag"
 export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0 BRIDGE_VERSION="$version"
 # The bridge's checksums are signed with this machine's key, if it has one (ssh-keygen -t ed25519 -N "" -f <file>;
@@ -134,6 +138,13 @@ docker tag randogeddon-minecraft:latest "$IMAGES/minecraft:$moving"
 for image in "tracker:$tag" "gateway:$gateway_tag" "minecraft:$tag" "tracker:$moving" "gateway:$moving" "minecraft:$moving"; do
   docker push -q "$IMAGES/$image"
 done
+else
+  # Published before: all three are there, or nothing is switched
+  for image in "tracker:$tag" "gateway:$gateway_tag" "minecraft:$tag"; do
+    docker manifest inspect "$IMAGES/$image" >/dev/null 2>&1 || { echo "$image isn't in the registry: publish it first (--publish)"; exit 1; }
+  done
+  echo "== $tag as it is in the registry (nothing built)"
+fi
 
 if [[ -n "$live" ]]; then
 echo "== The server's files"
@@ -156,6 +167,9 @@ remote "sudo IMAGES='$IMAGES' bash -s -- '$tag' '$gateway_tag'" <<<"$SWITCH"
 else
   echo "== Published only: the server keeps running what it runs"
 fi
+
+# Only what was built here is published and tidied up
+[[ -n "$build" ]] || exit 0
 
 # A release's bridge, as its image serves it
 [[ "$moving" != latest ]] || ./scripts/publish-bridge.sh "$version" "$IMAGES/tracker:$tag"
