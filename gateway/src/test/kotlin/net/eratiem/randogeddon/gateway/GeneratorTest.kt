@@ -17,6 +17,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -79,6 +81,29 @@ class GeneratorTest {
       assertFailsWith<IllegalArgumentException>(version) { archipelago.home(version) }
     }
     assertEquals(root.resolve("0.6.8"), archipelago.home("0.6.8"))
+  }
+
+  @Test
+  fun `a game server starts with a room password of its own on its console, never a server password`() {
+    val launcher = Launcher(archipelago) { null }
+    val room = RoomJson(data.resolve("room.json"))
+    val seed = data.resolve("AP_1.zip")
+    val first = launcher.launch(seed, room, 38282)
+    val again = launcher.launch(seed, room, 38282)
+    // Not on its command line (every process can read that); no server password at all: no `!admin`
+    assertTrue(first.command.none { "password" in it || it == first.roomPassword }, first.command.toString())
+    assertEquals(listOf(first.roomPassword), first.firstLines)
+    assertEquals(32, first.roomPassword?.length)
+    assertNotEquals(first.roomPassword, again.roomPassword)
+  }
+
+  @Test
+  fun `room json is the gateway's file, written from what room_info py wrote`() {
+    root.resolve(archipelago.newest).resolve("room_info.py").writeText("""echo '{"seed_name":"12345"}' > "${'$'}2"""")
+    val roomJson = data.resolve("sessions/brave-otter").createDirectories().resolve("room.json")
+    Launcher(archipelago) { null }.prepare(data.resolve("AP_1.zip"), roomJson)
+    assertEquals("12345", readSeedName(roomJson))
+    assertFalse(roomJson.resolveSibling("room.json.new").exists())
   }
 
   @Test

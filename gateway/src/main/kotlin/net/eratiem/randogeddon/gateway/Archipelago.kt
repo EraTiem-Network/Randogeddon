@@ -86,9 +86,6 @@ internal fun compareVersions(a: String, b: String): Int {
   return 0
 }
 
-/** A word for MultiServer's console, which splits its commands like a shell: in double quotes, `\` and `"` escaped. */
-internal fun consoleWord(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-
 /**
  * What Archipelago's processes keep of the gateway's environment: what Python and the release need, nothing else (the
  * last ones are what a process needs on Windows, where the tests run).
@@ -99,8 +96,10 @@ private val KEPT = setOf(
 )
 
 /**
- * Archipelago's Python (Generate.py, MultiServer, the worlds and apworlds) runs without the gateway's secrets: its
- * environment (the database login, the internal token, the admin password) isn't passed on.
+ * Archipelago's Python (Generate.py, MultiServer, the worlds and apworlds) gets nothing of the gateway's environment
+ * (the database login, the internal token) but [KEPT]. That alone doesn't keep the secrets from it: a process of the
+ * gateway's user could read them in `/proc/<gateway>/environ`; in the image it runs as a user of its own
+ * ([ProcessUser]), which can't.
  */
 internal fun ProcessBuilder.withoutSecrets(): ProcessBuilder = apply { environment().keys.removeIf { it.uppercase() !in KEPT } }
 
@@ -112,26 +111,44 @@ internal const val MAX_LOG_LINE = 2000
 
 /**
  * Starts one of Archipelago's processes: [command] in [home], without the gateway's secrets ([withoutSecrets]) and
- * with [extra] variables added, its errors in its output. Its standard input is closed unless [input] (MultiServer's
- * console, the logic's questions): after an error Generate.py waits for Enter (an atexit input()), which the closed
- * input makes an end.
+ * with [extra] variables added, its errors in its output, as [user] (the image's [processUser]; `null`: the gateway's
+ * own user). Its standard input is closed unless [input] (MultiServer's console, the logic's questions): after an error
+ * Generate.py waits for Enter (an atexit input()), which the closed input makes an end. Its out-of-memory score is
+ * raised to [oomScore] ([OOM_FIRST], a game server [OOM_GAME_SERVER]): when the container's memory is full, the kernel
+ * ends it before the gateway, which then sees it end as any other end (a crash, a failed generation).
  */
 internal fun startProcess(
   command: List<String>, home: Path?, extra: Map<String, String> = emptyMap(), input: Boolean = false,
+  oomScore: Int = OOM_FIRST, user: ProcessUser? = processUser,
 ): Process {
-  val proc = ProcessBuilder(command)
+  val proc = ProcessBuilder(user?.command(command, oomScore) ?: command)
     .withoutSecrets()
     .apply {
       home?.let { directory(it.toFile()) }
+      // Its own home, not the gateway's (which it can't write)
+      user?.let { environment()["HOME"] = it.home }
       environment().putAll(extra)
     }
     .redirectErrorStream(true)
     .start()
+  // As its own user it raised its score itself (choom): the gateway may not write another user's
+  if (user == null) raiseOomScore(proc.pid(), oomScore)
   if (!input) proc.outputStream.close()
   return proc
 }
 
-/** Ends the process and every process it started, and theirs (a world's own patcher): none of them runs on. */
+/**
+ * Process [pid]'s out-of-memory score raised to [score] (a process may raise its own user's); nothing where there is
+ * no `/proc` (Windows).
+ */
+internal fun raiseOomScore(pid: Long, score: Int) {
+  runCatching { Path.of("/proc/$pid/oom_score_adj").takeIf { it.exists() }?.writeText(score.toString()) }
+}
+
+/**
+ * Ends the process and every process it started, and theirs (a world's own patcher): none of them runs on. Also as
+ * Archipelago's own user ([ProcessUser]): the gateway holds `CAP_KILL` there.
+ */
 internal fun Process.endTree() {
   runCatching { toHandle().descendants().forEach { it.destroyForcibly() } }
   destroyForcibly()
@@ -207,8 +224,17 @@ internal fun Reader.cutLines(max: Int): Sequence<String> = sequence {
 /** Where Archipelago's processes get their temporary directories (the players' YAMLs, Generate.py's output). */
 private val PROCESS_TEMP: Path = Path.of(System.getProperty("java.io.tmpdir"), "randogeddon")
 
-/** A new temporary directory for one of Archipelago's processes, removed by its caller after it. */
-internal fun processTempDir(prefix: String): Path = createTempDirectory(PROCESS_TEMP.createDirectories(), prefix)
+/**
+ * A new temporary directory for one of Archipelago's processes, removed by its caller after it; its user's
+ * ([processUser]) to read and write, what is made in it too (its parent it only passes through).
+ */
+internal fun processTempDir(prefix: String): Path {
+  val parent = PROCESS_TEMP.createDirectories()
+  processUser?.passThrough(parent)
+  return createTempDirectory(parent, prefix).also { dir ->
+    if (processUser?.share(dir) == false) logger.warn("{} can't be given to Archipelago's user", dir)
+  }
+}
 
 /** What a gateway before this one left in the processes' temporary directories (a killed one removes nothing). */
 fun clearProcessTemp() {
@@ -221,33 +247,54 @@ private val ROOM_INFO_TIME = 2.minutes
 
 /**
  * Starts MultiServer for a seed with its session's Archipelago version and options (from the database, as the admin
- * panel created it). A seed from before without them runs on the newest release with the default options.
+ * panel created it: [launchOf] gives a seed's version and options as JSON). A seed from before without them runs on the
+ * newest release with the default options.
  */
 class Launcher(
   private val archipelago: Archipelago,
-  private val setups: SessionSetupStore,
-  /** For `!admin` remote commands; empty: disabled. */
-  private val adminPassword: String,
+  private val launchOf: suspend (seedName: String) -> Pair<String?, String?>?,
 ) {
-  /** The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]. */
+  constructor(archipelago: Archipelago, setups: SessionSetupStore) : this(archipelago, setups::launchOf)
+
+  private val random = SecureRandom()
+
+  /**
+   * The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]: written by
+   * the script into a temporary directory and by the gateway from there, so it stays the gateway's file (the tracker
+   * reads it as the same user; Archipelago's own user only reads it).
+   */
   fun prepare(seed: Path, roomJson: Path) {
-    val command = listOf(archipelago.python, "room_info.py", seed.absolutePathString(), roomJson.absolutePathString())
-    val proc = startProcess(command, archipelago.home(archipelago.newest))
-    // A hung one would hold its game server's start, and with it every other session's
-    val stopped = proc.endAfter(ROOM_INFO_TIME)
-    var last = ""
-    proc.eachLine { if (it.isNotBlank()) last = it.trimEnd() }
-    val code = proc.waitFor()
-    check(!stopped.get()) { "room_info.py took longer than $ROOM_INFO_TIME" }
-    check(code == 0) { "room_info.py failed: $last" }
+    val work = processTempDir("room")
+    try {
+      val written = work.resolve("room.json")
+      val command = listOf(archipelago.python, "room_info.py", seed.absolutePathString(), written.absolutePathString())
+      val proc = startProcess(command, archipelago.home(archipelago.newest))
+      // A hung one would hold its game server's start, and with it every other session's
+      val stopped = proc.endAfter(ROOM_INFO_TIME)
+      var last = ""
+      proc.eachLine { if (it.isNotBlank()) last = it.trimEnd() }
+      val code = proc.waitFor()
+      check(!stopped.get()) { "room_info.py took longer than $ROOM_INFO_TIME" }
+      check(code == 0) { "room_info.py failed: $last" }
+      // Beside it, then in its place at once: a reader has the one before or this one, never half of it
+      val copy = roomJson.resolveSibling("${roomJson.name}.new")
+      Files.copy(written, copy, StandardCopyOption.REPLACE_EXISTING)
+      processUser?.readable(copy)
+      Files.move(copy, roomJson, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } finally {
+      work.toFile().deleteRecursively()
+    }
   }
 
   /**
    * serve.py = MultiServer plus the hint switches (AP_POINT_HINTS, AP_AUTO_HINTS in its environment), on [port]; the
-   * seed's name comes from [room].
+   * seed's name comes from [room]. Each start gets a room password of its own ([Launch.roomPassword]), as the first
+   * line of its console (serve.py reads it there, never from the command line, which every process can read): only
+   * the gateway and the tracker know it, so a client that reaches MultiServer's port past the gateway gets nowhere. No
+   * server password: `!admin` is off, the admin panel's console is the only one.
    */
   fun launch(seed: Path, room: RoomJson, port: Int): Launch {
-    val setup = room.seedName()?.let { name -> runBlocking { setups.launchOf(name) } }
+    val setup = room.seedName()?.let { name -> runBlocking { launchOf(name) } }
     val version = setup?.first ?: archipelago.newest
     val options = setup?.second?.let { ApiJson.decodeFromString(SessionOptions.serializer(), it) } ?: SessionOptions()
     val command = buildList {
@@ -258,9 +305,8 @@ class Launcher(
       addAll(listOf("--auto_shutdown", "0", "--logtime"))
     }
     val environment = mapOf("AP_POINT_HINTS" to options.pointHints.toString(), "AP_AUTO_HINTS" to options.autoHints.toString())
-    // The password for `!admin` goes in over the console, not on the command line (every process here can read that)
-    val first = if (adminPassword.isBlank()) emptyList() else listOf("/option server_password ${consoleWord(adminPassword)}")
-    return Launch(command, environment, archipelago.home(version), first)
+    val password = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
+    return Launch(command, environment, archipelago.home(version), firstLines = listOf(password), roomPassword = password)
   }
 }
 

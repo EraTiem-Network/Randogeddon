@@ -93,7 +93,10 @@ class SessionsTest {
         GameServer(
           GameServerConfig(
             dataDir = dir,
-            launch = { Launch(listOf("sh", fake.toString(), port().toString())) },
+            // A room password of each start, as the Launcher gives it (the script reads it as a console line)
+            launch = {
+              Launch(listOf("sh", fake.toString(), port().toString()), firstLines = listOf("room-$id"), roomPassword = "room-$id")
+            },
             refuse = { if (id in finished) "its session is finished" else null },
             seedPoll = 50.milliseconds, backoff = 50.milliseconds, stopTimeout = 2.seconds,
           ),
@@ -122,6 +125,8 @@ class SessionsTest {
     assertTrue(sessions.wake("brave-otter"))
     assertTrue(sessions.wake("friday-chaos"))
     assertEquals(listOf(40001, 40002, null), sessions.list().sessions.map { it.port })
+    // The tracker gets each running one's room password with its port, for its own connections
+    assertEquals(listOf("room-brave-otter", "room-friday-chaos", null), sessions.list().sessions.map { it.roomPassword })
     assertFailsWith<ServersBusy> { sessions.wake("quiet-fox") }
     assertEquals(GameServerStatus.IDLE, sessions.get("quiet-fox")?.server?.state?.status)
     assertFailsWith<ServersBusy> { sessions.start("quiet-fox") }
@@ -132,6 +137,7 @@ class SessionsTest {
     sessions.await("quiet-fox", GameServerStatus.RUNNING)
     assertEquals(40001, sessions.get("quiet-fox")?.port)
     assertNull(sessions.list().sessions.first { it.id == "brave-otter" }.port)
+    assertNull(sessions.list().sessions.first { it.id == "brave-otter" }.roomPassword)
     assertNull(sessions.onlyActive())
     sessions.remove("friday-chaos", purge = true)
     assertEquals("quiet-fox", sessions.onlyActive()?.id)

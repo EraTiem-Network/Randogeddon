@@ -3,6 +3,9 @@ gateway:
   port: "$PORT:38281"
   # The domain under which each session has its host name; empty: sessions are named by the path only
   baseDomain: "$BASE_DOMAIN:"
+  # The proxies whose X-Forwarded-For counts for a game client's address (the limits per address), as the tracker's:
+  # addresses or CIDR ranges, comma-separated; empty: every peer's
+  trustedProxies: "$TRUSTED_PROXIES:"
   internal:
     # The tracker controls the game servers here; never published or routed by Traefik
     port: "$INTERNAL_PORT:8001"
@@ -18,12 +21,16 @@ gateway:
     dataDir: "$DATA_DIR:/data"
     # Apworlds put on the server by hand; every release gets them
     customWorlds: "$CUSTOM_WORLDS:/custom_worlds"
-    adminPassword: "$AP_ADMIN_PASSWORD:"
+    # The user Archipelago's processes run as (their APWorld code can't read the gateway's secrets then); set by the
+    # image's start (docker-entrypoint.sh), empty: the gateway's own
+    runAs: "$AP_RUN_AS:"
     # How long a generation may take before it is stopped (a big multiworld fills on one core for a long time)
     generationMinutes: "$GENERATION_MINUTES:60"
     generationsAtOnce: "$GENERATIONS_AT_ONCE:0"
     # The minecraft service, which runs the Minecraft Dig slots' servers (empty: none is hosted)
     minecraftApi: "$MINECRAFT_API:"
+    # Shared with the minecraft service only (never INTERNAL_TOKEN): its API refuses any other; without it none is hosted
+    minecraftToken: "$MINECRAFT_TOKEN:"
     # Mojang's EULA (https://aka.ms/MinecraftEULA), accepted by the operator for every hosted server: true, or none runs
     minecraftEula: "$MINECRAFT_EULA:false"
   database:

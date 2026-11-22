@@ -79,7 +79,6 @@ internal data class HostServer(
   val players: List<String> = emptyList(),
   /** When a player was last on it (epoch ms; its start counts), as the minecraft service keeps it. */
   val lastPlayer: Long? = null,
-  val session: String? = null,
 )
 
 @Serializable
@@ -99,6 +98,18 @@ internal fun serverKeysOf(id: String, keys: Collection<String>): List<String> {
   return keys.filter { own.matches(it) }
 }
 
+/** A server's key as the gateway makes it: `<session>-p<number>`. */
+private val SERVER_KEY = Regex("""^(.+)-p\d+$""")
+
+/**
+ * The session server [key] belongs to (`abc-p1-p2`: `abc-p1`), from the key the gateway made itself; never what the
+ * minecraft service's answer says (code in a hosted server could make it name any session). `null`: no such key.
+ */
+internal fun sessionOfKey(key: String): String? = SERVER_KEY.matchEntire(key)?.groupValues?.get(1)
+
+/** Why no Minecraft server runs while the minecraft service's token isn't set. */
+internal const val NO_MINECRAFT_TOKEN = "The minecraft service has no token of its own (the operator's MINECRAFT_TOKEN)"
+
 /**
  * The hosted Minecraft servers of the sessions' Minecraft Dig slots, run by the minecraft service
  * (`minecraft_host.py`) on the gateway's orders. A server starts when one of its slot's players joins (through the
@@ -110,6 +121,10 @@ class Minecraft(
   private val http: HttpClient,
   /** The minecraft service's API, e.g. `http://minecraft:8002`; empty: no Minecraft is hosted. */
   private val api: String,
+  /**
+   * Between the gateway and the minecraft service only (`MINECRAFT_TOKEN`, never the internal API's); empty: nothing is
+   * asked of the minecraft service, and no Minecraft is hosted.
+   */
   private val token: String,
   private val dirs: SessionDirs,
   /** Mojang's EULA accepted (the operator's `MINECRAFT_EULA`). */
@@ -132,8 +147,17 @@ class Minecraft(
   /** Why the last start of a server failed, by key (shown until it starts). */
   private val problems = ConcurrentHashMap<String, String>()
 
+  /** The minecraft service is there, but the gateway has no token for it: hosted Minecraft is off, and says why. */
+  private val withoutToken = api.isNotBlank() && token.isBlank()
+
   init {
-    if (api.isNotBlank()) scope.launch {
+    if (withoutToken) {
+      logger.warn(
+        "No MINECRAFT_TOKEN (or it is INTERNAL_TOKEN): no Minecraft server is hosted. Set one, the same for the " +
+          "gateway and the minecraft service (openssl rand -hex 32)",
+      )
+    }
+    if (enabled) scope.launch {
       while (true) {
         runCatching { look() }.onFailure { logger.debug("The minecraft service didn't answer: {}", it.message) }
         delay(3.seconds)
@@ -141,7 +165,7 @@ class Minecraft(
     }
   }
 
-  val enabled: Boolean get() = api.isNotBlank()
+  val enabled: Boolean get() = api.isNotBlank() && token.isNotBlank()
 
   /** Session [id]'s Minecraft Dig slots. */
   internal fun slotsOf(id: String): List<DigSlot> {
@@ -177,7 +201,8 @@ class Minecraft(
       HOST_CRASHED -> MinecraftStatus.CRASHED
       else -> MinecraftStatus.ASLEEP
     }
-    MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problems[key], direct = slot.name in rules.direct)
+    val problem = problems[key] ?: NO_MINECRAFT_TOKEN.takeIf { withoutToken }
+    MinecraftServerView(slot.name, status, host?.since, host?.players.orEmpty(), problem, direct = slot.name in rules.direct)
   }, hosting = enabled && eula())
 
   /** Where session [id]'s slot [slot]'s Minecraft server listens (host, port) while it runs; `null`: it doesn't. */
@@ -189,7 +214,7 @@ class Minecraft(
 
   /** Starts session [id]'s slot [slot]'s server (its files for the seed first); `null`, or why it can't. */
   suspend fun start(id: String, slot: String): String? {
-    if (!enabled) return "No Minecraft is hosted here"
+    if (!enabled) return if (withoutToken) NO_MINECRAFT_TOKEN else "No Minecraft is hosted here"
     val digSlot = digSlot(id, slot) ?: return "$slot isn't a Minecraft Dig slot of this session"
     val key = key(id, digSlot)
     if (slot !in rules(id).direct) return "$slot isn't hosted directly (an Administrator's switch)"
@@ -238,7 +263,8 @@ class Minecraft(
 
   /** Session [id]'s Minecraft Dig slots' server logs, their lines numbered above [since], by slot. */
   suspend fun log(id: String, since: Long): MinecraftLogs = MinecraftLogs(slotsOf(id).associate { slot ->
-    val text = runCatching { http.get("$api/servers/${key(id, slot)}/log?since=$since") { auth() } }.getOrNull()
+    val text = if (!enabled) null
+    else runCatching { http.get("$api/servers/${key(id, slot)}/log?since=$since") { auth() } }.getOrNull()
       ?.takeIf { it.status.isSuccess() }?.bodyAsText()
     slot.name to (text?.let { HostJson.decodeFromString(LogLines.serializer(), it) } ?: LogLines(emptyList(), since))
   })
@@ -274,7 +300,7 @@ class Minecraft(
         if (before?.players.isNullOrEmpty()) runCatching { connect(server) }
       }
       // Its session ended or paused: its game server is stopped, so is it (its world stays)
-      val session = server.session
+      val session = sessionOfKey(server.key)
       if (server.status in setOf(HOST_STARTING, HOST_RUNNING) && session != null && finished(session)) {
         logger.info("Minecraft server {} stops: its session is finished", server.key)
         stopServer(server.key)
@@ -298,10 +324,15 @@ class Minecraft(
     }
   }
 
-  /** Its first player is on it: it connects to Archipelago, through the relay that leads to its session's game server. */
+  /**
+   * Its first player is on it: it connects to Archipelago, through the relay that leads to its session's game server.
+   * Only a slot hosted directly (one the gateway starts a server for) gets its password sent, whatever server the
+   * minecraft service names.
+   */
   private suspend fun connect(server: HostServer) {
-    val id = server.session ?: return
+    val id = sessionOfKey(server.key) ?: return
     val slot = slotsOf(id).firstOrNull { key(id, it) == server.key } ?: return
+    if (slot.name !in rules(id).direct) return logger.info("Minecraft server {} isn't hosted directly: not connected", printable(server.key))
     val password = passwords(id)[slot.name]
       ?: return logger.warn("No password for {}'s {}: not connected", id, printable(slot.name))
     // The password in double quotes (the mod's argument); the passwords made here have no quotes or backslashes
