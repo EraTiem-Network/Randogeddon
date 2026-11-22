@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import time
+import traceback
 import zipfile
 
 PREFIX = "[randogeddon-logic] "
@@ -166,6 +167,7 @@ def main() -> None:
     print(f"Built in {time.time() - started:.1f} s: {len(answered)} of {len(multiworld.player_ids)} slots answered",
           flush=True)
     say({"ready": True, "slots": sorted(answered)})
+    failing = set()
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -174,8 +176,17 @@ def main() -> None:
             answers = {}
             for entry in asked.get("slots", []):
                 slot = int(entry["slot"])
-                answers[str(slot)] = available(multiworld, slot, entry.get("items", []), set(entry.get("checked", []))) \
-                    if slot in answered else None
+                answers[str(slot)] = None
+                if slot not in answered:
+                    continue
+                try:  # a world whose rules fail gets no answer; the other slots are answered either way
+                    answers[str(slot)] = available(multiworld, slot, entry.get("items", []), set(entry.get("checked", [])))
+                except Exception as error:
+                    if slot not in failing:  # said once, with where it failed
+                        failing.add(slot)
+                        print(f"Slot {slot} ({multiworld.player_name[slot]}, {multiworld.game[slot]}): its logic can't be "
+                              f"asked, no answers for it: {error!r}", flush=True)
+                        print(traceback.format_exc(limit=-5), flush=True)
             maps = {}
             for slot in map(int, asked.get("maps", [])):
                 if slot not in answered:
