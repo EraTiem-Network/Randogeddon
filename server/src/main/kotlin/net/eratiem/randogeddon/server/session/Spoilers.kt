@@ -17,7 +17,8 @@ internal const val PLAYTHROUGH_NOT_REDUCED = "Randogeddon: the playthrough is no
 /**
  * The spoiler log's playthrough, sphere by sphere: the shortest way through the seed, what each step makes reachable
  * and needs. Archipelago writes it as `Playthrough:`, then `<n>: {`, one `Location (Slot): Item (Slot)` per line, `}`.
- * Without that section (an older format, or generated without a playthrough) only the text is there.
+ * Without that section (the seed's own log, before its playthrough is worked out; an older format) only the text is
+ * there. `Paths:` after it starts the paths to every item (the log's third level).
  */
 internal fun parseSpoiler(seed: String, text: String): Spoiler = parseSpoiler(seed, text.lines())
 
@@ -25,6 +26,8 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler = parseSpoiler(se
 internal fun parseSpoiler(seed: String, lines: List<String>): Spoiler {
   val start = lines.indexOfFirst { it.trim() == "Playthrough:" }
   if (start < 0) return Spoiler(seed, lines = lines.size)
+  // The third level's part, after the playthrough to the log's end
+  val paths = lines.withIndex().indexOfFirst { (n, line) -> n > start && line.trimEnd() == "Paths:" }.takeIf { it >= 0 }
   // The gateway's spoiler_run.py says so in the log's last line when Archipelago couldn't reduce the playthrough
   val unreduced = lines.takeLast(3).any { it.trim() == PLAYTHROUGH_NOT_REDUCED }
   val spheres = mutableListOf<Sphere>()
@@ -50,7 +53,7 @@ internal fun parseSpoiler(seed: String, lines: List<String>): Spoiler {
       entries += t
     }
   }
-  return Spoiler(seed, spheres, lines.size, unreduced)
+  return Spoiler(seed, spheres, lines.size, unreduced, paths)
 }
 
 /**
