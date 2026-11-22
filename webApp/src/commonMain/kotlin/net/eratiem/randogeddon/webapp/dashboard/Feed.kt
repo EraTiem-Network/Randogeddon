@@ -72,10 +72,11 @@ private const val FEED_VISIBLE_KEY = "ap-feed-visible"
 private const val FEED_POSITION_KEY = "ap-feed-position"
 private const val FEED_PINNED_KEY = "ap-feed-pinned"
 private const val FEED_FOLDED_KEY = "ap-feed-folded"
+private const val FEED_AT_KEY = "ap-feed-at"
 
 /**
  * Per viewer, remembered in the browser: the live feed is visible and on the right unless changed; pinned, it is
- * kept on every view (a floating window where a view has no place for it), folded or not.
+ * a floating window on every view, folded or not, where it was moved to.
  */
 internal object FeedSettings {
   var visible: Boolean by mutableStateOf(Platform.loadSetting(FEED_VISIBLE_KEY) != "false")
@@ -94,8 +95,10 @@ internal object FeedSettings {
     private set
   var folded: Boolean by mutableStateOf(Platform.loadSetting(FEED_FOLDED_KEY) == "true")
     private set
-  /** Where the floating window's top left corner was moved to (dp), for as long as the page is open; `null`: not yet. */
-  var floatingAt: Offset? by mutableStateOf(null)
+  /** Where the floating window's top left corner was moved to (dp); `null`: not yet (the bottom right). */
+  var floatingAt: Offset? by mutableStateOf(
+    Platform.loadSetting(FEED_AT_KEY)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { Offset(it[0], it[1]) },
+  )
     private set
 
   fun place(position: FeedPosition) {
@@ -117,6 +120,11 @@ internal object FeedSettings {
     floatingAt = at
   }
 
+  /** Remembers where it was moved to (once a move ends, not at each step of it). */
+  fun keepPlace() {
+    Platform.saveSetting(FEED_AT_KEY, floatingAt?.let { "${it.x.toInt()},${it.y.toInt()}" })
+  }
+
   /** Back to the defaults (without a login). */
   fun reset() {
     visible = true
@@ -128,6 +136,7 @@ internal object FeedSettings {
     Platform.saveSetting(FEED_POSITION_KEY, null)
     Platform.saveSetting(FEED_PINNED_KEY, null)
     Platform.saveSetting(FEED_FOLDED_KEY, null)
+    Platform.saveSetting(FEED_AT_KEY, null)
   }
 }
 /** The feed beside the players: a quarter of the page's column, from 440 to 640 dp. */
@@ -185,7 +194,7 @@ internal fun Feed(
   onHide: (() -> Unit)?,
   /** `null`: the live feed's. */
   title: String? = null,
-  /** Pins it (kept on every view, see [FloatingFeed]) or takes the pin off; `null`: it can't be pinned here. */
+  /** Pins it (a window over every view, see [FloatingFeed]) or takes the pin off; `null`: it can't be pinned here. */
   onPin: ((Boolean) -> Unit)? = null,
 ) {
   val p = LocalPalette.current
@@ -291,9 +300,9 @@ private val FLOAT_HEIGHT = 560.dp
 private val FLOAT_EDGE = 8.dp
 
 /**
- * The pinned live feed on a view that has no place for it (the Management panel, a spoiler log, the account): a
- * window over the page, at the bottom right until it is moved by its head, folded to its head and unfolded again,
- * and gone with its pin. It keeps inside the window.
+ * The pinned live feed: a window over the page on every view (the dashboard too, in place of its feed beside the
+ * players), at the bottom right until it is moved by its head, folded to its head and unfolded again, and back in
+ * its place on the dashboard with its pin taken off. It keeps inside the window.
  */
 @Composable
 internal fun FloatingFeed(s: Summary, onUnpin: () -> Unit) {
@@ -320,7 +329,7 @@ internal fun FloatingFeed(s: Summary, onUnpin: () -> Unit) {
       Row(
         Modifier.fillMaxWidth().onSizeChanged { headHeight = with(density) { it.height.toDp() } }
           .pointerInput(Unit) {
-            detectDragGestures { change, dragged ->
+            detectDragGestures(onDragEnd = { FeedSettings.keepPlace() }) { change, dragged ->
               change.consume()
               FeedSettings.moveTo(Offset(current.x + dragged.x / density.density, current.y + dragged.y / density.density))
             }

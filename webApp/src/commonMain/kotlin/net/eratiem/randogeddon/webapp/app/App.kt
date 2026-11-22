@@ -348,7 +348,9 @@ private fun TrackerApp() {
           onHide = { setFeedVisible(false) }, onPin = FeedSettings::pin,
         )
       }
-      val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
+      // Pinned, the feed is a window over the page (below, with the other views'), not in the dashboard's layout
+      val docked = feedVisible && !FeedSettings.pinned
+      val side = wide && docked && feedPosition != FeedPosition.BELOW
       if (side) {
         // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
         SideBySide(
@@ -365,17 +367,18 @@ private fun TrackerApp() {
       } else {
         // Narrow screens: left/right means right after the players, "below" at the very end
         WithLogic(s) { People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
-        if (feedVisible && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+        if (docked && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
         if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-        if (feedVisible && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+        if (docked && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
       }
       // Players add watchers (support helps in the panel)
       val id = selected
       if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
     }
-    // The pinned feed, on the views that have no place for it: over the page
+    // The pinned feed: over the page, on the dashboard (unless the feed is hidden there) and the views beside it
     val feedOf = summary
-    if (me != null && feedOf != null && FeedSettings.pinned && (route is Route.Admin || route is Route.Spoiler || route == Route.Settings)) {
+    val feedView = route is Route.Admin || route is Route.Spoiler || route == Route.Settings || (route is Route.Dashboard && feedVisible)
+    if (me != null && feedOf != null && FeedSettings.pinned && feedView) {
       FloatingFeed(feedOf, onUnpin = { FeedSettings.pin(false) })
     }
     detailPerson?.let { name ->
