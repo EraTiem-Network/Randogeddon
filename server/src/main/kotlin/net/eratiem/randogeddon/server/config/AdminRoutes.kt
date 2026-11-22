@@ -21,26 +21,25 @@ import net.eratiem.randogeddon.database.GAME_SERVERS
 import net.eratiem.randogeddon.database.IDLE_MINUTES
 import net.eratiem.randogeddon.database.MAX_GAME_SERVERS
 import net.eratiem.randogeddon.database.MAX_IDLE_MINUTES
+import net.eratiem.randogeddon.database.MAX_WATCH_STREAMS
+import net.eratiem.randogeddon.database.WATCH_STREAMS
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.Cheats
 import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.GameServerUnavailable
-import net.eratiem.randogeddon.server.admin.SessionAdmin
-import net.eratiem.randogeddon.server.admin.SessionLifecycle
-import net.eratiem.randogeddon.server.admin.SessionProblem
 import net.eratiem.randogeddon.server.admin.LogicRuns
 import net.eratiem.randogeddon.server.admin.MinecraftRuns
+import net.eratiem.randogeddon.server.admin.SessionAdmin
+import net.eratiem.randogeddon.server.admin.SessionLifecycle
+import net.eratiem.randogeddon.server.admin.SessionPeopleService
+import net.eratiem.randogeddon.server.admin.SessionProblem
 import net.eratiem.randogeddon.server.admin.SpoilerRuns
 import net.eratiem.randogeddon.server.config.refuse
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiError
-import net.eratiem.randogeddon.server.admin.SessionPeopleService
-import net.eratiem.randogeddon.shared.InviteRequest
-import net.eratiem.randogeddon.shared.SlotPlayersRequest
-import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AppSettings
 import net.eratiem.randogeddon.shared.ApworldRemoval
@@ -49,14 +48,17 @@ import net.eratiem.randogeddon.shared.ApworldUpload
 import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CommandRequest
 import net.eratiem.randogeddon.shared.GameServerState
+import net.eratiem.randogeddon.shared.InviteRequest
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.KeepRunningRequest
 import net.eratiem.randogeddon.shared.LogLines
+import net.eratiem.randogeddon.shared.MinecraftDirectRequest
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.RandogeddonVersion
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.SessionIds
 import net.eratiem.randogeddon.shared.SessionRole
+import net.eratiem.randogeddon.shared.SlotPlayersRequest
 import net.eratiem.randogeddon.shared.Versions
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
@@ -95,7 +97,7 @@ fun Route.adminRoutes(
       }
     }
     route("/settings") {
-      get { call.respond(AppSettings(sessionsPerUser(settings), settings.gameServers(), settings.idleMinutes())) }
+      get { call.respond(AppSettings(sessionsPerUser(settings), settings.gameServers(), settings.idleMinutes(), settings.watchStreams())) }
       put {
         val request = call.receive<AppSettings>()
         if (request.sessionsPerUser !in 0..MAX_SESSIONS_PER_USER) {
@@ -107,13 +109,20 @@ fun Route.adminRoutes(
         if (request.idleMinutes !in 0..MAX_IDLE_MINUTES) {
           return@put call.refuse(HttpStatusCode.BadRequest, Refusal.of(Problem.IDLE_MINUTES, "max" to MAX_IDLE_MINUTES))
         }
+        if (request.watchStreams !in 0..MAX_WATCH_STREAMS) {
+          return@put call.refuse(HttpStatusCode.BadRequest, Refusal.of(Problem.WATCH_STREAMS, "max" to MAX_WATCH_STREAMS))
+        }
         settings.set(SESSIONS_PER_USER, request.sessionsPerUser.toString())
         settings.set(GAME_SERVERS, request.gameServers.toString())
         settings.set(IDLE_MINUTES, request.idleMinutes.toString())
+        settings.set(WATCH_STREAMS, request.watchStreams.toString())
         logger.info(
-          "{} set the sessions per user to {}, the game servers at once to {}, their sleep after {}", call.loggedIn.user.name,
+          "{} set the sessions per user to {}, the game servers at once to {}, their sleep after {}, the share-link " +
+            "streams per address to {}",
+          call.loggedIn.user.name,
           request.sessionsPerUser, request.gameServers.takeIf { it > 0 } ?: "no limit",
           request.idleMinutes.takeIf { it > 0 }?.let { "$it minutes without players" } ?: "never",
+          request.watchStreams.takeIf { it > 0 } ?: "no limit",
         )
         call.respond(HttpStatusCode.NoContent)
       }

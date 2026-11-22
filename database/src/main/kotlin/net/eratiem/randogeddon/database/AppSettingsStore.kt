@@ -15,6 +15,11 @@ const val IDLE_MINUTES = "idle_minutes"
 const val DEFAULT_IDLE_MINUTES = 30
 const val MAX_IDLE_MINUTES = 24 * 60
 
+/** The key of how many live streams a share link's viewers may hold per address ([AppSettingsStore.watchStreams]). */
+const val WATCH_STREAMS = "watch_streams"
+const val DEFAULT_WATCH_STREAMS = 20
+const val MAX_WATCH_STREAMS = 1000
+
 /** What Administrators set for everyone, by key. */
 class AppSettingsStore(private val db: RandogeddonDatabase) {
   suspend fun get(key: String): String? = db.query {
@@ -32,6 +37,13 @@ class AppSettingsStore(private val db: RandogeddonDatabase) {
    * never. A session an Administrator keeps running doesn't sleep.
    */
   suspend fun idleMinutes(): Int = get(IDLE_MINUTES)?.toIntOrNull()?.takeIf { it in 0..MAX_IDLE_MINUTES } ?: DEFAULT_IDLE_MINUTES
+
+  /**
+   * How many live streams by share links one address may hold at once (an IPv6 network as one); 0: no limit. Many
+   * viewers can share an address (a household, a venue's network).
+   */
+  suspend fun watchStreams(): Int =
+    get(WATCH_STREAMS)?.toIntOrNull()?.takeIf { it in 0..MAX_WATCH_STREAMS } ?: DEFAULT_WATCH_STREAMS
 
   suspend fun set(key: String, value: String) = db.query {
     val updated = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value }

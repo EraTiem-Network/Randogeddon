@@ -29,11 +29,14 @@ object OpenStreams {
   const val MAX = 20
   private val open = ConcurrentHashMap<String, Int>()
 
-  /** Runs [block] as one of [account]'s streams (or an address's); not at all if they have [MAX] open already. */
-  suspend fun <T> counted(account: String, block: suspend () -> T): T? {
+  /**
+   * Runs [block] as one of [account]'s streams (or an address's); not at all if they have [max] open already (0: as
+   * many as they like).
+   */
+  suspend fun <T> counted(account: String, max: Int = MAX, block: suspend () -> T): T? {
     val mine = open.merge(account, 1, Int::plus) ?: 1
     try {
-      return if (mine > MAX) null else block()
+      return if (max > 0 && mine > max) null else block()
     } finally {
       open.compute(account) { _, n -> (n ?: 1).minus(1).takeIf { it > 0 } }
     }

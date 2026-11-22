@@ -76,4 +76,17 @@ class ProxiesTest {
     // Closed again: room for new ones
     assertEquals("streamed", OpenStreams.counted(key) { "streamed" })
   }
+
+  @Test
+  fun `as many streams per address as the Administrators set, or without a limit`() = runBlocking {
+    val hold = CompletableDeferred<Unit>()
+    val two = (1..2).map { async { OpenStreams.counted("watch:two", max = 2) { hold.await(); "streamed" } } }
+    val many = (1..OpenStreams.MAX + 5).map { async { OpenStreams.counted("watch:many", max = 0) { hold.await(); "streamed" } } }
+    yield()
+    assertNull(OpenStreams.counted("watch:two", max = 2) { "streamed" })
+    assertEquals("streamed", OpenStreams.counted("watch:many", max = 0) { "streamed" })
+    hold.complete(Unit)
+    assertEquals(List(2) { "streamed" }, two.awaitAll())
+    assertEquals(List(OpenStreams.MAX + 5) { "streamed" }, many.awaitAll())
+  }
 }
