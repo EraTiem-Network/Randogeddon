@@ -12,6 +12,17 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.8: The spoiler log as views
+- The spoiler page's *Everything* is two views instead of text: *Settings* (the seed's own, each slot's options
+  folded under its name and game, and what games wrote besides, such as prices or starting items) and *Placements*
+  (where every item lies: a row a location as the playthrough has them, checked ones marked; narrowed to a slot,
+  searched, 100 at a time).
+- *Paths* lists each location of the playthrough, folded; unfolded, the regions passed from the start to it.
+  Narrowed to a slot, searched, 50 at a time.
+- The log as text has a tab of its own, *Text*, searched as before: for what the views leave out (a game's own parts
+  after the first thousand lines, anything the tracker doesn't read as one of the above).
+- The tracker reads, filters and pages these (`GET …/spoiler/settings`, `/placements`, `/paths`).
+
 ### 0.23.2.7: The pinned live feed floats on the dashboard too
 - Pinned, the live feed is the window over the page on the dashboard as well (it stayed in its place there and
   couldn't be moved), and the dashboard's own feed makes room for the players. The pin taken off puts it back.
