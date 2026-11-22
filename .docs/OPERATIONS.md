@@ -63,8 +63,12 @@ http:
   the one-off `database-roles` before each start; the superuser's password then stays with it and the dumps) and
   `GATEWAY_DB_USER` / `GATEWAY_DB_PASSWORD` (made by the tracker; only what the gateway needs, since Archipelago's
   Python runs beside it). Without them the tracker logs in as the superuser and the gateway as the tracker.
+- **`TRUSTED_PROXIES`** (addresses or CIDR ranges, comma-separated): only these peers' `X-Forwarded-For` is believed
+  for the rate limits and the streams' counts. Unset: every peer's, as before 0.23.1; set it to Traefik's address
+  wherever port 8000 can be reached past Traefik (`docker-compose.proxy.yml` publishes it).
 - **Mail:** `MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM` (`MAIL_ADDRESS`: an internal address for a server
-  whose public one leads back to this host). Without `MAIL_HOST` mails only go to the tracker's log.
+  whose public one leads back to this host). Without `MAIL_HOST` mails only go to the tracker's log (whole, with their
+  links: for local testing); with it, the log names a mail's account, never its address.
 - **`TOTP_KEY`** (`openssl rand -base64 32`) encrypts the two-factor secrets: keep it with the backups.
 - **Hosted Minecraft:** `MINECRAFT_EULA=true` accepts Mojang's EULA for every hosted server (nothing runs without
   it); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` each.
@@ -72,8 +76,13 @@ http:
 
 ## Administrators
 
-- **Without single sign-on:** `docker compose exec tracker randogeddon admins --create <person>` (prints the password
-  once); `--grant` / `--revoke` for an existing login.
+- **Without single sign-on** nobody is an Administrator, unless `ADMIN_PASSWORD_LOGIN=true` is set: for local
+  testing and the demo (`docker-compose.local.yml` sets it), never for a public server. With it:
+  `docker compose exec tracker randogeddon admins --create <person>` (prints the password once), `--grant` /
+  `--revoke` for an existing login; their login needs two-factor. Without it those commands refuse (`--revoke`
+  works). Granting the flag, resetting two-factor (`--reset-2fa`) or an Administrator turning two-factor on ends
+  the account's other logins. Since 0.23.1: a server that ran without single sign-on has no Administrators after
+  the update until the setting is set.
 - **Through Authentik** (`OIDC_*`): members of `OIDC_ADMIN_GROUP` (default `randogeddon-administrators`) are the
   Administrators, linked by their verified address, with Authentik's MFA instead of the app's; their login lasts a day
   and only such a login reads as an Administrator (no password or CLI login for them). In Authentik:

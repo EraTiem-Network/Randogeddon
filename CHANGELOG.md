@@ -7,6 +7,73 @@ it the release, and the merge is tagged `v<version>`. Each release also publishe
 Artifact Keeper (`pkg.example.org`, `randogeddon-bridge/<version>/`) and is a GitHub release with its part of this file
 as the notes: before 1.0.0 a pre-release without files, from 1.0.0 on with the bridge's builds.
 
+## Phase 23: Full Code Review & Security Check
+The whole code reviewed and its security checked, part by part in the order of risk: two scanners per part (a full
+review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
+see, the API and the schema, unless the user decided otherwise for a finding.
+
+### 0.23.1: The tracker reviewed
+52 findings (none high, 11 medium, 41 low), listed in `.docs/DONE.md`.
+
+Security:
+- A seed upload (96 MB) is refused before its body is read unless from an Administrator: any login could fill the
+  tracker's memory with it.
+- The mail limit counts by account, not by name (a rename gave a fresh one), and a refused invitation or address
+  change counts too: addresses could be probed for accounts without limit.
+- A share link's live streams are counted per address (20, an IPv6 network as one), as an account's are.
+- Whoever is left without a slot in a session loses its open-to-all slots too: they get new passwords and their
+  connections close (the other players reconnect with the new one). Timing out, suspending or deleting an account
+  does the same for the slots only that account plays.
+- Administrators only through single sign-on: without it nobody acts as one, unless `ADMIN_PASSWORD_LOGIN=true`
+  (local testing and the demo; the local overlay sets it). Where it is on, granting the flag, resetting two-factor
+  or an Administrator turning it on ends the account's other logins: a login that never passed a second factor
+  could make itself an Administrator's before. **Updating:** a server without single sign-on has no Administrators
+  until the setting is set; with single sign-on (the live server) nothing changes.
+- `TRUSTED_PROXIES`: the forwarded client address is believed only from these peers (unset: from every peer, as
+  before); the rate limits and stream counts use it.
+- Wrong two-factor codes on the account's routes and wrong current passwords on the password change count per
+  account (429 after 10 in 10 minutes), and a login's wrong passwords count once for the account, by name or address.
+- The Administrator-only logs (logic, Minecraft) and direct hosting ask whether this login may act as one, not the
+  account's flag; a session's stream follows a revoked flag.
+- The gateway's error text (it can name internal hosts) goes only to a session's managers and Administrators.
+- A console line with a line break or another control character is refused (it could forge log lines).
+- Support can no longer restart a stopped spoiler-log run (the panel never offered it; the route did).
+- The new-session routes are paced per user (a loop gets 429; the form never meets it).
+- An e-mail address may not contain `<`, `>`, `,`, `;`, `"` or control characters; a provider's address is checked
+  like any other; the mail client refuses such an address as well.
+- The tracker's log names accounts by ID or name, never by e-mail address.
+- Single sign-on: the provider's discovery document must name the configured issuer; its keys are reloaded at most
+  once a minute; its webhook leaves accounts alone that are no longer Administrators (it reset their two-factor).
+
+Fixed:
+- A session event that can't be read (a malformed packet) is passed over and logged: it stopped that session's
+  tracker for good.
+- A database read that fails during the sessions' refresh keeps the last known roles, finish state and time: it
+  wiped them until the next read (everyone locked out for seconds, a finished session connecting again).
+- Routes that answered 500 for an unknown session or account answer 404; a call refused by two guards is answered
+  once.
+- Two creations of the same session ID at once: the second is refused at once (both could pass the check), and a
+  refused one no longer takes the running one's progress away. Two Session-Managers taking each other's part at
+  once can't leave the session without one; the sessions are read again after a slot change also when closing its
+  connections failed.
+- A sign-up whose name is taken at the last moment keeps its invitation; a Session-Manager's invitation whose mail
+  fails leaves no half-made account, so it can be sent again.
+- The manage stream sends keepalives (an idle proxy cut it); the mail client closes its socket on a failed TLS
+  handshake; one account's failure no longer ends the cleanup's pass.
+
+Faster, less of it:
+- One connection client for all sessions' trackers (one per session was never closed); the sessions' refresh reads
+  setups, finishes and times in 8 queries, not 7 per session; `room.json` and the spoiler log's slots and placements
+  are read once, not per request; the summary's lock slots, progression checks and people are kept, not rebuilt.
+- One error wrapper for every route (`apiCall`), one stream loop, one pace, the routes' small helpers; the provider's
+  rule and the keys' retry in one place each; one session lookup (it was written nine times), the gateway client's
+  answers through four helpers (sixteen copies), the cheats carried out in one place, one hex encoding and one
+  random source; the finish countdown asks the database only when it is armed.
+
+Also:
+- The top panel's status pills say what they are: *Game server: live* (asleep, offline, reconnecting…), *Logic:
+  running* (building, stopped, failed).
+
 ## Phase 22: Maps
 The slots' games' maps with markers for their checks, the README's tools, `.docs/` down to the essentials, and what
 came up on the way.

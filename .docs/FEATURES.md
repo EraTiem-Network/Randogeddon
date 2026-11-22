@@ -69,7 +69,8 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
 - **Deleting** a running session moves its files to `data/old/`; a finished one's go for good. Accounts stay.
 - **Slots** (*Edit slot:* in the panel; Session-Managers, Administrators): its players, *Open to all* and *Hosted*
   changed while it runs; late invites. Whoever loses a slot loses its connection: a new password, the gateway closes
-  its connections. *Hosted* on asked once, off asked twice (a server hosted here stops).
+  its connections; left without any slot, the open-to-all slots' too. An account timed out, suspended or deleted
+  loses the slots only it played the same way. *Hosted* on asked once, off asked twice (a server hosted here stops).
 
 ## The spoiler log and the logic
 
@@ -95,7 +96,8 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
 - **Cheats:** give an item, check a location (from the slot, or to it: another world's location holding its item),
   release, collect, free hints (only with *Cheat hints*; one place, a copy neither checked nor hinted). For a locked
   slot: *Unlock* (its key's location checked in its world; the lock says the server did) and *Hint its key's
-  location*. Every cheat is logged with who did it and shown in the feed. Support has items, checks and hints.
+  location*. Every cheat is logged with who did it and shown in the feed. Support has items, checks and hints, and
+  sees the spoiler log's run (restarting it is the Session-Managers').
 - **The console:** MultiServer's commands (`/players`, `/send <slot> <item>`, `/hint`, `/release`, `/collect`).
   `AP_ADMIN_PASSWORD` enables `!admin`.
 - **Administrators** also get *Users*, *Archipelago* (APWorlds) and *Versions*.
@@ -121,9 +123,11 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 - **Accounts** belong to people: invited by e-mail (7 days); a name of 3–32 characters (letters, digits, `_`; not
   reserved like *Admin* or *Hosted*; no unwanted words); a password of 12+ characters (Argon2id); an auto-deletion
   period. Logins last 30 days; logins are limited (5 sign-ups a minute per address, 10 wrong passwords or codes in
-  10 minutes per account); 10 mails in 10 minutes, 40 a day per account.
-- **Two-factor login** (TOTP, 10 recovery codes): required for Administrators without Authentik. Secrets encrypted
-  with `TOTP_KEY`.
+  10 minutes per account, the password change and the two-factor settings included); 10 mails in 10 minutes, 40 a
+  day per account (a refused invitation or address change counts too).
+- **Two-factor login** (TOTP, 10 recovery codes). Secrets encrypted with `TOTP_KEY`.
+- **Administrators** come from Authentik (only a login through it acts as one). Without Authentik there are none,
+  unless `ADMIN_PASSWORD_LOGIN` is set (local testing, the demo): then by password and two-factor.
 - **Roles:** Administrator (everything), Session-Manager (their session; every user can create one, as many at once as
   *Sessions per user* allows, 0 to 20), support (items, checks, hints, the spoiler log), watcher (follows), player.
   A session keeps its last Session-Manager.
@@ -132,7 +136,8 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 - **Slot passwords:** one per slot, generated with the seed; printable ASCII without spaces, quotes or backslashes. The
   gateway checks every `Connect` (`InvalidPassword`, `InvalidSlot`). Before its `Connect` a client gets 1 MiB frames,
   5 minutes and 32 frames; at most 1024 wait at once.
-- **Share link** (`#/watch/<token>`): the dashboard read-only without a login, no passwords, no spoiler.
+- **Share link** (`#/watch/<token>`): the dashboard read-only without a login, no passwords, no spoiler; at most 20
+  live streams per address.
 
 ## Randogeddon Bridge
 
