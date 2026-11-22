@@ -49,7 +49,7 @@ fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, t
 
 /** [THEME]: half light, half dark, the automatic mode; [SUN] light, [MOON] dark. */
 enum class Icon { THEME, SUN, MOON, CLOSE, CHEVRON, LOCK, KEY, FLAG, FEED, BACK, LOGOUT, ADMIN, CHECK, USER, STAR, BULB, GIFT, LINK, CLOCK, HOURGLASS,
-  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT, COPY, EYE, EYE_OFF, EXPAND, SHRINK }
+  RELEASE, PAUSE, CIRCLE, SEARCH, TRAP, SKULL, POWER, SERVER, SIGNPOST, RECEIVED, SENT, COPY, EYE, EYE_OFF, EXPAND, SHRINK, PIN }
 
 @Composable
 fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
@@ -274,6 +274,18 @@ fun DrawnIcon(icon: Icon, color: Color, size: Dp) {
         drawLine(color, Offset(w * .5f, w * .68f), Offset(w * .5f, w * .1f), stroke, StrokeCap.Round)
         drawPath(Path().apply { moveTo(w * .32f, w * .28f); lineTo(w * .5f, w * .1f); lineTo(w * .68f, w * .28f) },
           color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+      }
+
+      // A pin: its head, its plate and its needle, leaning
+      Icon.PIN -> {
+        val line = Stroke(stroke * 1.1f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        drawPath(Path().apply {
+          moveTo(w * .56f, w * .1f); lineTo(w * .9f, w * .44f)       // the head's top
+          moveTo(w * .64f, w * .18f); lineTo(w * .4f, w * .42f)      // its sides, down to the plate
+          moveTo(w * .82f, w * .36f); lineTo(w * .58f, w * .6f)
+          moveTo(w * .26f, w * .36f); lineTo(w * .64f, w * .74f)     // the plate
+          moveTo(w * .45f, w * .55f); lineTo(w * .12f, w * .88f)     // the needle
+        }, color, style = line)
       }
 
       // Four corners pulled apart (larger) or pushed together (smaller)

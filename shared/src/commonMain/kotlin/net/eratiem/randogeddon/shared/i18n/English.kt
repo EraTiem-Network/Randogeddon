@@ -44,6 +44,7 @@ object English : Texts {
     override val save = "Save"
     override val cancel = "Cancel"
     override val copy = "Copy"
+    override val copied = "Copied"
     override val search = "Search…"
     override val nothingFound = "Nothing found"
     override val logOut = "Log out"

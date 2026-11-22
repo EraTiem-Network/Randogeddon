@@ -11,17 +11,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -41,19 +41,19 @@ import net.eratiem.randogeddon.webapp.account.ConfirmEmailView
 import net.eratiem.randogeddon.webapp.account.SettingsView
 import net.eratiem.randogeddon.webapp.api.TrackerRepository
 import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.dashboard.Banner
-import net.eratiem.randogeddon.webapp.dashboard.WithLogic
 import net.eratiem.randogeddon.webapp.dashboard.BridgeFold
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_NARROW
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_TWO_COLUMNS
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_WIDE
 import net.eratiem.randogeddon.webapp.dashboard.ConnectionSection
-import net.eratiem.randogeddon.webapp.dashboard.feedWidth
 import net.eratiem.randogeddon.webapp.dashboard.Feed
 import net.eratiem.randogeddon.webapp.dashboard.FeedPosition
 import net.eratiem.randogeddon.webapp.dashboard.FeedSettings
 import net.eratiem.randogeddon.webapp.dashboard.FinishBanner
+import net.eratiem.randogeddon.webapp.dashboard.FloatingFeed
 import net.eratiem.randogeddon.webapp.dashboard.GAP
 import net.eratiem.randogeddon.webapp.dashboard.Headline
 import net.eratiem.randogeddon.webapp.dashboard.Hero
@@ -68,18 +68,19 @@ import net.eratiem.randogeddon.webapp.dashboard.SpoilerView
 import net.eratiem.randogeddon.webapp.dashboard.Stats
 import net.eratiem.randogeddon.webapp.dashboard.WIDE
 import net.eratiem.randogeddon.webapp.dashboard.WatchApp
+import net.eratiem.randogeddon.webapp.dashboard.WithLogic
+import net.eratiem.randogeddon.webapp.dashboard.feedWidth
 import net.eratiem.randogeddon.webapp.dashboard.showHints
 import net.eratiem.randogeddon.webapp.manage.AdminView
 import net.eratiem.randogeddon.webapp.manage.WatchersSection
-import net.eratiem.randogeddon.webapp.api.post
-import net.eratiem.randogeddon.webapp.ui.PageFrame
-import net.eratiem.randogeddon.webapp.ui.rememberNow
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.NARROW
+import net.eratiem.randogeddon.webapp.ui.PageFrame
 import net.eratiem.randogeddon.webapp.ui.RandogeddonTheme
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Themes
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.rememberNow
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /**
@@ -344,7 +345,7 @@ private fun TrackerApp() {
         // Its place is only offered where it can be beside the players
         Feed(
           s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
-          onHide = { setFeedVisible(false) },
+          onHide = { setFeedVisible(false) }, onPin = FeedSettings::pin,
         )
       }
       val side = wide && feedVisible && feedPosition != FeedPosition.BELOW
@@ -371,6 +372,11 @@ private fun TrackerApp() {
       // Players add watchers (support helps in the panel)
       val id = selected
       if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
+    }
+    // The pinned feed, on the views that have no place for it: over the page
+    val feedOf = summary
+    if (me != null && feedOf != null && FeedSettings.pinned && (route is Route.Admin || route is Route.Spoiler || route == Route.Settings)) {
+      FloatingFeed(feedOf, onUnpin = { FeedSettings.pin(false) })
     }
     detailPerson?.let { name ->
       summary?.let { s ->

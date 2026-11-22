@@ -177,6 +177,11 @@ interface FeedTexts {
   fun eventsOf(from: String, to: String, total: String): String
   val newer: String
   val older: String
+  /** The feed's pin (kept on every view), and its floating window's fold. */
+  val pin: String
+  val unpin: String
+  val fold: String
+  val unfold: String
 }
 
 /** Under the top card while a session finishes, and once it has. */
@@ -471,6 +476,10 @@ internal object EnglishFeed : FeedTexts {
   override fun eventsOf(from: String, to: String, total: String) = "Events $from–$to of $total"
   override val newer = "Newer events"
   override val older = "Older events"
+  override val pin = "Pin: keep the feed on every view"
+  override val unpin = "Unpin"
+  override val fold = "Fold"
+  override val unfold = "Unfold"
 }
 
 internal object GermanFeed : FeedTexts {
@@ -510,6 +519,10 @@ internal object GermanFeed : FeedTexts {
   override fun eventsOf(from: String, to: String, total: String) = "Ereignisse $from–$to von $total"
   override val newer = "Neuere Ereignisse"
   override val older = "Ältere Ereignisse"
+  override val pin = "Anheften: Feed in jeder Ansicht behalten"
+  override val unpin = "Lösen"
+  override val fold = "Einklappen"
+  override val unfold = "Ausklappen"
 }
 
 internal object EnglishFinish : FinishTexts {

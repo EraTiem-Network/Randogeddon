@@ -152,7 +152,7 @@ private fun TipText(
     verticalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     if (wide && text.isNotBlank()) {
-      DisableSelection { SmallButton(LocalTexts.current.common.copy, { Platform.copy(text) }) }
+      DisableSelection { CopyTextButton({ text }) }
     }
     if (text.isNotBlank()) Txt(text, size = 12.sp)
     sections.forEachIndexed { i, (heading, body) ->

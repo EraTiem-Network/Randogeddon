@@ -47,6 +47,7 @@ object German : Texts {
     override val save = "Speichern"
     override val cancel = "Abbrechen"
     override val copy = "Kopieren"
+    override val copied = "Kopiert"
     override val search = "Suchen…"
     override val nothingFound = "Nichts gefunden"
     override val logOut = "Abmelden"

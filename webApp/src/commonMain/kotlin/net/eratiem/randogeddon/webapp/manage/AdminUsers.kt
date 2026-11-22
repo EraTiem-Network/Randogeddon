@@ -59,6 +59,7 @@ import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
@@ -212,7 +213,7 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
           // An address from the provider: whether it is verified there
           val verified = user.emailVerified?.let { v -> user.provider?.let { " (${u.emailVerifiedBy(it, v)})" } }.orEmpty()
           InfoLine(u.emailLabel, user.email?.let { it + verified } ?: none)
-          InfoLine(u.idLabel, user.id) { SmallButton(t.common.copy, { Platform.copy(user.id) }) }
+          InfoLine(u.idLabel, user.id) { CopyTextButton({ user.id }) }
           InfoLine(u.stateLabel, if (invited) u.invitedPill else u.active)
           InfoLine(u.groupLabel, if (user.administrator) u.administrator else u.userGroup)
           InfoLine(u.loginLabel, logins.joinToString(" + ").ifEmpty { none })
