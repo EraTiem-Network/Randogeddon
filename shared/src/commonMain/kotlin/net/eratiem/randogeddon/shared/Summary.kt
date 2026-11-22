@@ -32,7 +32,7 @@ data class Summary(
   val serverAsleep: Boolean = false,
   /** Its spoiler log is still being completed after the seed (the playthrough, the paths): the top panel says so. */
   val spoilerCompleting: Boolean = false,
-  /** Its spoiler log has its playthrough: it can be opened (by who may). */
+  /** Its spoiler log has its playthrough (the page's own tab, the hint's *next* copy); the log is there without. */
   val spoilerReady: Boolean = true,
   /**
    * Its logic, which counts the slots' available checks; `null`: it has none. While it isn't running, the counts are

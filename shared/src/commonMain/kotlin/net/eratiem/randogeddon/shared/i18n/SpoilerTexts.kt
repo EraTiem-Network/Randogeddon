@@ -1,6 +1,6 @@
 package net.eratiem.randogeddon.shared.i18n
 
-/** A session's spoiler log: the playthrough and the full log. */
+/** A session's spoiler log: the full log, its playthrough and its paths. */
 interface SpoilerTexts {
   val title: String
   fun spheres(n: Int): String
@@ -28,6 +28,10 @@ interface SpoilerTexts {
   val none: String
   val fullLog: String
   val fullLogSubtitle: String
+  /** The page's tabs: the whole log, and what the log's later levels bring (its playthrough, its paths). */
+  val tabEverything: String
+  val paths: String
+  val pathsSubtitle: String
   /** Which lines of the log show: `Lines 301–600 of 12,345` (the numbers formatted already). */
   fun linesOf(from: String, to: String, total: String): String
   val earlierLines: String
@@ -62,7 +66,10 @@ internal object EnglishSpoiler : SpoilerTexts {
   override val check = "Check"
   override val none = "none"
   override val fullLog = "Full spoiler log"
-  override val fullLogSubtitle = "every check of every slot, the options and the playthrough"
+  override val fullLogSubtitle = "every check of every slot and the options; the playthrough and the paths once worked out"
+  override val tabEverything = "Everything"
+  override val paths = "Paths"
+  override val pathsSubtitle = "the way to every item of the playthrough, region by region"
 }
 
 internal object GermanSpoiler : SpoilerTexts {
@@ -94,5 +101,8 @@ internal object GermanSpoiler : SpoilerTexts {
   override val check = "Check"
   override val none = "keine"
   override val fullLog = "Ganzes Spoiler-Log"
-  override val fullLogSubtitle = "jeder Check jedes Slots, die Optionen und der Lösungsweg"
+  override val fullLogSubtitle = "jeder Check jedes Slots und die Optionen; Lösungsweg und Wege, sobald berechnet"
+  override val tabEverything = "Alles"
+  override val paths = "Wege"
+  override val pathsSubtitle = "der Weg zu jedem Item des Lösungswegs, Region für Region"
 }

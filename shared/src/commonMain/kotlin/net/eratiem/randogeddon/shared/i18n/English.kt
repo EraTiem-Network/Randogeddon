@@ -71,7 +71,7 @@ object English : Texts {
     override val spoilerCompleting = "spoiler log being completed"
     override val spoilerCompletingTip =
       "The seed runs. Its spoiler log is worked out once more in the background: first the playthrough, then the " +
-        "paths to every item. The spoiler log, the hints and the cheats wait for the playthrough."
+        "paths to every item. The spoiler log gets a tab for each; a hint's \"next in playthrough\" waits for the playthrough."
     override val finished = "finished"
     override val live = "live"
     override val serverOffline = "server offline"

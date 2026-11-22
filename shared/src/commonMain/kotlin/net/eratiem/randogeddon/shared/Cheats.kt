@@ -58,7 +58,10 @@ data class CheatRequest(
 @Serializable
 enum class HintPick {
   @SerialName("random") RANDOM,
-  /** The copy in the earliest sphere of the playthrough; a copy the playthrough doesn't need comes after those. */
+  /**
+   * The copy in the earliest sphere of the playthrough; a copy the playthrough doesn't need comes after those. Only
+   * once the spoiler log has its playthrough (refused before).
+   */
   @SerialName("next") NEXT,
 }
 
