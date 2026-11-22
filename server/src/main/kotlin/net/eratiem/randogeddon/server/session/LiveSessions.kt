@@ -83,7 +83,7 @@ class LiveSession(
   /** Written by the gateway before each start of its game server. */
   val roomJson: Path = config.dataDir.resolve("sessions").resolve(id).resolve("room.json")
 
-  val tracker = TrackerService(archives.history(id), roomJson, id, events, snapshots, http) {
+  val tracker = TrackerService(archives.history(id), roomJson, id, events, snapshots, http, { server?.roomPassword }) {
     server?.port?.let { "ws://${config.gatewayHost}:$it" }
   }
 

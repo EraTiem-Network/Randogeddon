@@ -85,8 +85,10 @@ fun trackerClient(): HttpClient = HttpClient(CIO) {
  * too.
  *
  * All access to [SessionState] goes through [read] and the private `update`, so the connections and the web layer
- * never see it half-updated. [serverUrl] is where its MultiServer runs (`null` while it doesn't). Its connections go
- * through [http], the client shared by every session's tracker ([trackerClient]), which it doesn't close.
+ * never see it half-updated. [serverUrl] is where its MultiServer runs (`null` while it doesn't), [roomPassword] the
+ * room password of its current start, which each of its connections gives (the gateway makes one per start and says
+ * it with the game server's state). Its connections go through [http], the client shared by every session's tracker
+ * ([trackerClient]), which it doesn't close.
  */
 class TrackerService(
   /** The history file of before 0.19.10: imported once as the baseline, then not read any more. */
@@ -97,6 +99,7 @@ class TrackerService(
   private val events: SessionEventStore? = null,
   private val snapshots: SessionSnapshotStore? = null,
   private val http: HttpClient,
+  private val roomPassword: () -> String? = { null },
   private val serverUrl: () -> String?,
 ) {
   private val state = SessionState()
@@ -366,8 +369,8 @@ class TrackerService(
       val roomInfo = expect("RoomInfo")
       send(buildJsonObject {
         put("cmd", "Connect")
-        // MultiServer has no password: only the gateway is reachable from outside, and it checks the game clients
-        put("password", "")
+        // The room's password (the gateway's and the tracker's alone); game clients give their slot's to the gateway
+        put("password", roomPassword().orEmpty())
         put("game", "") // trackers may connect without a game
         put("name", slotName)
         put("uuid", "randogeddon-$slotName")

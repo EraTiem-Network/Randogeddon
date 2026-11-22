@@ -109,15 +109,5 @@ class HardeningTest {
     assertEquals(256L * 1024, bodyLimit("/api/admin/apworlds/remove"))
   }
 
-  @Test
-  fun `an IPv6 network counts as one address for the rate limits`() {
-    assertEquals(addressKey("2001:db8:1:2::1"), addressKey("2001:db8:1:2:ffff:ffff:ffff:ffff"))
-    assertEquals(addressKey("2001:db8:1:2::1"), addressKey("[2001:DB8:1:2:0:0:0:9]"))
-    assertFalse(addressKey("2001:db8:1:2::1") == addressKey("2001:db8:1:3::1"))
-    assertEquals("203.0.113.7", addressKey("203.0.113.7"))
-    // An IPv4 address written as IPv6 is that IPv4 address
-    assertEquals("203.0.113.7", addressKey("::ffff:203.0.113.7"))
-    // Not an address: left as it is, without a lookup
-    assertEquals("some-proxy", addressKey("some-proxy"))
-  }
+  // What counts as one address for the rate limits (an IPv6 /64 as one): shared's addressKey, AddressesTest
 }
