@@ -50,6 +50,11 @@ data class SessionServer(
   val spoiler: SpoilerProgress? = null,
   /** Its logic (the available checks); `null`: it has none (a seed from elsewhere, a race, from before 0.19.3). */
   val logic: LogicProgress? = null,
+  /**
+   * The room password of its MultiServer's current start (since 0.23.2.1), made by the gateway; only the tracker's own
+   * connections give it in their `Connect`, it is never shown or passed on. `null`: none runs (or a gateway of before).
+   */
+  val roomPassword: String? = null,
 )
 
 /**
