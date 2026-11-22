@@ -178,13 +178,14 @@ internal fun Hero(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
         Dot(if (live) p.liveDot else p.offlineDot)
-        Txt(
-          when {
-            !streamOpen -> t.frame.reconnecting
-            summary.connected -> t.frame.live
-            else -> t.frame.serverOffline
-          }, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1
-        )
+        // What it is and its state: the dot alone doesn't say which of the two pills this is
+        val state = when {
+          !streamOpen -> t.dashboard.pillReconnecting
+          summary.connected -> t.dashboard.pillLive
+          summary.serverAsleep -> t.dashboard.pillAsleep
+          else -> t.dashboard.pillOffline
+        }
+        Txt(t.dashboard.statusPill(t.dashboard.gameServer, state), size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
       }
       // Its logic (the available checks), beside it: its state as a dot (a working symbol while it is built)
       val logic = summary?.logic
@@ -200,7 +201,10 @@ internal fun Hero(
             LogicStatus.STOPPED -> Dot(p.offlineDot)
             LogicStatus.FAILED -> Dot(p.trap)
           }
-          Txt(t.dashboard.logic, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+          Txt(
+            t.dashboard.statusPill(t.dashboard.logic, t.dashboard.logicShort(logic.status)),
+            size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1,
+          )
         }
       }
       // Shows / hides the live feed; brighter while it is shown

@@ -70,6 +70,15 @@ interface DashboardTexts {
   /** The session's logic in the top panel: its name, and its state as the tooltip. */
   val logic: String
   fun logicTip(status: LogicStatus): String
+  /** The top panel's pills: what it is and its state, `Game server: live`, `Logic: running`. */
+  fun statusPill(what: String, state: String): String
+  val gameServer: String
+  val pillLive: String
+  val pillAsleep: String
+  val pillOffline: String
+  val pillReconnecting: String
+  /** The logic's state in a word, for its pill. */
+  fun logicShort(status: LogicStatus): String
   fun unlockedBy(name: String): String
   /** Added to it when the key's location was checked by a cheat. */
   val byServer: String
@@ -247,6 +256,18 @@ internal object EnglishDashboard : DashboardTexts {
   override val availableLastKnown =
     "Available, the last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
   override val logic = "Logic"
+  override fun statusPill(what: String, state: String) = "$what: $state"
+  override val gameServer = "Game server"
+  override val pillLive = "live"
+  override val pillAsleep = "asleep"
+  override val pillOffline = "offline"
+  override val pillReconnecting = "reconnecting…"
+  override fun logicShort(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "building"
+    LogicStatus.RUNNING -> "running"
+    LogicStatus.STOPPED -> "stopped"
+    LogicStatus.FAILED -> "failed"
+  }
   override fun logicTip(status: LogicStatus) = when (status) {
     LogicStatus.STARTING -> "The logic is being built: the available checks come once it runs completely"
     LogicStatus.RUNNING -> "The logic runs: it counts each slot's available checks"
@@ -355,6 +376,18 @@ internal object GermanDashboard : DashboardTexts {
   override val availableLastKnown =
     "Verfügbar, die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
   override val logic = "Logik"
+  override fun statusPill(what: String, state: String) = "$what: $state"
+  override val gameServer = "Spielserver"
+  override val pillLive = "live"
+  override val pillAsleep = "schläft"
+  override val pillOffline = "offline"
+  override val pillReconnecting = "verbinde neu…"
+  override fun logicShort(status: LogicStatus) = when (status) {
+    LogicStatus.STARTING -> "wird aufgebaut"
+    LogicStatus.RUNNING -> "läuft"
+    LogicStatus.STOPPED -> "gestoppt"
+    LogicStatus.FAILED -> "fehlgeschlagen"
+  }
   override fun logicTip(status: LogicStatus) = when (status) {
     LogicStatus.STARTING -> "Die Logik wird aufgebaut: Die verfügbaren Checks kommen, sobald sie vollständig läuft"
     LogicStatus.RUNNING -> "Die Logik läuft: Sie zählt die verfügbaren Checks jedes Slots"
