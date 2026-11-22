@@ -1073,3 +1073,13 @@ games' real map images moved to Later.*
 - [x] The Overview's *Slots* tile counts locked slots as not started (0.22.3)
 - [x] A slot's panel in tabs: *Checks* (available, remaining), *Map*, *Transported items* (sent, received),
       *Connections* (0.22.3; the map 0.22.4)
+
+## Phase 23: Full Code Review & Security Check (in progress)
+
+*Asked for on 2026-11-21, started on 2026-11-22. What's open: [TODO.md](TODO.md).*
+
+- [x] The map and the available checks failed on live for a session with a game whose regions aren't named with
+      text (reported by the user on 2026-11-22: "the map does not work"): fixed, and a map that fails no longer
+      takes the available checks with it (0.22.4.1)
+- [x] `scripts/deploy.sh --switch`: the server switched to a version's images as published, nothing built (asked
+      for on 2026-11-22, after 0.22.4 went live by a rebuild of what was in the registry already) (0.22.4.1)

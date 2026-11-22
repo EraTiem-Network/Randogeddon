@@ -111,6 +111,7 @@ keyring: `gpg --import` the signers' keys there), anything else as `edge`, unche
 ```sh
 ./scripts/deploy.sh             # build, push, dump, switch, check (healthz, schema); a release's bridge and GitHub release
 ./scripts/deploy.sh --publish   # build and push only; the server isn't touched
+./scripts/deploy.sh --switch    # build nothing: the server to this commit's images as published (dump, switch, check)
 ./scripts/deploy.sh --rollback  # back to the previous tags (code only: a migration that ran needs its dump)
 ```
 

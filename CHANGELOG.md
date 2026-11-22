@@ -20,6 +20,16 @@ the panel going to a new session after its generation; *State and Control* on a 
 started. Updating: no migration; the logic's maps need the gateway and the tracker of 0.22.4 (an older gateway
 gives none: the map tab says so).
 
+### 0.22.4.1: The map whatever a region is called
+- A slot's map no longer fails on a game whose regions aren't named with text (a tuple, a number) or share a name:
+  the regions are told apart by themselves, their names only shown. On such a game the logic's whole answer failed
+  with 0.22.4, so the session's available checks stopped too, not only its map.
+- A map that can't be made is left out and said in the logic's log: the available checks are answered either way.
+- A slot whose logic fails when asked (a world's rules throwing) gets no answer and is said once in the logic's log,
+  with where it failed: the other slots are answered either way. Before, one such slot failed the whole answer.
+- `scripts/deploy.sh --switch`: the server switched to a commit's images as they are in the registry (published
+  before with `--publish`), nothing built: the files, the dump, the switch and the checks as a deploy does them.
+
 ### 0.22.4: The map
 - A slot's panel has a *Map* tab: its game's map, generated for every game from the session's logic, no game
   images. Its regions are boxes in columns from its start, linked as its logic connects them; each location is a dot
