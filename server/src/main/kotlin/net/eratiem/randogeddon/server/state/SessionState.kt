@@ -15,6 +15,7 @@ import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.util.array
 import net.eratiem.randogeddon.server.util.bool
 import net.eratiem.randogeddon.server.util.int
+import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.server.util.long
 import net.eratiem.randogeddon.server.util.longs
 import net.eratiem.randogeddon.server.util.obj
@@ -41,6 +42,9 @@ import net.eratiem.randogeddon.shared.ReceivedItemView
 import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.Totals
+import java.lang.invoke.MethodHandles
+
+private val logger = logger(MethodHandles.lookup().lookupClass())
 
 /** Tags of clients that don't play: trackers (including this one), text clients and hint games. */
 private val NON_GAME_TAGS = setOf("Tracker", "TextOnly", "HintGame")
@@ -138,11 +142,14 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private var eventSeq = 0L
 
   /**
-   * What lies at every location, from scouting each slot's own ones (`LocationScouts`): (the slot, its location) ->
-   * (the slot it is meant for, its flags). Only counted, never shown; [scouted]: the slots done.
+   * The progression items at every slot's own locations, from scouting them (`LocationScouts`): the slot -> (its
+   * location -> the slot the item is meant for). Only counted, never shown; [scouted]: the slots done.
    */
-  private val placements = mutableMapOf<Pair<Int, Long>, Pair<Int, Int>>()
+  private val progressionPlacements = mutableMapOf<Int, MutableMap<Long, Int>>()
   private val scouted = mutableSetOf<Int>()
+
+  /** The slots of the World Locks game ([lockSlots]), kept with [players] (they are added only by [player]). */
+  private var lockSlotSet: Set<Int> = emptySet()
 
   /** Deaths passed on by DeathLink and traps by TrapLink, over every event of the session. */
   private var deaths = 0
@@ -173,8 +180,15 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     eventSeq = 0
     deaths = 0
     trapLinks = 0
-    placements.clear()
+    progressionPlacements.clear()
     scouted.clear()
+    lockSlotSet = emptySet()
+  }
+
+  /** [slot]'s player, added if it isn't known yet. */
+  private fun player(slot: Int, name: String, game: String): Player = players.getOrPut(slot) {
+    if (game == WORLD_LOCKS_GAME) lockSlotSet = lockSlotSet + slot
+    Player(slot, name, game)
   }
 
   private fun touch() {
@@ -198,7 +212,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     seedName = room.seedName
     for (slot in room.slots) when (slot.type) {
       SlotType.GROUP -> groups.getOrPut(slot.slot) { Group(slot.name, slot.game) }
-      SlotType.PLAYER -> players.getOrPut(slot.slot) { Player(slot.slot, slot.name, slot.game) }
+      SlotType.PLAYER -> player(slot.slot, slot.name, slot.game)
     }
     touch()
   }
@@ -226,7 +240,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       when (type) {
         SlotType.GROUP -> groups[s] = Group(name, game)
         SlotType.PLAYER -> {
-          val player = players.getOrPut(s) { Player(s, name, game) }
+          val player = player(s, name, game)
           player.alias = aliases[s]?.string("alias") ?: name
         }
       }
@@ -253,7 +267,10 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
   /** What lies at [slot]'s own locations (`LocationInfo`, the answer to its scouting). */
   fun onLocationInfo(slot: Int, packet: JsonObject) {
-    packet.array("locations").orEmpty().map(::networkItem).forEach { placements[slot to it.location] = it.player to it.flags }
+    val own = progressionPlacements.getOrPut(slot) { mutableMapOf() }
+    packet.array("locations").orEmpty().map(::networkItem).forEach {
+      if (it.flags and ItemFlags.PROGRESSION != 0) own[it.location] = it.player else own.remove(it.location)
+    }
     scouted += slot
     touch()
   }
@@ -269,9 +286,14 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
   private fun progressionChecks(p: Player): ProgressionChecks? {
     if (p.slot !in scouted) return null
-    val own = placements.filter { (key, value) -> key.first == p.slot && value.second and ItemFlags.PROGRESSION != 0 }
-    val checked = own.filterKeys { it.second in p.checked }
-    return ProgressionChecks(own.size, checked.size, checked.count { (_, value) -> value.first != p.slot })
+    val own = progressionPlacements[p.slot].orEmpty()
+    var checked = 0
+    var sent = 0
+    for ((location, receiver) in own) if (location in p.checked) {
+      checked++
+      if (receiver != p.slot) sent++
+    }
+    return ProgressionChecks(own.size, checked, sent)
   }
 
   /**
@@ -383,21 +405,26 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
    */
   fun onServerEvent(id: Long, at: Long, kind: String, payload: String) {
     if (id <= serverCursor) return
-    when (kind) {
-      SessionEventStore.START, SessionEventStore.STOP -> players.values.forEach {
-        // A new start: whoever was connected before isn't; an end: nobody is
-        it.online = 0
-        it.goOffline(at, cut = kind == SessionEventStore.START)
-      }
-      SessionEventStore.PACKET -> json(payload)?.let { packet ->
-        when (packet.string("cmd")) {
-          "PrintJSON" -> onPrintJson(packet, at)
-          "Bounced" -> onBounced(packet, at)
+    // One that can't be taken (a packet without a field it needs) is passed over, not the end of every later one
+    try {
+      when (kind) {
+        SessionEventStore.START, SessionEventStore.STOP -> players.values.forEach {
+          // A new start: whoever was connected before isn't; an end: nobody is
+          it.online = 0
+          it.goOffline(at, cut = kind == SessionEventStore.START)
+        }
+        SessionEventStore.PACKET -> json(payload)?.let { packet ->
+          when (packet.string("cmd")) {
+            "PrintJSON" -> onPrintJson(packet, at)
+            "Bounced" -> onBounced(packet, at)
+          }
+        }
+        SessionEventStore.CHEAT -> runCatching { ApiJson.decodeFromString(CheatLine.serializer(), payload) }.getOrNull()?.let {
+          onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at)
         }
       }
-      SessionEventStore.CHEAT -> runCatching { ApiJson.decodeFromString(CheatLine.serializer(), payload) }.getOrNull()?.let {
-        onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at)
-      }
+    } catch (e: Exception) {
+      logger.warn("Passed over event {} ({}) of seed {}: {}", id, kind, seedName, e.message ?: e::class.simpleName)
     }
     serverCursor = id
     touch()
@@ -509,10 +536,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       "Countdown" -> if (packet.int("countdown") == 0) event(now, EventType.COUNTDOWN, message = "GO!") else null
       else -> return
     }
-    event?.let {
-      events.addLast(it)
-      while (events.size > MAX_EVENTS) events.removeFirst()
-    }
+    event?.let(::feed)
     touch()
   }
 
@@ -531,8 +555,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
     if (link == "DeathLink") deaths++ else trapLinks++
     slot?.let { players[it] }?.let { if (link == "DeathLink") it.deaths++ else it.trapLinks++ }
-    events.addLast(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
-    while (events.size > MAX_EVENTS) events.removeFirst()
+    feed(event(now, EventType.LINK, slot = slot, message = detail).copy(link = link, linkSource = source))
     touch()
   }
 
@@ -546,14 +569,19 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     value: String? = null,
     now: Long = clock(),
   ) {
-    events.addLast(
+    feed(
       event(now, EventType.CHEAT, message = message, cheat = true).copy(
         cheatAction = action, cheatBy = by, cheatRole = role, cheatSlot = slot, cheatValue = value,
       )
     )
-    while (events.size > MAX_EVENTS) events.removeFirst()
     if (slot != null && (action == CheatAction.UNLOCK || action == CheatAction.KEY_LOCATION)) unlockedByServer += slot
     touch()
+  }
+
+  /** [event] at the end of the feed, which keeps its last [MAX_EVENTS]. */
+  private fun feed(event: FeedEvent) {
+    events.addLast(event)
+    while (events.size > MAX_EVENTS) events.removeFirst()
   }
 
   private fun event(
@@ -616,7 +644,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /** Slots of the World Locks game: they hold keys, they are not worlds anyone plays. */
-  fun lockSlots(): Set<Int> = players.values.filter { it.game == WORLD_LOCKS_GAME }.mapTo(mutableSetOf()) { it.slot }
+  fun lockSlots(): Set<Int> = lockSlotSet
 
   /** Slot of the world that [keyName] unlocks. */
   private fun lockedSlot(keyName: String): Int? = locks[keyName]?.let { name -> players.values.firstOrNull { it.name == name }?.slot }

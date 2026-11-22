@@ -11,15 +11,18 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val SPHERE_START = Regex("^(\\d+): \\{$")
 
+/** The gateway's last line of a log whose playthrough Archipelago couldn't reduce to the required items. */
+internal const val PLAYTHROUGH_NOT_REDUCED = "Randogeddon: the playthrough is not reduced to the required items"
+
 /**
  * The spoiler log's playthrough, sphere by sphere: the shortest way through the seed, what each step makes reachable
  * and needs. Archipelago writes it as `Playthrough:`, then `<n>: {`, one `Location (Slot): Item (Slot)` per line, `}`.
  * Without that section (an older format, or generated without a playthrough) only the text is there.
  */
-internal const val PLAYTHROUGH_NOT_REDUCED = "Randogeddon: the playthrough is not reduced to the required items"
+internal fun parseSpoiler(seed: String, text: String): Spoiler = parseSpoiler(seed, text.lines())
 
-internal fun parseSpoiler(seed: String, text: String): Spoiler {
-  val lines = text.lines()
+/** [parseSpoiler] of the log's [lines]. */
+internal fun parseSpoiler(seed: String, lines: List<String>): Spoiler {
   val start = lines.indexOfFirst { it.trim() == "Playthrough:" }
   if (start < 0) return Spoiler(seed, lines = lines.size)
   // The gateway's spoiler_run.py says so in the log's last line when Archipelago couldn't reduce the playthrough
@@ -50,10 +53,26 @@ internal fun parseSpoiler(seed: String, text: String): Spoiler {
   return Spoiler(seed, spheres, lines.size, unreduced)
 }
 
-/** A session's spoiler log as it was read: its [text], line by line ([lines]), and its playthrough ([spoiler]). */
-class SpoilerLog(seed: String, val text: String) {
+/**
+ * A session's spoiler log as it was read: its text line by line ([lines]; the text itself isn't kept twice), and its
+ * playthrough ([spoiler]); the seed's [slots] and its [placements] once asked for.
+ */
+class SpoilerLog(seed: String, text: String) {
   val lines: List<String> = text.lines()
-  val spoiler: Spoiler = parseSpoiler(seed, text)
+  val spoiler: Spoiler = parseSpoiler(seed, lines)
+
+  /** The seed's slots by their numbers ([seedSlots]). */
+  internal val slots: Map<Int, SeedSlot> by lazy { seedSlots(lines) }
+
+  @Volatile
+  private var placed: Pair<Set<String>, List<Placement>>? = null
+
+  /** The seed's placements ([placements]) told apart by [slots]; read again only for other slots than last time. */
+  internal fun placements(slots: Collection<String>): List<Placement> {
+    val names = slots.toSet()
+    placed?.let { (from, placements) -> if (from == names) return placements }
+    return placements(lines, names).also { placed = names to it }
+  }
 
   /** Up to [count] lines from line [from] (from 0). */
   fun page(from: Int, count: Int): SpoilerLines {
@@ -80,10 +99,14 @@ private val GAME = Regex("^Game:\\s+(.+)$")
 internal data class SeedSlot(val name: String, val game: String?)
 
 /** The slots of the seed by their numbers, from the spoiler log's options part. */
-internal fun seedSlots(text: String): Map<Int, SeedSlot> {
+internal fun seedSlots(text: String): Map<Int, SeedSlot> = seedSlots(text.lineSequence().asIterable())
+
+/** [seedSlots] of the log's [lines]. */
+internal fun seedSlots(lines: Iterable<String>): Map<Int, SeedSlot> {
   val slots = LinkedHashMap<Int, SeedSlot>()
   var last: Int? = null
-  for (line in text.lineSequence().map { it.trimEnd() }) {
+  for (raw in lines) {
+    val line = raw.trimEnd()
     // The options part ends where the placements begin
     if (line == "Locations:" || line == "Playthrough:") break
     val player = PLAYER.matchEntire(line)
@@ -135,8 +158,10 @@ internal data class Placement(val location: String, val finder: String, val item
  * (a multiworld's; the names in brackets are the seed's slots, [slots], so a bracket in a location's name doesn't
  * mislead). Empty without that section (a spoiler level without placements).
  */
-internal fun placements(text: String, slots: Collection<String>): List<Placement> {
-  val lines = text.lines()
+internal fun placements(text: String, slots: Collection<String>): List<Placement> = placements(text.lines(), slots)
+
+/** [placements] of the log's [lines]. */
+internal fun placements(lines: List<String>, slots: Collection<String>): List<Placement> {
   val start = lines.indexOfFirst { it.trim() == "Locations:" }
   if (start < 0) return emptyList()
   val names = slots.sortedByDescending { it.length }

@@ -58,6 +58,18 @@ private const val MAX_BACKOFF_SECONDS = 5L
 class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToString())
 
 /**
+ * The WebSocket client of the trackers' connections to the game servers: one for every session's (see
+ * `LiveSessions`), closed when the tracker stops.
+ */
+fun trackerClient(): HttpClient = HttpClient(CIO) {
+  install(WebSockets) {
+    maxFrameSize = Long.MAX_VALUE // the data package can be several MB
+    pingIntervalMillis = 30_000
+    extensions { install(WebSocketDeflateExtension) }
+  }
+}
+
+/**
  * Follows the room through the Archipelago network protocol and feeds [SessionState].
  *
  * One *primary* connection (tag `Tracker`) gets the room-wide information: RoomInfo, the data package and the data
@@ -73,7 +85,8 @@ class ConnectionRefused(val errors: List<String>) : Exception(errors.joinToStrin
  * too.
  *
  * All access to [SessionState] goes through [read] and the private `update`, so the connections and the web layer
- * never see it half-updated. [serverUrl] is where its MultiServer runs (`null` while it doesn't).
+ * never see it half-updated. [serverUrl] is where its MultiServer runs (`null` while it doesn't). Its connections go
+ * through [http], the client shared by every session's tracker ([trackerClient]), which it doesn't close.
  */
 class TrackerService(
   /** The history file of before 0.19.10: imported once as the baseline, then not read any more. */
@@ -83,25 +96,23 @@ class TrackerService(
   private val sessionId: String = "",
   private val events: SessionEventStore? = null,
   private val snapshots: SessionSnapshotStore? = null,
+  private val http: HttpClient,
   private val serverUrl: () -> String?,
 ) {
   private val state = SessionState()
   private val mutex = Mutex()
 
-  /** Why the tracker is not connected, for the dashboard; `null` while connected. */
+  /**
+   * Why the tracker is not connected, for the dashboard (what the connection said last time it failed); `null` while
+   * connected.
+   */
   @Volatile
-  /** What the connection said last time it failed; [lastErrorRefused]: the game server turned the tracker away. */
   var lastError: String? = null
+
+  /** The game server turned the tracker away ([lastError] says how). */
+  @Volatile
   var lastErrorRefused: Boolean = false
     private set
-
-  private val http = HttpClient(CIO) {
-    install(WebSockets) {
-      maxFrameSize = Long.MAX_VALUE // the data package can be several MB
-      pingIntervalMillis = 30_000
-      extensions { install(WebSocketDeflateExtension) }
-    }
-  }
 
   suspend fun <T> read(block: SessionState.() -> T): T = mutex.withLock { state.block() }
 
@@ -217,10 +228,6 @@ class TrackerService(
         ApiJson.encodeToString(CheatLine.serializer(), CheatLine(message, action, by, role, slot, value)))
     }.onFailure { logger.warn("Could not keep {}'s cheat: {}", sessionId, it.message) }.isSuccess
     if (!written) update { onCheat(message, action, by, role, slot, value) }
-  }
-
-  fun close() {
-    http.close()
   }
 
   private fun error(detail: String, refused: Boolean) {

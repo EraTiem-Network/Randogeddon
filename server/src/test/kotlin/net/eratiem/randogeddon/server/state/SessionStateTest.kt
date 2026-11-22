@@ -245,6 +245,20 @@ class SessionStateTest {
   }
 
   @Test
+  fun `an event that can't be taken is passed over, and the ones after it are taken`() {
+    val s = makeState()
+    // An ItemSend without its receiver (a buggy apworld's), and a Goal without its slot
+    s.onServerEvent(1, 1_000, "packet", """{"cmd":"PrintJSON","type":"ItemSend","item":${item(100, 20, 2, 1)}}""")
+    s.onServerEvent(2, 2_000, "packet", """{"cmd":"PrintJSON","type":"Goal","team":0}""")
+    assertEquals(2, s.serverCursor)
+    s.onServerEvent(3, 3_000, "packet", """{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}""")
+    assertEquals(3, s.serverCursor)
+    assertEquals(listOf(EventType.JOIN to 3_000L), s.events.map { it.type to it.ts })
+    assertEquals(1, s.players[1]!!.online)
+    assertFalse(20L in s.players[2]!!.checked)
+  }
+
+  @Test
   fun `a session comes back from room json and its events alone, before any connection, the same as heard live`() {
     fun join(slot: Int) = """{"cmd":"PrintJSON","type":"Join","team":0,"slot":$slot,"tags":["AP"]}"""
     fun part(slot: Int) = """{"cmd":"PrintJSON","type":"Part","team":0,"slot":$slot,"data":[{"text":"X (Team #1) has left the game. Client(0.6.8), ['AP']."}]}"""
@@ -502,6 +516,20 @@ class SessionStateTest {
     assertEquals(EventType.UNLOCK, unlock.type)
     assertEquals(listOf("Alice-Locked", "Bob", "Key to Alice-Locked"), listOf(unlock.playerName, unlock.senderName, unlock.itemName))
     assertEquals(2, unlock.slot)
+  }
+
+  @Test
+  fun `the World Locks slots are known with the slots, and go with a new seed`() {
+    val s = lockedSession()
+    assertEquals(setOf(4), s.lockSlots())
+    assertTrue(s.onRoomInfo(json(roomInfo.toString().replace("\"1234\"", "\"9999\""))))
+    assertEquals(emptySet(), s.lockSlots())
+    // From room.json, before any connection
+    val t = SessionState { 0L }
+    t.prepare(net.eratiem.randogeddon.server.session.Room(
+      "1234", listOf(net.eratiem.randogeddon.server.session.RoomSlot(4, "Locks", WORLD_LOCKS_GAME, 1)),
+    ))
+    assertEquals(setOf(4), t.lockSlots())
   }
 
   @Test
