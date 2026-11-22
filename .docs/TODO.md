@@ -1,7 +1,7 @@
 # Randogeddon To-Do List
 
 What's open and planned, phase by phase; items within a phase roughly in implementation order. The finished
-phases (1 to 21) are in [DONE.md](DONE.md).
+phases (1 to 22) are in [DONE.md](DONE.md).
 `Open:` marks decisions that are not made yet.
 
 ## Conventions
@@ -19,36 +19,6 @@ phases (1 to 21) are in [DONE.md](DONE.md).
       files: printable ASCII, no spaces, quotes or backslashes. Some games only offer an in-game text field without
       copy and paste.
 
-## Phase 22: Maps (planned)
-
-*Asked for on 2026-11-21: maps of the slots' games with markers for their checks. Which games, where the maps
-and the locations' places come from, and what a marker shows are to come from the user.*
-
-- [x] Maps with check markers for the slots (0.22.4)
-    - Decided with the user: generated for every game, no game images (maybe later), in the slot panel's *Map* tab:
-      its regions from the logic, a location's place by its region, the ones without a useful region grouped by
-      their names; checked, open and available, the name on hover, filters by state. Started with Luigi's
-      Mansion and Pikmin
-- [x] The README notes every tool and piece of software Randogeddon uses (asked for on 2026-11-21): *Built with*
-- [x] `.docs/` down to the essentials, shorter, and restructured where that helps (asked for on 2026-11-21)
-    - The finished phases moved unchanged into `DONE.md`; the rest rewritten as compact references (from about
-      2,500 lines to 530); `MEASUREMENTS.md` only the latest numbers
-- [x] *Your connection*: copy, show and hide as icons; the bridge's fold arrow left to collapse, right to expand
-      (0.22.1)
-- [x] Creating a session: its ID's field takes only what a subdomain allows, capitals as small letters (0.22.1)
-- [x] After its generation, the panel goes to the new session's page, not back to *New session* (0.22.1)
-- [x] *State and Control* on a phone: the actions wrap, the dashboard's and spoiler log's buttons below, nothing cut
-      off (0.22.2)
-- [x] The session ID's field: a space becomes `-` as it's typed, nothing before the first letter, a `-` at the end left
-      off the ID (0.22.2)
-- [x] *Your connection*: the server and the patch files' names on one line, cut in the middle, the whole on hover
-      (0.22.2)
-- [x] Randogeddon Bridge's page: the address copied the same ways as the server on the dashboard (0.22.2)
-- [x] The Overview's *Slots* tile counts locked slots as not started (0.22.3)
-- [x] A slot's panel in tabs: *Checks* (available, remaining), *Map*, *Transported items* (sent, received),
-      *Connections* (0.22.3; the map 0.22.4)
-- [ ] Maps: the game's real map images, uploaded by an Administrator (maybe later, the user)
-
 ## Phase 23: Full Code Review & Security Check (planned)
 
 *Asked for on 2026-11-21: the whole code reviewed, and its security checked. How deep and in which order is to
@@ -60,3 +30,10 @@ come with it.*
       which fixes it
 - [ ] A security check: logins and roles, the API and its limits, the gateway and the tunnel, the bridge, secrets,
       the containers, the dependencies
+
+## Later
+
+*Points without a phase yet.*
+
+- [ ] Maps: the games' real map images, uploaded by an Administrator, under the generated map (from Phase 22; the
+      user: maybe later). Never in the repository: they are the games' own images
