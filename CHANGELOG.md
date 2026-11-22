@@ -12,6 +12,26 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.1.1: The map's lines, scrolled sideways, the share links' streams as a setting
+- The map is a tree from its start: a box's line leaves its right edge, runs down the middle of the gap beside it
+  and branches off to the boxes first reached from it, which stand below each other in the next column. The lines
+  stay in the gaps: none crosses a box or another line, and they turn at right angles. What a box connects to
+  besides (a way back, a second way in) has no line: hovering the box marks those boxes and names them.
+- A map wider than its panel was cut off at the right with nothing to scroll it by with a mouse (the wheel goes up
+  and down). The map has a view of its own now (600 high at most) that scrolls both ways: bars along its bottom and
+  its right edge (dragged by their thumbs, a click beside one jumps there), and the map dragged itself with the
+  mouse; a touch scrolls it as before.
+- *Share-link streams per address* is a setting beside the others (*Users*; default 20, empty: no limit): how many
+  live dashboards by share links one address may hold at once. 0.23.1 fixed it at 20, too few where many watch from
+  one network.
+- The dashboard shows a login as an Administrator's only if it may act as one (`GET /api/me` goes by the login, as
+  every route does): an Administrator's account logged in another way (by password beside single sign-on, without
+  `ADMIN_PASSWORD_LOGIN`) saw the panel's Administrator parts and got refused by each of them.
+- The demo's admin keeps its login between its steps (`output/demo/admin.cookies`). Since 0.23.1 the login limit
+  counts by address, not by host name: in Docker each step's container had a name of its own, so the demo's three
+  logins never met the limit of 5 a minute; now they would. Behind a proxy the limit always went by the client's
+  address.
+
 ### 0.23.1: The tracker reviewed
 52 findings (none high, 11 medium, 41 low), listed in `.docs/DONE.md`.
 

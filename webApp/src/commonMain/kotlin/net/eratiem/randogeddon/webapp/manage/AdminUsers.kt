@@ -436,6 +436,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   var perUser by remember { mutableStateOf("") }
   var servers by remember { mutableStateOf("") }
   var idle by remember { mutableStateOf("") }
+  var watch by remember { mutableStateOf("") }
   var state by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
   LaunchedEffect(Unit) {
     when (val r = call("GET", "api/admin/settings", null, AppSettings.serializer())) {
@@ -444,6 +445,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
         perUser = r.value.sessionsPerUser.toString()
         servers = r.value.gameServers.takeIf { it > 0 }?.toString().orEmpty()
         idle = r.value.idleMinutes.toString()
+        watch = r.value.watchStreams.takeIf { it > 0 }?.toString().orEmpty()
         onLoaded(r.value.sessionsPerUser)
       }
       is Answer.Failed -> state = false to r.message
@@ -453,7 +455,10 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   // Empty: no limit (0)
   val serversValue = if (servers.isBlank()) 0 else servers.trim().toIntOrNull()?.takeIf { it in 1..100 }
   val idleValue = idle.trim().toIntOrNull()?.takeIf { it in 0..1440 }
-  val settings = if (value != null && serversValue != null && idleValue != null) AppSettings(value, serversValue, idleValue) else null
+  val watchValue = if (watch.isBlank()) 0 else watch.trim().toIntOrNull()?.takeIf { it in 1..1000 }
+  val settings = if (value != null && serversValue != null && idleValue != null && watchValue != null) {
+    AppSettings(value, serversValue, idleValue, watchValue)
+  } else null
   FlowRow(
     verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
     itemVerticalAlignment = Alignment.CenterVertically,
@@ -473,6 +478,11 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
       InfoTip(t.users.idleMinutesTip)
       NumberField(idle, { idle = it; state = null }, "30", 0..1440, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
     }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Txt(t.users.watchStreams, size = 13.sp, weight = FontWeight.SemiBold)
+      InfoTip(t.users.watchStreamsTip)
+      NumberField(watch, { watch = it; state = null }, "∞", 1..1000, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
+    }
     Button(t.common.save, enabled = settings != null && settings != saved) {
       scope.launch {
         val changed = settings!!
@@ -486,6 +496,7 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   if (value == null && perUser.isNotBlank()) Txt(t.users.zeroToTwenty, size = 12.5.sp, color = p.trap)
   if (serversValue == null) Txt(t.users.oneToHundred, size = 12.5.sp, color = p.trap)
   if (idleValue == null && idle.isNotBlank()) Txt(t.users.zeroToDay, size = 12.5.sp, color = p.trap)
+  if (watchValue == null) Txt(t.users.oneToThousand, size = 12.5.sp, color = p.trap)
   state?.let { (ok, text) -> Txt(text, size = 12.5.sp, color = if (ok) p.ok else p.trap) }
 }
 

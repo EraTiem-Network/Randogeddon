@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.webapp.ui
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.getValue
@@ -84,4 +85,81 @@ fun Modifier.scrolling(state: ScrollState? = null): Modifier = composed {
       )
     }
     .verticalScroll(scroll)
+}
+
+/**
+ * Scrolls both ways (a view onto something larger, a map) and shows where: a thumb along the bottom and one along
+ * the right edge, each while there is more than fits that way. The mouse drags a thumb (a click beside it jumps
+ * there), or the content itself; the wheel goes up and down. Touch keeps scrolling the content as it does.
+ */
+fun Modifier.scrollingBoth(): Modifier = composed {
+  val across = rememberScrollState()
+  val down = rememberScrollState()
+  val p = LocalPalette.current
+  var dragging by remember { mutableStateOf(false) }
+  // How far a way scrolls (0: it fits), and its thumb's length in a view of [viewport]
+  fun more(scroll: ScrollState) = scroll.maxValue.takeIf { it != Int.MAX_VALUE } ?: 0
+  fun thumb(viewport: Float, max: Int, least: Float) = maxOf(least, viewport * viewport / (viewport + max))
+  this
+    .pointerInput(across, down) {
+      awaitEachGesture {
+        val press = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val maxX = more(across)
+        val maxY = more(down)
+        if (press.type == PointerType.Touch || (maxX <= 0 && maxY <= 0)) return@awaitEachGesture
+        val width = size.width.toFloat()
+        val height = size.height.toFloat()
+        val thumbX = thumb(width, maxX, MIN_THUMB.toPx())
+        val thumbY = thumb(height, maxY, MIN_THUMB.toPx())
+        val onAcross = maxX > 0 && press.position.y >= height - GRIP.toPx()
+        val onDown = !onAcross && maxY > 0 && press.position.x >= width - GRIP.toPx()
+        // Beside a thumb: there at once, its middle under the pointer
+        if (onAcross) {
+          val left = (width - thumbX) * across.value / maxX
+          if (press.position.x !in left..(left + thumbX)) {
+            across.dispatchRawDelta(((press.position.x - thumbX / 2) / (width - thumbX).coerceAtLeast(1f)).coerceIn(0f, 1f) * maxX - across.value)
+          }
+        }
+        if (onDown) {
+          val top = (height - thumbY) * down.value / maxY
+          if (press.position.y !in top..(top + thumbY)) {
+            down.dispatchRawDelta(((press.position.y - thumbY / 2) / (height - thumbY).coerceAtLeast(1f)).coerceIn(0f, 1f) * maxY - down.value)
+          }
+        }
+        if (onAcross || onDown) press.consume()
+        dragging = true
+        // On a bar each pixel of its thumb is as much of the content as its track is shorter than it (the other
+        // way stays); on the content, the content follows the pointer
+        val perX = if (onAcross) maxX / (width - thumbX).coerceAtLeast(1f) else if (onDown) 0f else -1f
+        val perY = if (onDown) maxY / (height - thumbY).coerceAtLeast(1f) else if (onAcross) 0f else -1f
+        while (true) {
+          val event = awaitPointerEvent(PointerEventPass.Initial)
+          val change = event.changes.firstOrNull { it.id == press.id } ?: break
+          if (!change.pressed) break
+          val moved = change.position - change.previousPosition
+          if (moved.x != 0f && perX != 0f) across.dispatchRawDelta(moved.x * perX)
+          if (moved.y != 0f && perY != 0f) down.dispatchRawDelta(moved.y * perY)
+          if (onAcross || onDown) change.consume()
+        }
+        dragging = false
+      }
+    }
+    .drawWithContent {
+      drawContent()
+      val colour = p.muted.copy(alpha = if (dragging || across.isScrollInProgress || down.isScrollInProgress) 0.75f else 0.4f)
+      val thick = THUMB.toPx()
+      val round = CornerRadius(thick / 2, thick / 2)
+      val maxX = more(across)
+      if (maxX > 0) {
+        val length = thumb(size.width, maxX, MIN_THUMB.toPx())
+        drawRoundRect(colour, Offset((size.width - length) * across.value / maxX, size.height - thick - INSET.toPx()), Size(length, thick), round)
+      }
+      val maxY = more(down)
+      if (maxY > 0) {
+        val length = thumb(size.height, maxY, MIN_THUMB.toPx())
+        drawRoundRect(colour, Offset(size.width - thick - INSET.toPx(), (size.height - length) * down.value / maxY), Size(thick, length), round)
+      }
+    }
+    .horizontalScroll(across)
+    .verticalScroll(down)
 }

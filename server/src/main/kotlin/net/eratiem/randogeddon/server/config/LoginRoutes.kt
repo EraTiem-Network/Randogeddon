@@ -252,10 +252,14 @@ fun Route.loginRoutes(
   }
 }
 
-/** Under the protected `/api` branch: who is logged in, an Administrator, and which sessions they manage. */
+/**
+ * Under the protected `/api` branch: who is logged in, an Administrator, and which sessions they manage. An
+ * Administrator only as this login may act as one ([actor]), as every route decides it: the panel shows what the
+ * login can do, not what the account could with another login.
+ */
 fun Route.meRoute(list: SessionList, limit: SessionLimit? = null) {
   get("/me") {
-    val user = call.loggedIn.user
+    val user = call.actor
     call.respond(
       Me(
         name = user.name, administrator = user.administrator, manages = list.managedBy(user),

@@ -81,7 +81,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
     signupRoutes(accounts, trackerConfig.cookieSecure)
     // A session by its share link, without a login
-    publicWatchRoutes(shareLinks, archives)
+    publicWatchRoutes(shareLinks, archives, settings)
     // Randogeddon Bridge: its downloads, and with a key what the app needs
     bridgeRoutes(trackerConfig, bridgeKeys, logins, sessions, list, slotPasswords)
 

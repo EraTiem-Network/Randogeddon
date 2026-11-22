@@ -97,4 +97,6 @@ data class AppSettings(
   val gameServers: Int = 8,
   /** How many minutes a game server runs without a player before it sleeps; 0: never. */
   val idleMinutes: Int = 30,
+  /** How many live streams by share links one address may hold at once; 0: no limit. */
+  val watchStreams: Int = 20,
 )

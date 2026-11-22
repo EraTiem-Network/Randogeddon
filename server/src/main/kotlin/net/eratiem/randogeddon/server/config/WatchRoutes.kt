@@ -13,6 +13,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
+import net.eratiem.randogeddon.database.AppSettingsStore
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
@@ -97,10 +98,10 @@ fun Route.watcherRoutes(people: SessionPeopleService, links: ShareLinks, logins:
 
 /**
  * `/api/watch/{token}/...`, without a login (rate-limited): a session by its share link, read-only: its summary (once
- * and as a live stream, as many at once per address as an account has) and one slot's details. No passwords, no
+ * and as a live stream, as many at once per address as the Administrators set) and one slot's details. No passwords, no
  * spoiler, no connection, no accounts. A link that is off (or replaced) answers 404.
  */
-fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
+fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives, settings: AppSettingsStore) {
   rateLimit(WATCH_RATE_LIMIT) {
     route("/api/watch/{token}") {
       get("/state") { shared(links) { call.respondText(it.publicJson(), ContentType.Application.Json) } }
@@ -109,7 +110,7 @@ fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
         val token = call.parameters["token"].orEmpty()
         val live = links.sessionOf(token) ?: return@sse
         // Ends once the link is switched off or replaced
-        OpenStreams.counted("watch:" + call.clientKey) {
+        OpenStreams.counted("watch:" + call.clientKey, settings.watchStreams()) {
           follow(live, stillAllowed = { links.sessionOf(token)?.id == live.id }) { live.publicJson() }
         }
       }

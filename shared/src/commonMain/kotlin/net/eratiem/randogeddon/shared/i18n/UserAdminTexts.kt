@@ -65,6 +65,9 @@ interface UserAdminTexts {
   val idleMinutes: String
   val idleMinutesTip: String
   val zeroToDay: String
+  val watchStreams: String
+  val watchStreamsTip: String
+  val oneToThousand: String
   /** In an account's panel: its running sessions against its limit, and its own number. */
   val ownSessionsLabel: String
   fun sessionsOf(running: Int, limit: Int): String
@@ -169,6 +172,12 @@ internal object EnglishUserAdmin : UserAdminTexts {
       "fewer run than may at once). Hosted slots don't count as players. 0: never. An Administrator can keep a " +
       "session running in its panel."
   override val zeroToDay = "0 to 1440 minutes"
+  override val watchStreams = "Share-link streams per address"
+  override val watchStreamsTip =
+    "How many live dashboards opened by share links one address may hold at the same time (empty: no limit). " +
+      "Everyone behind one internet connection shares an address: raise it for an event where many watch from " +
+      "the same network. More than that get the dashboard without live updates."
+  override val oneToThousand = "1 to 1000, or empty for no limit"
   override val ownSessionsLabel = "Self-created sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running running, limit $limit"
   override val theDefault = "(default)"
@@ -284,6 +293,13 @@ internal object GermanUserAdmin : UserAdminTexts {
       "(wenn weniger laufen, als gleichzeitig dürfen). Gehostete Slots zählen nicht als Spieler. 0: nie. Ein " +
       "Administrator kann eine Session in ihrem Fenster weiterlaufen lassen."
   override val zeroToDay = "0 bis 1440 Minuten"
+  override val watchStreams = "Streams per Freigabe-Link je Adresse"
+  override val watchStreamsTip =
+    "Wie viele per Freigabe-Link geöffnete Live-Dashboards eine Adresse gleichzeitig halten darf (leer: ohne " +
+      "Grenze). Alle hinter einem Internetanschluss teilen sich eine Adresse: Erhöhe den Wert für eine " +
+      "Veranstaltung, bei der viele aus demselben Netz zuschauen. Wer darüber liegt, bekommt das Dashboard ohne " +
+      "Live-Aktualisierung."
+  override val oneToThousand = "1 bis 1000, oder leer für ohne Grenze"
   override val ownSessionsLabel = "Selbst erstellte Sessions"
   override fun sessionsOf(running: Int, limit: Int) = "$running laufend, Limit $limit"
   override val theDefault = "(Standard)"
