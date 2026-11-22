@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,12 +77,13 @@ import net.eratiem.randogeddon.webapp.ui.hand
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /** The spoiler page's tabs: the whole log, and what its later levels bring once they are worked out. */
-private enum class SpoilerTab { EVERYTHING, PLAYTHROUGH, PATHS }
+private enum class SpoilerTab { EVERYTHING, PLAYTHROUGH, PATHS, TEXT }
 
 /**
- * A session's spoiler log: the full log, searchable (there from the seed on), and by tabs of their own what is worked
- * out after the seed: the playthrough sphere by sphere (each foldable; the shortest way through the seed, what each
- * step makes reachable; opened first once it is there), then the paths. [id]: the session. [onBack]: closes it.
+ * A session's spoiler log: what the seed was made with and where every item lies (there from the seed on), and by
+ * tabs of their own what is worked out after the seed: the playthrough sphere by sphere (each foldable; the shortest
+ * way through the seed, what each step makes reachable; opened first once it is there), then the paths; and the log
+ * as text, searchable, for what the views leave out. [id]: the session. [onBack]: closes it.
  */
 @Composable
 fun SpoilerView(id: String, onBack: () -> Unit) {
@@ -125,6 +125,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
       }
       val tabs = listOfNotNull(
         SpoilerTab.EVERYTHING, SpoilerTab.PLAYTHROUGH.takeIf { s.spheres.isNotEmpty() }, SpoilerTab.PATHS.takeIf { s.pathsFrom != null },
+        SpoilerTab.TEXT,
       )
       // The playthrough first where there is one: it is read more than the log
       var chosen by remember(id, tabs) { mutableStateOf(if (SpoilerTab.PLAYTHROUGH in tabs) SpoilerTab.PLAYTHROUGH else SpoilerTab.EVERYTHING) }
@@ -135,21 +136,23 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
               SpoilerTab.EVERYTHING -> t.spoiler.tabEverything
               SpoilerTab.PLAYTHROUGH -> t.spoiler.playthrough
               SpoilerTab.PATHS -> t.spoiler.paths
+              SpoilerTab.TEXT -> t.spoiler.tabText
             }
             PageButton(name, tab == chosen) { chosen = tab }
           }
         }
       }
       when (chosen) {
-        SpoilerTab.EVERYTHING -> FullLog(id, s.lines, narrow, t.spoiler.fullLog, t.spoiler.fullLogSubtitle)
+        SpoilerTab.EVERYTHING -> {
+          SpoilerSettingsView(id, narrow)
+          if (s.placements > 0) SpoilerPlacementsView(id, s.slots, narrow)
+        }
         SpoilerTab.PLAYTHROUGH -> {
           if (s.unreduced) Txt(t.spoiler.unreduced, size = 12.5.sp, color = p.warn)
           Playthrough(s.spheres, narrow)
         }
-        // The paths' part of the log, read and searched as the whole is
-        SpoilerTab.PATHS -> key(SpoilerTab.PATHS) {
-          FullLog(id, s.lines, narrow, t.spoiler.paths, t.spoiler.pathsSubtitle, first = s.pathsFrom ?: 0)
-        }
+        SpoilerTab.PATHS -> SpoilerPathsView(id, s.slots, narrow)
+        SpoilerTab.TEXT -> FullLog(id, s.lines, narrow, t.spoiler.fullLog, t.spoiler.fullLogSubtitle)
       }
     }
   }
@@ -159,7 +162,7 @@ fun SpoilerView(id: String, onBack: () -> Unit) {
  * One step of a sphere: an item for [itemSlot], found at [location] in [locationSlot] (none for sphere 0); [checked]:
  * that location is checked already.
  */
-private data class Step(
+internal data class Step(
   val item: String,
   val itemSlot: String?,
   val location: String?,
@@ -301,7 +304,7 @@ private val ARROW_COLUMN = 28.dp
 
 /** The table's columns: whose item, the item, then the slot and location it lies at. */
 @Composable
-private fun StepHeader() {
+internal fun StepHeader() {
   val p = LocalPalette.current
   val t = LocalTexts.current
   Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -316,7 +319,7 @@ private fun StepHeader() {
 
 /** Slot · Item @ Slot · Location (the item is at that check); sphere 0 has no location (it is there from the start). */
 @Composable
-private fun StepRow(step: Step, odd: Boolean) {
+internal fun StepRow(step: Step, odd: Boolean) {
   val p = LocalPalette.current
   Row(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (odd) p.panelAlt else Color.Transparent)
@@ -335,7 +338,7 @@ private fun StepRow(step: Step, odd: Boolean) {
 /** A step on a phone: Slot · Item, and below it @ Slot · Location. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StepCard(step: Step, odd: Boolean) {
+internal fun StepCard(step: Step, odd: Boolean) {
   val p = LocalPalette.current
   Column(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (odd) p.panelAlt else Color.Transparent)
@@ -359,7 +362,7 @@ private fun StepCard(step: Step, odd: Boolean) {
 
 /** A slot in its colour. */
 @Composable
-private fun SlotTag(slot: String) {
+internal fun SlotTag(slot: String) {
   val p = LocalPalette.current
   val hue = p.hue(slot)
   Txt(
@@ -373,7 +376,7 @@ private fun SlotTag(slot: String) {
 private const val PAGE = 300
 
 /** How long the search waits after the last key before it asks the server. */
-private const val SEARCH_DELAY_MS = 500L
+internal const val SEARCH_DELAY_MS = 500L
 
 /** [text] for a URL's query: everything but letters, digits and `-._~` as its UTF-8 bytes, percent-encoded. */
 internal fun urlEncoded(text: String): String = buildString {
