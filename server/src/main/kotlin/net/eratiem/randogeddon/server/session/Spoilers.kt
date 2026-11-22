@@ -6,6 +6,10 @@ import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.Spoiler
 import net.eratiem.randogeddon.shared.SpoilerFindings
 import net.eratiem.randogeddon.shared.SpoilerLines
+import net.eratiem.randogeddon.shared.SpoilerOption
+import net.eratiem.randogeddon.shared.SpoilerSection
+import net.eratiem.randogeddon.shared.SpoilerSettings
+import net.eratiem.randogeddon.shared.SpoilerSlot
 import org.koin.core.annotation.Single
 import java.util.concurrent.ConcurrentHashMap
 
@@ -67,6 +71,15 @@ class SpoilerLog(seed: String, text: String) {
   /** The seed's slots by their numbers ([seedSlots]). */
   internal val slots: Map<Int, SeedSlot> by lazy { seedSlots(lines) }
 
+  /** What the seed was made with ([spoilerSettings]). */
+  val settings: SpoilerSettings by lazy { spoilerSettings(lines) }
+
+  /** Every placement of the seed, told apart by its slots; and the playthrough's paths, if the log has them. */
+  internal val allPlacements: List<Placement> by lazy { placements(slots.values.map { it.name }) }
+  internal val paths: List<PathEntry> by lazy {
+    spoiler.pathsFrom?.let { paths(lines, it, slots.values.map { slot -> slot.name }) }.orEmpty()
+  }
+
   @Volatile
   private var placed: Pair<Set<String>, List<Placement>>? = null
 
@@ -93,6 +106,109 @@ class SpoilerLog(seed: String, text: String) {
     }
     return SpoilerFindings(found)
   }
+}
+
+/** An option's line: its name, a colon, what it is set to (padded; nothing for an empty one). */
+private val OPTION = Regex("^([^:]+):\\s*(.*)$")
+
+/**
+ * What the seed was made with, from the spoiler log's part before its placements: the seed's own settings (the
+ * lines before the first slot), each slot's options (`Player <n>: <name>`, then a line an option), and what worlds
+ * wrote besides: a heading of its own (a line ending in a colon after an empty one; an option without a value is
+ * padded behind its colon), then its lines as they are.
+ */
+internal fun spoilerSettings(lines: List<String>): SpoilerSettings {
+  val general = mutableListOf<SpoilerOption>()
+  val slots = mutableListOf<SpoilerSlot>()
+  val sections = mutableListOf<SpoilerSection>()
+  var slot: SpoilerSlot? = null
+  var options = mutableListOf<SpoilerOption>()
+  var title: String? = null
+  var text = mutableListOf<String>()
+  fun endSlot() {
+    slot?.let { slots += it.copy(options = options.toList()) }
+    slot = null
+    options = mutableListOf()
+  }
+  fun endSection() {
+    title?.let { name ->
+      val kept = text.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }
+      sections += SpoilerSection(name, kept.take(SpoilerSection.MAX), more = kept.size > SpoilerSection.MAX)
+    }
+    title = null
+    text = mutableListOf()
+  }
+  var afterBlank = false
+  for ((n, raw) in lines.withIndex()) {
+    val line = raw.removePrefix("\uFEFF").trimEnd('\r')
+    val trimmed = line.trimEnd()
+    if (trimmed == "Locations:" || trimmed == "Playthrough:") break
+    // The first line names Archipelago's version and the seed
+    if (n == 0) continue
+    val player = PLAYER.matchEntire(trimmed)
+    val heading = afterBlank && player == null && line.isNotEmpty() && !line[0].isWhitespace() && line.endsWith(":")
+    when {
+      heading -> {
+        endSlot()
+        endSection()
+        title = line.dropLast(1)
+      }
+      title != null -> text += trimmed
+      player != null -> {
+        endSlot()
+        slot = SpoilerSlot(player.groupValues[1].toInt(), player.groupValues[2].trim())
+      }
+      else -> OPTION.matchEntire(trimmed)?.let { match ->
+        val option = SpoilerOption(match.groupValues[1].trim(), match.groupValues[2].trim())
+        val of = slot
+        when {
+          of == null -> general += option
+          option.name == "Game" && of.game == null -> slot = of.copy(game = option.value)
+          else -> options += option
+        }
+      }
+    }
+    afterBlank = trimmed.isEmpty()
+  }
+  endSlot()
+  endSection()
+  return SpoilerSettings(general, slots, sections)
+}
+
+/** The way to an item of the playthrough: [location] of [slot]'s world, the [regions] passed to it from the start. */
+internal data class PathEntry(val location: String, val slot: String, val regions: List<String>)
+
+/**
+ * The playthrough's paths, from the log's `Paths:` line ([from]) on: `Location (Slot)`, then a line a step, indented,
+ * `Region -> Entrance` (`=>` before all but the first), and at last the region it lies in. Each step's region, in
+ * order. The slot is one of the seed's ([slots]: a name may have brackets of its own), else what the last bracket
+ * holds. The paths end with the log, or at a line that isn't one of theirs.
+ */
+internal fun paths(lines: List<String>, from: Int, slots: Collection<String> = emptyList()): List<PathEntry> {
+  val names = slots.sortedByDescending { it.length }
+  val out = mutableListOf<PathEntry>()
+  var head: Pair<String, String>? = null
+  var regions = mutableListOf<String>()
+  fun end() {
+    head?.let { (location, slot) -> out += PathEntry(location, slot, regions.toList()) }
+    head = null
+    regions = mutableListOf()
+  }
+  for (raw in lines.drop(from + 1)) {
+    val line = raw.trimEnd()
+    if (line.isEmpty()) continue
+    if (line[0].isWhitespace()) {
+      if (head != null) regions += line.trim().removePrefix("=>").trim().substringBefore(" -> ")
+      continue
+    }
+    end()
+    if (!line.endsWith(")")) break
+    val open = names.firstOrNull { line.endsWith(" ($it)") }?.let { line.length - it.length - 3 } ?: line.lastIndexOf(" (")
+    if (open <= 0) break
+    head = line.substring(0, open) to line.substring(open + 2, line.length - 1)
+  }
+  end()
+  return out
 }
 
 private val PLAYER = Regex("^Player (\\d+): (.+)$")
