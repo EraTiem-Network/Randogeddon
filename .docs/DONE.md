@@ -1220,3 +1220,27 @@ games' real map images moved to Later.*
       API), then one that connected what they left for each other's files
     - Chosen by the fixers: 32 packets before a `Connect`; 2,000 characters a log line, 1,000 a kept text; a
       spoiler log of 64 MB and an APWorld of 1 GB unpacked at most
+- [x] 0.23.2.1: the gateway's findings that waited for the user, built as decided on 2026-11-22 (asked one by one):
+    - [x] S1/G8 (high): Archipelago's Python as a user of its own in the gateway's image, so APWorld code can't
+          read the gateway's secrets
+    - [x] S2/G10 (high): the minecraft service gets a token of its own (`MINECRAFT_TOKEN`) that only its own
+          routes accept, and only `data/minecraft/` mounted
+    - [x] G9/S6: a room password per game server that only the gateway and the tracker know (the user chose it
+          over listening on localhost only)
+    - [x] G11/S4/S5: at most 32 connections that haven't joined yet per address (an IPv6 network as one); a
+          sleeping game server is woken only by a `Connect` with a slot's right password
+    - [x] G18/S8: the gateway's database role may insert only the kinds of events it writes itself (a migration)
+    - [x] S11: `!admin` removed: no server password is passed to a game server any more (`AP_ADMIN_PASSWORD`
+          goes); remote commands only through the panel's console
+    - [x] G24: `init: true` for the gateway's and the minecraft service's containers
+    - [x] Game servers and generations marked for the kernel, so that one of them is ended when the gateway's
+          container runs out of memory, not the gateway with every session
+    - Decided to stay as they are (the user, 2026-11-22):
+        - G2 (the rate part): no cap on how many chat lines and link events are kept (the size cut is enough)
+        - S9: refusals keep Archipelago's answers (`InvalidSlot`, `InvalidPassword`): clients show them to players
+    - Checked end to end in the demo (2026-11-22), with 0.23.2: the processes' users, capabilities and out-of-memory
+      scores; the gateway's environment closed to Archipelago's user; the simulated players through the new rules
+      before a `Connect`; the tracker with the room password; a direct connection to a game server refused; a
+      sleeping session answering from what was kept and waking only for a right password (2 s)
+    - Found by the image's build: a test took a killed process that nobody collected (a zombie, where no init runs)
+      for a running one; it passed outside the image

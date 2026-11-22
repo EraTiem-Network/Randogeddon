@@ -17,7 +17,10 @@ sealed interface Verdict {
    */
   data class Only(val text: String?) : Verdict
 
-  /** A frame with a Connect that passed its checks: passes on unchanged, and the client is in [slot] from here. */
+  /**
+   * A frame with a Connect that passed its checks: passes on, the room's password in place of the slot's
+   * ([withRoomPassword]), and the client is in [slot] from here.
+   */
   data class Join(val slot: String) : Verdict
 
   /** A Connect that doesn't pass ([why]): answered here, MultiServer never sees it. */
@@ -47,9 +50,15 @@ private val BEFORE_CONNECT = setOf("Connect", "GetDataPackage")
 class BeforeConnect(packets: Int) {
   var packetsLeft = packets
     internal set
+
+  /** The frames it sent so far, whether the gateway answered them or MultiServer (counted by the relay). */
+  var frames = 0
 }
 
-/** What Archipelago clients show for a wrong room password; the same field now carries the slot's password. */
+/**
+ * What Archipelago clients show for a wrong room password; the same field carries the slot's password to the gateway
+ * (MultiServer gets the room's in its place, [withRoomPassword]).
+ */
 const val REFUSAL = """[{"cmd":"ConnectionRefused","errors":["InvalidPassword"]}]"""
 
 /** A name that is no slot a client connects as: what MultiServer answers a typo with. */
@@ -115,9 +124,23 @@ suspend fun checkClientFrame(
 }
 
 /**
- * A text frame of MultiServer for a client, its `RoomInfo` saying that a password is needed: MultiServer has none of
- * its own here (`password: false`), but every slot has one, checked above. Some clients send theirs only when the
- * room asks for it and would be refused otherwise. Anything else passes as it is.
+ * [text], a client's frame whose `Connect`s passed ([Verdict.Join]), as MultiServer gets it: each `Connect` with the
+ * room's password [room] (the gateway's, made at each start of the game server) in place of the slot's, which
+ * MultiServer never needs (it was checked here). The rest of the frame as it was parsed and checked (of a key given
+ * twice, the last, as MultiServer reads it).
+ */
+fun withRoomPassword(text: String, room: String): String {
+  val packets = json.parseToJsonElement(text) as JsonArray
+  return JsonArray(
+    packets.map { if (it is JsonObject && it.string("cmd") == "Connect") JsonObject(it + ("password" to JsonPrimitive(room))) else it },
+  ).toString()
+}
+
+/**
+ * A text frame of MultiServer for a client, its `RoomInfo` saying that a password is needed: every slot has one,
+ * checked above (MultiServer's own room password is the gateway's, and says so too, but a kept `RoomInfo` of before
+ * didn't). Some clients send theirs only when the room asks for it and would be refused otherwise. Anything else
+ * passes as it is.
  */
 fun askingForPassword(text: String): String {
   if ("RoomInfo" !in text) return text

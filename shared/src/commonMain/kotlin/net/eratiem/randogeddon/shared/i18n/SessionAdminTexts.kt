@@ -384,7 +384,8 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
       else "Running: $players on it"
     MinecraftStatus.CRASHED -> "Ended on its own (see its log): it starts again when a player joins"
   }
-  override val minecraftNotHosted = "Not hosted here: the operator hasn't accepted Mojang's EULA (MINECRAFT_EULA)"
+  override val minecraftNotHosted =
+    "Not hosted here: the operator hasn't accepted Mojang's EULA (MINECRAFT_EULA) or hasn't set MINECRAFT_TOKEN"
   override val minecraftStart = "Start"
   override val minecraftStop = "Stop"
   override val minecraftNotDirect = "Not hosted here: its Session-Managers run its server themselves"
@@ -644,7 +645,8 @@ internal object GermanSessionAdmin : SessionAdminTexts {
       else "Läuft: $players darauf"
     MinecraftStatus.CRASHED -> "Von selbst beendet (siehe sein Log): Er startet wieder, wenn jemand beitritt"
   }
-  override val minecraftNotHosted = "Hier nicht gehostet: Der Betreiber hat Mojangs EULA nicht akzeptiert (MINECRAFT_EULA)"
+  override val minecraftNotHosted =
+    "Hier nicht gehostet: Der Betreiber hat Mojangs EULA nicht akzeptiert (MINECRAFT_EULA) oder MINECRAFT_TOKEN nicht gesetzt"
   override val minecraftStart = "Starten"
   override val minecraftStop = "Stoppen"
   override val minecraftNotDirect = "Nicht hier gehostet: Seine Session-Manager betreiben den Server selbst"

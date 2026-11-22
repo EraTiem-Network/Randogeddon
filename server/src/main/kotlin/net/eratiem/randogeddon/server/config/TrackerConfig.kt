@@ -1,8 +1,10 @@
 package net.eratiem.randogeddon.server.config
 
 import io.ktor.server.config.ApplicationConfig
-import net.eratiem.randogeddon.database.DatabaseConfig
 import java.nio.file.Path
+import net.eratiem.randogeddon.database.DatabaseConfig
+import net.eratiem.randogeddon.shared.AddressRange
+import net.eratiem.randogeddon.shared.trustedProxies
 
 /** Whether a setting's text means on: anything but `0`, `false`, `no` and `off`. */
 private fun flag(value: String) = value.trim().lowercase() !in setOf("0", "false", "no", "off")

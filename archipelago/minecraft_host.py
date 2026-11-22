@@ -1,11 +1,11 @@
 """The hosted Minecraft servers of Minecraft Dig slots, run on the gateway's orders.
 
-Usage: python minecraft_host.py (its own service: the gateway's image, without the gateway's secrets but its
-INTERNAL_TOKEN)
+Usage: python minecraft_host.py (its own service and image, with none of the gateway's secrets: only MINECRAFT_TOKEN,
+which it shares with the gateway and which opens nothing but this API; DATA is the only folder it has)
 
 One Forge server per Minecraft Dig slot, each a process with its own folder under DATA/servers/<key>/ (its world,
-its config; the Forge libraries and the mod are the image's, linked in). The gateway asks over HTTP, with
-`Authorization: Bearer <INTERNAL_TOKEN>`:
+its config; the Forge libraries and the mod are the image's, linked in). Everything of the seed it needs comes in the
+gateway's request (the slot's patch). The gateway asks over HTTP, with `Authorization: Bearer <MINECRAFT_TOKEN>`:
     GET    /servers                     every server: its state, its Minecraft port, its players
     PUT    /servers/<key>               its files for a seed: {"session", "slot", "seed", "data": <the patch's
                                         data.json>, "eula": true}; a world of another seed is dropped
@@ -37,7 +37,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-TOKEN = os.environ.get("INTERNAL_TOKEN", "")
+# Its own, never the gateway's INTERNAL_TOKEN; without it every call is refused
+TOKEN = os.environ.get("MINECRAFT_TOKEN", "")
 DATA = os.environ.get("DATA", "/data")
 FORGE = os.environ.get("FORGE_HOME", "/opt/forge")
 FORGE_VERSION = os.environ.get("FORGE_VERSION", "1.19.4-45.3.15")
@@ -52,7 +53,13 @@ API_PORT = int(os.environ.get("MINECRAFT_API_PORT", "8002"))
 FIRST_PORT = 25600
 FIRST_RELAY = 39000
 LOG_LINES = 5000
+# The most a request's body may have: the patch's data.json is at most 1 MB (the gateway reads no longer one)
+MAX_BODY = 4 * 1024 * 1024
 KEY = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
+# A session's ID, as the gateway makes them
+SESSION = re.compile(r"^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
+# Control characters: none in a slot's name (a file name, a line of server.properties)
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 JOINED = re.compile(r"\]: (\S+) joined the game$")
 LEFT = re.compile(r"\]: (\S+) left the game$")
 
@@ -95,9 +102,11 @@ class Server:
     def read_meta(self) -> None:
         try:
             with open(os.path.join(self.dir, "randogeddon.json"), encoding="utf-8") as f:
-                self.session = json.load(f).get("session")
-        except (OSError, ValueError):
-            pass
+                session = json.load(f).get("session")
+        except (OSError, ValueError, AttributeError):
+            return
+        # It goes into the relay's request line: only a session's ID
+        self.session = session if isinstance(session, str) and SESSION.fullmatch(session) else None
 
     def view(self) -> dict:
         return {"key": self.key, "status": self.status, "since": self.since, "port": self.port, "relay": self.relay,
@@ -117,8 +126,24 @@ def server(key: str, create: bool = False):
         return servers.get(key)
 
 
+def checked(key: str, body) -> dict:
+    """A PUT's [body] for server [key], if it holds what prepare() needs and names nothing outside the server's folder;
+    else a ValueError. The folder and the relay's path come from the key and the session, so the key must be the
+    session's (`<session>-p<number>`, as the gateway makes it); the slot's name becomes a file name in APData/."""
+    if not isinstance(body, dict):
+        raise ValueError("not a JSON object")
+    session, slot, seed, data = (body.get(k) for k in ("session", "slot", "seed", "data"))
+    if not all(isinstance(v, str) for v in (session, slot, seed, data)):
+        raise ValueError("session, slot, seed and data are needed")
+    if not SESSION.fullmatch(session) or not re.fullmatch(re.escape(session) + r"-p\d+", key):
+        raise ValueError("not this server's session")
+    if not slot or len(slot) > 64 or slot in (".", "..") or "/" in slot or "\\" in slot or CONTROL.search(slot):
+        raise ValueError("not a slot's name")
+    return body
+
+
 def prepare(s: Server, body: dict) -> None:
-    """Its folder for [body]'s seed: the image's Forge linked in, its settings, the slot's patch."""
+    """Its folder for [body]'s seed (checked()): the image's Forge linked in, its settings, the slot's patch."""
     os.makedirs(s.dir, exist_ok=True)
     meta_path = os.path.join(s.dir, "randogeddon.json")
     try:
@@ -178,7 +203,8 @@ def start(s: Server) -> str:
     s.note(f"[host] Starting: {JAVA} -Xmx{HEAP} {args} -nogui")
     s.process = subprocess.Popen(
         [JAVA, f"-Xmx{HEAP}", args, "-nogui"], cwd=s.dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, bufsize=1, env={k: v for k, v in os.environ.items() if k != "INTERNAL_TOKEN"},
+        stderr=subprocess.STDOUT, text=True, bufsize=1,
+        env={k: v for k, v in os.environ.items() if k not in ("MINECRAFT_TOKEN", "INTERNAL_TOKEN")},
     )
     threading.Thread(target=read_output, args=(s, s.process), daemon=True).start()
     return ""
@@ -357,8 +383,11 @@ class Handler(BaseHTTPRequestHandler):
             return None, None, None
         return parts, key, (parts[2] if len(parts) > 2 else None)
 
-    def body(self) -> dict:
+    def body(self):
+        """The request's JSON; a ValueError if it is longer than MAX_BODY, or no JSON."""
         length = int(self.headers.get("Content-Length", "0"))
+        if not 0 <= length <= MAX_BODY:
+            raise ValueError(f"a body of {length} bytes")
         return json.loads(self.rfile.read(length) or b"{}")
 
     def do_GET(self):
@@ -385,8 +414,12 @@ class Handler(BaseHTTPRequestHandler):
         parts, key, _ = self.target()
         if parts is None or key is None:
             return
+        try:
+            body = checked(key, self.body())
+        except ValueError as e:
+            return self.answer(400, {"message": str(e)})
         s = server(key, create=True)
-        prepare(s, self.body())
+        prepare(s, body)
         ensure_relay(s)
         self.answer(200, s.view())
 
@@ -407,7 +440,13 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=stop, args=(s,), daemon=True).start()
             return self.answer(202, s.view())
         if action == "command":
-            return self.answer(204) if command(s, self.body().get("line", "")) else self.answer(409, {"message": "not running"})
+            try:
+                line = self.body().get("line", "")
+            except (ValueError, AttributeError):
+                line = None
+            if not isinstance(line, str):
+                return self.answer(400, {"message": "no line"})
+            return self.answer(204) if command(s, line) else self.answer(409, {"message": "not running"})
         self.answer(404)
 
     def do_DELETE(self):
@@ -428,7 +467,16 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    os.makedirs(os.path.join(DATA, "servers"), exist_ok=True)
+    try:
+        os.makedirs(os.path.join(DATA, "servers"), exist_ok=True)
+    except PermissionError:
+        # Docker made the mounted folder itself (as root), because it wasn't there
+        print(f"{DATA} isn't writable for uid {os.getuid()}: on the host, data/minecraft/ must belong to it "
+              f"(mkdir -p data/minecraft && chown {os.getuid()} data/minecraft)", flush=True)
+        raise SystemExit(1)
+    if not TOKEN:
+        print("No MINECRAFT_TOKEN: every call of the gateway is refused, no Minecraft server runs (set it in .env, "
+              "the same for the gateway)", flush=True)
     # The servers that have a folder (asleep): known again after a restart
     for key in sorted(os.listdir(os.path.join(DATA, "servers"))):
         if KEY.match(key):

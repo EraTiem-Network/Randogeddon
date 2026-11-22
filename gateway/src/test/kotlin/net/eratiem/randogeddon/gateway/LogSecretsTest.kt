@@ -52,9 +52,26 @@ class LogSecretsTest {
   }
 
   @Test
-  fun `a word for the console is quoted`() {
-    assertEquals("\"plain\"", consoleWord("plain"))
-    assertEquals("\"two words\"", consoleWord("two words"))
-    assertEquals("\"a\\\"b\\\\c\"", consoleWord("a\"b\\c"))
+  fun `the room password MultiServer names at its start isn't logged`() {
+    // A save of before holds the room password of its last run: MultiServer names it as it starts listening
+    assertEquals(
+      "[2026-11-22 10:00:00,000]: Hosting game at 0.0.0.0:38282 (Password: ***)",
+      withoutPasswords("[2026-11-22 10:00:00,000]: Hosting game at 0.0.0.0:38282 (Password: 9f2c4e1a)"),
+    )
+    assertEquals("Hosting game at 0.0.0.0:38282 (No password)", withoutPasswords("Hosting game at 0.0.0.0:38282 (No password)"))
+    // Cut inside it
+    assertEquals("Hosting game at 0.0.0.0:38282 (Password: ***", withoutPasswords("Hosting game at 0.0.0.0:38282 (Password: 9f2c"))
+  }
+
+  @Test
+  fun `a console line that would set a password of MultiServer's is the gateway's alone`() {
+    assertTrue(setsPassword("/option password open"))
+    assertTrue(setsPassword("  /OPTION server_password hunter2"))
+    // MultiServer's console splits like a shell: quotes and escapes don't hide it
+    assertTrue(setsPassword("\"/option\" 'password' \"\""))
+    assertTrue(setsPassword("/option server_pass\\word x"))
+    assertFalse(setsPassword("/option hint_cost 10"))
+    assertFalse(setsPassword("/say /option password x"))
+    assertFalse(setsPassword("/options"))
   }
 }

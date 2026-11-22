@@ -39,6 +39,8 @@ image="randogeddon-gateway:$AP_VERSION"
 docker compose build tracker
 docker compose build gateway
 docker compose build minecraft
+# The minecraft service's folder, which it mounts alone: made here, as this user, or Docker makes it as root
+mkdir -p data/minecraft
 docker compose up -d
 echo "Waiting for the tracker…"
 for _ in $(seq 1 90); do
@@ -59,9 +61,10 @@ admin_password() {
   echo "Admin login: $ADMIN / $(cat "$PASSWORD_FILE")"
 }
 
-# The demo's admin calls (demo/admin.py), in the compose network
+# The demo's admin calls (demo/admin.py), in the compose network; as the image's uid 1000 (the image itself starts as
+# root), so what it writes into output/demo/ stays this user's
 admin() {
-  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" \
+  docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" --user randogeddon \
     -e DEMO_ADMIN="$ADMIN" -e DEMO_PASSWORD="$(cat "$PASSWORD_FILE")" --entrypoint python "$image" /demo/admin.py "$@"
 }
 
@@ -99,7 +102,7 @@ simulate() {
   docker rm -f "$SIM-$group" >/dev/null 2>&1 || true
   docker run -d --name "$SIM-$group" --network randogeddon_default -e DEMO_MINUTES="${DEMO_MINUTES:-15}" \
     -e DEMO_FINISHER="$finisher" -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/slots:ro" \
-    --entrypoint python "$image" /demo/simulate.py "ws://gateway:38281/$id" "/slots/$id.json" >/dev/null
+    --user randogeddon --entrypoint python "$image" /demo/simulate.py "ws://gateway:38281/$id" "/slots/$id.json" >/dev/null
 }
 
 # One round: the older demo rounds deleted (the round before stays, as finished sessions; on the first round every

@@ -71,6 +71,14 @@ if [[ -n "$current" && "$current" != "$tag" ]]; then
   set_setting PREVIOUS_IMAGE_TAG "$current"
   set_setting PREVIOUS_GATEWAY_TAG "$current_gateway"
 fi
+# The minecraft service mounts data/minecraft/ alone: there before it starts, the gateway's user's (Docker would make
+# it as root)
+[[ -d data/minecraft ]] || install -d -o 1000 -g 1000 data/minecraft
+# Its own token, never INTERNAL_TOKEN: made once where the server has none; without it no Minecraft is hosted
+if [[ -z "$(setting MINECRAFT_TOKEN)" ]]; then
+  set_setting MINECRAFT_TOKEN "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  echo "No MINECRAFT_TOKEN in .env: a new one is set there"
+fi
 docker compose pull -q tracker gateway minecraft
 docker compose up -d --no-build --remove-orphans 2>&1 | tail -3
 for _ in $(seq 1 60); do

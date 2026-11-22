@@ -4,6 +4,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -19,6 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import net.eratiem.randogeddon.shared.AddressRange
+import net.eratiem.randogeddon.shared.trustedProxies
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,6 +51,8 @@ class RelayTest {
     clients: SlotClients? = null,
     joined: suspend (String) -> (() -> Unit)? = { null },
     wake: suspend () -> Unit = {},
+    trusted: List<AddressRange> = emptyList(),
+    roomPassword: () -> String? = { null },
     block: suspend (url: String, client: HttpClient) -> Unit,
   ) = runBlocking {
     val multiServer = embeddedServer(Netty, port = 0) {
@@ -75,7 +81,10 @@ class RelayTest {
       gameClientWebSockets()
       routing {
         webSocket("/") {
-          serve(client, { wake(); upstream }, { passwords }, { emptySet() }, connections, joined = joined, clients = clients)
+          serve(
+            client, { wake(); upstream }, { passwords }, { emptySet() }, connections, joined = joined, clients = clients,
+            address = call.gameClientAddress(trusted), roomPassword = roomPassword,
+          )
         }
       }
     }.start()
@@ -117,6 +126,30 @@ class RelayTest {
       assertEquals(listOf(connect("Alice-HK", "s3cr3t!")), seen.toList())
     }
   }
+
+  @Test
+  fun `MultiServer gets the room's password in each Connect that passed, never a slot's`() =
+    gateway(roomPassword = { "r00m-9f2c4e1a" }) { url, client ->
+      client.webSocket(url) {
+        next()
+        // Refused here, with the wrong slot password: MultiServer sees nothing of it
+        send(Frame.Text(connect("Alice-HK", "typo")))
+        assertEquals(REFUSAL, next())
+        send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
+        assertEquals("""[{"cmd":"Connected"}]""", next())
+        // Another slot's Connect later, in a frame with more: that one too, the rest as it came
+        val batch = """[{"cmd":"Sync"},""" + connect("Bob-Yacht", "pw").removePrefix("[")
+        send(Frame.Text(batch))
+        assertEquals("""[{"cmd":"Connected"}]""", next())
+        assertSeen(2)
+        val room = "r00m-9f2c4e1a"
+        assertEquals(
+          listOf(connect("Alice-HK", room), """[{"cmd":"Sync"},""" + connect("Bob-Yacht", room).removePrefix("[")),
+          seen.toList(),
+        )
+        assertTrue(seen.none { "s3cr3t!" in it || "\"pw\"" in it }, "MultiServer saw $seen")
+      }
+    }
 
   @Test
   fun `a frame larger than a client's may be closes the connection`() = gateway { url, client ->
@@ -287,4 +320,55 @@ class RelayTest {
       client.webSocket(url) { assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next()) }
     }
   }
+
+  /** A connection as if through Traefik, for a client at [address]. */
+  private suspend fun HttpClient.from(url: String, address: String, block: suspend DefaultClientWebSocketSession.() -> Unit) =
+    webSocket(url, request = { header(HttpHeaders.XForwardedFor, address) }) { block() }
+
+  /** Refused for its address: closed before anything else. */
+  private suspend fun DefaultClientWebSocketSession.refusedForItsAddress() {
+    val reason = closed()
+    assertEquals(CloseReason.Codes.TRY_AGAIN_LATER.code, reason?.code)
+    assertTrue("your address" in reason?.message.orEmpty(), "closed with $reason")
+  }
+
+  @Test
+  fun `one address holds only so many places before its Connect, an IPv6 network as one`() =
+    // The test's own connections come from here: the proxy, whose forwarded address is believed
+    gateway(Limits(perAddress = 2), trusted = trustedProxies("127.0.0.1, ::1")) { url, client ->
+      client.from(url, "203.0.113.7") {
+        next()
+        client.from(url, "203.0.113.7") {
+          next()
+          client.from(url, "203.0.113.7") { refusedForItsAddress() }
+          // Another address is still served
+          client.from(url, "203.0.113.8") { assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next()) }
+          // In its slot, one makes room for the next one from there
+          send(Frame.Text(connect("Alice-HK", "s3cr3t!")))
+          assertEquals("""[{"cmd":"Connected"}]""", next())
+          client.from(url, "203.0.113.7") { assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next()) }
+        }
+      }
+      client.from(url, "2001:db8:1:2::1") {
+        next()
+        client.from(url, "2001:db8:1:2::2") {
+          next()
+          client.from(url, "2001:db8:1:2:ffff::3") { refusedForItsAddress() }
+          client.from(url, "2001:db8:1:3::1") { assertEquals("""[{"cmd":"RoomInfo","password":true}]""", next()) }
+        }
+      }
+    }
+
+  @Test
+  fun `the forwarded address counts only from a trusted proxy`() =
+    // Not the test's own address: what it forwards is made up, and every connection is the peer's
+    gateway(Limits(perAddress = 2), trusted = trustedProxies("10.0.0.0/8")) { url, client ->
+      client.from(url, "203.0.113.7") {
+        next()
+        client.from(url, "203.0.113.8") {
+          next()
+          client.from(url, "203.0.113.9") { refusedForItsAddress() }
+        }
+      }
+    }
 }

@@ -25,7 +25,8 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Se
 /**
  * A port for a game server to listen on: [last] (the one it had) if nothing else listens there, else one the system
  * gives out; never one of [taken] (those of the others running). The ports are the gateway's own: game clients come
- * through its relay, and only the tracker reaches MultiServer directly, inside the compose network.
+ * through its relay, and only the tracker reaches MultiServer directly, inside the compose network, with the room
+ * password the gateway gives it.
  */
 fun freePort(last: Int?, taken: Set<Int>): Int {
   if (last != null && last !in taken && runCatching { ServerSocket(last).close() }.isSuccess) return last
@@ -73,6 +74,18 @@ class SessionGameServer(
 
   /** Its game clients in a slot, by slot. */
   val clients = SlotClients()
+
+  /** What a client needs before it joins, kept from its last run: answered from while it sleeps. */
+  val kept = KeptRoom.of(dir)
+
+  /**
+   * What is kept for the seed it serves when it wakes, while it sleeps; `null` while it doesn't sleep (it runs, starts,
+   * is stopped), or nothing is kept for that seed.
+   */
+  suspend fun keptWhileAsleep(): KeptRoom.Kept? {
+    val state = server.state
+    return if (state.status == GameServerStatus.IDLE) kept.read(state.seed) else null
+  }
 
   @Volatile
   var port: Int? = null
@@ -128,7 +141,14 @@ class Sessions(
 
   fun all(): List<SessionGameServer> = sessions.values.sortedBy { it.id }
 
-  fun list(): SessionServers = SessionServers(all().map { SessionServer(it.id, it.server.state, it.port.takeIf { _ -> it.active }) })
+  /** Every session's game server, with its port and its room password while it is started (for the tracker only). */
+  fun list(): SessionServers = SessionServers(
+    all().map { session ->
+      SessionServer(
+        session.id, session.server.state, session.port.takeIf { session.active }, roomPassword = session.server.roomPassword,
+      )
+    },
+  )
 
   /** The only session that runs, for a client that names none (a local test with one session). */
   fun onlyActive(): SessionGameServer? = all().filter { it.active }.singleOrNull()

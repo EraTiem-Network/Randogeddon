@@ -120,8 +120,11 @@ class SessionEvents(
   /** The `stop` writes [ended] launched and that haven't finished: the shutdown waits for them ([flush]). */
   private val stops = ConcurrentHashMap.newKeySet<Job>()
 
-  /** Session [id]'s game server accepts clients on [port] now; the listener connects as [room]'s first slot. */
-  fun started(id: String, port: Int, room: RoomJson) {
+  /**
+   * Session [id]'s game server accepts clients on [port] now; the listener connects as [room]'s first slot, with its
+   * room password ([password], asked at each try: a crashed game server starts again with another).
+   */
+  fun started(id: String, port: Int, room: RoomJson, password: () -> String? = { null }) {
     listeners.remove(id)?.job?.cancel()
     val listening = CompletableDeferred<Unit>()
     val job = scope.launch {
@@ -130,7 +133,7 @@ class SessionEvents(
       while (isActive) {
         try {
           val slot = room.firstSlot() ?: error("no slot in ${room.path.fileName}")
-          listen(id, "ws://localhost:$port", slot, listening)
+          listen(id, "ws://localhost:$port", slot, password().orEmpty(), listening)
           pause = 1
         } catch (e: CancellationException) {
           throw e
@@ -172,7 +175,9 @@ class SessionEvents(
     withTimeoutOrNull(within) { listener.listening.await() }
   }
 
-  private suspend fun listen(id: String, url: String, slot: String, listening: CompletableDeferred<Unit>) = http.webSocket(url) {
+  private suspend fun listen(
+    id: String, url: String, slot: String, password: String, listening: CompletableDeferred<Unit>,
+  ) = http.webSocket(url) {
     val pending = ArrayDeque<JsonObject>()
     suspend fun next(): JsonObject {
       while (pending.isEmpty()) {
@@ -185,8 +190,8 @@ class SessionEvents(
     do roomInfo = next() while ((roomInfo["cmd"] as? JsonPrimitive)?.content != "RoomInfo")
     send(Frame.Text(JsonArray(listOf(buildJsonObject {
       put("cmd", "Connect")
-      // MultiServer has no password of its own: only the gateway reaches it
-      put("password", "")
+      // The room's password (the gateway's): without it MultiServer lets nobody in
+      put("password", password)
       put("game", "")
       put("name", slot)
       put("uuid", "randogeddon-events")

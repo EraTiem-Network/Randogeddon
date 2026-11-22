@@ -169,9 +169,11 @@ class UploadedSeeds(
     val home = runCatching { archipelago.home(release) }.getOrElse { throw SeedProblem("Archipelago $release isn't here") }
     val bytes = runCatching { Base64.getDecoder().decode(upload.base64) }.getOrElse { throw SeedProblem("it isn't base64") }
     val token = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
-    val file = folder.createDirectories().resolve("$token.zip")
+    // Archipelago's user (seed_info.py) reads what waits here, and changes nothing of it
+    val file = folder.createDirectories().also { processUser?.readable(it) }.resolve("$token.zip")
     try {
       val entries = cleanSeedZip(bytes, file)
+      processUser?.readable(file)
       val read = read(home, file)
       read.problem?.let { throw SeedProblem(it) }
       if (!SEED_NAME.matches(read.seedName)) throw SeedProblem("its seed has no name Archipelago gives one")

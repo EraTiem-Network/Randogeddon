@@ -63,16 +63,25 @@ http:
   the one-off `database-roles` before each start; the superuser's password then stays with it and the dumps) and
   `GATEWAY_DB_USER` / `GATEWAY_DB_PASSWORD` (made by the tracker; only what the gateway needs, since Archipelago's
   Python runs beside it). Without them the tracker logs in as the superuser and the gateway as the tracker.
-- **`TRUSTED_PROXIES`** (addresses or CIDR ranges, comma-separated): only these peers' `X-Forwarded-For` is believed
-  for the rate limits and the streams' counts. Unset: every peer's, as before 0.23.1; set it to Traefik's address
-  wherever port 8000 can be reached past Traefik (`docker-compose.proxy.yml` publishes it).
+- **`TRUSTED_PROXIES`** (addresses or CIDR ranges, comma-separated): only these peers' `X-Forwarded-For` is believed,
+  by the tracker (the rate limits, the streams' counts) and the gateway (the waiting connections per address). Unset:
+  every peer's; set it to Traefik's address wherever their ports can be reached past Traefik
+  (`docker-compose.proxy.yml` publishes them).
 - **Mail:** `MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM` (`MAIL_ADDRESS`: an internal address for a server
   whose public one leads back to this host). Without `MAIL_HOST` mails only go to the tracker's log (whole, with their
   links: for local testing); with it, the log names a mail's account, never its address.
 - **`TOTP_KEY`** (`openssl rand -base64 32`) encrypts the two-factor secrets: keep it with the backups.
-- **Hosted Minecraft:** `MINECRAFT_EULA=true` accepts Mojang's EULA for every hosted server (nothing runs without
-  it); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` each.
-- The gateway runs as uid 1000 and writes `data/`; its container is limited by `GATEWAY_MEMORY` (5 GB).
+- **Hosted Minecraft:** `MINECRAFT_EULA=true` accepts Mojang's EULA for every hosted server, and `MINECRAFT_TOKEN`
+  (`openssl rand -hex 32`, not the internal one) is what the gateway calls the minecraft service with (nothing runs
+  without both; the deploy sets a token if there is none); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` each. The
+  service mounts only `data/minecraft/` (owned by uid 1000).
+- **The gateway's two users:** the gateway is uid 1000 and owns `data/`; Archipelago's processes (the game servers,
+  generations, APWorld code) are uid 1100 and get only the session folders, which the gateway gives to group 1100
+  at each start (the host needs no group of that number). Its container starts as root with `cap_add: [SETUID,
+  SETGID, KILL]` and nothing else, and `init: true`; it is limited by `GATEWAY_MEMORY` (5 GB), and out of memory the
+  kernel ends a generation or a game server before the gateway. `docker compose exec gateway …` is root now:
+  `-u randogeddon` or `-u archipelago` for one of the two. Before going back to a version before 0.23.2.1:
+  `chown -R 1000:1000 data/`.
 
 ## Administrators
 

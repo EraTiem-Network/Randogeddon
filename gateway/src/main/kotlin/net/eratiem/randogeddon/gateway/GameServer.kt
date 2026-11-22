@@ -33,30 +33,46 @@ private const val LOG_LINES = 10_000
 /**
  * One start of MultiServer: the command line, extra environment variables and the directory to run in. [firstLines]:
  * console lines it gets right after the start, not shown in the log (what must not stand on the command line, which
- * every process of the container can read).
+ * every process of the container can read). [roomPassword]: the room password of this start (the first of
+ * [firstLines], which serve.py reads as it): what the relay, the gateway's listener and the tracker give in their
+ * `Connect`; `null`: none.
  */
 data class Launch(
   val command: List<String>,
   val environment: Map<String, String> = emptyMap(),
   val workDir: Path? = null,
   val firstLines: List<String> = emptyList(),
+  val roomPassword: String? = null,
 )
 
 private val PASSWORD_FIELD = Regex("""(['"]password['"]\s*:\s*)(['"])(.*?)\2""")
 /** A password's value that a cut line ([MAX_LOG_LINE]) left without its closing quote: up to the line's end. */
 private val PASSWORD_OPEN = Regex("""(['"]password['"]\s*:\s*)(['"])(?:(?!\2).)*$""", RegexOption.DOT_MATCHES_ALL)
 private val PASSWORD_OPTION = Regex("""((?:Set option|/option|Option)\s+(?:server_)?password(?:\s+(?:to|is set to))?\s+).+""")
+/** MultiServer's "Hosting game at <address> (Password: …)" as it starts. */
+private val PASSWORD_HOSTING = Regex("""(\(Password: )[^)]*""")
 
 /**
  * [line] of the game server's log without passwords: MultiServer logs a refused `Connect` whole, with the slot's
- * password in it, answers `/option password …` with the new one and lists both passwords for `/options`. The log is
- * read in the panel by the session's managers, who don't get the players' slot passwords otherwise, nor the host's
- * password for `!admin` (one for every session).
+ * password in it, answers `/option password …` with the new one, lists both passwords for `/options` and names the
+ * room password as it starts. The log is read in the panel by the session's managers, who don't get the players' slot
+ * passwords otherwise, nor the room password (the gateway's and the tracker's alone).
  */
 internal fun withoutPasswords(line: String): String {
   val fields = PASSWORD_FIELD.replace(line) { "${it.groupValues[1]}${it.groupValues[2]}***${it.groupValues[2]}" }
   val open = PASSWORD_OPEN.replace(fields) { "${it.groupValues[1]}${it.groupValues[2]}***" }
-  return PASSWORD_OPTION.replace(open) { "${it.groupValues[1]}***" }
+  val hosting = PASSWORD_HOSTING.replace(open) { "${it.groupValues[1]}***" }
+  return PASSWORD_OPTION.replace(hosting) { "${it.groupValues[1]}***" }
+}
+
+/**
+ * Whether console [line] would set MultiServer's room password or its server password (`/option password …`): both
+ * are the gateway's alone (the room password keeps every client but the gateway's out; without a server password
+ * `!admin` stays off). Split as MultiServer's console splits it, like a shell: quotes and backslashes don't hide it.
+ */
+internal fun setsPassword(line: String): Boolean {
+  val words = line.trim().split(Regex("\\s+")).map { word -> word.filterNot { it == '"' || it == '\'' || it == '\\' } }
+  return words.size >= 2 && words[0].lowercase() == "/option" && words[1] in setOf("password", "server_password")
 }
 
 /** [line] as one console line: MultiServer's console takes every line break (`\r` too) as the end of a command. */
@@ -116,6 +132,14 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
 
   @Volatile
   var state = GameServerState(GameServerStatus.STOPPED)
+    private set
+
+  /**
+   * The room password of the MultiServer that runs (or starts) now ([Launch.roomPassword]), for the relay, the
+   * gateway's listener and the tracker; `null` while none runs.
+   */
+  @Volatile
+  var roomPassword: String? = null
     private set
 
   /**
@@ -186,10 +210,17 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     start()
   }
 
-  /** Writes [line] to the console; `false` if no server is running. */
+  /**
+   * Writes [line] to the console; `false` if no server is running. One that would set its room or server password
+   * ([setsPassword]) isn't passed on: the log says so.
+   */
   suspend fun command(line: String): Boolean = mutex.withLock {
     val writer = stdin ?: return@withLock false
     note("> ${oneLine(line)}")
+    if (setsPassword(line)) {
+      note("Not passed on: the game server's passwords are the gateway's (remote commands: this console)")
+      return@withLock true
+    }
     withContext(Dispatchers.IO) {
       writer.write(oneLine(line))
       writer.newLine()
@@ -250,9 +281,14 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     note("Starting the game server on ${seed.name}")
     val proc = synchronized(processLock) {
       if (stopping) return -1
-      // One that can't be started (no memory for it, Python missing) counts as a crash: its pauses, then FAILED
-      runCatching { startProcess(launch.command, launch.workDir, launch.environment, input = true) }
+      roomPassword = launch.roomPassword
+      // One that can't be started (no memory for it, Python missing) counts as a crash: its pauses, then FAILED.
+      // When the container's memory is full, a generation or a logic is ended before it
+      runCatching {
+        startProcess(launch.command, launch.workDir, launch.environment, input = true, oomScore = OOM_GAME_SERVER)
+      }
         .getOrElse {
+          roomPassword = null
           note("Can't start the game server on ${seed.name}: ${it.message}")
           return -1
         }
@@ -270,6 +306,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     } finally {
       process = null
       stdin = null
+      roomPassword = null
       // However it ended (also killed): what depends on it running hears of it
       if (state.status == GameServerStatus.RUNNING) runCatching { config.onEnded(seed.name) }
     }
@@ -303,14 +340,17 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       state = state.copy(status = GameServerStatus.RUNNING)
       state.seed?.let { runCatching { config.onRunning(it) } }
     }
-    val shown = withoutPasswords(line)
+    val shown = withoutRoomPassword(withoutPasswords(line))
     log.add(shown)
     logger.info("[ap] {}", shown)
   }
 
+  /** [line] without this start's room password, wherever MultiServer (or a world) might print it. */
+  private fun withoutRoomPassword(line: String): String = roomPassword?.let { line.replace(it, "***") } ?: line
+
   /** A line about the server, from the gateway (cut like the server's, then masked). */
   private fun note(text: String) {
-    val shown = withoutPasswords(text.take(MAX_LOG_LINE))
+    val shown = withoutRoomPassword(withoutPasswords(text.take(MAX_LOG_LINE)))
     log.add("[gateway] $shown")
     logger.info(shown)
   }

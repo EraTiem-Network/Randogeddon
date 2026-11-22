@@ -8,8 +8,6 @@ import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
-import java.net.InetAddress
-import net.eratiem.randogeddon.server.util.hex
 
 class SecurityHeadersConfig {
   /** Served over HTTPS (the login cookie is Secure): browsers are told to keep to it. */
@@ -84,19 +82,4 @@ internal fun tooLarge(method: HttpMethod, limit: Long, contentLength: String?, t
     // A length that isn't a number, or a body sent in chunks: no telling how much comes
     else -> contentLength != null || transferEncoding != null
   }
-}
-
-private val LITERAL = Regex("[0-9A-Fa-f:.]+")
-
-/**
- * What counts as one address for the rate limits: an IPv4 address itself, an IPv6 address's /64 (a provider hands out
- * at least that much to one customer, who can pick any address in it). Anything else as it is.
- */
-internal fun addressKey(address: String): String {
-  val host = address.trim().removePrefix("[").substringBefore(']').substringBefore('%')
-  if (':' !in host || !LITERAL.matches(host)) return host
-  // A literal: parsed without a lookup
-  val bytes = runCatching { InetAddress.getByName(host).address }.getOrNull() ?: return host
-  if (bytes.size != 16) return bytes.joinToString(".") { (it.toInt() and 0xff).toString() }
-  return bytes.copyOf(8).hex() + "::/64"
 }

@@ -103,31 +103,45 @@ services:
       target: gateway
     restart: unless-stopped
     logging: *logging
+    # Docker's init (tini) is process 1: it collects what Archipelago's processes leave (a world's patcher whose
+    # Python was ended) and passes docker stop's SIGTERM on to the gateway alone, which then has every MultiServer save
+    # (/exit) before it ends; its processes aren't signalled by anyone else
+    init: true
     # MultiServer saves on /exit when the gateway stops; give it the time
     stop_grace_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
-    # Generate.py and the game servers share this container: a seed too large for it ends there, not the VM
+    # Generate.py and the game servers share this container: a seed too large for it ends there, not the VM. Full, the
+    # kernel ends a generation or a logic first, then a game server, the gateway last (their out-of-memory scores)
     mem_limit: ${GATEWAY_MEMORY:-5g}
     pids_limit: 4096
-    # It runs as its own user and needs nothing of root's
+    # Its start (gateway/docker-entrypoint.sh) runs as root with only these three capabilities and at once becomes the
+    # gateway's own user, keeping just them: to start Archipelago's Python (third-party APWorld code) as a user of its
+    # own without any capability, which can't read the gateway's environment or memory, and to end and pause those
+    # processes. Nothing gains a privilege through an executable (no-new-privileges)
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
     environment:
       # Its own database role with only its rights, once GATEWAY_DB_USER and GATEWAY_DB_PASSWORD are set (the tracker
-      # makes the role at its start); until then the tracker's login. Archipelago's Python runs here: with the role
-      # it never gets the tracker's password
+      # makes the role at its start); until then the tracker's login. Archipelago's Python runs here, as another user
+      # that can't read this environment; with the role, not even the gateway has the tracker's password
       DB_URL: jdbc:postgresql://postgres:5432/randogeddon
       DB_USER: ${GATEWAY_DB_USER:-randogeddon}
       DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
       INTERNAL_TOKEN: *internal-token
-      AP_ADMIN_PASSWORD: ${AP_ADMIN_PASSWORD:-}
+      # Whose X-Forwarded-For counts for a game client's address (its limit per address), as the tracker's; empty:
+      # every peer's
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # How long a generation may take before it is stopped (minutes)
       GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
       GENERATIONS_AT_ONCE: ${GENERATIONS_AT_ONCE:-0}
       # The minecraft service (the Minecraft Dig slots' servers)
       MINECRAFT_API: http://minecraft:8002
+      # Between the gateway and the minecraft service only (never INTERNAL_TOKEN); without it no Minecraft server is
+      # hosted, and the gateway's log and the admin panel say so
+      MINECRAFT_TOKEN: ${MINECRAFT_TOKEN:-}
       # true: the operator accepts Mojang's EULA (https://aka.ms/MinecraftEULA) for every hosted Minecraft server;
       # without it none runs
       MINECRAFT_EULA: ${MINECRAFT_EULA:-false}
@@ -135,7 +149,9 @@ services:
       # it, for <id>.<BASE_DOMAIN>
       BASE_DOMAIN: ""
     volumes:
-      - ./data:/data                  # sessions/<id>/ (seed, save, room.json), old/, uploaded apworlds
+      # sessions/<id>/ (seed, save, room.json), old/, uploaded apworlds; uid 1000's (the gateway's) on the host. The
+      # gateway gives Archipelago's user (uid and group 1100) what it needs of it at each start, the rest it closes
+      - ./data:/data
       - ./custom_worlds:/custom_worlds:ro   # apworlds put here by hand, for every release
 
   minecraft:
@@ -148,6 +164,9 @@ services:
       target: minecraft
     restart: unless-stopped
     logging: *logging
+    # Docker's init (tini) is process 1: it collects ended servers' leftovers and passes docker stop's SIGTERM on to
+    # minecraft_host.py alone, which has every server save its world first
+    init: true
     # Each server saves its world on `stop`
     stop_grace_period: 60s
     # Each server at most 3 GB (its heap 2 GB; a watchdog ends one above that): MINECRAFT_SERVERS of them at once
@@ -157,15 +176,18 @@ services:
     cap_drop: [ALL]
     user: "1000"
     environment:
-      INTERNAL_TOKEN: *internal-token
+      # Its own token (the gateway's INTERNAL_TOKEN stays with the gateway and the tracker): the servers run
+      # third-party mod code, and whatever reads this container's environment gets no more than this service's API
+      MINECRAFT_TOKEN: ${MINECRAFT_TOKEN:-}
       MINECRAFT_SERVERS: ${MINECRAFT_SERVERS:-1}
       MINECRAFT_HEAP: 2G
       MINECRAFT_LIMIT_MB: 3072
       GATEWAY_WS: gateway:38281
-      # In the gateway's data folder (its user owns it): minecraft/servers/<session>-<slot>/, each server's world
+      # servers/<session>-p<slot>/, each server's world and its notes; the seed's patch comes in the gateway's request
       DATA: /data/minecraft
     volumes:
-      - ./data:/data
+      # Only its own folder of the data folder (it belongs to uid 1000, as the rest), none of the sessions' files
+      - ./data/minecraft:/data/minecraft
 
   tracker:
     image: ${TRACKER_IMAGE:-randogeddon-tracker}:${IMAGE_TAG:-latest}

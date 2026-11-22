@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.gateway
 
+import net.eratiem.randogeddon.shared.addressKey
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -9,11 +10,15 @@ const val CLIENT_FRAME_LIMIT = 1024 * 1024
 /**
  * What a game client may take of the gateway before it is in a slot. Anyone on the internet reaches the gateway, and
  * each connection opens one to MultiServer, so the ones that haven't shown a slot's password are kept short and few.
- * Nothing is counted per address: behind a VPN, a carrier's or a shared gateway's address are many households.
  */
 data class Limits(
   /** Connections not in a slot yet, of everyone; the ones in a slot aren't limited. */
   val waiting: Int = 1024,
+  /**
+   * Of those, from one address (an IPv6 /64 as one): so a few addresses can't take every place. Generous, since behind
+   * a VPN, a carrier's or a shared gateway's address are many households; a real client is in its slot within a second.
+   */
+  val perAddress: Int = 32,
   /**
    * How long a connection may wait for its `Connect` (a text client asks for the slot's name first), counted from its
    * arrival: the wake of a sleeping game server is part of it.
@@ -23,17 +28,28 @@ data class Limits(
   val framesBeforeConnect: Int = 32,
   /**
    * Packets in those frames, in all: each `GetDataPackage` makes MultiServer encode the data package (several MB for
-   * a large multiworld), so a frame full of them isn't let through. A real client asks once.
+   * a large multiworld), or the gateway read it ([KeptRoom]), so a frame full of them isn't let through. A real client
+   * asks once.
    */
   val packetsBeforeConnect: Int = 32,
 )
 
-/** Counts the game clients' connections that aren't in a slot yet against [limits]; one for the whole gateway. */
+/**
+ * Counts the game clients' connections that aren't in a slot yet against [limits]: one count for the whole gateway,
+ * and one per address ([addressKey]: an IPv6 /64 as one).
+ */
 class ConnectionLimits(val limits: Limits = Limits()) {
   private var waiting = 0
+  private val byAddress = HashMap<String, Int>()
+
+  /** What [enter] gives: a place, or why there's none. */
+  sealed interface Entry
+
+  /** Too many wait for their `Connect`: of everyone ([ALL]), or from this address ([ADDRESS]). */
+  enum class Full : Entry { ALL, ADDRESS }
 
   /** A connection's place: waiting until [joined], given back with [leave]. */
-  inner class Ticket internal constructor() {
+  inner class Ticket internal constructor(private val key: String) : Entry {
     private var inSlot = false
     private var left = false
 
@@ -44,21 +60,33 @@ class ConnectionLimits(val limits: Limits = Limits()) {
     fun joined() = synchronized(this@ConnectionLimits) {
       if (inSlot || left) return@synchronized
       inSlot = true
-      waiting--
+      free(key)
     }
 
     fun leave() = synchronized(this@ConnectionLimits) {
       if (left) return@synchronized
       left = true
-      if (!inSlot) waiting--
+      if (!inSlot) free(key)
     }
   }
 
-  /** A place for a new connection; `null`: too many wait for their `Connect` already. */
-  fun enter(): Ticket? = synchronized(this) {
-    if (waiting >= limits.waiting) return null
+  /** A place for a new connection from [address]; or why there's none. */
+  fun enter(address: String): Entry = synchronized(this) {
+    val key = addressKey(address)
+    if (waiting >= limits.waiting) return Full.ALL
+    if ((byAddress[key] ?: 0) >= limits.perAddress) return Full.ADDRESS
     waiting++
-    Ticket()
+    byAddress.merge(key, 1, Int::plus)
+    Ticket(key)
+  }
+
+  /** How many from [address] wait now. */
+  internal fun waitingFrom(address: String): Int = synchronized(this) { byAddress[addressKey(address)] ?: 0 }
+
+  private fun free(key: String) {
+    waiting--
+    // Gone at 0, so the map holds only the addresses that wait
+    byAddress.computeIfPresent(key) { _, n -> (n - 1).takeIf { it > 0 } }
   }
 }
 

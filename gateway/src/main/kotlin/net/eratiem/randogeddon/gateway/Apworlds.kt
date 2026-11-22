@@ -335,6 +335,8 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
       if (same) return@forEach
       val copy = target.resolve("$name.new")
       Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
+      // Archipelago's user reads it, and only reads it (its group, whatever the library's file had)
+      processUser?.readable(copy)
       Files.move(copy, placed, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
     }
   }

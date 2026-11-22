@@ -11,12 +11,14 @@ import org.junit.Assume.assumeFalse
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createFile
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -68,6 +70,21 @@ class GameServerTest {
       while read line; do [ "${'$'}line" = "/exit" ] && exit 0; done
       """.trimIndent()
     )
+    // One that takes its room password from its first console line (as serve.py does) and names it, as MultiServer
+    // and a world may; and says its out-of-memory score
+    dir.resolve("room.sh").writeText(
+      """
+      read room
+      echo "oom ${'$'}(cat /proc/${'$'}${'$'}/oom_score_adj)"
+      echo "Hosting game at 0.0.0.0:38282 (Password: ${'$'}room)"
+      echo "server listening on 0.0.0.0:38282"
+      echo "a world prints ${'$'}room"
+      while read line; do
+        echo "console: ${'$'}line"
+        [ "${'$'}line" = "/exit" ] && exit 0
+      done
+      """.trimIndent()
+    )
   }
 
   @AfterTest
@@ -93,6 +110,16 @@ class GameServerTest {
     ),
     scope,
   )
+
+  /**
+   * Process [pid] still runs. One that was killed and that nobody collected yet (a zombie: where no init runs, as in
+   * the image's build) doesn't, though the JVM calls it alive.
+   */
+  private fun running(pid: Long): Boolean {
+    if (!ProcessHandle.of(pid).map { it.isAlive }.orElse(false)) return false
+    val state = runCatching { Path.of("/proc/$pid/stat").readText().substringAfterLast(") ").take(1) }.getOrNull()
+    return state != "Z"
+  }
 
   private suspend fun GameServer.awaitStatus(status: GameServerStatus) = withTimeout(5.seconds) {
     while (state.status != status) delay(20.milliseconds)
@@ -159,6 +186,38 @@ class GameServerTest {
     val lines = server.log(0).lines.map { it.text }
     assertTrue("> /players" in lines.map { it.removePrefix("[gateway] ") })
     server.stop()
+  }
+
+  @Test
+  fun `each start's room password goes in on its console, is there to hand out, and never in the log`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val room = "r00m-9f2c4e1a"
+    val script = dir.resolve("room.sh").toString()
+    val server = server(launch = { seed ->
+      Launch(listOf("sh", script, seed.fileName.toString()), firstLines = listOf(room), roomPassword = room)
+    })
+    server.start()
+    server.awaitStatus(GameServerStatus.RUNNING)
+    // For the relay, the gateway's listener and the tracker
+    assertEquals(room, server.roomPassword)
+    server.awaitLine("a world prints")
+    // Raised as it started: when the container's memory is full, the kernel ends it before the gateway
+    server.awaitLine("oom $OOM_GAME_SERVER")
+    val lines = server.log(0).lines.map { it.text }
+    assertTrue(lines.none { room in it }, lines.toString())
+    assertTrue("a world prints ***" in lines, lines.toString())
+    assertTrue(lines.any { it.endsWith("(Password: ***)") }, lines.toString())
+
+    // A manager's console sets neither it nor a server password (for `!admin`): not passed on, the log says so
+    assertTrue(server.command("/option password open"))
+    assertTrue(server.command("/option server_password hunter2"))
+    assertTrue(server.command("/say hi"))
+    server.awaitLine("console: /say hi")
+    val after = server.log(0).lines.map { it.text }
+    assertTrue(after.none { "console: /option" in it || "hunter2" in it }, after.toString())
+    assertTrue(after.any { "Not passed on" in it }, after.toString())
+    server.stop()
+    assertNull(server.roomPassword)
   }
 
   @Test
@@ -234,7 +293,7 @@ class GameServerTest {
     assertEquals(GameServerStatus.STOPPED, server.state.status)
     assertEquals(listOf("AP_1.zip"), synchronized(ended) { ended.toList() })
     // Its own process went with it
-    withTimeout(5.seconds) { while (ProcessHandle.of(child).map { it.isAlive }.orElse(false)) delay(20.milliseconds) }
+    withTimeout(5.seconds) { while (running(child)) delay(20.milliseconds) }
   }
 
   @Test

@@ -43,8 +43,10 @@ import net.eratiem.randogeddon.database.SessionStore
 import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import net.eratiem.randogeddon.database.legacySessionId
+import net.eratiem.randogeddon.shared.AddressRange
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.GameServerStatus
+import net.eratiem.randogeddon.shared.trustedProxies
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.seconds
@@ -62,6 +64,8 @@ data class GatewayConfig(
   val internalPort: Int,
   val internalToken: String,
   val gameServer: GameServerSettings,
+  /** Whose `X-Forwarded-For` is believed for a game client's address (`TRUSTED_PROXIES`); empty: every peer's. */
+  val trustedProxies: List<AddressRange> = emptyList(),
 ) {
   companion object {
     fun from(config: ApplicationConfig): GatewayConfig {
@@ -78,12 +82,17 @@ data class GatewayConfig(
           python = server("python"),
           dataDir = Path.of(server("dataDir")),
           customWorlds = Path.of(server("customWorlds")),
-          adminPassword = server("adminPassword"),
+          // Unset in an application.yaml of before: as the gateway
+          runAs = config.propertyOrNull("gateway.gameServer.runAs")?.getString().orEmpty(),
           generationMinutes = server("generationMinutes").toInt(),
           generationsAtOnce = generationsAtOnce(server("generationsAtOnce").toIntOrNull() ?: 0),
           minecraftApi = server("minecraftApi").trim().trimEnd('/'),
+          // Never the internal token: that one controls the gateway, this one only the minecraft service
+          minecraftToken = server("minecraftToken").trim().takeIf { it != value("internal.token") }.orEmpty(),
           minecraftEula = server("minecraftEula").trim().equals("true", ignoreCase = true),
         ),
+        // Like the tracker's (the same setting); unset in an application.yaml of before: every peer's, as then
+        trustedProxies = trustedProxies(config.propertyOrNull("gateway.trustedProxies")?.getString().orEmpty()),
       )
     }
   }
@@ -96,13 +105,22 @@ data class GameServerSettings(
   val dataDir: Path,
   /** The apworlds put on the server by hand, for every release (read-only). */
   val customWorlds: Path,
-  val adminPassword: String,
+  /**
+   * The user Archipelago's processes run as (`AP_RUN_AS`, set by the image's start: [ProcessUser]); empty: the
+   * gateway's own.
+   */
+  val runAs: String = "",
   /** How long a generation may take before it is stopped. */
   val generationMinutes: Int,
   /** How many Generate.py run at once (seeds and spoiler logs' later levels together). */
   val generationsAtOnce: Int,
   /** The minecraft service's API (`http://minecraft:8002`); empty: no Minecraft Dig server is hosted. */
   val minecraftApi: String = "",
+  /**
+   * Between the gateway and the minecraft service only (`MINECRAFT_TOKEN`); empty (unset, or the same as
+   * `INTERNAL_TOKEN`): no Minecraft Dig server is hosted.
+   */
+  val minecraftToken: String = "",
   /** The operator accepted Mojang's EULA for every hosted Minecraft server (`MINECRAFT_EULA=true`); else none runs. */
   val minecraftEula: Boolean = false,
 )
@@ -117,8 +135,16 @@ private val DATABASE_WAIT = 2.minutes
 fun main() {
   val config = GatewayConfig.from(ApplicationConfig("application.yaml"))
   val options = config.gameServer
+  // `!admin` is gone (0.23.2.1): remote commands go through the admin panel's console alone
+  if (!System.getenv("AP_ADMIN_PASSWORD").isNullOrBlank()) {
+    logger.warn("AP_ADMIN_PASSWORD is ignored: `!admin` is gone, a game server's console is the admin panel's")
+  }
   // The players' YAMLs and outputs a killed gateway's processes left (nothing of this gateway's runs yet)
   clearProcessTemp()
+  // Archipelago's Python (APWorld code, third-party) as a user of its own, in the image
+  processUser = ProcessUser.from(options.runAs)
+  processUser?.let { logger.info("Archipelago's processes run as {}, not as the gateway", it.name) }
+    ?: logger.warn("Archipelago's processes run as the gateway's own user (no AP_RUN_AS): they could read its secrets")
   // Only reads (and counts the session time); the tracker migrates and makes this login. On a new database that
   // happens a moment after both started: wait for it instead of failing and starting again
   val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3, waitFor = DATABASE_WAIT)
@@ -146,8 +172,11 @@ fun main() {
   val dirs = SessionDirs(options.dataDir)
   // The files of one session at a time, from before, into sessions/<id>/
   dirs.migrate { seed -> runBlocking { runCatching { sessionStore.idOf(seed) }.getOrNull() } ?: legacySessionId(seed) }
+  // What of the data directory Archipelago's user needs is given to it, the rest closed to it: also what a gateway
+  // before this one made as its own (the first start after the update), and what was just moved
+  processUser?.prepare(options.dataDir)
   val setups = SessionSetupStore(database)
-  val launcher = Launcher(archipelago, setups, options.adminPassword)
+  val launcher = Launcher(archipelago, setups)
   // How many game servers may run at once and when one sleeps (the Administrators' settings), read at most every 30 s
   val settings = AppSettingsStore(database)
   val gameServers = Cached(30.seconds) { runCatching { settings.gameServers() }.getOrDefault(DEFAULT_GAME_SERVERS) }
@@ -166,16 +195,21 @@ fun main() {
   val sessions = Sessions(
     dirs, gameServers::get,
     create = { id, dir, room, port ->
-      GameServer(
+      // Its listener gives the room password of the start that runs
+      lateinit var server: GameServer
+      server = GameServer(
         GameServerConfig(
           dataDir = dir,
           launch = { seed -> launcher.launch(seed, room, port()) },
           prepare = { seed -> launcher.prepare(seed, room.path) },
           // Counted under the seed's name from room.json (written right before the start), like the tracker reads it
-          onRunning = { _ ->
+          onRunning = { seedFile ->
             room.seedName()?.let { seed -> count { times.started(seed) } }
-            events.started(id, port(), room)
+            events.started(id, port(), room) { server.roomPassword }
             logic.serverRunning(id)
+            // What a client needs before its Connect, for the next time it sleeps: only a Connect wakes it then
+            val url = "ws://localhost:${port()}"
+            background.launch { KeptRoom.of(dir).capture(http, url, seedFile) }
           },
           onEnded = { _ ->
             room.seedName()?.let { seed -> count { times.stopped(seed) } }
@@ -189,6 +223,7 @@ fun main() {
         ),
         background,
       )
+      server
     },
     passwords = { room -> SlotPasswordCache(passwordStore, room) },
   )
@@ -220,7 +255,7 @@ fun main() {
   }
   // The Minecraft Dig slots' servers, run by the minecraft service
   val minecraft = Minecraft(
-    http, options.minecraftApi, config.internalToken, dirs, eula = { options.minecraftEula },
+    http, options.minecraftApi, options.minecraftToken, dirs, eula = { options.minecraftEula },
     passwords = { id -> sessions.get(id)?.passwords?.current().orEmpty() }, idleMinutes = { idleMinutes.get() },
     rules = { id -> sessions.get(id)?.let { rulesOf(it) } ?: SleepRules() },
     finished = { id ->
@@ -296,7 +331,8 @@ fun main() {
           // A player keeps it awake; a hosted slot's connection doesn't
           serve(
             http,
-            // Asked once the connection has its place among the waiting ones: a wake counts against their limits
+            // Asked once the connection has its place among the waiting ones: a wake counts against their limits.
+            // Asleep with its room kept, only after a Connect with a slot's password; else for the connection itself
             upstreamUrl = upstream@{
               // A sleeping game server starts for its player (if there's room), who waits meanwhile
               if (session.server.state.status in setOf(GameServerStatus.IDLE, GameServerStatus.STARTING)) {
@@ -322,6 +358,12 @@ fun main() {
             },
             passwords = session.passwords::current, locked = session.passwords::locked, connections = connections,
             joined = { slot -> if (slot in rulesOf(session).hosted) null else session.joined() }, clients = session.clients,
+            address = call.gameClientAddress(config.trustedProxies),
+            // Nothing kept yet (a seed whose game server didn't run since the gateway keeps rooms, as every session
+            // right after the update): its connection wakes it, as before; that ends once each one ran
+            kept = session::keptWhileAsleep,
+            // MultiServer lets in only who gives its room password: the gateway, for a client that gave its slot's
+            roomPassword = { session.server.roomPassword },
           )
         }
       }
