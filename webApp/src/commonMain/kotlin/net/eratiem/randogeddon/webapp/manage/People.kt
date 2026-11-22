@@ -54,6 +54,7 @@ import net.eratiem.randogeddon.webapp.dashboard.statusColor
 import net.eratiem.randogeddon.webapp.dashboard.statusLabel
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
@@ -466,7 +467,7 @@ private fun ShareLinkPart(id: String) {
     link?.let {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Mono(it, Modifier.weight(1f))
-        SmallButton(t.common.copy, { Platform.copy(it) })
+        CopyTextButton({ it })
       }
       Txt(t.people.shownOnlyNow, size = 12.sp, color = p.muted)
     }

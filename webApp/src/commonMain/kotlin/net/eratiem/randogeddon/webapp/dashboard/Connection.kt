@@ -50,6 +50,7 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.AppPopup
+import net.eratiem.randogeddon.webapp.ui.CopyIconButton
 import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
@@ -65,6 +66,7 @@ import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberCopying
 
 /**
  * How the logged-in player joins the game: the server address and, for one of their worlds, the slot name and its
@@ -286,7 +288,7 @@ private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     ReadOnlyField(if (shown) made.key else "•".repeat(12), Modifier.weight(1f), tip = made.key.takeIf { shown }) {
       ShowButton(shown) { shown = !shown }
-      CopyButton { Platform.copy(made.key) }
+      CopyIconButton { made.key }
     }
     IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp))
   }
@@ -300,7 +302,7 @@ private fun PasswordField(slot: MySlot) {
     Label(LocalTexts.current.connection.password)
     ReadOnlyField(if (shown) slot.password else "•".repeat(12), Modifier.weight(1f), tip = slot.password.takeIf { shown }) {
       ShowButton(shown) { shown = !shown }
-      CopyButton { Platform.copy(slot.password) }
+      CopyIconButton { slot.password }
     }
   }
 }
@@ -339,7 +341,7 @@ private fun archName(os: String, arch: String) = when {
 private fun Field(label: String, value: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(label)
-    ReadOnlyField(value, Modifier.weight(1f)) { CopyButton { Platform.copy(value) } }
+    ReadOnlyField(value, Modifier.weight(1f)) { CopyIconButton { value } }
   }
 }
 
@@ -353,17 +355,19 @@ private fun ServerField(label: String, server: String) {
   val t = LocalTexts.current
   val c = t.connection
   var menu by remember { mutableStateOf(false) }
+  // The menu's choice copies; its button says so
+  val copying = rememberCopying()
   val parts = serverParts(server)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Label(label)
     ReadOnlyField(server, Modifier.weight(1f)) {
       Box {
-        CopyButton { menu = !menu }
+        CopyIconButton(copying, onClick = { menu = !menu })
         if (menu) AppPopup(offset = IntOffset(0, with(LocalDensity.current) { 26.dp.roundToPx() }), onDismissRequest = { menu = false }) {
           Column(Modifier.card(p).padding(4.dp)) {
             listOf(c.copyAsShown to server, c.copyHost to parts.host, c.copyPort to parts.port, c.copyWss to parts.wss).forEach { (what, text) ->
               Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).hand().clickable { Platform.copy(text); menu = false }.padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.clip(RoundedCornerShape(6.dp)).hand().clickable { copying.copy(text); menu = false }.padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
               ) {
                 Txt(what, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.width(110.dp))
@@ -387,12 +391,6 @@ internal fun serverParts(server: String): ServerParts {
   val host = hostPort.substringBefore(':')
   val port = hostPort.substringAfter(':', "").ifEmpty { if (scheme == "ws") "80" else "443" }
   return ServerParts(host, port, if (scheme != null) server else "wss://$server")
-}
-
-/** Copy, as an icon with its word as the tip. */
-@Composable
-private fun CopyButton(onClick: () -> Unit) {
-  Tip(LocalTexts.current.common.copy) { IconButton(onClick, Icon.COPY, Modifier.size(28.dp)) }
 }
 
 /** Show or hide a secret: an eye, struck through while it is shown (a click hides it). */

@@ -37,9 +37,9 @@ import net.eratiem.randogeddon.shared.i18n.text
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
-import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.manage.Button
 import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
+import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Mono
@@ -92,7 +92,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           list.forEach { Mono(it) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          SmallButton(t.common.copy, { Platform.copy(list.joinToString("\n")) })
+          CopyTextButton({ list.joinToString("\n") })
           Button(acc.savedThem) { codes = null }
         }
         return@Column

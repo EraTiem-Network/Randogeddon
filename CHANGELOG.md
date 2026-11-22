@@ -12,6 +12,14 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.3: The live feed pinned, and every copy says that it copied
+- The live feed has a pin: pinned, it is kept on every view. Where a view has no place for it (the Management panel,
+  a spoiler log, Your account) it is a window over the page: at the bottom right until it is moved by its head,
+  folded to its head and unfolded again, gone with its pin. Remembered in the browser, as the feed's place is.
+- Every copy says that it copied: an icon button shows a check mark (its tip *Copied*), a button with its word reads
+  *Copied*, for a moment. In the dashboard (connection, the server's copy menu, patch files' keys), the panel
+  (share links, account IDs), the recovery codes, error messages, and the bridge's page.
+
 ### 0.23.2.2: The map over the window, and in full screen
 - The map has a button that takes it a step larger: from its panel over the whole window, then with the page in full
   screen; a second one takes it a step back. Larger than its panel it takes all the room, under a line with the
@@ -95,6 +103,7 @@ Faster, less of it:
 - One way to start, limit, read and end a Python process (six had their own); the processes' temporary files in one
   directory, emptied at the gateway's start.
 
+### 0.23.1.1: The map's lines, scrolled sideways, the share links' streams as a setting
 - The map is a tree from its start: a box's line leaves its right edge, runs down the middle of the gap beside it
   and branches off to the boxes first reached from it, which stand below each other in the next column. The lines
   stay in the gaps: none crosses a box or another line, and they turn at right angles. What a box connects to

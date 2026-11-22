@@ -62,6 +62,8 @@ interface CommonTexts {
   val save: String
   val cancel: String
   val copy: String
+  /** On a copy's button for a moment after it copied. */
+  val copied: String
   val search: String
   val nothingFound: String
   val logOut: String
