@@ -25,6 +25,8 @@ gives none: the map tab says so).
   the regions are told apart by themselves, their names only shown. On such a game the logic's whole answer failed
   with 0.22.4, so the session's available checks stopped too, not only its map.
 - A map that can't be made is left out and said in the logic's log: the available checks are answered either way.
+- A slot whose logic fails when asked (a world's rules throwing) gets no answer and is said once in the logic's log,
+  with where it failed: the other slots are answered either way. Before, one such slot failed the whole answer.
 - `scripts/deploy.sh --switch`: the server switched to a commit's images as they are in the registry (published
   before with `--publish`), nothing built: the files, the dump, the switch and the checks as a deploy does them.
 
