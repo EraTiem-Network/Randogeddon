@@ -103,6 +103,7 @@ Faster, less of it:
 - One way to start, limit, read and end a Python process (six had their own); the processes' temporary files in one
   directory, emptied at the gateway's start.
 
+### 0.23.1.1: The map's lines, scrolled sideways, the share links' streams as a setting
 - The map is a tree from its start: a box's line leaves its right edge, runs down the middle of the gap beside it
   and branches off to the boxes first reached from it, which stand below each other in the next column. The lines
   stay in the gaps: none crosses a box or another line, and they turn at right angles. What a box connects to
