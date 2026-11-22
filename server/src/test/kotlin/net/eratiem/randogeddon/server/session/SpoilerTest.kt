@@ -62,6 +62,43 @@ class SpoilerTest {
   }
 
   @Test
+  fun `the settings are the seed's, each slot's options, and what worlds wrote besides`() {
+    val text = listOf(
+      "\uFEFFArchipelago Version 0.6.8  -  Seed: 1", "", "Filling Algorithm:               balanced", "Players:                         2", "",
+      "Player 1: Dave-Timespinner", "Game:                            Timespinner", "Death Link:                      No",
+      "Excluded Locations:              ", "", "Player 2: Erin-HK", "Game:                            Hollow Knight", "", "",
+      "Shop Prices:", "Erin-HK", "", "Sly_1 (Erin-HK): King's_Idol (Erin-HK) costing 3 Geo", "", "Locations:", "", "L (Erin-HK): I (Erin-HK)",
+    ).joinToString("\n")
+    val settings = SpoilerLog("1", text).settings
+    assertEquals(listOf("Filling Algorithm" to "balanced", "Players" to "2"), settings.general.map { it.name to it.value })
+    assertEquals(listOf("Dave-Timespinner" to "Timespinner", "Erin-HK" to "Hollow Knight"), settings.slots.map { it.name to it.game })
+    // An option without a value is one still (it is padded behind its colon), not a heading
+    assertEquals(listOf("Death Link" to "No", "Excluded Locations" to ""), settings.slots[0].options.map { it.name to it.value })
+    assertEquals(listOf("Shop Prices"), settings.sections.map { it.title })
+    assertEquals(listOf("Erin-HK", "", "Sly_1 (Erin-HK): King's_Idol (Erin-HK) costing 3 Geo"), settings.sections[0].lines)
+  }
+
+  @Test
+  fun `the paths are each location's regions from the start`() {
+    val text = listOf(
+      "Player 1: Bob (2)", "Game:   G", "", "Player 2: X", "Game:   G", "",
+      "Playthrough:", "", "0: {", "  A (X)", "}", "", "Paths:", "",
+      "Castle Basement: Just an egg (Bob (2))", "        Menu -> Tutorial", "   =>   Tutorial -> Start Game",
+      "   =>   Lake desolation -> Lake desolation -> Lower lake desolation", "   =>   Lower lake desolation",
+      "Start (X)", "        Menu", "", PLAYTHROUGH_NOT_REDUCED,
+    ).joinToString("\n")
+    val log = SpoilerLog("1", text)
+    assertEquals(
+      listOf(
+        PathEntry("Castle Basement: Just an egg", "Bob (2)", listOf("Menu", "Tutorial", "Lake desolation", "Lower lake desolation")),
+        PathEntry("Start", "X", listOf("Menu")),
+      ),
+      log.paths,
+    )
+    assertEquals(emptyList(), SpoilerLog("1", "Playthrough:\n\n0: {\n  A (X)\n}\n").paths)
+  }
+
+  @Test
   fun `without a playthrough only the text is there`() {
     val spoiler = parseSpoiler("1", "Archipelago Version 0.6.8\n\nLocations:\n\n  L (X): I (Y)\n")
     assertTrue(spoiler.spheres.isEmpty())

@@ -80,8 +80,10 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   in playthrough* (offered from level 2 on; until then a hint names a copy by chance). These runs share the
   generations' places, leave one free, and a level-3 run pauses for a new session.
   A playthrough Archipelago can't reduce lists every progression item in order instead (`spoiler_run.py`).
-- **The spoiler page:** the whole log from the seed on, 300 lines at a time, searched on the server; by tabs of
-  their own once worked out: the playthrough sphere by sphere (checked steps marked; opened first), and the paths.
+- **The spoiler page:** from the seed on what it was made with (its settings, each slot's options, what the games
+  noted) and where every item lies (a row a location, checked ones marked; by slot, searched, a page at a time); by
+  tabs of their own once worked out: the playthrough sphere by sphere (checked steps marked; opened first), and the
+  paths (a location's regions from the start); and the log as text, 300 lines at a time, searched on the server.
   Administrators, Session-Managers and support any time (behind a warning); players and
   watchers once it's finished.
 - **The logic** counts each slot's available checks: the seed generated again up to the fill (`logic_run.py`), kept

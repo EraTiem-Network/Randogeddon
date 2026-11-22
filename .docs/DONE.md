@@ -1267,3 +1267,5 @@ games' real map images moved to Later.*
       didn't match the slot's lists) (0.23.2.6)
 - [x] The pinned live feed moves on the dashboard too (asked for on 2026-11-22: "I cannot move it around in
       dashboard"): pinned, it is the floating window on every view; where it was moved to is remembered (0.23.2.7)
+- [x] The spoiler page's full log and paths as views like the playthrough's (asked for on 2026-11-22) instead of
+      plain text; the text keeps a tab of its own (0.23.2.8)

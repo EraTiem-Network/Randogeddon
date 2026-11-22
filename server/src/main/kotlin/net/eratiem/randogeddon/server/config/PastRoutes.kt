@@ -2,6 +2,7 @@ package net.eratiem.randogeddon.server.config
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
@@ -20,9 +21,9 @@ import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
 import net.eratiem.randogeddon.server.session.SpoilerLog
-import net.eratiem.randogeddon.server.session.managedBy
 import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
+import net.eratiem.randogeddon.server.session.managedBy
 import net.eratiem.randogeddon.server.session.markChecked
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.Problem
@@ -31,6 +32,10 @@ import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.SpoilerFindings
 import net.eratiem.randogeddon.shared.SpoilerLines
+import net.eratiem.randogeddon.shared.SpoilerPath
+import net.eratiem.randogeddon.shared.SpoilerPaths
+import net.eratiem.randogeddon.shared.SpoilerPlacement
+import net.eratiem.randogeddon.shared.SpoilerPlacements
 
 /**
  * Under the protected `/api` branch: the sessions a user may see (theirs, all for admins), and each one's summary
@@ -78,7 +83,36 @@ fun Route.sessionRoutes(
       spoiler(sessions, spoilers) { live, log ->
         // The steps already checked, as the tracker sees them now
         val checked = runCatching { live.tracker.read { checkedLocations() } }.getOrDefault(emptyMap())
-        call.respond(markChecked(log.spoiler, checked))
+        call.respond(markChecked(log.spoiler, checked).copy(slots = log.slots.values.map { it.name }, placements = log.allPlacements.size))
+      }
+    }
+    // The log's parts as the page's views show them; its placements and paths filtered and paged here
+    get("/spoiler/settings") { spoiler(sessions, spoilers) { _, log -> call.respond(log.settings) } }
+    get("/spoiler/placements") {
+      spoiler(sessions, spoilers) { live, log ->
+        val (slot, query) = call.listed()
+        val found = log.allPlacements.filter { placement ->
+          (slot == null || placement.finder == slot || placement.receiver == slot) && (
+            query.isEmpty() ||
+              listOf(placement.location, placement.item, placement.finder, placement.receiver).any { it.contains(query, ignoreCase = true) }
+            )
+        }
+        val checked = runCatching { live.tracker.read { checkedLocations() } }.getOrDefault(emptyMap())
+        val (from, page) = call.page(found)
+        call.respond(SpoilerPlacements(found.size, from, page.map {
+          SpoilerPlacement(it.location, it.finder, it.item, it.receiver, checked[it.finder]?.contains(it.location) == true)
+        }))
+      }
+    }
+    get("/spoiler/paths") {
+      spoiler(sessions, spoilers) { _, log ->
+        val (slot, query) = call.listed()
+        val found = log.paths.filter { path ->
+          (slot == null || path.slot == slot) &&
+            (query.isEmpty() || path.location.contains(query, ignoreCase = true) || path.regions.any { it.contains(query, ignoreCase = true) })
+        }
+        val (from, page) = call.page(found)
+        call.respond(SpoilerPaths(found.size, from, page.map { SpoilerPath(it.location, it.slot, it.regions) }))
       }
     }
     get("/spoiler/log") {
@@ -114,6 +148,17 @@ fun Route.sessionRoutes(
       OpenStreams.counted(call.loggedIn.user.id.toString()) { follow(live, stillAllowed) { live.json() } }
     }
   }
+}
+
+/** A spoiler list's `slot` (none: every slot) and `q` (what its rows contain; cut at the search's longest). */
+private fun ApplicationCall.listed(): Pair<String?, String> =
+  request.queryParameters["slot"]?.takeIf { it.isNotEmpty() } to request.queryParameters["q"].orEmpty().trim().take(SpoilerFindings.MAX_QUERY)
+
+/** The page of [all] the request asks for (`from`, `count`): where it starts, and its rows. */
+private fun <T> ApplicationCall.page(all: List<T>): Pair<Int, List<T>> {
+  val from = (request.queryParameters["from"]?.toIntOrNull() ?: 0).coerceIn(0, all.size)
+  val count = (request.queryParameters["count"]?.toIntOrNull() ?: SpoilerPlacements.MAX).coerceIn(1, SpoilerPlacements.MAX)
+  return from to all.subList(from, minOf(all.size, from + count))
 }
 
 /**
