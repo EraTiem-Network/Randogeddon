@@ -3,21 +3,27 @@ package net.eratiem.randogeddon.server.account
 import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.shared.Problem
 import org.koin.core.annotation.Single
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
+import kotlin.uuid.Uuid
 
 /** How many times something happened for each key within a window; in memory (a restart starts afresh). */
 internal class Counts(private val window: Duration) {
-  private val times = ConcurrentHashMap<String, ArrayDeque<Long>>()
+  private val times = HashMap<String, ArrayDeque<Long>>()
+
+  /** At this many keys, the ones nothing recent is left of go. */
+  private var pruneAt = PRUNE_FROM
 
   /** How often [key] counted within the window before [now]. */
   fun of(key: String, now: Long): Int = synchronized(this) { recent(key, now)?.size ?: 0 }
 
   fun add(key: String, now: Long) = synchronized(this) {
-    // Now and then, the keys nothing recent is left of
-    if (times.size > 10_000) times.keys.toList().forEach { recent(it, now) }
+    if (times.size >= pruneAt) {
+      times.keys.toList().forEach { recent(it, now) }
+      // Twice as many as are left until the next time: many keys that are all recent aren't looked through at every add
+      pruneAt = maxOf(PRUNE_FROM, times.size * 2)
+    }
     times.getOrPut(key) { ArrayDeque() }.addLast(now)
   }
 
@@ -26,6 +32,10 @@ internal class Counts(private val window: Duration) {
     while (list.isNotEmpty() && list.first() <= now - window.inWholeMilliseconds) list.removeFirst()
     if (list.isEmpty()) times.remove(key)
     return list.takeIf { it.isNotEmpty() }
+  }
+
+  private companion object {
+    const val PRUNE_FROM = 10_000
   }
 }
 
@@ -49,6 +59,12 @@ class LoginAttempts {
     /** The key of a password try for the name (or address) as typed. */
     fun password(name: String): String = "password:" + name.trim().lowercase().take(300)
 
+    /**
+     * The key of a password try for the account [id], at the login and at a password change: beside the name as typed
+     * ([password]), so its name and its address share one count.
+     */
+    fun accountPassword(id: Uuid): String = "password-of:$id"
+
     /** The key of a two-factor code try for the account [id]. */
     fun code(id: String): String = "code:$id"
   }
@@ -63,13 +79,17 @@ class MailLimits {
   private val soon = Counts(10.minutes)
   private val daily = Counts(1.days)
 
-  /** Counts a mail of [sender] (an account's ID or name); [AccountProblem] (429) past a limit. */
-  fun count(sender: String, now: Long = System.currentTimeMillis()) {
-    if (soon.of(sender, now) >= SOON || daily.of(sender, now) >= DAILY) {
+  /**
+   * Counts a mail of [sender] (an account's ID: a new name doesn't start afresh), or a try that would have sent one;
+   * [AccountProblem] (429) past a limit.
+   */
+  fun count(sender: Uuid, now: Long = System.currentTimeMillis()) {
+    val key = sender.toString()
+    if (soon.of(key, now) >= SOON || daily.of(key, now) >= DAILY) {
       throw AccountProblem(HttpStatusCode.TooManyRequests, Problem.TOO_MANY_MAILS)
     }
-    soon.add(sender, now)
-    daily.add(sender, now)
+    soon.add(key, now)
+    daily.add(key, now)
   }
 
   companion object {

@@ -12,7 +12,6 @@ import io.ktor.http.parameters
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -32,6 +31,7 @@ import java.security.spec.RSAPublicKeySpec
 import java.time.Instant
 import java.util.Base64
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /** Clocks of the provider and of this server may differ a little. */
 private const val CLOCK_SKEW_SECONDS = 60L
@@ -149,19 +149,44 @@ internal fun verifyLogoutToken(token: String, keys: Map<String, PublicKey>, issu
   return logout
 }
 
+/** What the provider's discovery document says: its issuer and its endpoints. */
+internal data class OidcDiscovery(val issuer: String, val authorization: String, val token: String, val jwks: String)
+
+/**
+ * The discovery [document] of the provider configured as [issuer]; [OidcProblem] if it isn't JSON, names no endpoint
+ * the login needs, or names another issuer (a trailing `/` aside): its tokens would be checked against that one.
+ */
+internal fun oidcDiscovery(document: String, issuer: String): OidcDiscovery {
+  val json = runCatching { ApiJson.parseToJsonElement(document).jsonObject }
+    .getOrElse { throw OidcProblem("The provider's answer isn't JSON") }
+  fun endpoint(key: String) = json.string(key) ?: throw OidcProblem("The provider names no $key")
+  val discovery = OidcDiscovery(
+    endpoint("issuer"), endpoint("authorization_endpoint"), endpoint("token_endpoint"), endpoint("jwks_uri"),
+  )
+  if (discovery.issuer.trimEnd('/') != issuer.trimEnd('/')) throw OidcProblem("The provider is ${discovery.issuer}, not $issuer")
+  return discovery
+}
+
+/** How long the discovery document and the keys are kept. */
+private val KEEP_DISCOVERY = 1.hours
+
+/** How often at most a token with a key not among them fetches them again. */
+private val RELOAD_AT_MOST = 1.minutes
+
 /**
  * The OpenID Connect provider (Authentik), by its discovery document: the link a login starts with (authorization
  * code with PKCE), and the code exchanged for a checked ID token. The discovery document and the keys are kept for an
- * hour; an unknown key fetches them again (the provider rotated it).
+ * hour; an unknown key fetches them again (the provider rotated it), at most once a minute (anyone can send a token
+ * with a key of their own to the back-channel logout).
  */
 class OidcClient(private val config: OidcConfig, private val redirectUri: String) {
   private val http = HttpClient(CIO) { install(HttpTimeout) { requestTimeoutMillis = 15_000 } }
   private val mutex = Mutex()
-  private var discovery: Discovery? = null
-  private var keys: Map<String, PublicKey> = emptyMap()
-  private var loadedAt = Instant.EPOCH
 
-  private data class Discovery(val issuer: String, val authorization: String, val token: String, val jwks: String)
+  // Written under the mutex, read outside it too
+  @Volatile private var discovery: OidcDiscovery? = null
+  @Volatile private var keys: Map<String, PublicKey> = emptyMap()
+  @Volatile private var loadedAt = Instant.EPOCH
 
   /** The provider's login page for this login ([state], [nonce], the PKCE [verifier]'s challenge). */
   suspend fun authorizationUrl(state: String, nonce: String, verifier: String): String {
@@ -194,39 +219,34 @@ class OidcClient(private val config: OidcConfig, private val redirectUri: String
     val idToken = (ApiJson.parseToJsonElement(body).jsonObject["id_token"] as? JsonPrimitive)?.contentOrNull
       ?: throw OidcProblem("No ID token")
     val now = Instant.now()
-    return try {
-      verifyIdToken(idToken, keys, d.issuer, config.clientId, nonce, now)
-    } catch (e: OidcProblem) {
-      // A rotated key: once more with the current ones
-      if (e.message?.startsWith("Unknown key") != true) throw e
-      verifyIdToken(idToken, discovery(force = true).let { keys }, d.issuer, config.clientId, nonce, now)
-    }
+    return withKeys { verifyIdToken(idToken, it, d.issuer, config.clientId, nonce, now) }
   }
 
   /** Checks a back-channel [logoutToken] of the provider; [OidcProblem] if refused. */
   suspend fun logout(logoutToken: String): OidcLogout {
     val d = discovery()
     val now = Instant.now()
-    return try {
-      verifyLogoutToken(logoutToken, keys, d.issuer, config.clientId, now)
-    } catch (e: OidcProblem) {
-      if (e.message?.startsWith("Unknown key") != true) throw e
-      verifyLogoutToken(logoutToken, discovery(force = true).let { keys }, d.issuer, config.clientId, now)
-    }
+    return withKeys { verifyLogoutToken(logoutToken, it, d.issuer, config.clientId, now) }
   }
 
-  private suspend fun discovery(force: Boolean = false): Discovery = mutex.withLock {
+  /** [check] with the provider's keys; once more with fresh ones if it names a key not among them (a rotated one). */
+  private suspend fun <T> withKeys(check: (Map<String, PublicKey>) -> T): T = try {
+    check(keys)
+  } catch (e: OidcProblem) {
+    if (e.message?.startsWith("Unknown key") != true) throw e
+    discovery(force = true)
+    check(keys)
+  }
+
+  /** The discovery document and the keys: kept for [KEEP_DISCOVERY]; [force]d again only after [RELOAD_AT_MOST]. */
+  private suspend fun discovery(force: Boolean = false): OidcDiscovery = mutex.withLock {
     val current = discovery
-    if (!force && current != null && loadedAt.isAfter(Instant.now().minusSeconds(1.hours.inWholeSeconds))) return current
-    val document = json(http.get(config.issuer.trimEnd('/') + "/.well-known/openid-configuration").bodyAsText()).jsonObject
-    fun endpoint(key: String) = document.string(key) ?: throw OidcProblem("The provider names no $key")
-    val fresh = Discovery(endpoint("issuer"), endpoint("authorization_endpoint"), endpoint("token_endpoint"), endpoint("jwks_uri"))
+    val kept = if (force) RELOAD_AT_MOST else KEEP_DISCOVERY
+    if (current != null && loadedAt.isAfter(Instant.now().minusSeconds(kept.inWholeSeconds))) return current
+    val fresh = oidcDiscovery(http.get(config.issuer.trimEnd('/') + "/.well-known/openid-configuration").bodyAsText(), config.issuer)
     keys = rsaKeys(http.get(fresh.jwks).bodyAsText())
     discovery = fresh
     loadedAt = Instant.now()
     fresh
   }
-
-  private fun json(text: String): JsonElement = runCatching { ApiJson.parseToJsonElement(text) }
-    .getOrElse { throw OidcProblem("The provider's answer isn't JSON") }
 }

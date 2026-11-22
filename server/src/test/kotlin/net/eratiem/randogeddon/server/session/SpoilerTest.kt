@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.server.session
 import kotlinx.coroutines.async
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SpoilerTest {
@@ -46,6 +47,8 @@ class SpoilerTest {
       ),
       seedSlots(text),
     )
+    // The same from a log as it was read
+    assertEquals(seedSlots(text), SpoilerLog("1", text).slots)
   }
 
   @Test
@@ -83,6 +86,12 @@ class SpoilerTest {
     )
     // A spoiler log without placements
     assertEquals(emptyList(), placements("Playthrough:\n", listOf("Alice-HK")))
+    // A log as it was read: the same, read once for the same slots, again for others
+    val log = SpoilerLog("1", text)
+    val placed = log.placements(listOf("Alice-HK", "Bob-SM64"))
+    assertEquals(placements(text, listOf("Alice-HK", "Bob-SM64")), placed)
+    assertSame(placed, log.placements(setOf("Alice-HK", "Bob-SM64")))
+    assertEquals(listOf(Placement("Lake", "Alice-HK", "Geo", "Alice-HK")), log.placements(listOf("Alice-HK")))
   }
 
   @Test

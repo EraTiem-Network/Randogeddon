@@ -1,10 +1,7 @@
 package net.eratiem.randogeddon.server.config
 
-import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondText
@@ -25,6 +22,7 @@ import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.session.SessionList
+import net.eratiem.randogeddon.server.util.hex
 import net.eratiem.randogeddon.shared.BridgeDownload
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeInfo
@@ -64,7 +62,7 @@ private val CHECK_FILES = setOf("SHA256SUMS", "SHA256SUMS.sig", "signing-key.pub
  */
 fun bridgeChecksums(dir: Path): String = runCatching { dir.resolve("SHA256SUMS").readText() }.getOrNull()?.takeIf { it.isNotBlank() }
   ?: bridgeDownloads(dir).downloads.joinToString("") { build ->
-  val hash = MessageDigest.getInstance("SHA-256").digest(dir.resolve(build.file).readBytes()).joinToString("") { "%02x".format(it) }
+  val hash = MessageDigest.getInstance("SHA-256").digest(dir.resolve(build.file).readBytes()).hex()
   "$hash  ${build.file}\n"
 }
 
@@ -96,14 +94,15 @@ fun Route.bridgeRoutes(
   list: SessionList,
   slotPasswords: SlotPasswords,
 ) {
-  // The builds don't change while the tracker runs: hashed once, when first asked for
+  // The builds don't change while the tracker runs: listed and hashed once, when first asked for
+  val downloads = lazy { bridgeDownloads(config.bridgeDir) }
   val checksums = lazy { bridgeChecksums(config.bridgeDir) }
   route("/downloads/bridge") {
-    get { call.respond(bridgeDownloads(config.bridgeDir)) }
+    get { call.respond(downloads.value) }
     // To check a download against: sha256sum -c SHA256SUMS; and that the checksums are ours: their signature
     // (SHA256SUMS.sig, if the build was signed) against signing-key.pub, with ssh-keygen -Y verify
     get("/SHA256SUMS") {
-      call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "SHA256SUMS").toString())
+      call.attachment("SHA256SUMS")
       call.respondText(checksums.value, ContentType.Text.Plain)
     }
     get("/{file}") {
@@ -111,11 +110,11 @@ fun Route.bridgeRoutes(
       // A build asked for by another name than it has here (without its version, or with another one): the build
       // for the same system
       val name = BRIDGE_FILE.matchEntire(asked)?.takeIf { !config.bridgeDir.resolve(asked).isRegularFile() }?.let { match ->
-        bridgeDownloads(config.bridgeDir).downloads.firstOrNull { it.os == match.groupValues[1] && it.arch == match.groupValues[2] }?.file
+        downloads.value.downloads.firstOrNull { it.os == match.groupValues[1] && it.arch == match.groupValues[2] }?.file
       } ?: asked
       val file = config.bridgeDir.resolve(name)
       if ((!BRIDGE_FILE.matches(name) && name !in CHECK_FILES) || !file.isRegularFile()) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_FILE))
-      call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, name).toString())
+      call.attachment(name)
       // The signature and the key are text; by their endings they would be something else (.pub: a Publisher file)
       if (name in CHECK_FILES) call.respondText(file.readText(), ContentType.Text.Plain) else call.respondFile(file.toFile())
     }
@@ -126,7 +125,7 @@ fun Route.bridgeRoutes(
       val user = call.loggedIn.user
       val theme = Theme.of(user.theme) ?: Theme.DEFAULT
       val (light, dark) = palettes(theme)
-      val offered = bridgeDownloads(config.bridgeDir)
+      val offered = downloads.value
       call.respond(
         BridgeInfo(
           offered.version, offered.downloads, light.css(), dark.css(), ThemeMode.of(user.themeMode) ?: ThemeMode.AUTO,

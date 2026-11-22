@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.database
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.testcontainers.postgresql.PostgreSQLContainer
 import java.time.Instant
@@ -364,6 +366,37 @@ class StoresTest {
   }
 
   @Test
+  fun `every session's setup, time and finish state are read at once, each as read alone`() = runBlocking {
+    val users = UserStore(db)
+    val setups = SessionSetupStore(db)
+    val times = SessionTimeStore(db)
+    val finishes = SessionFinishStore(db)
+    val t0 = Instant.parse("2026-11-22T10:00:00Z")
+    val ada = users.create("Ada", "hash")
+    val ben = users.create("Ben", "hash")
+    setups.create(
+      "busy-otter", "seed-busy", "0.6.8", "{}", mapOf("Ada-HK" to listOf(ada.id), "Couch" to listOf(ada.id, ben.id)),
+      now = t0, hosted = setOf("Dig"), direct = setOf("Dig"), open = setOf("Couch"),
+    )
+    SessionRoleStore(db).add("busy-otter", ben.id, "manager", null, by = "Ada")
+    setups.create("calm-heron", "seed-calm", "0.6.8", "{}", mapOf("Ben-SM64" to listOf(ben.id)), now = t0.plusSeconds(60))
+    times.started("seed-busy", t0)
+    times.stopped("seed-busy", t0.plusSeconds(30))
+    finishes.finish("seed-calm", by = "Ben", now = t0.plusSeconds(90))
+    // A seed from before, without a setup of its own
+    times.started("12345", t0)
+
+    val seeds = listOf("seed-busy", "seed-calm", "12345")
+    assertEquals(seeds.associateWith { setups.of(it)!! }, setups.all())
+    assertEquals(seeds.associateWith { times.of(it)!! }, times.all())
+    assertEquals(seeds.associateWith { finishes.of(it)!! }, finishes.all())
+    // Each session's rows stay its own
+    assertEquals(mapOf(ben.id to "Ben"), setups.all().getValue("seed-calm").members)
+    assertEquals(setOf(ben.id), setups.all().getValue("seed-busy").roles.keys)
+    assertEquals(emptyMap(), setups.all().getValue("12345").worlds)
+  }
+
+  @Test
   fun `an invited player is in a session without anything of their address, then by their name`() = runBlocking {
     val users = UserStore(db)
     val setups = SessionSetupStore(db)
@@ -405,9 +438,69 @@ class StoresTest {
     invitations.create("second", frank.id, "frank@example.org", "Frank", later)
     assertNull(invitations.find("first"))
     assertEquals("Frank", invitations.of(frank.id)?.suggestedName)
+    // All of them at once, one per user
+    assertEquals(mapOf(frank.id to invitations.of(frank.id)), invitations.all())
     assertTrue(invitations.use("second"))
     assertEquals(false, invitations.use("second"))
     assertTrue(invitations.find("second")?.usedAt != null)
+  }
+
+  @Test
+  fun `a sign-up uses its link in the same transaction, and one whose name was taken leaves the link as it was`() = runBlocking {
+    val users = UserStore(db)
+    val invitations = InvitationStore(db)
+    val later = Instant.now().plus(7, ChronoUnit.DAYS)
+    users.create("Quinn", "hash")
+    val rae = users.invite("rae@example.org")
+    invitations.create("rae-link", rae.id, "rae@example.org", null, later)
+    // The name went to someone else a moment before: the link still works, the retry with another name signs up
+    assertEquals(SignUp.NAME_TAKEN, users.signUpInvited("rae-link", rae.id, "quinn", "hash", "never"))
+    assertNull(invitations.find("rae-link")?.usedAt)
+    assertNull(users.findActive(rae.id))
+    assertEquals(SignUp.DONE, users.signUpInvited("rae-link", rae.id, "Rae", "hash", "6m"))
+    assertEquals("Rae", users.findActive(rae.id)?.name)
+    assertEquals(SignUp.LINK_USED, users.signUpInvited("rae-link", rae.id, "Rae2", "hash", "never"))
+    // A new link of an account that signed up meanwhile
+    invitations.create("rae-again", rae.id, "rae@example.org", null, later)
+    assertEquals(SignUp.SIGNED_UP_ALREADY, users.signUpInvited("rae-again", rae.id, "Rae3", "hash", "never"))
+    assertEquals("Rae", users.findActive(rae.id)?.name)
+  }
+
+  @Test
+  fun `one account's activity is read alone, as in the list of all`() = runBlocking {
+    val users = UserStore(db)
+    val sol = users.create("Sol", "hash")
+    val tia = users.create("Tia", "hash")
+    users.setAutoDelete(sol.id, "3m")
+    users.setAutoDelete(tia.id, "1y")
+    SessionSetupStore(db).create("sol-one", "555", "0.6.8", "{}", mapOf("Sol-HK" to listOf(sol.id)))
+    assertEquals(users.activity().single { it.user.id == sol.id }, users.activityOf(sol.id))
+    assertEquals(true, users.activityOf(sol.id)?.playing)
+    assertEquals(false, users.activityOf(tia.id)?.playing)
+    // "never" has none to count
+    users.setAutoDelete(tia.id, "never")
+    assertNull(users.activityOf(tia.id))
+  }
+
+  @Test
+  fun `the other logins of an account end, one kept and the others' left`() = runBlocking {
+    val users = UserStore(db)
+    val logins = LoginSessionStore(db)
+    val uma = users.create("Uma", "hash")
+    val vic = users.create("Vic", "hash")
+    val later = Instant.now().plus(1, ChronoUnit.DAYS)
+    logins.create("uma-1", uma.id, later)
+    logins.create("uma-2", uma.id, later, method = "link")
+    logins.create("uma-key", uma.id, later, method = "bridge")
+    logins.create("vic-1", vic.id, later)
+    assertEquals(1, logins.deleteOthers(uma.id, listOf("password", "link"), keep = "uma-1"))
+    assertEquals(uma.id, logins.userOf("uma-1"))
+    assertNull(logins.userOf("uma-2"))
+    assertEquals(1, logins.deleteOthers(uma.id, listOf("password", "link")))
+    assertNull(logins.userOf("uma-1"))
+    // A method not named stays, and so do another account's logins
+    assertEquals(uma.id, logins.userOf("uma-key"))
+    assertEquals(vic.id, logins.userOf("vic-1"))
   }
 
   @Test
@@ -536,6 +629,35 @@ class StoresTest {
     assertEquals(0, roles.runningManagedBy(lea.id))
     assertTrue(roles.remove("lea-one", max.id))
     assertEquals(false, roles.remove("lea-one", max.id))
+  }
+
+  @Test
+  fun `the last Session-Manager keeps their part, also when two take each other's at once`() = runBlocking {
+    val users = UserStore(db)
+    val roles = SessionRoleStore(db)
+    val setups = SessionSetupStore(db)
+    val uma = users.create("Uma", "hash")
+    val vic = users.create("Vic", "hash")
+    val wes = users.create("Wes", "hash")
+    setups.create("uma-one", "556", "0.6.8", "{}", emptyMap())
+    assertTrue(roles.add("uma-one", uma.id, "manager", "Uma", "Uma"))
+    assertTrue(roles.add("uma-one", vic.id, "manager", "Vic", "Uma"))
+    assertTrue(roles.add("uma-one", wes.id, "watcher", "Wes", "Uma"))
+    suspend fun managers() = setups.of("556")?.roles.orEmpty().filterValues { it.role == "manager" }.keys
+
+    // Each takes the other's part at the same moment: one of them stays
+    val both = listOf(async(Dispatchers.IO) { roles.leave("uma-one", vic.id) }, async(Dispatchers.IO) { roles.leave("uma-one", uma.id) })
+      .map { it.await() }
+    assertEquals(setOf(RoleLeaving.DONE, RoleLeaving.LAST_MANAGER), both.toSet())
+    assertEquals(1, managers().size)
+    val last = managers().single()
+    assertEquals(RoleLeaving.LAST_MANAGER, roles.leave("uma-one", last, "support"))
+    // Anyone else's part changes or goes; one that isn't there is told so
+    assertEquals(RoleLeaving.DONE, roles.leave("uma-one", wes.id, "support"))
+    assertEquals("support", setups.of("556")?.roles?.get(wes.id)?.role)
+    assertEquals(RoleLeaving.DONE, roles.leave("uma-one", wes.id))
+    assertEquals(RoleLeaving.NONE, roles.leave("uma-one", wes.id))
+    assertEquals(RoleLeaving.NONE, roles.leave("no-such-one", last))
   }
 
   @Test

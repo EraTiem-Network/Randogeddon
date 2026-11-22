@@ -1,9 +1,8 @@
 package net.eratiem.randogeddon.server.admin
 
-import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.shared.LogLines
-import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SpoilerRunView
 import org.koin.core.annotation.Single
 
@@ -13,15 +12,12 @@ import org.koin.core.annotation.Single
  */
 @Single
 class SpoilerRuns(private val gameServer: GameServerClient, private val sessions: LiveSessions) {
-  fun view(id: String): SpoilerRunView = SpoilerRunView(live(id).server?.spoiler)
+  fun view(id: String): SpoilerRunView = SpoilerRunView(sessions.require(id).server?.spoiler)
 
-  suspend fun log(id: String, since: Long): LogLines = gameServer.spoilerRunLog(live(id).id, since) ?: LogLines(emptyList(), since)
+  suspend fun log(id: String, since: Long): LogLines = gameServer.spoilerRunLog(sessions.require(id).id, since) ?: LogLines(emptyList(), since)
 
   /** A stopped run is tried again (after a new version of the gateway or of an APWorld's fix). */
   suspend fun retry(id: String) {
-    gameServer.retrySpoilerRun(live(id).id)
+    gameServer.retrySpoilerRun(sessions.require(id).id)
   }
-
-  private fun live(id: String) =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }

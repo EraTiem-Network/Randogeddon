@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.server.account
 
+import net.eratiem.randogeddon.server.util.hex
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,5 +55,12 @@ class PasswordsTest {
     assertNotEquals(token, newToken())
     assertEquals(64, tokenHash(token).length)
     assertEquals(tokenHash(token), tokenHash(token))
+    // SHA-256 in lowercase hex, two digits a byte (as the stored hashes of before)
+    assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", tokenHash("abc"))
+    assertEquals("00ff7f80", byteArrayOf(0, -1, 127, -128).hex())
+    // A bridge key's 48 bytes
+    val key = newToken(48)
+    assertEquals(64, key.length)
+    assertTrue(key.all { it.isLetterOrDigit() || it == '-' || it == '_' }, key)
   }
 }

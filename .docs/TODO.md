@@ -36,22 +36,16 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
-- [ ] 0.23.1: the tracker (logins, roles, the API, its limits, share links, bridge keys, mails, the CLI, the session
-      state). Scanned: no high finding, 11 medium, 41 low (52 in all, some found by both scanners)
-    - Decided by the user (2026-11-22), each a change of behaviour:
-        - Whoever loses their last slot in a session loses the open-to-all slots' passwords too (renewed); timing
-          out, suspending or deleting an account renews the passwords of the slots only they played
-        - Forwarded headers are believed only from configured proxies (a new setting, `TRUSTED_PROXIES`; unset: as
-          before)
-        - No e-mail addresses in the tracker's log: accounts by ID or name
-        - Support can no longer restart a stopped spoiler-log run (Session-Managers and Administrators can); the
-          panel never offered it to support, only the route did
-        - A Session-Manager's invitation whose mail fails leaves no half-made account: the retry works
-        - The new-session routes (overview, ID check, YAML inspection) paced per user
-        - Administrators only through Authentik ("never allow password logins"): an Administrator by password exists
-          only with an opt-in setting, which the demo and local testing set; without Authentik and without it,
-          nobody is an Administrator and `admins --create` refuses. Where it's on: granting the flag or resetting
-          two-factor ends the account's other logins
+- [ ] Left from 0.23.1 (the tracker's review):
+    - [ ] `GET /api/me` says `administrator` from the account's flag, not from whether this login may act as one: a
+          login that may not (no single sign-on and no `ADMIN_PASSWORD_LOGIN`, or a password login beside single
+          sign-on) sees the panel's Administrator parts and gets 403 from them. Changing it changes what such a
+          login sees: the user's decision
+    - [ ] `X-Forwarded-Proto` and `X-Forwarded-Host` are still taken from any peer (Ktor's handler can't be gated
+          by peer); only the client address follows `TRUSTED_PROXIES`. Nothing in the tracker reads them
+    - [ ] Tests that need a database in the tracker's module (it has no harness for one): the mail limit's probes,
+          the failed invitation, the provider's sync, the logins ended by a grant, a creation's reserved ID
+    - [ ] F37: four hand-made expiring maps as one (optional; left)
 - [ ] 0.23.2: the gateway and its tunnel (the relay, the slot passwords' check, the Minecraft tunnel, generating,
       the internal API, Archipelago's processes beside it)
     - Noted by the tracker's scan: the gateway's database role may insert `cheat` events, which become feed lines

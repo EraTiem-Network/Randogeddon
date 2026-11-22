@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.server.account
 import java.util.Locale
 import net.eratiem.randogeddon.shared.i18n.Language
 import net.eratiem.randogeddon.shared.i18n.texts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -81,28 +82,39 @@ class AccountCleanup(
     // The sessions' finish state, as the database has it now
     sessions.refresh()
     for (activity in users.activity()) {
-      val user = activity.user
-      // With single sign-on, Administrators' accounts go when the provider deletes them (its webhook)
-      if (config.oidc != null && user.administrator) continue
-      when (cleanupStep(activity, now)) {
-        CleanupStep.NOTHING -> Unit
-        CleanupStep.UNWARN -> users.markWarned(user.id, null)
-        CleanupStep.WARN -> {
-          val due = deletesAt(activity.copy(warnedAt = now), now) ?: continue
-          val language = Language.of(user.language) ?: Language.DEFAULT
-          val date = (if (language.numericDates) NUMERIC_DATE else DATE).format(due)
-          val mail = Mails.deletionWarning(user.email ?: continue, user.name ?: "", date, "${config.publicUrl}/#/settings", texts(language).mails)
-          try {
-            mailer.send(mail)
-            users.markWarned(user.id, now)
-          } catch (e: IOException) {
-            logger.warn("Could not warn {} about the deletion: {}", user.name, e.message)
-          }
+      // One account that fails (the database a moment away) doesn't keep the others from their step
+      try {
+        step(activity, now)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        logger.warn("Could not clean up the account of {}: {}", activity.user.name ?: activity.user.id, e.message)
+      }
+    }
+  }
+
+  private suspend fun step(activity: AccountActivity, now: Instant) {
+    val user = activity.user
+    // With single sign-on, Administrators' accounts go when the provider deletes them (its webhook)
+    if (config.oidc != null && user.administrator) return
+    when (cleanupStep(activity, now)) {
+      CleanupStep.NOTHING -> Unit
+      CleanupStep.UNWARN -> users.markWarned(user.id, null)
+      CleanupStep.WARN -> {
+        val due = deletesAt(activity.copy(warnedAt = now), now) ?: return
+        val language = Language.of(user.language) ?: Language.DEFAULT
+        val date = (if (language.numericDates) NUMERIC_DATE else DATE).format(due)
+        val mail = Mails.deletionWarning(user.email ?: return, user.name ?: "", date, "${config.publicUrl}/#/settings", texts(language).mails)
+        try {
+          mailer.send(mail)
+          users.markWarned(user.id, now)
+        } catch (e: IOException) {
+          logger.warn("Could not warn {} about the deletion: {}", user.name, e.message)
         }
-        CleanupStep.DELETE -> {
-          users.delete(user.id, now)
-          logger.info("Deleted the account of {} (auto-deletion: {})", user.name, AutoDelete.of(user.autoDelete).label)
-        }
+      }
+      CleanupStep.DELETE -> {
+        users.delete(user.id, now)
+        logger.info("Deleted the account of {} (auto-deletion: {})", user.name, AutoDelete.of(user.autoDelete).label)
       }
     }
   }

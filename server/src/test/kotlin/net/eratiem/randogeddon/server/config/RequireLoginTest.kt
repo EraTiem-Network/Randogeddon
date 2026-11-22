@@ -2,6 +2,8 @@ package net.eratiem.randogeddon.server.config
 
 import io.ktor.client.request.cookie
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -9,14 +11,18 @@ import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.hooks.CallFailed
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LoginCheck
+import net.eratiem.randogeddon.server.account.adminLoginProblem
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,26 +39,38 @@ class RequireLoginTest {
   private val sam = User(Uuid.random(), "Sam", "hash")
   private val stu = User(Uuid.random(), "Stu", "hash")
   private val wanda = User(Uuid.random(), "Wanda", "hash")
+  private val gail = User(Uuid.random(), "Gail", "hash", administrator = true)
 
   /**
    * Alice plays in brave-otter, Pete only in quiet-fox, Sam manages brave-otter, Stu supports it, Wanda watches it; Mallory has a login but is in none;
-   * Ada is an Administrator, Grace one without two-factor login.
+   * Ada is an Administrator, Grace one without two-factor login, Gail too, who also manages brave-otter. Administrators
+   * by the rule without single sign-on and with ADMIN_PASSWORD_LOGIN (their password and two-factor login).
    */
   private val check = object : LoginCheck {
     override suspend fun userOf(token: String) =
-      mapOf("a" to alice, "m" to mallory, "ada" to ada, "g" to grace, "p" to pete, "s" to sam, "stu" to stu, "w" to wanda)[token]
+      mapOf("a" to alice, "m" to mallory, "ada" to ada, "g" to grace, "p" to pete, "s" to sam, "stu" to stu, "w" to wanda, "gail" to gail)[token]
     private val roles = mapOf(
-      "brave-otter" to mapOf(alice to SessionRole.PLAYER, sam to SessionRole.MANAGER, stu to SessionRole.SUPPORT, wanda to SessionRole.WATCHER),
+      "brave-otter" to mapOf(
+        alice to SessionRole.PLAYER, sam to SessionRole.MANAGER, stu to SessionRole.SUPPORT, wanda to SessionRole.WATCHER,
+        gail to SessionRole.MANAGER,
+      ),
       "quiet-fox" to mapOf(pete to SessionRole.PLAYER),
     )
     override fun maySee(user: User, id: String) = user.administrator || roleIn(user, id) != null
-    override fun roleIn(user: User, id: String) = roles[id]?.get(user)
+    // By the account, as the sessions know it (an Administrator's login that may not act as one is the same person)
+    override fun roleIn(user: User, id: String) = roles[id]?.entries?.firstOrNull { it.key.id == user.id }?.value
   }
 
   /** What a call threw on the server (the client still gets its answer, so only this shows it). */
   private val failures = mutableListOf<Throwable>()
 
-  private fun test(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit) {
+  /** How many bodies of a seed upload the handler took in. */
+  private var seedsRead = 0
+
+  private fun test(
+    check: LoginCheck = this.check,
+    block: suspend io.ktor.server.testing.ApplicationTestBuilder.(handled: () -> Boolean) -> Unit,
+  ) {
     var handled = false
     testApplication {
       install(ContentNegotiation) { json(ApiJson) }
@@ -79,6 +97,13 @@ class RequireLoginTest {
                 handled = true
                 call.respondText("managing ${call.parameters["id"]}")
               }
+              // As manageRoutes' logs: for Administrators only, by the login, not the account
+              get("/logic/log") {
+                apiCall {
+                  onlyAdministrators()
+                  call.respondText("logic log")
+                }
+              }
             }
             route("/support") {
               install(RequireSessionRole) {
@@ -93,6 +118,14 @@ class RequireLoginTest {
                 roles = setOf(SessionRole.PLAYER, SessionRole.SUPPORT, SessionRole.MANAGER)
               }
               get { call.respondText("watchers") }
+            }
+          }
+          // As newSessionRoutes' seed upload: refused before its body is read
+          post("/sessions/new/seed") {
+            apiCall {
+              onlyAdministrators(Problem.ONLY_ADMINISTRATORS_SEED)
+              seedsRead++
+              call.respondText("seed of ${call.receiveText().length}")
             }
           }
           route("/admin") {
@@ -176,6 +209,31 @@ class RequireLoginTest {
     assertTrue(handled())
   }
 
+  /** The same logins without single sign-on and without ADMIN_PASSWORD_LOGIN: no login acts as an Administrator. */
+  private val noAdministrators = object : LoginCheck by check {
+    override fun administratorProblem(user: User) = adminLoginProblem(user, provider = null, passwordLogin = false)
+  }
+
+  @Test
+  fun `without single sign-on and ADMIN_PASSWORD_LOGIN no login acts as an Administrator, two-factor or not`() =
+    test(noAdministrators) { handled ->
+      suspend fun get(path: String, who: String) = client.get(path) { cookie(SESSION_COOKIE, who) }
+      for (who in listOf("ada", "g")) {
+        val panel = get("/api/admin/sessions", who)
+        assertEquals(HttpStatusCode.Forbidden, panel.status, who)
+        assertTrue("ONLY_ADMINISTRATORS" in panel.bodyAsText(), panel.bodyAsText())
+        // Another session, its management, an Administrator's log: as for any user
+        assertEquals(HttpStatusCode.Forbidden, get("/api/sessions/quiet-fox/state", who).status, who)
+        assertEquals(HttpStatusCode.Forbidden, get("/api/sessions/quiet-fox/manage", who).status, who)
+      }
+      assertFalse(handled())
+      assertEquals(HttpStatusCode.Forbidden, get("/api/sessions/brave-otter/manage/logic/log", "gail").status)
+      // What they have a part in stays theirs: Gail manages brave-otter
+      assertEquals("managing brave-otter", get("/api/sessions/brave-otter/manage", "gail").bodyAsText())
+      assertEquals("sessions of Ada", get("/api/sessions", "ada").bodyAsText())
+      assertEquals(emptyList(), failures.map { it.toString() })
+    }
+
   @Test
   fun `routes outside the branch stay open`() = test {
     assertEquals("ok", client.get("/healthz").bodyAsText())
@@ -203,6 +261,38 @@ class RequireLoginTest {
     assertTrue("two-factor" in grace.bodyAsText())
     // Managing doesn't make Sam an Administrator
     assertEquals(HttpStatusCode.Forbidden, client.get("/api/admin/sessions") { cookie(SESSION_COOKIE, "s") }.status)
+    // Each refused once: the guard after the one that answered says nothing more (a second answer would fail)
+    assertEquals(emptyList(), failures.map { it.toString() })
+  }
+
+  @Test
+  fun `a session's logs are for Administrators whose login may act as one, not for every manager`() = test {
+    suspend fun log(who: String) = client.get("/api/sessions/brave-otter/manage/logic/log") { cookie(SESSION_COOKIE, who) }
+    assertEquals("logic log", log("ada").bodyAsText())
+    // Sam manages it; Gail too, and her account is an Administrator's, but not her login (no two-factor login)
+    for (who in listOf("s", "gail")) {
+      val refused = log(who)
+      assertEquals(HttpStatusCode.Forbidden, refused.status, who)
+      assertTrue("ONLY_ADMINISTRATORS" in refused.bodyAsText(), refused.bodyAsText())
+    }
+    assertEquals("managing brave-otter", client.get("/api/sessions/brave-otter/manage") { cookie(SESSION_COOKIE, "gail") }.bodyAsText())
+    assertEquals(emptyList(), failures.map { it.toString() })
+  }
+
+  @Test
+  fun `a seed from elsewhere is refused before its body is read, unless from an Administrator`() = test {
+    val body = "x".repeat(100_000)
+    for (who in listOf("w", "m", "s", "g")) {
+      val refused = client.post("/api/sessions/new/seed") {
+        cookie(SESSION_COOKIE, who)
+        setBody(body)
+      }
+      assertEquals(HttpStatusCode.Forbidden, refused.status, who)
+      assertTrue("ONLY_ADMINISTRATORS_SEED" in refused.bodyAsText(), refused.bodyAsText())
+    }
+    assertEquals(0, seedsRead)
+    assertEquals("seed of 100000", client.post("/api/sessions/new/seed") { cookie(SESSION_COOKIE, "ada"); setBody(body) }.bodyAsText())
+    assertEquals(1, seedsRead)
   }
 
   @Test

@@ -1,5 +1,7 @@
 package net.eratiem.randogeddon.server.session
 
+import io.ktor.client.HttpClient
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +32,9 @@ import net.eratiem.randogeddon.database.SessionTimeStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.legacySessionId
 import net.eratiem.randogeddon.server.admin.GameServerClient
+import net.eratiem.randogeddon.server.admin.SessionProblem
 import net.eratiem.randogeddon.server.ap.TrackerService
+import net.eratiem.randogeddon.server.ap.trackerClient
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
 import net.eratiem.randogeddon.server.util.logger
@@ -40,6 +44,7 @@ import net.eratiem.randogeddon.shared.AvailableRequest
 import net.eratiem.randogeddon.shared.GameServerStatus
 import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.PlayerDetail
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.SessionOptions
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.SessionServer
@@ -68,6 +73,8 @@ class LiveSession(
   private val archives: Archives,
   /** Where the one poller of its [changes] runs (the sessions' own scope, not a viewer's). */
   private val streams: CoroutineScope,
+  /** The client of its tracker's connections, every session's ([trackerClient]); the sessions close it. */
+  http: HttpClient,
   /** What the gateway hears on the game servers. */
   events: SessionEventStore? = null,
   /** Where what its dashboard shows is kept, for while its tracker isn't connected. */
@@ -76,7 +83,7 @@ class LiveSession(
   /** Written by the gateway before each start of its game server. */
   val roomJson: Path = config.dataDir.resolve("sessions").resolve(id).resolve("room.json")
 
-  val tracker = TrackerService(archives.history(id), roomJson, id, events, snapshots) {
+  val tracker = TrackerService(archives.history(id), roomJson, id, events, snapshots, http) {
     server?.port?.let { "ws://${config.gatewayHost}:$it" }
   }
 
@@ -155,28 +162,22 @@ class LiveSession(
   private var decodedOptions: Pair<String, SessionOptions?>? = null
 
   /**
-   * Person -> their slots, from the session's setup (a slot played together shows up for each of its users). A seed
-   * from before without one: the people its archive names.
+   * Person -> their slots, from the session's setup (a slot played together shows up for each of its users); made
+   * once per setup. A seed from before without one: the people its archive names.
    */
   fun people(): Map<String, List<String>> {
-    val worlds = setup?.worlds
-    val hosted = setup?.hosted.orEmpty()
-    if (!worlds.isNullOrEmpty() || hosted.isNotEmpty()) {
-      val people = LinkedHashMap<String, MutableList<String>>()
-      // A hosted slot's named players join its game's server, they don't play it
-      for ((slot, users) in worlds.orEmpty()) if (slot !in hosted) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
-      // Always in the same order: the people by name, each one's slots by name
-      val ordered = LinkedHashMap<String, List<String>>()
-      for ((person, slots) in people.entries.sortedBy { it.key.lowercase() }) ordered[person] = slots.sortedBy { it.lowercase() }
-      // The slots everyone plays together, and the hosted ones, each as if one person played them (no account can be
-      // called so)
-      if (openSlots.isNotEmpty()) ordered[UserNames.EVERYONE] = openSlots.sortedBy { it.lowercase() }
-      if (hosted.isNotEmpty()) ordered[UserNames.HOSTED] = hosted.sortedBy { it.lowercase() }
-      return ordered
+    val setup = setup
+    if (setup != null && (setup.worlds.isNotEmpty() || setup.hosted.isNotEmpty())) {
+      madePeople?.let { (from, people) -> if (from === setup) return people }
+      return peopleOf(setup).also { madePeople = setup to it }
     }
     val s = archives.read(id)?.summary ?: return emptyMap()
     return s.people.associate { p -> p.name to p.slots.mapNotNull { slot -> s.players.firstOrNull { it.slot == slot }?.name } }
   }
+
+  /** [people] as it was made last, and from which setup (the setup changes as a whole, see [LiveSessions.refresh]). */
+  @Volatile
+  private var madePeople: Pair<SessionSetup, Map<String, List<String>>>? = null
 
   /**
    * What [user] is in this session: a Session-Manager, support or watcher by its roles (a Session-Manager who plays is a
@@ -191,10 +192,6 @@ class LiveSession(
   fun managers(): Set<kotlin.uuid.Uuid> =
     setup?.roles?.filterValues { it.role == SessionRole.MANAGER.code }?.keys.orEmpty()
 
-  /**
-   * Who [user] is in this session: the name they have in it (by their UUID, so a rename doesn't matter); `null`: not
-   * part of it. A seed from before without a setup: by name.
-   */
   /** Its slots open to all of its players that aren't hosted: every player of it plays them. */
   val openSlots: Set<String> get() = setup?.open.orEmpty() - setup?.hosted.orEmpty()
 
@@ -211,11 +208,11 @@ class LiveSession(
     return setup.hosted.filter { it in setup.open || person in setup.worlds[it].orEmpty() }.sortedBy { it.lowercase() }
   }
 
-  fun personOf(user: User): String? {
-    val members = setup?.members
-    if (!members.isNullOrEmpty()) return members[user.id]
-    return people().keys.firstOrNull { it.equals(user.name, ignoreCase = true) }
-  }
+  /**
+   * Who [user] is in this session: the name they have in it (by their UUID, so a rename doesn't matter); `null`: not
+   * part of it. A seed from before (see [personIn]): by name.
+   */
+  fun personOf(user: User): String? = personIn(setup, user) { people().keys }
 
   // ------------------------------------------------------------------------------------------------------ summary
 
@@ -422,15 +419,55 @@ class LiveSession(
     job?.cancelAndJoin()
     job = null
   }
+}
 
-  fun close() = tracker.close()
+/** Person -> their slots, from [setup] (see [LiveSession.people]). */
+private fun peopleOf(setup: SessionSetup): Map<String, List<String>> {
+  val hosted = setup.hosted
+  val people = LinkedHashMap<String, MutableList<String>>()
+  // A hosted slot's named players join its game's server, they don't play it
+  for ((slot, users) in setup.worlds) if (slot !in hosted) for (user in users) people.getOrPut(user) { mutableListOf() }.add(slot)
+  // Always in the same order: the people by name, each one's slots by name
+  val ordered = LinkedHashMap<String, List<String>>()
+  for ((person, slots) in people.entries.sortedBy { it.key.lowercase() }) ordered[person] = slots.sortedBy { it.lowercase() }
+  // The slots everyone plays together, and the hosted ones, each as if one person played them (no account can be
+  // called so)
+  val open = setup.open - hosted
+  if (open.isNotEmpty()) ordered[UserNames.EVERYONE] = open.sortedBy { it.lowercase() }
+  if (hosted.isNotEmpty()) ordered[UserNames.HOSTED] = hosted.sortedBy { it.lowercase() }
+  return ordered
 }
 
 /**
- * Every session, as the database knows them, with their game servers as the gateway reports them: read every 10 s,
- * and right away after the admin panel changed something ([refresh]). The sessions that aren't finished get a tracker
- * connection of their own.
+ * Who [user] is in a session of [setup]: the name they have in it, by their UUID; `null`: not part of it. Only a seed
+ * from before (no setup, or one without the admin panel's options and without members) by name, among [people]: in
+ * a session made in the admin panel nobody is a player by their name alone (one whose slots are all open has no
+ * members, and its archive names its slots as people).
  */
+internal fun personIn(setup: SessionSetup?, user: User, people: () -> Collection<String>): String? {
+  val members = setup?.members
+  if (!members.isNullOrEmpty() || setup?.options != null) return members?.get(user.id)
+  return people().firstOrNull { it.equals(user.name, ignoreCase = true) }
+}
+
+/**
+ * [seed]'s value from a read of every session ([Result] of seed name -> value): what was read (`null`: it has none),
+ * or [last], what was known before, if the read failed.
+ */
+internal fun <T> Result<Map<String, T>>.forSeed(seed: String, last: T?): T? = fold({ it[seed] }, { last })
+
+/** Session [id]; a [SessionProblem] (404) if there is none. */
+fun LiveSessions.require(id: String): LiveSession =
+  get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+
+/** Whether [user] manages this session: an Administrator, or one of its Session-Managers. */
+fun LiveSession.managedBy(user: User): Boolean = user.administrator || roleOf(user) == SessionRole.MANAGER
+
+/** Its slots still locked, as its summary sees them (their key not found yet); none if that can't be built. */
+suspend fun LiveSession.lockedSlots(): Set<String> = runCatching {
+  summary().players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
+}.getOrDefault(emptySet())
+
 /** How often a session looks whether its dashboard is to be kept, and how often at most while it is connected. */
 private val KEEP_LOOK = 15.seconds
 private val KEEP_EVERY = 5.minutes
@@ -441,6 +478,11 @@ val CHANGES_POLL = 750.milliseconds
 /** [LiveSession.changes] before its first look. */
 const val NO_VERSION = Long.MIN_VALUE
 
+/**
+ * Every session, as the database knows them, with their game servers as the gateway reports them: read every 10 s,
+ * and right away after the admin panel changed something ([refresh]). The sessions that aren't finished get a tracker
+ * connection of their own, all of them through one client.
+ */
 @Single
 class LiveSessions(
   private val config: TrackerConfig,
@@ -457,6 +499,8 @@ class LiveSessions(
   private val sessions = ConcurrentHashMap<String, LiveSession>()
   // The sessions' change pollers, for as long as the application runs
   private val streams = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+  // Every session's tracker connections, until the tracker stops
+  private val http = trackerClient()
 
   @Volatile
   private var scope: CoroutineScope? = null
@@ -484,17 +528,24 @@ class LiveSessions(
     for (gone in sessions.keys.filter { it !in ids }) {
       sessions.remove(gone)?.let { runCatching { it.disconnect() } }
     }
+    // Every session's time, setup and finish state, each read once for all of them (finished ones too: their roles
+    // and members change in the panel); a read that fails keeps what each session had
+    val timesNow = runCatching { times.all() }.onFailure { logger.warn("Could not read the session times: {}", it.message) }
+    val setupsNow = runCatching { setups.all() }.onFailure { logger.warn("Could not read the session setups: {}", it.message) }
+    val finishesNow = runCatching { finishes.all() }
+      .onFailure { logger.warn("Could not read the sessions' finish states: {}", it.message) }
     for (record in records.filter { it.id in ids }) {
       val known = sessions[record.id]
-      val live = known ?: LiveSession(record.id, record, config, archives, streams, events, snapshots).also {
+      val live = known ?: LiveSession(record.id, record, config, archives, streams, http, events, snapshots).also {
         // What was kept of it, for until its tracker is connected
         it.loadKept()
         sessions[record.id] = it
       }
       live.record = record
-      live.time = runCatching { times.of(record.seedName) }.getOrNull()
-      live.setup = runCatching { setups.of(record.seedName) }.getOrNull()
-      live.finish = runCatching { finishes.of(record.seedName) }.getOrNull()
+      live.time = timesNow.forSeed(record.seedName, live.time)
+      // The same setup as before stays the one kept (what is made of it, its people, is made once per setup)
+      setupsNow.forSeed(record.seedName, live.setup).let { if (it != live.setup) live.setup = it }
+      live.finish = finishesNow.forSeed(record.seedName, live.finish)
       if (servers != null) live.server = servers.sessions.firstOrNull { it.id == record.id }
       val scope = scope ?: continue
       if (live.finished) {
@@ -547,6 +598,6 @@ class LiveSessions(
   fun close() {
     streams.cancel()
     runBlocking { withTimeoutOrNull(10.seconds) { sessions.values.forEach { runCatching { it.keep() } } } }
-    sessions.values.forEach { runCatching { it.close() } }
+    runCatching { http.close() }
   }
 }

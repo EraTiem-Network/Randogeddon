@@ -5,15 +5,15 @@ import java.lang.invoke.MethodHandles
 import java.time.Instant
 import kotlin.random.asKotlinRandom
 import kotlin.random.Random
-import java.security.SecureRandom
 import net.eratiem.randogeddon.server.session.Placement
 import net.eratiem.randogeddon.database.CheatEntry
 import net.eratiem.randogeddon.database.CheatLogStore
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.server.session.Spoilers
-import net.eratiem.randogeddon.server.session.placements
 import net.eratiem.randogeddon.server.util.logger
+import net.eratiem.randogeddon.server.util.secureRandom
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.server.session.stepLocation
 import net.eratiem.randogeddon.shared.HintPick
@@ -36,9 +36,13 @@ private val NEEDS_VALUE = setOf(CheatAction.ITEM, CheatAction.LOCATION, CheatAct
 
 /**
  * A word for MultiServer's console, which splits most commands like a shell (shlex): in double quotes, `\` and `"`
- * escaped. `/release` and `/collect` take the rest of the line as it is instead, so the name goes there unquoted.
+ * escaped, without control characters (a line break would start another command). `/release` and `/collect` take
+ * the rest of the line as it is instead, so the name goes there unquoted ([consoleText]).
  */
-internal fun consoleWord(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+internal fun consoleWord(text: String): String = "\"" + consoleText(text).replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+/** [text] for the console as it is, without control characters. */
+internal fun consoleText(text: String): String = text.filterNot { it.isISOControl() }
 
 /** The server console command of a cheat. */
 internal fun cheatCommand(action: CheatAction, slot: String, value: String?): String {
@@ -47,8 +51,8 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
   return when (action) {
     CheatAction.ITEM -> "/send $target $what"
     CheatAction.LOCATION -> "/send_location $target $what"
-    CheatAction.RELEASE -> "/release $slot"
-    CheatAction.COLLECT -> "/collect $slot"
+    CheatAction.RELEASE -> "/release ${consoleText(slot)}"
+    CheatAction.COLLECT -> "/collect ${consoleText(slot)}"
     CheatAction.HINT -> "/hint $target $what"
     CheatAction.HINT_LOCATION -> "/hint_location $target $what"
     // [slot]: the world the key's location is in (Unlock without the placements is a /send, see runLock)
@@ -113,7 +117,7 @@ class Cheats(
   private val spoilers: Spoilers,
 ) {
   suspend fun view(id: String): CheatView {
-    val session = session(id).withPlaythrough()
+    val session = sessions.require(id).withPlaythrough()
     val tracker = session.tracker
     val running = runCatching { gameServer.state(id).status == GameServerStatus.RUNNING }.getOrDefault(false)
     return CheatView(
@@ -144,9 +148,9 @@ class Cheats(
    * location not checked yet (none without the spoiler log's placements).
    */
   private suspend fun keyPlacements(session: LiveSession, locked: List<Triple<String, String, String>>): Map<String, Placement> {
-    val text = runCatching { spoilers.of(session.id, session.seedName)?.text }.getOrNull() ?: return emptyMap()
+    val log = runCatching { spoilers.of(session.id, session.seedName) }.getOrNull() ?: return emptyMap()
     val open = session.tracker.read { openLocations() }
-    val placed = placements(text, open.keys + locked.map { it.third }.toSet())
+    val placed = log.placements(open.keys + locked.map { it.third }.toSet())
     return locked.mapNotNull { (slot, key, lockSlot) ->
       placed.firstOrNull { it.item == key && it.receiver == lockSlot && it.location in open[it.finder].orEmpty() }?.let { slot to it }
     }.toMap()
@@ -157,7 +161,7 @@ class Cheats(
    * lock says the server did it; without the placements the key given to the World Locks slot), or hinted. Logged and
    * shown under the locked slot, with where the key was.
    */
-  private suspend fun runLock(id: String, session: LiveSession, action: CheatAction, slot: String, admin: String, byRole: String) {
+  private suspend fun runLock(session: LiveSession, action: CheatAction, slot: String, admin: String, byRole: String) {
     val tracker = session.tracker
     val lock = tracker.read { lockedSlots() }.firstOrNull { it.first == slot }
       ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_SLOT, "slot" to slot)
@@ -169,10 +173,27 @@ class Cheats(
       action == CheatAction.UNLOCK -> "/send ${consoleWord(lockSlot)} ${consoleWord(key)}" to null
       else -> throw SessionProblem(HttpStatusCode.Conflict, Problem.NOT_A_LOCATION, "value" to key, "slot" to slot)
     }
-    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
-    logger.info("{} cheated in {} for {}: {}", admin, id, slot, command)
+    carryOut(session, command, action, slot, shown, admin, byRole, about = slot)
+  }
+
+  /**
+   * Runs [command] on [session]'s console and records it as [action] on [slot] with [shown] by [admin] ([byRole]): in
+   * the log (for the slot [about], if it is said), its cheat log and its live feed. Refused when no server runs.
+   */
+  private suspend fun carryOut(
+    session: LiveSession,
+    command: String,
+    action: CheatAction,
+    slot: String,
+    shown: String?,
+    admin: String,
+    byRole: String,
+    about: String? = null,
+  ) {
+    if (!gameServer.command(session.id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
+    logger.info("{} cheated in {}{}: {}", admin, session.id, about?.let { " for $it" }.orEmpty(), command)
     log.add(session.seedName, CheatEntry(Instant.now(), admin, action.name, slot, shown, byRole))
-    tracker.cheat(cheatText(admin, action, slot, shown, byRole), action, admin, byRole, slot, shown)
+    session.tracker.cheat(cheatText(admin, action, slot, shown, byRole), action, admin, byRole, slot, shown)
   }
 
   /**
@@ -180,8 +201,8 @@ class Cheats(
    * spoiler log's placements, if it has them; checking one of those sends the item to the slot).
    */
   suspend fun names(id: String, slot: String): CheatNames {
-    session(id).withPlaythrough()
-    val session = session(id)
+    sessions.require(id).withPlaythrough()
+    val session = sessions.require(id)
     val found = session.tracker.read { cheatNames(slot) } ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SLOT, "slot" to slot)
     val hinted = session.tracker.read { hintedLocations() }
     // A hinted location isn't hinted again
@@ -200,8 +221,8 @@ class Cheats(
 
   /** The seed's placements from its spoiler log; empty without them (or without a log). */
   private suspend fun placed(session: LiveSession): List<Placement> {
-    val text = runCatching { spoilers.of(session.id, session.seedName)?.text }.getOrNull() ?: return emptyList()
-    return placements(text, session.tracker.read { openLocations() }.keys)
+    val log = runCatching { spoilers.of(session.id, session.seedName) }.getOrNull() ?: return emptyList()
+    return log.placements(session.tracker.read { openLocations() }.keys)
   }
 
   /**
@@ -209,14 +230,13 @@ class Cheats(
    * session's cheat hints (support gives them).
    */
   suspend fun run(id: String, request: CheatRequest, admin: String, byRole: String = "administrator", freeHints: Boolean = false) {
-    val session = session(id).withPlaythrough()
+    val session = sessions.require(id).withPlaythrough()
     val tracker = session.tracker
-    val seed = session.seedName
     if (session.finished) throw SessionProblem(HttpStatusCode.Conflict, Problem.SESSION_FINISHED)
     if (request.action in HINTS && !freeHints && session.options?.cheatHints != true) {
       throw SessionProblem(HttpStatusCode.Forbidden, Problem.NO_CHEAT_HINTS)
     }
-    if (request.action in LOCK_CHEATS) return runLock(id, session, request.action, request.slot, admin, byRole)
+    if (request.action in LOCK_CHEATS) return runLock(session, request.action, request.slot, admin, byRole)
     val names = tracker.read { cheatNames(request.slot) } ?: throw SessionProblem(HttpStatusCode.BadRequest, Problem.NO_SLOT, "slot" to request.slot)
     if (request.slot !in tracker.read { cheatSlots() }) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.SLOT_ALL_CHECKED, "slot" to request.slot)
@@ -230,10 +250,7 @@ class Cheats(
         throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_A_LOCATION, "value" to (value ?: "–"), "slot" to from)
       }
       val command = cheatCommand(CheatAction.LOCATION, from, value)
-      if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
-      logger.info("{} cheated in {} for {}: {}", admin, id, request.slot, command)
-      log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, from, value, byRole))
-      tracker.cheat(cheatText(admin, request.action, from, value, byRole), request.action, admin, byRole, from, value)
+      carryOut(session, command, request.action, from, value, admin, byRole, about = request.slot)
       return
     }
     if (request.action in NEEDS_VALUE) {
@@ -249,11 +266,7 @@ class Cheats(
       throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_HINTED, "value" to value!!, "slot" to request.slot)
     }
     val command = if (request.action == CheatAction.HINT) itemHint(session, request.slot, value!!, request.pick) else cheatCommand(request.action, request.slot, value)
-    if (!gameServer.command(id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
-    logger.info("{} cheated in {}: {}", admin, id, command)
-    val shown = value.takeIf { request.action in NEEDS_VALUE }
-    log.add(seed, CheatEntry(Instant.now(), admin, request.action.name, request.slot, shown, byRole))
-    tracker.cheat(cheatText(admin, request.action, request.slot, shown, byRole), request.action, admin, byRole, request.slot, shown)
+    carryOut(session, command, request.action, request.slot, value.takeIf { request.action in NEEDS_VALUE }, admin, byRole)
   }
 
   /**
@@ -277,14 +290,11 @@ class Cheats(
   }
 
   /** Which copy a hint names. */
-  private val random: Random = SecureRandom().asKotlinRandom()
+  private val random: Random = secureRandom.asKotlinRandom()
 
   /** The cheats (hints among them) wait for the spoiler log's playthrough, completed after the seed. */
   private fun LiveSession.withPlaythrough(): LiveSession =
     takeIf { it.playthroughReady } ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
-
-  private fun session(id: String): LiveSession =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }
 
 /** Who ran a cheat as the log and the feed show it: an Administrator by name, the others with their role. */

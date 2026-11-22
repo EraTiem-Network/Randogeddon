@@ -2,9 +2,7 @@ package net.eratiem.randogeddon.server.account
 
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
-import java.security.SecureRandom
 import java.time.Instant
-import java.util.Base64
 import kotlin.time.toJavaDuration
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.User
@@ -23,8 +21,6 @@ const val BRIDGE_KEY_PREFIX = "rgb_"
 /** The first characters of a key's hash that name it in the list (enough to tell a person's keys apart). */
 private const val ID_LENGTH = 16
 
-private val random = SecureRandom()
-
 /** The most keys one account has at once. */
 const val MAX_KEYS = 10
 
@@ -40,7 +36,7 @@ class BridgeKeys(private val users: UserStore, private val logins: LoginSessionS
     if (logins.logins(user.id, LoginMethods.BRIDGE, now).size >= MAX_KEYS) {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.TOO_MANY_KEYS, "max" to MAX_KEYS)
     }
-    val key = BRIDGE_KEY_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(48).also(random::nextBytes))
+    val key = BRIDGE_KEY_PREFIX + newToken(48)
     val expires = now.plus(LOGIN_DURATION.toJavaDuration())
     logins.create(tokenHash(key), user.id, expires, now, LoginMethods.BRIDGE)
     logger.info("{} made a bridge key", user.name)

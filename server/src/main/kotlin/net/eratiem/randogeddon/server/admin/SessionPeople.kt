@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.server.admin
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import kotlin.uuid.Uuid
+import net.eratiem.randogeddon.database.RoleLeaving
 import net.eratiem.randogeddon.database.SessionRoleStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
@@ -11,6 +12,7 @@ import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.AddPersonRequest
 import net.eratiem.randogeddon.shared.Problem
@@ -28,7 +30,7 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
 /**
  * Who has which part in a session besides playing: its Session-Managers, support and watchers. Given and taken by its
  * Session-Managers (and Administrators); nobody gets a second part, and Administrators none (they reach every session
- * anyway). A session always keeps one Session-Manager, unless an Administrator takes the last one away.
+ * anyway). A session always keeps one Session-Manager, for Administrators too: someone else becomes one first.
  */
 @Single
 class SessionPeopleService(
@@ -39,7 +41,7 @@ class SessionPeopleService(
 ) {
   /** Everyone with a part in session [id]: players with their slots, and the others with their role. */
   fun list(id: String): SessionPeople {
-    val live = session(id)
+    val live = sessions.require(id)
     val setup = live.setup
     val slots = live.people()
     val players = setup?.members.orEmpty().map { (user, name) ->
@@ -55,15 +57,14 @@ class SessionPeopleService(
 
   /** Who can still be given a part in session [id]: accounts with a name, without one there, no Administrators. */
   suspend fun choices(id: String): List<UserRef> {
-    val live = session(id)
+    val live = sessions.require(id)
     val taken = taken(live)
-    return users.active().filter { !it.administrator && it.id !in taken }
-      .map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() }
+    return users.pickable { !it.administrator && it.id !in taken }
   }
 
   /** Gives someone a part in session [id]: an account, or a new address (invited). */
   suspend fun add(id: String, request: AddPersonRequest, by: User, language: Language): SessionPerson {
-    val live = session(id)
+    val live = sessions.require(id)
     if (request.role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, Problem.PLAYERS_WITH_SLOTS)
     val (userId, name) = when {
       request.userId != null -> {
@@ -92,7 +93,7 @@ class SessionPeopleService(
    * part has it changed. Leaving Session-Manager follows [remove]'s rules.
    */
   suspend fun change(id: String, userId: Uuid, role: SessionRole, by: User): SessionPerson {
-    val live = session(id)
+    val live = sessions.require(id)
     if (role == SessionRole.PLAYER) throw AccountProblem(HttpStatusCode.BadRequest, Problem.PLAYERS_WITH_SLOTS)
     val entry = live.setup?.roles?.get(userId)
     val name = entry?.name ?: live.setup?.members?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
@@ -100,8 +101,8 @@ class SessionPeopleService(
       entry == null -> roles.add(live.id, userId, role.code, name, by.name)
       entry.role == role.code -> return SessionPerson(userId.toString(), name, role)
       else -> {
-        if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
-        roles.change(live.id, userId, role.code)
+        if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(userId, by)
+        left(roles.leave(live.id, userId, role.code))
       }
     }
     sessions.refresh()
@@ -114,10 +115,10 @@ class SessionPeopleService(
    * someone else becomes one first. A Session-Manager doesn't take their own part (another one or an Administrator does).
    */
   suspend fun remove(id: String, userId: Uuid, by: User) {
-    val live = session(id)
+    val live = sessions.require(id)
     val entry = live.setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
-    if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(live, userId, by)
-    roles.remove(live.id, userId)
+    if (entry.role == SessionRole.MANAGER.code) mayLeaveManager(userId, by)
+    left(roles.leave(live.id, userId))
     sessions.refresh()
     logger.info("{} took {}'s part ({}) in {}", by.name, entry.name, entry.role, live.id)
   }
@@ -131,24 +132,35 @@ class SessionPeopleService(
 
   /** Takes a watcher away; players take only watchers, not support or Session-Managers. */
   suspend fun removeWatcher(id: String, userId: Uuid, by: User) {
-    val entry = session(id).setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NOT_WATCHING)
+    val entry = sessions.require(id).setup?.roles?.get(userId) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NOT_WATCHING)
     if (entry.role != SessionRole.WATCHER.code) throw AccountProblem(HttpStatusCode.Forbidden, Problem.NOT_A_WATCHER, "name" to entry.name)
     remove(id, userId, by)
   }
 
   /** Invites [email] for a session (a player, or a part in it): only if no account has that address. */
   suspend fun inviteNew(email: String, suggestedName: String?, by: User, language: Language): UserRef {
-    val account = accounts.invite(email, suggestedName, by.name, language, existing = Refusal(Problem.ADDRESS_HAS_ACCOUNT))
+    val account = accounts.invite(email, suggestedName, by, language, existing = Refusal(Problem.ADDRESS_HAS_ACCOUNT))
     return UserRef(account.id.toString(), account.name, account.email.takeIf { account.name == null })
   }
 
-  /** Whether [userId] may stop being a Session-Manager of [live]: not on their own, and never the last one. */
-  private fun mayLeaveManager(live: LiveSession, userId: Uuid, by: User) {
+  /**
+   * Whether [userId] may stop being a Session-Manager: not on their own. Never the last one: the store checks that
+   * as it takes the part ([left]).
+   */
+  private fun mayLeaveManager(userId: Uuid, by: User) {
     if (userId == by.id && !by.administrator) throw AccountProblem(HttpStatusCode.Conflict, Problem.OWN_MANAGER)
-    if (live.managers().size <= 1) throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
+  }
+
+  /** What taking or changing a part did, as the caller is told: refused for the last Session-Manager. */
+  private fun left(result: RoleLeaving) = when (result) {
+    RoleLeaving.DONE -> Unit
+    RoleLeaving.NONE -> throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_PART)
+    RoleLeaving.LAST_MANAGER -> throw AccountProblem(HttpStatusCode.Conflict, Problem.KEEP_MANAGER)
   }
 
   private fun taken(live: LiveSession): Set<Uuid> = live.setup?.members.orEmpty().keys + live.setup?.roles.orEmpty().keys
-
-  private fun session(id: String): LiveSession = sessions.get(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
 }
+
+/** The accounts with a name to pick people by (those [keep] keeps), by name. */
+internal suspend fun UserStore.pickable(keep: (User) -> Boolean = { true }): List<UserRef> =
+  active().filter(keep).map { UserRef(it.id.toString(), it.name) }.sortedBy { it.label.lowercase() }

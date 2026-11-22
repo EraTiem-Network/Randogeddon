@@ -27,6 +27,9 @@ docker compose up -d
 docker compose exec tracker randogeddon admins --create Admin     # then ws://localhost:38281/<session-id>
 ```
 
+The local overlay sets `ADMIN_PASSWORD_LOGIN=true` (an Administrator by password and two-factor, without single
+sign-on); a tracker run without it (`./gradlew :server:run`) needs it in its environment for one.
+
 A test seed without a ROM or an installed game: YAMLs like `name: Alice` / `game: APQuest` / `APQuest: {}`.
 
 ## Building and testing

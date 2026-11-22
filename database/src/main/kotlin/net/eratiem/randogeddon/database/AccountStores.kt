@@ -1,5 +1,6 @@
 package net.eratiem.randogeddon.database
 
+import java.sql.SQLException
 import java.time.Instant
 import kotlin.uuid.Uuid
 import org.jetbrains.exposed.v1.core.ResultRow
@@ -191,16 +192,37 @@ class UserStore(private val db: RandogeddonDatabase) {
    * Their name goes into the sessions they were put in meanwhile.
    */
   suspend fun signUp(id: Uuid, name: String, passwordHash: String, autoDelete: String, now: Instant = Instant.now()): Boolean =
+    db.query { signUpIn(id, name, passwordHash, autoDelete, now) }
+
+  /**
+   * The invited user [id] signs up with the invitation link [invitation] (its token's hash): the link is used and the
+   * account gets its name and password ([signUp]) in one transaction, so a sign-up that doesn't happen leaves the link
+   * as it was. [SignUp.NAME_TAKEN]: another account took [name] a moment before (the unique index decided).
+   */
+  suspend fun signUpInvited(
+    invitation: String,
+    id: Uuid,
+    name: String,
+    passwordHash: String,
+    autoDelete: String,
+    now: Instant = Instant.now(),
+  ): SignUp = try {
     db.query {
-      val updated = UsersTable.update({ (UsersTable.id eq id) and UsersTable.signedUpAt.isNull() and UsersTable.deletedAt.isNull() }) {
-        it[UsersTable.name] = name
-        it[UsersTable.passwordHash] = passwordHash
-        it[UsersTable.autoDelete] = autoDelete
-        it[signedUpAt] = now
+      val used = InvitationsTable.update({ (InvitationsTable.tokenHash eq invitation) and InvitationsTable.usedAt.isNull() }) {
+        it[InvitationsTable.usedAt] = now
+      } > 0
+      when {
+        !used -> SignUp.LINK_USED
+        // The link stays used: it is no good for an account that has signed up
+        signUpIn(id, name, passwordHash, autoDelete, now) -> SignUp.DONE
+        else -> SignUp.SIGNED_UP_ALREADY
       }
-      if (updated > 0) nameInRunningSessions(id, name)
-      updated > 0
     }
+  } catch (e: SQLException) {
+    // Only the name's unique index (the transaction was rolled back, the link with it); anything else goes on
+    val taken = generateSequence<Throwable>(e) { it.cause }.any { (it as? SQLException)?.sqlState == UNIQUE_VIOLATION }
+    if (taken) SignUp.NAME_TAKEN else throw e
+  }
 
   /** A new name: it shows in the sessions that aren't finished; finished ones keep the old one. */
   suspend fun rename(id: Uuid, name: String) = db.query {
@@ -323,9 +345,18 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   /** The signed-up accounts with an auto-deletion period, and what it counts from. */
-  suspend fun activity(): List<AccountActivity> = db.query {
-    val users = UsersTable.selectAll().where { signedUp() and (UsersTable.autoDelete neq "never") }.toList()
-    if (users.isEmpty()) return@query emptyList()
+  suspend fun activity(): List<AccountActivity> = db.query { activity(null) }
+
+  /** [id]'s [activity]; `null` if it isn't signed up or has no auto-deletion period. */
+  suspend fun activityOf(id: Uuid): AccountActivity? = db.query { activity(id).singleOrNull() }
+
+  /** [activity] of every account, or only of [id]. */
+  private fun activity(id: Uuid?): List<AccountActivity> {
+    val users = UsersTable.selectAll().where {
+      val periods = signedUp() and (UsersTable.autoDelete neq "never")
+      if (id == null) periods else periods and (UsersTable.id eq id)
+    }.toList()
+    if (users.isEmpty()) return emptyList()
     val ids = users.map { it[UsersTable.id] }
     val played = (SessionWorldsTable innerJoin SessionsTable).selectAll()
       .where { SessionWorldsTable.userId inList ids }
@@ -334,10 +365,21 @@ class UserStore(private val db: RandogeddonDatabase) {
         .where { SessionRolesTable.userId inList ids }
         .map { it[SessionRolesTable.userId] to it[SessionsTable.finishedAt] }
     val byUser = played.groupBy({ it.first }, { it.second })
-    users.map { row ->
+    return users.map { row ->
       val ends = byUser[row[UsersTable.id]].orEmpty()
       AccountActivity(account(row), ends.filterNotNull().maxOrNull(), ends.any { it == null }, row[UsersTable.deleteWarnedAt])
     }
+  }
+
+  private fun signUpIn(id: Uuid, name: String, passwordHash: String, autoDelete: String, now: Instant): Boolean {
+    val updated = UsersTable.update({ (UsersTable.id eq id) and UsersTable.signedUpAt.isNull() and UsersTable.deletedAt.isNull() }) {
+      it[UsersTable.name] = name
+      it[UsersTable.passwordHash] = passwordHash
+      it[UsersTable.autoDelete] = autoDelete
+      it[signedUpAt] = now
+    }
+    if (updated > 0) nameInRunningSessions(id, name)
+    return updated > 0
   }
 
   private fun nameInRunningSessions(id: Uuid, name: String) {
@@ -377,6 +419,19 @@ class UserStore(private val db: RandogeddonDatabase) {
     emailVerifiedByProvider = row[UsersTable.emailVerifiedByProvider],
   )
 }
+
+/** What a sign-up with an invitation link came to ([UserStore.signUpInvited]). */
+enum class SignUp {
+  DONE,
+  /** The link was used already (a second sign-up with it at the same time). */
+  LINK_USED,
+  SIGNED_UP_ALREADY,
+  /** Another account has the name. */
+  NAME_TAKEN,
+}
+
+/** PostgreSQL's SQLSTATE for a unique index that refused a row. */
+private const val UNIQUE_VIOLATION = "23505"
 
 /** A user's TOTP: the encrypted secret, since when it counts (`null`: being set up), the newest step used. */
 data class TotpState(val secret: String, val enabledAt: Instant?, val lastStep: Long?)
@@ -493,6 +548,11 @@ class InvitationStore(private val db: RandogeddonDatabase) {
     InvitationsTable.selectAll().where { InvitationsTable.userId eq userId }.singleOrNull()?.let(::invitation)
   }
 
+  /** Every user's current invitation, by the user. */
+  suspend fun all(): Map<Uuid, Invitation> = db.query {
+    InvitationsTable.selectAll().map(::invitation).associateBy { it.userId }
+  }
+
   /** Marks the link used; `false` if it was used already (a second sign-up with it at the same time). */
   suspend fun use(tokenHash: String, now: Instant = Instant.now()): Boolean = db.query {
     InvitationsTable.update({ (InvitationsTable.tokenHash eq tokenHash) and InvitationsTable.usedAt.isNull() }) {
@@ -571,6 +631,17 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
       val ofSession = (LoginSessionsTable.method eq method) and (LoginSessionsTable.providerSession eq providerSession)
       if (userId == null) ofSession
       else ofSession or ((LoginSessionsTable.method eq method) and (LoginSessionsTable.userId eq userId) and LoginSessionsTable.providerSession.isNull())
+    }
+  }
+
+  /**
+   * Ends [userId]'s logins made by one of [methods], all but [keep] (a token's hash; `null`: all of them). How many
+   * ended.
+   */
+  suspend fun deleteOthers(userId: Uuid, methods: Collection<String>, keep: String? = null): Int = db.query {
+    LoginSessionsTable.deleteWhere {
+      val theirs = (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method inList methods)
+      if (keep == null) theirs else theirs and (LoginSessionsTable.tokenHash neq keep)
     }
   }
 

@@ -3,6 +3,7 @@ package net.eratiem.randogeddon.server.account
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import io.ktor.http.HttpStatusCode
+import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.config.TrackerConfig
@@ -23,22 +24,20 @@ private val logger = logger(MethodHandles.lookup().lookupClass())
  * log in through the provider and its own two-factor check); everyone else can, with a code.
  */
 @Single
-class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
+class TwoFactor(
+  private val store: TwoFactorStore,
+  private val config: TrackerConfig,
+  private val logins: LoginSessionStore,
+) {
   private val box = SecretBox.from(config.totpKey, config.stateDir.resolve("totp.key"))
-  private val singleSignOn = config.oidc != null
-  private val provider = config.oidc?.name.orEmpty()
 
   /** What is stored of a recovery code: keyed with the server's key (41 bits are guessed at once from a plain hash). */
   private fun codeHash(code: String): String = box.mac("recovery codes", RecoveryCodes.normalize(code))
 
-  /** With single sign-on, an Administrator's second factor is the provider's. */
-  private fun requireOwn(user: User) {
-    if (user.administrator && singleSignOn) throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to provider)
-  }
-
   /** A new secret for [user]; it counts once [enable] confirms it. Refused while two-factor login is on. */
   suspend fun setUp(user: User): TotpSetup {
-    requireOwn(user)
+    // With single sign-on, an Administrator's second factor is the provider's
+    config.requireOwn(user)
     if (user.twoFactor) throw AccountProblem(HttpStatusCode.Conflict, Problem.TWO_FACTOR_ON)
     val secret = Totp.newSecret()
     store.setUp(user.id, box.seal(secret))
@@ -47,9 +46,13 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     return TotpSetup(Base32.encode(secret), uri, code.svg, code.rows)
   }
 
-  /** The first code from the new secret turns it on; the recovery codes, shown once. */
-  suspend fun enable(user: User, code: String, now: Instant = Instant.now()): List<String> {
-    requireOwn(user)
+  /**
+   * The first code from the new secret turns it on; the recovery codes, shown once. An Administrator's other logins end
+   * (all but [keep], the token of the login that turned it on): a login that never passed a code doesn't become one
+   * that may act as an Administrator by it.
+   */
+  suspend fun enable(user: User, code: String, now: Instant = Instant.now(), keep: String? = null): List<String> {
+    config.requireOwn(user)
     val state = store.of(user.id)
     if (state == null || state.enabledAt != null) {
       throw AccountProblem(HttpStatusCode.Conflict, if (state == null) Problem.SET_UP_FIRST else Problem.TWO_FACTOR_ON)
@@ -60,6 +63,10 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
     store.enable(user.id, codes.map(::codeHash), now)
     store.useStep(user.id, step)
     logger.info("{} turned two-factor login on", user.name)
+    if (user.administrator) {
+      val ended = logins.deleteOthers(user.id, LoginMethods.BROWSER, keep?.let(::tokenHash))
+      if (ended > 0) logger.info("{}'s other logins ended ({})", user.name, ended)
+    }
     return codes
   }
 
@@ -81,7 +88,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** Off, after a code (not for Administrators: without single sign-on they need it, with it it's the provider's). */
   suspend fun disable(user: User, code: String) {
-    requireOwn(user)
+    config.requireOwn(user)
     if (user.administrator) throw AccountProblem(HttpStatusCode.Forbidden, Problem.ADMINISTRATORS_NEED_TWO_FACTOR)
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     store.disable(user.id)
@@ -90,7 +97,7 @@ class TwoFactor(private val store: TwoFactorStore, config: TrackerConfig) {
 
   /** New recovery codes after a code; the old ones stop working. */
   suspend fun newCodes(user: User, code: String): List<String> {
-    requireOwn(user)
+    config.requireOwn(user)
     if (!check(user, code)) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_CODE)
     val codes = RecoveryCodes.generate()
     store.replaceCodes(user.id, codes.map(::codeHash))

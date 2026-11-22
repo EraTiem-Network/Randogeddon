@@ -95,7 +95,8 @@ class Player(val slot: Int, val name: String, val game: String) {
     openSession?.let { sessions[sessions.lastIndex] = it.copy(end = now, cut = cut) }
   }
 
-  val total: Int get() = (checked + missing).size
+  /** Its locations, checked or not (a location in both counts once). */
+  val total: Int get() = checked.size + missing.count { it !in checked }
 }
 
 /** `NetworkItem` arrives as `{"item", "location", "player", "flags", "class"}` or as a list. */

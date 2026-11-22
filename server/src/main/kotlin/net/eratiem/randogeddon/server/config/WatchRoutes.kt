@@ -13,8 +13,6 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
-import kotlin.uuid.Uuid
-import net.eratiem.randogeddon.server.account.AccountProblem
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.admin.SessionPeopleService
 import net.eratiem.randogeddon.server.admin.ShareLinks
@@ -40,16 +38,16 @@ fun Route.supportRoutes(support: Support, spoilerRuns: SpoilerRuns, logins: Logi
       this.logins = logins
       roles = setOf(SessionRole.SUPPORT)
     }
-    get { gatewayCall { call.respond(support.view(id())) } }
-    // How its spoiler log is completed, as Session-Managers see it
-    spoilerRunRoutes(spoilerRuns)
+    get { apiCall { call.respond(support.view(id())) } }
+    // How its spoiler log is completed, as Session-Managers see it (started again only by them)
+    spoilerRunRoutes(spoilerRuns, retry = false)
     get("/names") {
       val slot = call.request.queryParameters["slot"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-      gatewayCall { call.respond(support.names(id(), slot)) }
+      apiCall { call.respond(support.names(id(), slot)) }
     }
     post {
       val request = call.receive<CheatRequest>()
-      gatewayCall {
+      apiCall {
         support.run(id(), request, call.loggedIn.user.name)
         call.respond(HttpStatusCode.NoContent)
       }
@@ -71,26 +69,24 @@ fun Route.watcherRoutes(people: SessionPeopleService, links: ShareLinks, logins:
   route("/sessions/{id}") {
     route("/watchers") {
       playersAndManagers()
-      get { accountCall { call.respond(people.watchers(id())) } }
-      get("/choices") { accountCall { call.respond(people.choices(id())) } }
+      get { apiCall { call.respond(people.watchers(id())) } }
+      get("/choices") { apiCall { call.respond(people.choices(id())) } }
       post {
-        accountCall { call.respond(HttpStatusCode.Created, people.addWatcher(id(), call.receive<WatcherRequest>(), call.loggedIn.user, call.language())) }
+        apiCall { call.respond(HttpStatusCode.Created, people.addWatcher(id(), call.receive<WatcherRequest>(), call.loggedIn.user, call.language())) }
       }
       delete("/{user}") {
-        accountCall {
-          val user = call.parameters["user"]?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-            ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
-          people.removeWatcher(id(), user, call.loggedIn.user)
+        apiCall {
+          people.removeWatcher(id(), userId(), call.loggedIn.user)
           call.respond(HttpStatusCode.NoContent)
         }
       }
     }
     route("/share") {
       playersAndManagers()
-      get { accountCall { call.respond(links.view(id())) } }
-      post { accountCall { call.respond(HttpStatusCode.Created, links.create(id(), call.loggedIn.user.name)) } }
+      get { apiCall { call.respond(links.view(id())) } }
+      post { apiCall { call.respond(HttpStatusCode.Created, links.create(id(), call.loggedIn.user.name)) } }
       delete {
-        accountCall {
+        apiCall {
           links.remove(id(), call.loggedIn.user.name)
           call.respond(HttpStatusCode.NoContent)
         }
@@ -101,8 +97,8 @@ fun Route.watcherRoutes(people: SessionPeopleService, links: ShareLinks, logins:
 
 /**
  * `/api/watch/{token}/...`, without a login (rate-limited): a session by its share link, read-only: its summary (once
- * and as a live stream) and one slot's details. No passwords, no spoiler, no connection, no accounts. A link that is
- * off (or replaced) answers 404.
+ * and as a live stream, as many at once per address as an account has) and one slot's details. No passwords, no
+ * spoiler, no connection, no accounts. A link that is off (or replaced) answers 404.
  */
 fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
   rateLimit(WATCH_RATE_LIMIT) {
@@ -113,7 +109,9 @@ fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives) {
         val token = call.parameters["token"].orEmpty()
         val live = links.sessionOf(token) ?: return@sse
         // Ends once the link is switched off or replaced
-        follow(live, stillAllowed = { links.sessionOf(token)?.id == live.id }) { live.publicJson() }
+        OpenStreams.counted("watch:" + call.clientKey) {
+          follow(live, stillAllowed = { links.sessionOf(token)?.id == live.id }) { live.publicJson() }
+        }
       }
     }
   }

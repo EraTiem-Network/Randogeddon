@@ -6,7 +6,6 @@ import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
-import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -15,8 +14,8 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
-
-private val random = SecureRandom()
+import net.eratiem.randogeddon.server.util.hex
+import net.eratiem.randogeddon.server.util.secureRandom
 
 /**
  * Time-based one-time passwords (RFC 6238, the way every authenticator app does them): HMAC-SHA1 over the number of
@@ -27,7 +26,7 @@ object Totp {
   const val STEP_SECONDS = 30L
 
   /** A new secret: 20 random bytes (160 bits, as RFC 4226 recommends). */
-  fun newSecret(): ByteArray = ByteArray(20).also(random::nextBytes)
+  fun newSecret(): ByteArray = ByteArray(20).also(secureRandom::nextBytes)
 
   fun step(epochMillis: Long): Long = epochMillis / 1000 / STEP_SECONDS
 
@@ -105,7 +104,7 @@ object RecoveryCodes {
   private const val ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 
   fun generate(): List<String> = List(COUNT) {
-    val chars = List(8) { ALPHABET[random.nextInt(ALPHABET.length)] }.joinToString("")
+    val chars = List(8) { ALPHABET[secureRandom.nextInt(ALPHABET.length)] }.joinToString("")
     "${chars.take(4)}-${chars.drop(4)}"
   }
 
@@ -128,7 +127,7 @@ class SecretBox(private val key: ByteArray) {
   }
 
   fun seal(plain: ByteArray): String {
-    val iv = ByteArray(12).also(random::nextBytes)
+    val iv = ByteArray(12).also(secureRandom::nextBytes)
     val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv)) }
     return Base64.getEncoder().encodeToString(iv + cipher.doFinal(plain))
   }
@@ -140,7 +139,7 @@ class SecretBox(private val key: ByteArray) {
   fun mac(purpose: String, text: String): String {
     fun hmac(key: ByteArray, data: String) = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }
       .doFinal(data.toByteArray())
-    return hmac(hmac(key, purpose), text).joinToString("") { "%02x".format(it) }
+    return hmac(hmac(key, purpose), text).hex()
   }
 
   fun open(sealed: String): ByteArray {
@@ -156,7 +155,7 @@ class SecretBox(private val key: ByteArray) {
       if (configured.isNotBlank()) return SecretBox(Base64.getDecoder().decode(configured.trim()))
       if (!file.exists()) {
         Files.createDirectories(file.parent)
-        file.writeText(Base64.getEncoder().encodeToString(ByteArray(32).also(random::nextBytes)))
+        file.writeText(Base64.getEncoder().encodeToString(ByteArray(32).also(secureRandom::nextBytes)))
         runCatching { Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------")) }
       }
       return SecretBox(Base64.getDecoder().decode(file.readText().trim()))

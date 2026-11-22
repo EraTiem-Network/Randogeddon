@@ -69,6 +69,24 @@ class SingleSignOnTest {
   }
 
   @Test
+  fun `without single sign-on an Administrator's password login acts as one only with ADMIN_PASSWORD_LOGIN`() {
+    val withCode = ada.copy(twoFactor = true, loginMethod = LoginMethods.PASSWORD)
+    // The setting on (local testing, the demo): with two-factor login
+    assertNull(adminLoginProblem(withCode, provider = null, passwordLogin = true))
+    assertEquals(Refusal(Problem.NEEDS_TWO_FACTOR), adminLoginProblem(ada, provider = null, passwordLogin = true))
+    assertEquals(Refusal(Problem.ONLY_ADMINISTRATORS), adminLoginProblem(bob, provider = null, passwordLogin = true))
+    // Off: no login at all, a CLI link neither
+    for (user in listOf(withCode, ada, withCode.copy(loginMethod = LoginMethods.LINK), bob)) {
+      assertEquals(Refusal(Problem.ONLY_ADMINISTRATORS), adminLoginProblem(user, provider = null, passwordLogin = false))
+    }
+    // With single sign-on the setting doesn't count: only a login through the provider
+    for (setting in listOf(true, false)) {
+      assertNull(adminLoginProblem(ada.copy(loginMethod = LoginMethods.OIDC), "Authentik", setting))
+      assertEquals(Refusal.of(Problem.ADMINISTRATOR_USE_SSO, "provider" to "Authentik"), adminLoginProblem(withCode, "Authentik", setting))
+    }
+  }
+
+  @Test
   fun `the provider's webhook needs its bearer token, and none works without one`() {
     assertTrue(bearerMatches("s3cret", "Bearer s3cret"))
     assertFalse(bearerMatches("s3cret", "Bearer s3cre"))

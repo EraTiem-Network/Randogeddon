@@ -46,7 +46,7 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
   suspend fun visibleTo(user: User): List<SessionEntry> = sessions.all().mapNotNull { live ->
     val role = live.roleOf(user)
     if (role == null && !user.administrator) null
-    else entry(live, live.personOf(user), admin = user.administrator || role == SessionRole.MANAGER, role = role)
+    else entry(live, live.personOf(user), admin = live.managedBy(user), role = role)
   }
 
   /** [live] as the lists show it; [person]: who asks, in it; [admin]: with its game server; [role]: theirs in it. */

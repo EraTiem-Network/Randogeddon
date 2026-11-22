@@ -1,11 +1,15 @@
 package net.eratiem.randogeddon.server.config
 
 import io.ktor.http.CacheControl
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.http.content.CompressedFileType
 import io.ktor.server.http.content.preCompressed
 import io.ktor.server.http.content.staticFiles
+import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -85,7 +89,7 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     route("/api") {
       install(RequireLogin) { this.logins = logins }
       meRoute(list, sessionLimit)
-      accountRoutes(accounts, twoFactor, bridgeKeys, trackerConfig.cookieSecure)
+      accountRoutes(accounts, twoFactor, bridgeKeys, attempts, trackerConfig.cookieSecure)
       sessionRoutes(trackerConfig, logins, sessions, list, archives, slotPasswords, spoilers, downloads, spoilerSearches)
       newSessionRoutes(sessionAdmin, people)
       peopleRoutes(people, logins)
@@ -111,6 +115,12 @@ fun Application.routings(trackerConfig: TrackerConfig) {
     webApp(trackerConfig.webDir.toFile())
   }
 }
+
+/** The answer is a download, saved as [name]. */
+internal fun ApplicationCall.attachment(name: String) = response.header(
+  HttpHeaders.ContentDisposition,
+  ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, name).toString(),
+)
 
 /**
  * The web app from [dir]. The .wasm files are named after their content hash and never change; everything else is

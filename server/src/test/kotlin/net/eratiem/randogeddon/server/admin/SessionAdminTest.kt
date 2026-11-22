@@ -7,7 +7,10 @@ import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.Suspect
 import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
+import net.eratiem.randogeddon.database.SessionSetup
+import java.time.Instant
 import kotlin.random.Random
+import kotlin.uuid.Uuid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -81,6 +84,40 @@ class SessionAdminTest {
     val stopped = failure(GenerateResult(log = listOf("Current fill step (Progression) at 4000/5086 items placed."), stoppedAfterMinutes = 60))
     assertEquals(Problem.GENERATION_TOO_LONG, stopped.problem)
     assertTrue(stopped.english().startsWith("Generating took longer than 60 minutes and was stopped"), stopped.english())
+  }
+
+  private val ann = Uuid.random()
+  private val ben = Uuid.random()
+
+  /** Ann and Ben play together, Ben alone; Team is open to all, Hollow hosted elsewhere, Dig hosted here. */
+  private val setup = SessionSetup(
+    "seed", "0.6.8", "{}", Instant.EPOCH,
+    worlds = mapOf("Pair" to listOf("Ann", "Ben"), "Ben-HK" to listOf("Ben"), "Hollow" to listOf("Ben"), "Dig" to listOf("Ben")),
+    members = mapOf(ann to "Ann", ben to "Ben"),
+    hosted = setOf("Hollow", "Dig", "Open-Hollow"),
+    direct = setOf("Dig"),
+    open = setOf("Team", "Open-Hollow"),
+  )
+
+  @Test
+  fun `whoever is left without a slot loses the open slots' passwords too`() {
+    // Ann loses her last slot: Team gets a new password, the hosted open slot whose server runs elsewhere has none
+    assertEquals(setOf("Team"), openSlotsToRenew(setup, "Pair", setOf("Ben"), open = false, hosted = false, direct = false))
+    // Ben still plays others; nobody loses anything when a slot gets more players
+    assertEquals(emptySet(), openSlotsToRenew(setup, "Ben-HK", emptySet(), open = false, hosted = false, direct = false))
+    assertEquals(emptySet(), openSlotsToRenew(setup, "Ben-HK", setOf("Ben", "Ann"), open = false, hosted = false, direct = false))
+    // The slot becomes open to all, and Ann has no other one: it is among the open ones renewed
+    assertEquals(setOf("Team", "Pair"), openSlotsToRenew(setup, "Pair", emptySet(), open = true, hosted = false, direct = false))
+  }
+
+  @Test
+  fun `an account kept out or deleted renews only the slots nobody else plays`() {
+    // Ben's own (Dig's server runs here, its tunnel comes from the password); Pair is Ann's too, Hollow's server elsewhere
+    assertEquals(setOf("Ben-HK", "Dig"), slotsOnlyOf(setup, ben))
+    assertEquals(emptySet(), slotsOnlyOf(setup, ann))
+    assertEquals(emptySet(), slotsOnlyOf(setup, Uuid.random()))
+    // With Ann's account gone, the open slot is Ben's alone
+    assertEquals(setOf("Ben-HK", "Dig", "Team"), slotsOnlyOf(setup.copy(deleted = setOf(ann)), ben))
   }
 
   @Test

@@ -22,7 +22,9 @@ import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.SessionSetupStore
+import net.eratiem.randogeddon.database.SignUp
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.config.OidcConfig
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSessions
 import net.eratiem.randogeddon.server.util.logger
@@ -58,6 +60,16 @@ class AccountProblem(val status: HttpStatusCode, val refusal: Refusal) : Excepti
 }
 
 /**
+ * What an account that can't play any more (kept out, or deleted) leaves in the running sessions: the slots only it
+ * plays get new passwords and their connections end, so its game clients can't connect with what it was given. The
+ * session side does it (`admin/SlotRenewals.kt`); the accounts don't depend on that.
+ */
+interface SlotRenewal {
+  /** Never throws for a session it can't do it in (that is logged). */
+  suspend fun renewOnlyTheirs(account: Uuid)
+}
+
+/**
  * The accounts as people get them: an admin invites them by e-mail (they get a link), they choose their name,
  * password and deletion period on the sign-up page. Until then an admin can send the link again, or to another
  * address.
@@ -74,14 +86,18 @@ class AccountService(
   private val config: TrackerConfig,
   private val mailLimits: MailLimits,
   private val setups: SessionSetupStore,
+  private val slots: SlotRenewal,
 ) {
   /**
-   * Invites [email]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns. An address
-   * with an account is refused: with who has it (for Administrators), or with [existing] (for everyone else, who
-   * picks people by name and doesn't learn their addresses).
+   * Invites [email] by [by]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns.
+   * An address with an account is refused: with who has it (for Administrators), or with [existing] (for everyone
+   * else, who picks people by name and doesn't learn their addresses; so each of their tries counts towards their
+   * mails, a refused one too, and nobody tries address after address). If their mail can't be sent, the invited
+   * account goes again, so they can try once more; an Administrator's stays, for *Send again*.
    */
-  suspend fun invite(email: String, suggestedName: String?, by: String, language: Language, existing: Refusal? = null): Account {
+  suspend fun invite(email: String, suggestedName: String?, by: User, language: Language, existing: Refusal? = null): Account {
     val address = address(email)
+    if (existing != null) mailLimits.count(by.id)
     users.accountByEmail(address)?.let {
       if (existing != null) throw AccountProblem(HttpStatusCode.Conflict, existing)
       throw AccountProblem(
@@ -92,10 +108,19 @@ class AccountService(
     }
     val suggested = suggestedName?.trim()?.takeIf { it.isNotEmpty() }
     suggested?.let { name -> nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) } }
-    mailLimits.count(by)
+    if (existing == null) mailLimits.count(by.id)
     val account = users.invite(address)
-    logger.info("{} invites {}", by, address)
-    sendInvitation(account.id, address, suggested, language)
+    logger.info("{} invites someone (account {})", by.name, account.id)
+    try {
+      sendInvitation(account.id, address, suggested, language)
+    } catch (e: AccountProblem) {
+      if (existing != null) {
+        runCatching { users.delete(account.id) }
+          .onSuccess { logger.info("The invitation of account {} wasn't sent: the account is gone again", account.id) }
+          .onFailure { logger.warn("Could not take the invitation of account {} back: {}", account.id, it.message) }
+      }
+      throw e
+    }
     return account
   }
 
@@ -143,20 +168,23 @@ class AccountService(
     val hash = tokenHash(request.token)
     val invitation = invitations.find(hash) ?: throw AccountProblem(HttpStatusCode.Gone, Problem.LINK_DOESNT_WORK)
     val passwordHash = withContext(Dispatchers.Default) { PasswordHasher.hash(request.password) }
-    if (!invitations.use(hash, now)) throw AccountProblem(HttpStatusCode.Gone, Problem.INVITATION_USED)
-    // The unique index decides if two people take the same name at once
-    val signedUp = runCatching { users.signUp(invitation.userId, name, passwordHash, request.autoDelete.code, now) }
-      .getOrElse { throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to name) }
-    if (!signedUp) throw AccountProblem(HttpStatusCode.Gone, Problem.SIGNED_UP_ALREADY)
+    // The link is used with the sign-up or not at all: the unique index decides if two people take the same name at
+    // once, and the one too late keeps their link for another name
+    when (users.signUpInvited(hash, invitation.userId, name, passwordHash, request.autoDelete.code, now)) {
+      SignUp.DONE -> Unit
+      SignUp.LINK_USED -> throw AccountProblem(HttpStatusCode.Gone, Problem.INVITATION_USED)
+      SignUp.SIGNED_UP_ALREADY -> throw AccountProblem(HttpStatusCode.Gone, Problem.SIGNED_UP_ALREADY)
+      SignUp.NAME_TAKEN -> throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to name)
+    }
     sessions.refresh()
-    logger.info("{} signed up as {}", invitation.email, name)
+    logger.info("Account {} signed up as {}", invitation.userId, name)
     val user = users.findActive(invitation.userId) ?: throw AccountProblem(HttpStatusCode.Gone, Problem.ACCOUNT_GONE)
     return logins.start(user)
   }
 
   /** [user]'s own account, for the settings page. */
   suspend fun view(user: User, now: Instant = Instant.now()): AccountView {
-    val activity = users.activity().firstOrNull { it.user.id == user.id }
+    val activity = users.activityOf(user.id)
     return AccountView(
       id = user.id.toString(),
       name = user.name,
@@ -167,8 +195,8 @@ class AccountService(
       administrator = user.administrator,
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
-      singleSignOn = config.oidc?.takeIf { user.administrator }?.name,
-      singleSignOnAccount = config.oidc?.takeIf { user.administrator }?.account,
+      singleSignOn = config.providerOf(user)?.name,
+      singleSignOnAccount = config.providerOf(user)?.account,
       language = Language.of(user.language),
       theme = Theme.of(user.theme),
       themeMode = ThemeMode.of(user.themeMode),
@@ -177,17 +205,11 @@ class AccountService(
     )
   }
 
-  /** With single sign-on, an Administrator's name, password, address and deletion are the provider's to change. */
-  private fun requireOwn(user: User) {
-    config.oidc?.takeIf { user.administrator }?.let {
-      throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to it.name)
-    }
-  }
-
   /**
    * [user]'s account as the provider has it ([wantedName], its [email]): at each login through it and when it
    * says a person changed. The name made unique (another account may have it), the address only if no other account
-   * has it; a two-factor login of before goes (the provider asks for the second factor). [emailVerified]: whether
+   * has it; an Administrator's two-factor login of before goes (the provider asks for the second factor; someone who
+   * isn't one any more logs in with their password and keeps theirs). [emailVerified]: whether
    * the provider calls the address verified, kept for the Administrators to see (`null`: it didn't say, as its
    * webhook doesn't).
    */
@@ -205,11 +227,11 @@ class AccountService(
     if (address != null && !theirs && users.accountByEmail(address) == null) {
       users.setEmail(user.id, address)
       theirs = true
-      logger.info("{}'s address is {} now ({})", user.name, address, config.oidc?.name)
+      logger.info("{} has a new address ({})", user.name, config.oidc?.name)
     }
     // Only about the address the account has from the provider
     if (theirs && emailVerified != null) users.setEmailVerifiedByProvider(user.id, emailVerified)
-    if (user.twoFactor) {
+    if (user.twoFactor && user.administrator) {
       twoFactor.reset(user.id)
       logger.info("{}'s two-factor login of before is off: {} asks for the second factor", user.name, config.oidc?.name)
     }
@@ -217,7 +239,7 @@ class AccountService(
 
   /** A new name: unique among active accounts; the running sessions show it, the finished ones keep the old one. */
   suspend fun rename(user: User, name: String) {
-    requireOwn(user)
+    config.requireOwn(user)
     val clean = name.trim()
     nameProblem(clean)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (clean == user.name) return
@@ -232,7 +254,7 @@ class AccountService(
 
   /** A new password after the current one; every login ends, this one gets a new token (for the cookie). */
   suspend fun changePassword(user: User, current: String, password: String): String {
-    requireOwn(user)
+    config.requireOwn(user)
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(current, user.passwordHash) }
     if (!valid) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_PASSWORD)
     PasswordRules.problem(password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
@@ -241,22 +263,25 @@ class AccountService(
     return logins.start(user)
   }
 
-  /** A new e-mail address: a confirmation link goes there; until it's opened, the old address stays. */
+  /**
+   * A new e-mail address: a confirmation link goes there; until it's opened, the old address stays. Each try counts
+   * towards [user]'s mails, one refused for an address of another account too (nobody tries address after address).
+   */
   suspend fun requestEmail(user: User, email: String, language: Language) {
-    requireOwn(user)
+    config.requireOwn(user)
     val address = address(email)
     if (address.equals(user.email, ignoreCase = true)) {
       throw AccountProblem(HttpStatusCode.BadRequest, Problem.SAME_ADDRESS)
     }
+    mailLimits.count(user.id)
     users.accountByEmail(address)?.let { throw AccountProblem(HttpStatusCode.Conflict, Problem.ADDRESS_OTHER_ACCOUNT, "address" to address) }
-    mailLimits.count(user.name)
     val token = newToken()
     emailChanges.create(tokenHash(token), user.id, address, Instant.now().plus(EMAIL_CONFIRMATION_VALID.toJavaDuration()))
     val link = "${config.publicUrl}/#/email/$token"
     try {
       mailer.send(Mails.emailConfirmation(address, user.name, link, EMAIL_CONFIRMATION_VALID.inWholeDays.toInt(), texts(language).mails))
     } catch (e: IOException) {
-      logger.warn("Could not send the address confirmation to {}: {}", address, e.message)
+      logger.warn("Could not send the address confirmation of {}: {}", user.name, e.message)
       throw AccountProblem(HttpStatusCode.BadGateway, Problem.MAIL_FAILED, "address" to address, "reason" to e.message)
     }
     // The address so far is told (changing it asks for no password): whoever it wasn't can still act
@@ -264,7 +289,7 @@ class AccountService(
       try {
         mailer.send(Mails.addressChange(old, user.name, address, texts(language).mails))
       } catch (e: IOException) {
-        logger.warn("Could not tell {} about the new address asked for: {}", old, e.message)
+        logger.warn("Could not tell {} at their address so far about the new one asked for: {}", user.name, e.message)
       }
     }
   }
@@ -278,7 +303,7 @@ class AccountService(
     }
     users.account(change.userId) ?: throw AccountProblem(HttpStatusCode.Gone, Problem.ACCOUNT_GONE)
     users.setEmail(change.userId, change.email)
-    logger.info("An account's address is {} now", change.email)
+    logger.info("Account {} confirmed its new address", change.userId)
     return change.email
   }
 
@@ -295,7 +320,7 @@ class AccountService(
   }
 
   suspend fun setAutoDelete(user: User, autoDelete: AutoDelete) {
-    config.oidc?.takeIf { user.administrator }?.let {
+    config.providerOf(user)?.let {
       throw AccountProblem(HttpStatusCode.Conflict, Problem.DELETED_WITH_SSO, "provider" to it.name)
     }
     users.setAutoDelete(user.id, autoDelete.code)
@@ -303,39 +328,63 @@ class AccountService(
 
   /** Every account for the admin panel, invited ones too. */
   suspend fun list(now: Instant = Instant.now()): List<AdminUser> {
-    val members = sessions.all().flatMap { s -> s.setup?.members?.keys.orEmpty().map { it to s.id } }
-      .groupBy({ it.first }, { it.second })
     val due = users.activity().associate { it.user.id to deletesAt(it, now) }
+    val expires = invitations.all().mapValues { it.value.expiresAt }
     val created = setups.runningCreated()
-    return users.accounts().map { a ->
-      AdminUser(
-        id = a.id.toString(),
-        name = a.name,
-        email = a.email,
-        state = if (a.signedUpAt == null) AccountState.INVITED else AccountState.ACTIVE,
-        administrator = a.administrator,
-        sessions = members[a.id].orEmpty().sorted(),
-        createdAt = a.createdAt.toEpochMilli(),
-        invitationExpiresAt = if (a.signedUpAt == null) invitations.of(a.id)?.expiresAt?.toEpochMilli() else null,
-        autoDelete = AutoDelete.of(a.autoDelete),
-        deletesAt = due[a.id]?.toEpochMilli(),
-        password = a.hasPassword,
-        singleSignOn = a.linked,
-        provider = config.oidc?.name?.takeIf { a.linked },
-        emailVerified = a.emailVerifiedByProvider.takeIf { a.linked && a.email != null },
-        twoFactor = a.twoFactor,
-        language = a.language,
-        block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
-        sessionLimit = a.sessionLimit,
-        sessionsRunning = created[a.id] ?: 0,
-      )
-    }.sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
+    val members = sessionsOf()
+    return users.accounts().map { row(it, members, due[it.id], expires[it.id], created, now) }
+      .sortedWith(compareBy({ it.state != AccountState.ACTIVE }, { (it.name ?: it.email.orEmpty()).lowercase() }))
   }
+
+  /** The account [id] as [list] has it (an invitation just made); [AccountProblem] (404) if there is none. */
+  suspend fun listed(id: Uuid, now: Instant = Instant.now()): AdminUser {
+    val account = users.account(id) ?: throw AccountProblem(HttpStatusCode.NotFound, Problem.NO_ACCOUNT)
+    val due = users.activityOf(id)?.let { deletesAt(it, now) }
+    return row(account, sessionsOf(), due, invitations.of(id)?.expiresAt, mapOf(id to setups.runningCreatedBy(id)), now)
+  }
+
+  /** The sessions each account is in, by its ID. */
+  private fun sessionsOf(): Map<Uuid, List<String>> =
+    sessions.all().flatMap { s -> s.setup?.members?.keys.orEmpty().map { it to s.id } }.groupBy({ it.first }, { it.second })
+
+  /**
+   * [a]'s row in [list]: with the sessions it is in ([members]), when it is deleted ([deletesAt]) and its invitation
+   * expires, and how many running sessions of its own it has ([created]).
+   */
+  private fun row(
+    a: Account,
+    members: Map<Uuid, List<String>>,
+    deletesAt: Instant?,
+    invitationExpires: Instant?,
+    created: Map<Uuid, Int>,
+    now: Instant,
+  ) = AdminUser(
+    id = a.id.toString(),
+    name = a.name,
+    email = a.email,
+    state = if (a.signedUpAt == null) AccountState.INVITED else AccountState.ACTIVE,
+    administrator = a.administrator,
+    sessions = members[a.id].orEmpty().sorted(),
+    createdAt = a.createdAt.toEpochMilli(),
+    invitationExpiresAt = if (a.signedUpAt == null) invitationExpires?.toEpochMilli() else null,
+    autoDelete = AutoDelete.of(a.autoDelete),
+    deletesAt = deletesAt?.toEpochMilli(),
+    password = a.hasPassword,
+    singleSignOn = a.linked,
+    provider = config.oidc?.name?.takeIf { a.linked },
+    emailVerified = a.emailVerifiedByProvider.takeIf { a.linked && a.email != null },
+    twoFactor = a.twoFactor,
+    language = a.language,
+    block = a.block?.takeIf { it.holds(now) }?.let { AccountBlock(it.at.toEpochMilli(), it.until?.toEpochMilli(), it.reason, it.by) },
+    sessionLimit = a.sessionLimit,
+    sessionsRunning = created[a.id] ?: 0,
+  )
 
   /**
    * Keeps the account [id] out, by the Administrator [by]: timed out for [request]'s time, or suspended until it is
-   * taken back. Its logins end at once, the next try to log in is told why, and a mail tells them too. Never an
-   * Administrator's account (they are managed where they log in), so never one's own; not an invitation.
+   * taken back. Its logins end at once (and the slots only it plays get new passwords, [SlotRenewal]), the next try
+   * to log in is told why, and a mail tells them too. Never an Administrator's account (they are managed where they
+   * log in), so never one's own; not an invitation.
    */
   suspend fun keepOut(id: Uuid, request: AccountActionRequest, by: User, now: Instant = Instant.now()) {
     val account = theirs(id, by)
@@ -343,6 +392,8 @@ class AccountService(
     val reason = reason(request.reason)
     val until = request.timeOut?.let { now.plus(Duration.ofHours(it.hours.toLong())) }
     users.block(id, until, reason, by.name, now)
+    // Its game clients can't connect with the passwords of the slots only it plays any more
+    slots.renewOnlyTheirs(id)
     sessions.refresh()
     logger.info("{} {} {}{}", by.name, if (until != null) "timed out (until $until)" else "suspended", account.name, reason?.let { ": $it" } ?: "")
     tell(account) { to, name, texts -> Mails.keptOut(to, name, until?.let(UNTIL::format), reason, texts) }
@@ -360,15 +411,17 @@ class AccountService(
 
   /**
    * Deletes the account [id], by the Administrator [by]: as it deletes itself ([UserStore.delete]: the sessions keep
-   * its name), told by mail before its address goes. An invitation is taken back without a mail.
+   * its name; the slots only it plays get new passwords), told by mail before its address goes. An invitation is
+   * taken back without a mail.
    */
   suspend fun remove(id: Uuid, request: AccountActionRequest, by: User) {
     val account = theirs(id, by)
     val reason = reason(request.reason)
     if (account.signedUpAt != null) tell(account) { to, name, texts -> Mails.removed(to, name, reason, texts) }
     users.delete(id)
+    slots.renewOnlyTheirs(id)
     sessions.refresh()
-    logger.info("{} deleted the account of {}{}", by.name, account.name ?: account.email, reason?.let { ": $it" } ?: "")
+    logger.info("{} deleted the account of {}{}", by.name, account.name ?: id, reason?.let { ": $it" } ?: "")
   }
 
   /**
@@ -382,7 +435,7 @@ class AccountService(
       throw AccountProblem(HttpStatusCode.BadRequest, Problem.SESSIONS_PER_USER, "max" to MAX_SESSIONS_PER_USER)
     }
     users.setSessionLimit(id, limit)
-    logger.info("{} set the sessions of {} to {}", by.name, account.name ?: account.email, limit ?: "the default")
+    logger.info("{} set the sessions of {} to {}", by.name, account.name ?: id, limit ?: "the default")
   }
 
   /** The account [id] for an action of the Administrator [by] on it: not their own, not an Administrator's. */
@@ -429,12 +482,24 @@ class AccountService(
     val token = newToken()
     invitations.create(tokenHash(token), id, email, suggestedName, Instant.now().plus(INVITATION_VALID.toJavaDuration()))
     try {
-      mailer.send(Mails.invitation(email, "${config.publicUrl}/#/invite/$token", INVITATION_VALID.inWholeDays.toInt(), texts(language).mails))
+      val link = "${config.publicUrl}/#/invite/$token"
+      mailer.send(Mails.invitation(email, link, INVITATION_VALID.inWholeDays.toInt(), texts(language).mails, account = "account $id"))
     } catch (e: IOException) {
-      logger.warn("Could not send the invitation to {}: {}", email, e.message)
+      logger.warn("Could not send the invitation of account {}: {}", id, e.message)
       throw AccountProblem(HttpStatusCode.BadGateway, Problem.INVITATION_FAILED, "address" to email, "reason" to e.message)
     }
   }
+}
+
+/** The provider that manages [user]'s account: with single sign-on, an Administrator's; `null`: they manage it. */
+internal fun TrackerConfig.providerOf(user: User): OidcConfig? = oidc?.takeIf { user.administrator }
+
+/**
+ * Refuses (403) to change what the provider manages of [user]'s account ([providerOf]): their name, password, address
+ * and second factor.
+ */
+internal fun TrackerConfig.requireOwn(user: User) {
+  providerOf(user)?.let { throw AccountProblem(HttpStatusCode.Forbidden, Problem.MANAGED_BY_SSO, "provider" to it.name) }
 }
 
 /** What's wrong with [name] as a user's name: its form ([UserNames]), or a word nobody should be called here. */

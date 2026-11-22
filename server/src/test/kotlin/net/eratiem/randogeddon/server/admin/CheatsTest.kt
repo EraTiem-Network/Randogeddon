@@ -1,11 +1,17 @@
 package net.eratiem.randogeddon.server.admin
 
+import kotlinx.coroutines.runBlocking
+import net.eratiem.randogeddon.database.DatabaseConfig
+import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.HintPick
+import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.server.session.Placement
+import java.nio.file.Path
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class CheatsTest {
@@ -15,6 +21,22 @@ class CheatsTest {
     assertEquals("\"Queen's Gardens\"", consoleWord("Queen's Gardens"))
     assertEquals("\"A \\\"B\\\" C\"", consoleWord("A \"B\" C"))
     assertEquals("\"back\\\\slash\"", consoleWord("back\\slash"))
+  }
+
+  @Test
+  fun `no control character reaches the console`() {
+    // A line break would start a command of its own
+    assertEquals("\"Mantis Claw/release Bob\"", consoleWord("Mantis Claw\n/release Bob"))
+    assertEquals("/release Bob-Yacht/collect Ann", cheatCommand(CheatAction.RELEASE, "Bob-Yacht\r\n/collect Ann", null))
+    val client = GameServerClient(
+      TrackerConfig(
+        0, "Randogeddon", Path.of("."), Path.of("."), Path.of("."), "{id}.randogeddon.eratiem.net:443", "localhost",
+        DatabaseConfig("", "", ""), "http://localhost:1", "",
+      ),
+    )
+    // Refused before the gateway is asked (there is none here)
+    val refused = assertFailsWith<SessionProblem> { runBlocking { client.command("brave-otter", "/send \"A\" \"B\"\n/release C") } }
+    assertEquals(Problem.COMMAND_CONTROL, refused.refusal.problem)
   }
 
   @Test

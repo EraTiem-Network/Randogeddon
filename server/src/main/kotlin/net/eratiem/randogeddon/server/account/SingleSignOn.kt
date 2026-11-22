@@ -7,6 +7,8 @@ import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -18,6 +20,7 @@ import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.config.english
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.shared.UserNames
@@ -36,6 +39,9 @@ object LoginMethods {
   const val LINK = "link"
   /** A key of Randogeddon Bridge ([BridgeKeys]): only on `/bridge/…`, never as the cookie. */
   const val BRIDGE = "bridge"
+
+  /** A browser's logins (the cookie), not [BRIDGE]'s keys, which never act as an Administrator. */
+  val BROWSER = listOf(PASSWORD, OIDC, LINK)
 }
 
 /** A login through the provider that isn't for this app: why, as the person reads it. */
@@ -110,6 +116,7 @@ class SingleSignOn(
   private val links: LoginLinkStore,
   private val accounts: AccountService,
   private val sessions: LoginSessionStore,
+  private val slots: SlotRenewal,
 ) {
   private data class Pending(val nonce: String, val verifier: String, val expiresAt: Long)
 
@@ -156,9 +163,13 @@ class SingleSignOn(
       }
       is SsoAccount.New -> {
         val name = uniqueName(decision.name) { users.findActive(it) != null }
-        // No password of their own: they log in through the provider (or a CLI link). Their address there if free
-        val email = identity.email?.takeIf { users.accountByEmail(it) == null }
-        val created = users.create(name, PasswordHasher.hash(PasswordGenerator.generate()), email = email)
+        // No password of their own: they log in through the provider (or a CLI link). Their address there if it is
+        // one (checked as every address here) and free
+        val email = identity.email?.let(EmailAddresses::normalize)?.takeIf(EmailAddresses::valid)
+          ?.takeIf { users.accountByEmail(it) == null }
+        // Argon2 is CPU work: not on the request's thread
+        val hash = withContext(Dispatchers.Default) { PasswordHasher.hash(PasswordGenerator.generate()) }
+        val created = users.create(name, hash, email = email)
         users.linkSubject(created.id, identity.subject)
         logger.info("{} came through {}: a new account", name, config.oidc.name)
         created
@@ -174,7 +185,7 @@ class SingleSignOn(
     if (!user.administrator) users.setAdmin(user.id, true)
     // The provider's address as it is: the account is the provider's person. Only finding an account that isn't
     // linked yet by its address (above) needs a verified one; Authentik says "not verified" for every address
-    accounts.syncFromProvider(user, wantedName(identity), identity.email, identity.emailVerified)
+    accounts.syncFromProvider(user.copy(administrator = true), wantedName(identity), identity.email, identity.emailVerified)
     return (users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)) to identity.sessionId
   }
 
@@ -225,16 +236,18 @@ class SingleSignOn(
   suspend fun deleted(subject: String, now: Instant = Instant.now()): User? {
     val user = users.findBySubject(subject) ?: return null
     users.delete(user.id, now)
+    slots.renewOnlyTheirs(user.id)
     logger.info("Deleted the account of {} ({} deleted the person)", user.name, config.oidc?.name)
     return user
   }
 
   /**
    * The provider changed the person with [subject] (its webhook): their account here follows (name from [username],
-   * else [name]; [email]). `null`: no account is linked to them.
+   * else [name]; [email]) while it is an Administrator's. `null`: no account is linked to them, or it isn't one any
+   * more (left the provider's group: its name, address and second factor are its own again).
    */
   suspend fun updated(subject: String, username: String?, name: String?, email: String?): User? {
-    val user = users.findBySubject(subject) ?: return null
+    val user = users.findBySubject(subject)?.takeIf { it.administrator } ?: return null
     accounts.syncFromProvider(user, wantedName(OidcIdentity(subject, email, true, username, name, emptyList())), email)
     return user
   }

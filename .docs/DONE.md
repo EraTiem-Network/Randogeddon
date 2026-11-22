@@ -1083,3 +1083,87 @@ games' real map images moved to Later.*
       takes the available checks with it (0.22.4.1)
 - [x] `scripts/deploy.sh --switch`: the server switched to a version's images as published, nothing built (asked
       for on 2026-11-22, after 0.22.4 went live by a rebuild of what was in the registry already) (0.22.4.1)
+- [x] 0.23.1: the tracker (logins, roles, the API, its limits, share links, bridge keys, mails, the CLI, the session
+      state). Scanned: no high finding, 11 medium, 41 low (52 in all, some found by both scanners)
+    - Decided by the user (2026-11-22), each a change of behaviour:
+        - Whoever loses their last slot in a session loses the open-to-all slots' passwords too (renewed); timing
+          out, suspending or deleting an account renews the passwords of the slots only they played
+        - Forwarded headers are believed only from configured proxies (a new setting, `TRUSTED_PROXIES`; unset: as
+          before)
+        - No e-mail addresses in the tracker's log: accounts by ID or name
+        - Support can no longer restart a stopped spoiler-log run (Session-Managers and Administrators can); the
+          panel never offered it to support, only the route did
+        - A Session-Manager's invitation whose mail fails leaves no half-made account: the retry works
+        - The new-session routes (overview, ID check, YAML inspection) paced per user
+        - Administrators only through Authentik ("never allow password logins"): an Administrator by password exists
+          only with an opt-in setting, which the demo and local testing set; without Authentik and without it,
+          nobody is an Administrator and `admins --create` refuses. Where it's on: granting the flag or resetting
+          two-factor ends the account's other logins
+    - The findings (F: the review's, O: the security scan's), all fixed and tested unless said below:
+        - Security, medium:
+            - [x] F1/O2: the 96 MB seed upload is read before the Administrator check (any login can exhaust memory)
+            - [x] F2/O4: the mail limit counts by name: a rename resets it
+            - [x] F3/O5: e-mail addresses can be probed for accounts without limit (invite, address change)
+            - [x] F4/O3: a share link's streams aren't counted (no cap as logged-in ones have)
+            - [x] O1: a login that never passed a second factor can become an Administrator's (see the decision above)
+            - [x] F7: an open slot keeps its password when a player leaves the session; a kept-out account's too
+        - Correctness, medium:
+            - [x] F5: one malformed session event stops a session's tracker for good
+            - [x] F6: a failed database read wipes a session's setup, finish state and time until the next read
+        - Security, low:
+            - [x] F8/O9: three Administrator-only checks ask the account, not the login (logic and Minecraft logs,
+                  direct hosting)
+            - [x] F9: a session stream keeps the Administrator flag from when it opened
+            - [x] F10/O10: the gateway's error text (its internal address) reaches players and watchers
+            - [x] F17: the provider's webhook resets two-factor of accounts no longer Administrators
+            - [x] F18: OIDC hardening (the discovery's issuer compared, key reloads paced, visibility of the keys)
+            - [x] F19: two-factor codes on the account routes aren't counted per account
+            - [x] F20/O7: the current password can be guessed without limit on the password change
+            - [x] O8: wrong passwords counted by what was typed (name and address count apart)
+            - [x] F21/O12: a console line can carry line breaks (forged log lines, extra commands)
+            - [x] F22/O6: `X-Forwarded-For` is believed from any peer (see the decision above)
+            - [x] F23/O12: e-mail addresses in the log (see the decision above)
+            - [x] F24/O11: the address pattern lets `<`, `>` and control characters through; a provider's address is
+                  stored unchecked
+            - [x] O13: support can restart the spoiler run (see the decision above)
+            - [x] O14: the new-session routes are costly and unpaced (see the decision above)
+        - Correctness, low:
+            - [x] F11: two error wrappers miss each other's exceptions (500 instead of 404 on some routes)
+            - [x] F12: two guards may answer the same call
+            - [x] F13: another user's failed create removes a running creation's stage
+            - [x] F14: two creates of the same ID at once can both pass the check
+            - [x] F15: a sign-up that loses the name race burns its invitation
+            - [x] F16: a Session-Manager's failed invitation blocks the retry (see the decision above)
+            - [x] F25: smaller ones (a leaked socket on a failed TLS handshake, `@Volatile` on the tracker's last
+                  error, the refresh skipped when a disconnect fails, no keepalive on the manage stream, the CLI
+                  printing a refusal object, one account's failure ending the cleanup's pass, two managers removing
+                  each other at once)
+        - Optimisation:
+            - [x] F26: an HTTP client per session that is never closed
+            - [x] F27: seven database queries per session every 10 s, finished ones too; `room.json` read again and
+                  again
+            - [x] F28: the summary's hot path (`lockSlots`, the progression checks, `total`, `people()`)
+            - [x] F29: the spoiler log parsed again per request
+            - [x] F30: smaller ones (every account's activity loaded for one, Argon2 on the request thread, the
+                  bridge's directory listed per request, the limits' map)
+        - Duplication:
+            - [x] F31: hex encoding and `SecureRandom` in several places
+            - [x] F32: the session lookup, nine times
+            - [x] F33: `GameServerClient`'s answer handling, sixteen times
+            - [x] F34: route helpers (the user ID, `?since=`, the attachment header, the webhook's token check)
+            - [x] F35: session predicates (still locked slots, "manages", the pick list of users)
+            - [x] F36: inside single files (the cheats' carrying out, the feed's append, the OIDC key retry, the
+                  login-check loop)
+            - [ ] F37: four hand-made expiring maps (optional): left, see TODO
+            - [x] F38: misplaced KDoc
+    - Not as the finding said, or only in part:
+        - F6: the by-name match stays for seeds from before Phase 4 (a setup without options and members), since
+          every session has a setup row; a session made in the panel is matched by its members only
+        - F22: only the client address follows `TRUSTED_PROXIES` (see TODO, left from 0.23.1)
+        - F27: finished sessions aren't skipped in the refresh: batched, they cost nothing more, and their roles
+          stay current
+        - F30: Argon2 stays where it is in the CLI (it has no request thread)
+        - F37: left (optional)
+        - O1: as the user decided (the opt-in setting), not a second factor per login
+- [x] The top panel's status pills say what they are: `<icon> Game server: <state>`, `<icon> Logic: <state>` (asked
+      for on 2026-11-22) (0.23.1)

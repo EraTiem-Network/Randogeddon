@@ -1,10 +1,9 @@
 package net.eratiem.randogeddon.server.admin
 
-import io.ktor.http.HttpStatusCode
 import net.eratiem.randogeddon.server.session.LiveSessions
+import net.eratiem.randogeddon.server.session.require
 import net.eratiem.randogeddon.shared.MinecraftLogs
 import net.eratiem.randogeddon.shared.MinecraftServers
-import net.eratiem.randogeddon.shared.Problem
 import org.koin.core.annotation.Single
 
 /**
@@ -14,15 +13,12 @@ import org.koin.core.annotation.Single
  */
 @Single
 class MinecraftRuns(private val gameServer: GameServerClient, private val sessions: LiveSessions) {
-  suspend fun view(id: String): MinecraftServers = gameServer.minecraft(live(id).id)
+  suspend fun view(id: String): MinecraftServers = gameServer.minecraft(sessions.require(id).id)
 
   /** `null`, or why it can't start (the EULA, no room for another server). */
-  suspend fun start(id: String, slot: String): String? = gameServer.startMinecraft(live(id).id, slot)
+  suspend fun start(id: String, slot: String): String? = gameServer.startMinecraft(sessions.require(id).id, slot)
 
-  suspend fun stop(id: String, slot: String): Boolean = gameServer.stopMinecraft(live(id).id, slot)
+  suspend fun stop(id: String, slot: String): Boolean = gameServer.stopMinecraft(sessions.require(id).id, slot)
 
-  suspend fun log(id: String, since: Long): MinecraftLogs = gameServer.minecraftLog(live(id).id, since)
-
-  private fun live(id: String) =
-    sessions.get(id) ?: throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)
+  suspend fun log(id: String, since: Long): MinecraftLogs = gameServer.minecraftLog(sessions.require(id).id, since)
 }
