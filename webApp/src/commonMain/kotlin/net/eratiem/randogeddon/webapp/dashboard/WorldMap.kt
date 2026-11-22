@@ -3,18 +3,17 @@ package net.eratiem.randogeddon.webapp.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +26,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,6 +49,7 @@ import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.scrollingBoth
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -56,17 +59,23 @@ internal enum class MapState { CHECKED, OPEN, AVAILABLE }
 /** What the map shows: every location, or only the open ones, or only those available now. */
 internal enum class MapFilter { ALL, OPEN, AVAILABLE }
 
-/** A box of the drawn map: a region, or a group of a big region's locations by their names; [x], [y] in dp. */
+/**
+ * A box of the drawn map: a region, or a group of a big region's locations by their names; [x], [y] in dp. The map
+ * is a tree from its start: [children] are the boxes first reached from this one (a line goes to each), [also] the
+ * others it connects to (said on hover, without a line: lines for them would cross).
+ */
 internal class MapNode(val name: String, val locations: List<String>) {
   var column = 0
   var x = 0f
   var y = 0f
+  val children = mutableListOf<Int>()
+  val also = mutableListOf<Int>()
   val rows get() = ceil(locations.size / DOTS_PER_ROW.toFloat()).toInt()
   val height get() = HEADER + rows * DOT_STEP + if (locations.isEmpty()) 0f else PADDING
 }
 
-/** A map laid out: its boxes, which connect (pairs of their indices), and its size in dp. */
-internal class MapLayout(val nodes: List<MapNode>, val links: List<Pair<Int, Int>>, val width: Float, val height: Float)
+/** A map laid out: its boxes (each with the ones it leads to) and its size in dp. */
+internal class MapLayout(val nodes: List<MapNode>, val width: Float, val height: Float)
 
 private const val DOTS_PER_ROW = 10
 private const val DOT = 10f
@@ -74,11 +83,15 @@ private const val DOT_STEP = 14f
 private const val HEADER = 28f
 private const val PADDING = 10f
 private const val NODE_WIDTH = 2 * 12f + DOTS_PER_ROW * DOT_STEP - (DOT_STEP - DOT)
-private const val COLUMN_GAP = 56f
-private const val ROW_GAP = 14f
-/** A column taller than this wraps into narrower ones beside it (a hub reaches many regions at once). */
-private const val COLUMN_HEIGHT = 560f
-private const val WRAP_GAP = 14f
+/** Between two columns: room for the line that branches off to a box's targets, in its middle. */
+private const val COLUMN_GAP = 36f
+private const val ROW_GAP = 12f
+/** Between the parts of a map that aren't reached from each other. */
+private const val PART_GAP = 28f
+/** Left free beside the boxes for the bars that scroll the map. */
+private const val SCROLL_BAR = 10f
+/** The map's view at its tallest: a taller map scrolls in it, so its sideways bar stays in sight. */
+private const val MAP_VIEW = 600f
 
 /** A region with this many locations or more is split into groups by their names, where they have groups. */
 private const val SPLIT_FROM = 16
@@ -115,83 +128,88 @@ internal fun nameGroups(locations: List<String>): Pair<List<String>, List<Pair<S
 private val WORD = Regex("[ _]+")
 
 /**
- * [map] laid out: its boxes (a big region's name groups as boxes of their own, linked to it) in columns by how far
- * they are from its start (what can't be reached from it after), each column ordered by its links to the columns
- * before it, so that they cross less.
+ * [map] laid out as a tree from its start, left to right: a box's column is how far it is from the start, and the
+ * boxes first reached from it (and a big region's name groups) stand in the next column, one below the other from
+ * its own height on; whatever they lead to takes its room below them before the next one. So every line stays in
+ * the gap between two columns, beside the boxes it joins: none crosses a box or another line. What a box connects to
+ * besides (a way back, a second way in) is kept as [MapNode.also]. Parts that can't be reached from the start follow
+ * below it, each from its own first box.
  */
 internal fun layoutMap(map: MapView): MapLayout {
   val nodes = mutableListOf<MapNode>()
   val regionNode = IntArray(map.regions.size)
-  val parentOf = mutableMapOf<Int, Int>()
-  // The boxes; a group's column follows its region's, below
-  val pending = mutableListOf<Pair<String, List<String>>>()
-  val pendingParent = mutableListOf<Int>()
+  // The regions first, then the big ones' groups: a group is its region's first child
+  val groups = mutableListOf<Triple<Int, String, List<String>>>()
   map.regions.forEachIndexed { i, region ->
     val split = nameGroups(region.locations)
     regionNode[i] = nodes.size
     nodes += MapNode(region.name, split?.first ?: region.locations)
-    split?.second?.forEach { group -> pending += group; pendingParent += regionNode[i] }
+    split?.second?.forEach { (name, locations) -> groups += Triple(regionNode[i], name, locations) }
   }
-  pending.forEachIndexed { i, (name, locations) ->
-    parentOf[nodes.size] = pendingParent[i]
+  val regions = nodes.size
+  for ((parent, name, locations) in groups) {
+    nodes[parent].children += nodes.size
     nodes += MapNode(name, locations)
   }
-  val links = map.links.mapNotNull { pair ->
-    val a = pair.getOrNull(0)?.let { regionNode.getOrNull(it) } ?: return@mapNotNull null
-    val b = pair.getOrNull(1)?.let { regionNode.getOrNull(it) } ?: return@mapNotNull null
-    a to b
-  } + parentOf.map { (child, parent) -> parent to child }
-  val neighbours = Array(nodes.size) { mutableListOf<Int>() }
-  links.forEach { (a, b) -> neighbours[a] += b; neighbours[b] += a }
+  val neighbours = Array(regions) { mutableListOf<Int>() }
+  for (pair in map.links) {
+    val a = pair.getOrNull(0)?.let { regionNode.getOrNull(it) } ?: continue
+    val b = pair.getOrNull(1)?.let { regionNode.getOrNull(it) } ?: continue
+    if (a == b) continue
+    neighbours[a] += b
+    neighbours[b] += a
+  }
 
-  // Columns: breadth first from the start, then from each part that can't be reached from it
-  val column = IntArray(nodes.size) { -1 }
-  var offset = 0
-  for (start in nodes.indices) {
-    if (column[start] >= 0) continue
-    var deepest = offset
-    val queue = ArrayDeque(listOf(start))
-    column[start] = offset
+  // The tree: breadth first from the start, then from each part that isn't reached from it
+  val parent = IntArray(nodes.size) { -1 }
+  val seen = BooleanArray(regions)
+  val roots = mutableListOf<Int>()
+  for (root in 0 until regions) {
+    if (seen[root]) continue
+    seen[root] = true
+    roots += root
+    val queue = ArrayDeque(listOf(root))
     while (queue.isNotEmpty()) {
       val at = queue.removeFirst()
-      deepest = max(deepest, column[at])
-      for (next in neighbours[at]) if (column[next] < 0) { column[next] = column[at] + 1; queue += next }
+      for (next in neighbours[at]) if (!seen[next]) {
+        seen[next] = true
+        parent[next] = at
+        nodes[at].children += next
+        queue += next
+      }
     }
-    offset = deepest + 1
+  }
+  for (a in 0 until regions) for (b in neighbours[a]) {
+    if (parent[b] != a && parent[a] != b && b !in nodes[a].also) nodes[a].also += b
   }
 
-  // Each column ordered by where its neighbours in the columns before it are, then stacked; a tall one wraps
-  val columns = nodes.indices.groupBy { column[it] }.entries.sortedBy { it.key }
-  val rank = DoubleArray(nodes.size)
-  var height = 0f
-  var x = 8f
-  for ((c, members) in columns.map { it.key to it.value }) {
-    val ordered = members.sortedBy { n ->
-      val before = neighbours[n].filter { column[it] < c }
-      if (before.isEmpty()) n.toDouble() else before.map { rank[it] }.average()
-    }
-    var y = 8f
-    var wrapped = 0
-    ordered.forEachIndexed { i, n ->
-      if (y > 8f && y + nodes[n].height > COLUMN_HEIGHT) { wrapped++; y = 8f }
-      rank[n] = i.toDouble()
-      nodes[n].column = c
-      nodes[n].x = x + wrapped * (NODE_WIDTH + WRAP_GAP)
-      nodes[n].y = y
-      y += nodes[n].height + ROW_GAP
-      height = max(height, y)
-    }
-    x += (wrapped + 1) * (NODE_WIDTH + WRAP_GAP) - WRAP_GAP + COLUMN_GAP
+  // Each box at the top of its room; its children below each other in the next column, each with its own room
+  var deepest = 0
+  fun place(at: Int, column: Int, top: Float): Float {
+    val node = nodes[at]
+    node.column = column
+    node.x = MARGIN + column * (NODE_WIDTH + COLUMN_GAP)
+    node.y = top
+    deepest = max(deepest, column)
+    var y = top
+    for (child in node.children) y += place(child, column + 1, y) + ROW_GAP
+    return max(node.height, y - top - if (node.children.isEmpty()) 0f else ROW_GAP)
   }
-  return MapLayout(nodes, links, x - COLUMN_GAP + 8f, height)
+  var y = MARGIN
+  for (root in roots) y += place(root, 0, y) + PART_GAP
+  return MapLayout(nodes, 2 * MARGIN + (deepest + 1) * (NODE_WIDTH + COLUMN_GAP) - COLUMN_GAP, y - PART_GAP + MARGIN)
 }
+
+/** Around the map, inside its panel. */
+private const val MARGIN = 8f
 
 /** What the pointer is over: a location (its name, its state) or a box (its name). */
 private data class Hovered(val name: String, val state: MapState?, val at: Offset, val node: MapNode)
 
 /**
- * A slot's map: its regions as boxes in columns from its start, linked as its logic connects them, each location a
- * dot in its box (checked, open, available now), its name on hover; filtered by state. Drawn on one canvas: a slot can
+ * A slot's map: its regions as boxes, a tree from its start (a line from each box branching off to the ones first
+ * reached from it; a box's other connections on hover), each location a dot in its box (checked, open, available
+ * now), its name on hover; filtered by state. Drawn on one canvas: a slot can
  * have a thousand locations.
  */
 @Composable
@@ -252,8 +270,10 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
         }
       }
     }
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.panelAlt).horizontalScroll(rememberScrollState())) {
-      Box(Modifier.size(layout.width.dp, layout.height.dp)) {
+    // A view onto the map, as tall as it at most: larger than it, the map is scrolled by the view's bars or by
+    // dragging it (room for the bars beside the boxes)
+    Box(Modifier.fillMaxWidth().heightIn(max = MAP_VIEW.dp).clip(RoundedCornerShape(12.dp)).background(p.panelAlt).scrollingBoth()) {
+      Box(Modifier.size((layout.width + SCROLL_BAR).dp, (layout.height + SCROLL_BAR).dp)) {
         Canvas(
           Modifier.size(layout.width.dp, layout.height.dp).pointerInput(layout) {
             awaitPointerEventScope {
@@ -275,15 +295,29 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
           },
         ) {
           val d = density
-          // The links behind the boxes: from a box's right edge to the other's left (or between their middles)
-          for ((a, b) in layout.links) {
-            val from = layout.nodes[a]
-            val to = layout.nodes[b]
-            val (left, right) = if (from.x <= to.x) from to to else to to from
-            val start = Offset((left.x + if (left.x < right.x) NODE_WIDTH else NODE_WIDTH / 2) * d, (left.y + HEADER / 2) * d)
-            val end = Offset((right.x + if (left.x < right.x) 0f else NODE_WIDTH / 2) * d, (right.y + HEADER / 2) * d)
-            drawLine(p.border, start, end, strokeWidth = 1.5f * d)
+          // One line from each box to what it leads to: out of its right edge into the gap, down the gap's middle,
+          // and off to each target's left edge (its first target stands at its own height: straight across)
+          val line = Stroke(1.5f * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
+          for (node in layout.nodes) {
+            if (node.children.isEmpty()) continue
+            val from = node.y + HEADER / 2
+            val trunk = node.x + NODE_WIDTH + COLUMN_GAP / 2
+            val targets = node.children.map { layout.nodes[it] }
+            drawPath(
+              Path().apply {
+                moveTo((node.x + NODE_WIDTH) * d, from * d)
+                lineTo(trunk * d, from * d)
+                lineTo(trunk * d, (targets.maxOf { it.y } + HEADER / 2) * d)
+                for (target in targets) {
+                  moveTo(trunk * d, (target.y + HEADER / 2) * d)
+                  lineTo(target.x * d, (target.y + HEADER / 2) * d)
+                }
+              },
+              p.muted.copy(alpha = 0.55f), style = line,
+            )
           }
+          // What the box under the pointer connects to besides: their edges say so
+          val also = hovered?.node?.also.orEmpty()
           for (node in layout.nodes) {
             val states = node.locations.map { stateOf(it) }
             val anyShown = states.any { shown(it) } || filter == MapFilter.ALL
@@ -294,6 +328,9 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
             // Something available in it: its edge says so
             val edge = if (MapState.AVAILABLE in states) p.ok else p.border
             drawRoundRect(edge.copy(alpha = dim), topLeft, size, CornerRadius(10 * d), style = Stroke(1.2f * d))
+            if (layout.nodes.indexOf(node) in also) {
+              drawRoundRect(p.accent, topLeft, size, CornerRadius(10 * d), style = Stroke(2f * d))
+            }
             val done = states.count { it == MapState.CHECKED }
             val count = if (node.locations.isEmpty()) "" else "$done/${node.locations.size}"
             val countWidth = if (count.isEmpty()) 0f else measurer.measure(count, countStyle).size.width.toFloat()
@@ -327,6 +364,10 @@ internal fun WorldMap(map: MapView, missing: Set<String>, available: Set<String>
               else -> stateText(h.state)
             }
             Txt(detail, size = 12.sp, color = if (h.state == MapState.AVAILABLE) p.ok else p.muted)
+            // A box's other connections, which have no line
+            if (h.state == null && h.node.also.isNotEmpty()) {
+              Txt(t.dialogs.mapAlso(h.node.also.joinToString(", ") { layout.nodes[it].name }), size = 12.sp, color = p.accent)
+            }
           }
         }
       }
