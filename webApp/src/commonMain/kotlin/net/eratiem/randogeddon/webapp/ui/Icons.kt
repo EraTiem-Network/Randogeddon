@@ -26,6 +26,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -34,13 +37,35 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** A small button with a drawn icon (the web build has no icon font). */
+/**
+ * A small button with a drawn icon (the web build has no icon font). [label]: what it does, for assistive tools, and
+ * its tip; inside a [Tip] it is that tip's text (and the tip is the only one). With a [label] and no [Tip] around it,
+ * the tip wraps it: a `weight` or `align` in [modifier] then no longer reaches the row or column it stands in (put a
+ * [Tip] around it yourself there).
+ */
 @Composable
-fun IconButton(onClick: () -> Unit, icon: Icon, modifier: Modifier = Modifier, tint: Color? = null, background: Color? = null) {
+fun IconButton(
+  onClick: () -> Unit,
+  icon: Icon,
+  modifier: Modifier = Modifier,
+  tint: Color? = null,
+  background: Color? = null,
+  label: String? = null,
+) {
+  val tipped = LocalTipLabel.current
+  if (label != null && tipped == null) Tip(label) { IconButtonBox(onClick, icon, modifier, tint, background, label) }
+  else IconButtonBox(onClick, icon, modifier, tint, background, label ?: tipped)
+}
+
+@Composable
+private fun IconButtonBox(onClick: () -> Unit, icon: Icon, modifier: Modifier, tint: Color?, background: Color?, label: String?) {
   val p = LocalPalette.current
+  val shape = RoundedCornerShape(10.dp)
   // 34 dp unless [modifier] gives a size; the icon is about half of it
   BoxWithConstraints(
-    modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(background ?: p.panelAlt).hand().clickable(onClick = onClick),
+    modifier.size(34.dp).focusRing(shape).clip(shape).background(background ?: p.panelAlt).hand()
+      .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+      .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier),
     contentAlignment = Alignment.Center,
   ) {
     DrawnIcon(icon, tint ?: p.text, minOf(16.dp, maxWidth * 0.47f))
@@ -362,7 +387,8 @@ fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
   val p = LocalPalette.current
   Txt(
     text, size = 12.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1,
-    modifier = modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).hand().clickable(onClick = onClick)
+    modifier = modifier.focusRing(CircleShape).clip(CircleShape).background(p.accent.copy(alpha = 0.1f)).hand()
+      .clickable(role = Role.Button, onClick = onClick)
       .padding(horizontal = 10.dp, vertical = 4.dp),
   )
 }

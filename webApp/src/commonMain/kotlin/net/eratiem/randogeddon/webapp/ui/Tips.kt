@@ -24,7 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -76,9 +79,11 @@ fun InfoTip(
   var tapped by remember { mutableStateOf(false) }
   var closedAt by remember { mutableLongStateOf(0L) }
   Box(
-    modifier.size(16.dp).clip(CircleShape).border(1.2.dp, if (open || tapped) p.accent else p.muted, CircleShape)
+    modifier.size(16.dp).focusRing(CircleShape, gap = 2.dp).clip(CircleShape)
+      .border(1.2.dp, if (open || tapped) p.accent else p.muted, CircleShape)
       .hoverable(interaction)
-      .hand().clickable(interactionSource = interaction, indication = null) {
+      // Enter or Space opens it from the keyboard, as a tap does
+      .hand().clickable(interactionSource = interaction, indication = null, role = Role.Button) {
         if (!justClosed(closedAt)) tapped = !tapped
       },
     contentAlignment = Alignment.Center,
@@ -180,10 +185,17 @@ private const val TIP_DELAY_MS = 600L
 internal fun justClosed(closedAt: Long): Boolean = Platform.now() - closedAt < 400
 
 /**
+ * The text of the [Tip] around something: an [IconButton] in it takes it as its label (for assistive tools) and shows
+ * no tip of its own. `null` outside a tip, and in a popup.
+ */
+internal val LocalTipLabel = compositionLocalOf<String?> { null }
+
+/**
  * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it; it
  * stays while the pointer is on it or on the tip. A click hides it until the pointer comes back (a dropdown's list
  * opens there). Touch screens have no hover: there a long press shows it, instead of the click; a tap anywhere closes
- * it. [wide]: the tip as wide as the window allows (a long message).
+ * it. [wide]: the tip as wide as the window allows (a long message). An [IconButton] in [content] takes [text] as its
+ * label.
  */
 @Composable
 fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: Boolean = false, content: @Composable () -> Unit) {
@@ -233,7 +245,7 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: B
       }
     }
   ) {
-    content()
+    CompositionLocalProvider(LocalTipLabel provides text, content = content)
     if (shown || held) {
       AppPopup(
         offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }),
@@ -247,7 +259,7 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: B
 
 /**
  * A popup (dropdown, tip) that stays out of the page's text selection: it is a window of its own, and selection
- * across windows can make the whole page hang.
+ * across windows can make the whole page hang. A [Tip] around its anchor doesn't name the buttons in it.
  */
 @Composable
 fun AppPopup(
@@ -256,7 +268,9 @@ fun AppPopup(
   properties: PopupProperties = PopupProperties(),
   content: @Composable () -> Unit,
 ) {
-  Popup(offset = offset, onDismissRequest = onDismissRequest, properties = properties) { DisableSelection(content) }
+  Popup(offset = offset, onDismissRequest = onDismissRequest, properties = properties) {
+    CompositionLocalProvider(LocalTipLabel provides null) { DisableSelection(content) }
+  }
 }
 
 /**
@@ -265,17 +279,18 @@ fun AppPopup(
  */
 fun Modifier.hand(): Modifier = pointerHoverIcon(PointerIcon.Hand, overrideDescendants = true)
 
-/** A clickable row that tints itself while hovered. */
+/** A clickable row that tints itself while hovered; a button to the keyboard (Tab, Enter) and to assistive tools. */
 @Composable
 fun HoverRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
   val p = LocalPalette.current
   val interaction = remember { MutableInteractionSource() }
   val hovered by interaction.collectIsHoveredAsState()
+  val shape = RoundedCornerShape(12.dp)
   Row(
-    modifier.clip(RoundedCornerShape(12.dp))
+    modifier.focusRing(shape, gap = 1.dp).clip(shape)
       .background(if (hovered) p.panelAlt else Color.Transparent)
       .hoverable(interaction)
-      .hand().clickable(interactionSource = interaction, indication = null, onClick = onClick),
+      .hand().clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick),
     verticalAlignment = Alignment.CenterVertically,
     content = content,
   )

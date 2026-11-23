@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -126,7 +125,7 @@ fun Modifier.card(palette: Palette, shape: RoundedCornerShape = CardShape, color
     .background(color)
     .border(1.dp, if (palette.dark) palette.border else palette.border.copy(alpha = 0.6f), shape)
 
-/** A card with an optional header row (title, then [actions] on the right). */
+/** A card with an optional header row (title, then [actions] on the right); a text selection stays inside it. */
 @Composable
 fun Panel(
   modifier: Modifier = Modifier,
@@ -136,28 +135,32 @@ fun Panel(
   content: @Composable ColumnScope.() -> Unit,
 ) {
   val p = LocalPalette.current
-  Column(modifier.card(p)) {
-    if (title != null) {
-      Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        Column(Modifier.weight(1f)) {
-          Txt(title, size = 15.sp, weight = FontWeight.SemiBold)
-          if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1)
+  // The selection's frame passes its constraints on: the column gets the size it had without it
+  Selectable(modifier.card(p)) {
+    Column {
+      if (title != null) {
+        Row(
+          Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Column(Modifier.weight(1f)) {
+            Txt(title, size = 15.sp, weight = FontWeight.SemiBold)
+            if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1)
+          }
+          actions()
         }
-        actions()
+        Divider()
       }
-      Divider()
+      content()
     }
-    content()
   }
 }
 
 /**
  * A titled block of the page: the heading (title, subtitle, [actions] on the right) above its content, which brings
- * its own card. With [fillHeight] the content gets the height that is left (for blocks of a given height).
+ * its own card. With [fillHeight] the content gets the height that is left (for blocks of a given height). A text
+ * selection begun in it stays in it ([Selectable]).
  */
 @Composable
 fun Section(
@@ -168,44 +171,47 @@ fun Section(
   content: @Composable ColumnScope.() -> Unit,
 ) {
   val p = LocalPalette.current
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    // The title with its actions at the right; where they don't fit beside the whole title, the actions go below it
-    // (beside it they squeezed it, on a phone "Hints" into two lines)
-    Layout(
-      contents = listOf(
-        { Txt(title, size = 17.sp, weight = FontWeight.Bold, maxLines = 1) },
-        { if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1) },
-        { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
-      ),
-      Modifier.heightIn(min = 34.dp),
-    ) { (titles, subtitles, actionRows), constraints ->
-      val loose = constraints.copy(minWidth = 0, minHeight = 0)
-      val gap = 8.dp.roundToPx()
-      val row = actionRows.first().measure(loose)
-      val needed = titles.first().maxIntrinsicWidth(Constraints.Infinity)
-      val width = if (constraints.hasBoundedWidth) constraints.maxWidth else needed + gap + row.width
-      val below = row.width > 0 && needed + gap + row.width > width
-      val textWidth = if (below) width else (width - row.width - gap).coerceAtLeast(0)
-      val heading = titles.first().measure(loose.copy(maxWidth = textWidth))
-      val sub = subtitles.firstOrNull()?.measure(loose.copy(maxWidth = textWidth))
-      val text = heading.height + (sub?.height ?: 0)
-      if (below) {
-        val top = maxOf(text, constraints.minHeight)
-        layout(width, top + gap + row.height) {
-          heading.place(0, (top - text) / 2)
-          sub?.place(0, (top - text) / 2 + heading.height)
-          row.place(0, top + gap)
-        }
-      } else {
-        val height = maxOf(text, row.height, constraints.minHeight)
-        layout(width, height) {
-          heading.place(0, (height - text) / 2)
-          sub?.place(0, (height - text) / 2 + heading.height)
-          row.place(width - row.width, (height - row.height) / 2)
+  // The selection's frame passes its constraints on: [modifier]'s size (a weight, a height to fill) reaches the column
+  Selectable(modifier) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      // The title with its actions at the right; where they don't fit beside the whole title, the actions go below it
+      // (beside it they squeezed it, on a phone "Hints" into two lines)
+      Layout(
+        contents = listOf(
+          { Txt(title, size = 17.sp, weight = FontWeight.Bold, maxLines = 1) },
+          { if (subtitle != null) Txt(subtitle, size = 12.sp, color = p.muted, maxLines = 1) },
+          { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
+        ),
+        Modifier.heightIn(min = 34.dp),
+      ) { (titles, subtitles, actionRows), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val gap = 8.dp.roundToPx()
+        val row = actionRows.first().measure(loose)
+        val needed = titles.first().maxIntrinsicWidth(Constraints.Infinity)
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else needed + gap + row.width
+        val below = row.width > 0 && needed + gap + row.width > width
+        val textWidth = if (below) width else (width - row.width - gap).coerceAtLeast(0)
+        val heading = titles.first().measure(loose.copy(maxWidth = textWidth))
+        val sub = subtitles.firstOrNull()?.measure(loose.copy(maxWidth = textWidth))
+        val text = heading.height + (sub?.height ?: 0)
+        if (below) {
+          val top = maxOf(text, constraints.minHeight)
+          layout(width, top + gap + row.height) {
+            heading.place(0, (top - text) / 2)
+            sub?.place(0, (top - text) / 2 + heading.height)
+            row.place(0, top + gap)
+          }
+        } else {
+          val height = maxOf(text, row.height, constraints.minHeight)
+          layout(width, height) {
+            heading.place(0, (height - text) / 2)
+            sub?.place(0, (height - text) / 2 + heading.height)
+            row.place(width - row.width, (height - row.height) / 2)
+          }
         }
       }
+      content()
     }
-    content()
   }
 }
 
@@ -318,7 +324,7 @@ internal val NARROW = 600.dp
 @Composable
 fun Mono(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified, size: TextUnit = 12.5.sp, oneLine: Boolean = false) {
   val shown = color.takeOrElse { LocalPalette.current.text }
-  SelectionContainer(modifier) {
+  Selectable(modifier) {
     // [oneLine]: cut in the middle where it doesn't fit, so its start and its end (a port, a file's ending) still show
     if (oneLine) BasicText(
       text, style = TextStyle(color = shown, fontSize = size, fontFamily = FontFamily.Monospace),

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,7 +88,10 @@ fun LogView(
     }
     at
   } ?: (count - 1)
-  val page = if (topIndex < 0) emptyList() else (topIndex downTo maxOf(0, topIndex - LOG_PAGE + 1)).map { lines[it] }
+  // Made again only when it changes (not on every recomposition): the marked text below is remembered by it
+  val page = remember(lines, topIndex, count, lines.firstOrNull()?.n) {
+    if (topIndex < 0) emptyList() else (topIndex downTo maxOf(0, topIndex - LOG_PAGE + 1)).map { lines[it] }
+  }
   val currentLine = found.getOrNull(current)?.let { lines[it].n }
   val text = remember(page, q, currentLine, p) {
     buildAnnotatedString {
@@ -134,13 +136,13 @@ fun LogView(
           size = 12.5.sp, maxLines = 1, color = if (found.isEmpty()) p.trap else p.muted,
         )
         if (found.isNotEmpty()) {
-          IconButton({ jump(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f))
-          IconButton({ jump(1) }, Icon.CHEVRON, Modifier.size(30.dp))
+          IconButton({ jump(-1) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(180f), label = t.dialogs.previousPage)
+          IconButton({ jump(1) }, Icon.CHEVRON, Modifier.size(30.dp), label = t.dialogs.nextPage)
         }
       }
     }
     Box(Modifier.fillMaxWidth().height(height)) {
-      SelectionContainer {
+      Selectable {
         Column(Modifier.fillMaxWidth().scrolling(scroll).padding(12.dp)) {
           if (page.isEmpty()) Txt(empty, size = 13.sp, color = p.muted)
           else BasicText(text, style = TextStyle(color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace))
@@ -150,26 +152,17 @@ fun LogView(
     // Which lines these are, counted from the newest, and the pages above (newer) and below (older)
     if (count > LOG_PAGE) {
       Divider()
-      Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        val first = count - topIndex
-        val last = first + page.size - 1
-        Txt(
-          t.spoiler.linesOf(t.number(first), t.number(last), t.number(count)), size = 12.5.sp, color = p.muted,
-          modifier = Modifier.weight(1f),
-        )
-        if (topIndex < count - 1) Tip(t.panel.newerLines) {
-          IconButton(
-            { top = (topIndex + LOG_PAGE).let { if (it >= count - 1) null else lines[it].n } },
-            Icon.CHEVRON, Modifier.size(30.dp).rotate(180f),
-          )
-        }
-        if (topIndex - LOG_PAGE >= 0) Tip(t.panel.olderLines) {
-          IconButton({ top = lines[topIndex - LOG_PAGE].n }, Icon.CHEVRON, Modifier.size(30.dp))
-        }
-      }
+      val first = count - topIndex
+      val last = first + page.size - 1
+      PagerRow(
+        t.spoiler.linesOf(t.number(first), t.number(last), t.number(count)), t.panel.newerLines, t.panel.olderLines,
+        onEarlier = if (topIndex < count - 1) {
+          { top = (topIndex + LOG_PAGE).let { if (it >= count - 1) null else lines[it].n } }
+        } else null,
+        onLater = if (topIndex - LOG_PAGE >= 0) ({ top = lines[topIndex - LOG_PAGE].n }) else null,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        upDown = true,
+      )
     }
   }
 }

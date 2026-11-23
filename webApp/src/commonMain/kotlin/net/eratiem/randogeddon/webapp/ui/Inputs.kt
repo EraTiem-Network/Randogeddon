@@ -3,8 +3,11 @@ package net.eratiem.randogeddon.webapp.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -44,12 +48,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -66,6 +78,9 @@ import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
 
 /** Lists longer than this get a search field on top. */
 private const val SEARCH_FROM = 10
+
+/** A dropdown's options have their focus ring inside: outside, the list's scrolling would cut it at its ends. */
+private val OPTION_RING = (-2).dp
 
 /**
  * The search field on top of a dropdown's list: focused right away, except on a touch screen (its keyboard would
@@ -100,9 +115,9 @@ fun <T> Select(
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
     Row(
       // Shaped like the buttons and text fields
-      Modifier.heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+      Modifier.heightIn(min = minHeight).focusRing().clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
         .border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        .hand().clickable(role = Role.DropdownList) { if (!justClosed(closedAt)) { open = !open; query = "" } }
         .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -132,9 +147,10 @@ fun <T> Select(
                 label, size = 13.sp, maxLines = 1,
                 weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (active) p.accent else p.text,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                modifier = Modifier.fillMaxWidth().focusRing(RoundedCornerShape(8.dp), gap = OPTION_RING)
+                  .clip(RoundedCornerShape(8.dp))
                   .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
-                  .hand().clickable { onSelect(value); open = false }
+                  .hand().selectable(active, role = Role.RadioButton) { onSelect(value); open = false }
                   .padding(horizontal = 12.dp, vertical = 7.dp),
               )
             }
@@ -174,8 +190,8 @@ fun <T> SearchableSelect(
   Box(modifier.onSizeChanged { anchorHeight = it.height }) {
     if (heading != null) {
       Row(
-        Modifier.heightIn(min = minHeight).clip(RoundedCornerShape(10.dp))
-          .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        Modifier.heightIn(min = minHeight).focusRing().clip(RoundedCornerShape(10.dp))
+          .hand().clickable(role = Role.DropdownList) { if (!justClosed(closedAt)) { open = !open; query = "" } }
           .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -186,9 +202,9 @@ fun <T> SearchableSelect(
         DrawnIcon(Icon.CHEVRON, headingColor?.copy(alpha = 0.85f) ?: p.muted, 16.dp)
       }
     } else Row(
-      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
+      Modifier.fillMaxWidth().heightIn(min = minHeight).focusRing().clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
         .border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
+        .hand().clickable(role = Role.DropdownList) { if (!justClosed(closedAt)) { open = !open; query = "" } }
         .padding(start = 10.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -222,9 +238,9 @@ fun <T> SearchableSelect(
             shown.forEach { (value, label, detail) ->
               val active = value == selected
               Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                Modifier.fillMaxWidth().focusRing(RoundedCornerShape(8.dp), gap = OPTION_RING).clip(RoundedCornerShape(8.dp))
                   .background(if (active) p.accent.copy(alpha = 0.1f) else Color.Transparent)
-                  .hand().clickable { onSelect(value); open = false }
+                  .hand().selectable(active, role = Role.RadioButton) { onSelect(value); open = false }
                   .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -245,8 +261,8 @@ fun <T> SearchableSelect(
 }
 
 /**
- * A slider over the whole numbers of [range]: tap the track or drag the knob. Each number is a dot on the track while
- * there are few of them.
+ * A slider over the whole numbers of [range]: tap the track or drag the knob; from the keyboard (Tab to it) the arrow
+ * keys step, Home and End go to the ends. Each number is a dot on the track while there are few of them.
  */
 @Composable
 fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -255,7 +271,18 @@ fun StepSlider(value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: M
   val steps = (range.last - range.first).coerceAtLeast(1)
   val fraction = ((value - range.first).toFloat() / steps).coerceIn(0f, 1f)
   BoxWithConstraints(
-    modifier.height(28.dp).hand().pointerInput(range.first, range.last) {
+    modifier.height(28.dp).focusRing(CircleShape).onKeyEvent { event ->
+      if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+      val to = when (event.key) {
+        Key.DirectionLeft, Key.DirectionDown -> value - 1
+        Key.DirectionRight, Key.DirectionUp -> value + 1
+        Key.MoveHome -> range.first
+        Key.MoveEnd -> range.last
+        else -> return@onKeyEvent false
+      }.coerceIn(range)
+      if (to != value) change(to)
+      true
+    }.focusable().hand().pointerInput(range.first, range.last) {
       val knob = KNOB.toPx() / 2
       fun pick(x: Float) {
         val f = ((x - knob) / (size.width - 2 * knob)).coerceIn(0f, 1f)
@@ -300,8 +327,10 @@ private val KNOB = 20.dp
 
 /**
  * A one-line field for a [value] kept outside it: what is typed goes to [onChange] (what [allow] lets through), and a
- * value set from outside (emptied, a step of the arrows, a new form) comes into the field. [decorate] draws around
- * the text ([inner]); its `empty` says whether the field shows nothing.
+ * value set from outside (emptied, a step of the arrows, a new form) comes into the field. [onSubmit]: Enter in it
+ * (a key a handler in [modifier] takes first, such as the console's, stays its own); [onKey]: other keys pressed in it,
+ * `true` when taken. [decorate] draws around the text ([inner]); its `empty` says whether the field shows nothing,
+ * `focused` whether it has the focus.
  */
 @Composable
 private fun OneLineField(
@@ -309,28 +338,54 @@ private fun OneLineField(
   onChange: (String) -> Unit,
   modifier: Modifier,
   allow: InputTransformation? = null,
-  decorate: @Composable (empty: Boolean, inner: @Composable () -> Unit) -> Unit,
+  onSubmit: (() -> Unit)? = null,
+  onKey: (Key) -> Boolean = { false },
+  decorate: @Composable (empty: Boolean, focused: Boolean, inner: @Composable () -> Unit) -> Unit,
 ) {
   val p = LocalPalette.current
   val state = rememberTextFieldState(value)
   val current by rememberUpdatedState(value)
   val changed by rememberUpdatedState(onChange)
+  val submit by rememberUpdatedState(onSubmit)
+  val otherKey by rememberUpdatedState(onKey)
+  val interaction = remember { MutableInteractionSource() }
+  val focused by interaction.collectIsFocusedAsState()
   LaunchedEffect(value) { if (state.text.toString() != value) state.setTextAndPlaceCursorAtEnd(value) }
   LaunchedEffect(state) {
     snapshotFlow { state.text.toString() }.collect { if (it != current) changed(it) }
   }
   BasicTextField(
     state,
-    modifier,
+    modifier.onPreviewKeyEvent { event ->
+      if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+      val send = submit
+      if (send != null && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+        // What was typed last may not have reached [onChange] yet: it does now, before the submit reads it
+        val typed = state.text.toString()
+        if (typed != current) changed(typed)
+        send()
+        true
+      } else otherKey(event.key)
+    },
     inputTransformation = allow,
     textStyle = TextStyle(color = p.text, fontSize = 13.sp * LocalFonts.current.textScale, fontFamily = LocalFonts.current.text),
     lineLimits = TextFieldLineLimits.SingleLine,
     cursorBrush = SolidColor(p.accent),
-    decorator = { inner -> decorate(state.text.isEmpty(), inner) },
+    interactionSource = interaction,
+    decorator = { inner -> decorate(state.text.isEmpty(), focused, inner) },
   )
 }
 
-/** A one-line text field. [clearable] (a search): an × at its end empties it, while there is something in it. */
+/** A field's frame: its border in the accent colour while it has the focus (a click into it as well as Tab). */
+private fun Modifier.fieldFrame(palette: Palette, focused: Boolean): Modifier =
+  clip(RoundedCornerShape(10.dp)).background(palette.panelAlt)
+    .border(if (focused) 2.dp else 1.dp, if (focused) palette.accent else palette.border, RoundedCornerShape(10.dp))
+
+/**
+ * A one-line text field. [clearable] (a search): an × at its end empties it, while there is something in it (the
+ * mouse's; from the keyboard, select all and delete). [onSubmit]: what Enter in it does (send the form, start the
+ * search).
+ */
 @Composable
 fun FilterField(
   value: String,
@@ -339,12 +394,13 @@ fun FilterField(
   modifier: Modifier = Modifier,
   minHeight: Dp = 0.dp,
   clearable: Boolean = false,
+  onSubmit: (() -> Unit)? = null,
 ) {
   val p = LocalPalette.current
-  OneLineField(value, onChange, modifier) { empty, inner ->
+  OneLineField(value, onChange, modifier, onSubmit = onSubmit) { empty, focused, inner ->
     Row(
-      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-        .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = if (clearable) 4.dp else 10.dp),
+      Modifier.fillMaxWidth().heightIn(min = minHeight).fieldFrame(p, focused)
+        .padding(start = 10.dp, end = if (clearable) 4.dp else 10.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
@@ -353,7 +409,8 @@ fun FilterField(
       }
       if (clearable && !empty) {
         Box(
-          Modifier.size(22.dp).clip(CircleShape).hand().clickable { onChange("") },
+          // Not a stop of its own for Tab, between the field and what follows it
+          Modifier.size(22.dp).clip(CircleShape).hand().focusProperties { canFocus = false }.clickable { onChange("") },
           contentAlignment = Alignment.Center,
         ) { DrawnIcon(Icon.CLOSE, p.muted, 10.dp) }
       }
@@ -374,9 +431,9 @@ fun <T> Choice(options: List<Triple<T, String, Icon?>>, selected: T, onSelect: (
       val active = value == selected
       val shape = RoundedCornerShape(10.dp)
       Row(
-        Modifier.heightIn(min = FIELD_HEIGHT).clip(shape).background(if (active) p.accent else p.panelAlt)
+        Modifier.heightIn(min = FIELD_HEIGHT).focusRing(shape).clip(shape).background(if (active) p.accent else p.panelAlt)
           .border(1.dp, if (active) p.accent else p.border, shape)
-          .hand().clickable { if (!active) onSelect(value) }
+          .hand().selectable(active, role = Role.RadioButton) { if (!active) onSelect(value) }
           .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
@@ -391,8 +448,9 @@ fun <T> Choice(options: List<Triple<T, String, Icon?>>, selected: T, onSelect: (
 }
 
 /**
- * A field for a whole number in [range], with an arrow up and down inside it. Empty, it shows [placeholder] (the
- * number that applies without one of its own), which is also where the arrows start from.
+ * A field for a whole number in [range], with an arrow up and down inside it (the keyboard's arrow keys do the same).
+ * Empty, it shows [placeholder] (the number that applies without one of its own), which is also where the arrows start
+ * from. [onSubmit]: what Enter in it does.
  */
 @Composable
 fun NumberField(
@@ -402,6 +460,7 @@ fun NumberField(
   range: IntRange,
   modifier: Modifier = Modifier,
   minHeight: Dp = 0.dp,
+  onSubmit: (() -> Unit)? = null,
 ) {
   val p = LocalPalette.current
   fun step(by: Int) {
@@ -415,21 +474,34 @@ fun NumberField(
       if (length > digits || asCharSequence().any { !it.isDigit() }) revertAllChanges()
     }
   }
-  OneLineField(value, onChange, modifier, allow) { empty, inner ->
+  val arrowKeys: (Key) -> Boolean = { key ->
+    when (key) {
+      Key.DirectionUp -> { step(1); true }
+      Key.DirectionDown -> { step(-1); true }
+      else -> false
+    }
+  }
+  OneLineField(value, onChange, modifier, allow, onSubmit, arrowKeys) { empty, focused, inner ->
     Row(
-      Modifier.fillMaxWidth().heightIn(min = minHeight).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-        .border(1.dp, p.border, RoundedCornerShape(10.dp)).padding(start = 10.dp, end = 4.dp),
+      Modifier.fillMaxWidth().heightIn(min = minHeight).fieldFrame(p, focused).padding(start = 10.dp, end = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Box(Modifier.weight(1f).padding(vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
         if (empty) Txt(placeholder, size = 13.sp, color = p.muted)
         inner()
       }
+      // The mouse's; the keyboard has its arrow keys in the field (no stops of their own for Tab)
       Column {
-        Box(Modifier.size(18.dp, 14.dp).rotate(180f).hand().clickable { step(1) }, contentAlignment = Alignment.Center) {
+        Box(
+          Modifier.size(18.dp, 14.dp).rotate(180f).hand().focusProperties { canFocus = false }.clickable { step(1) },
+          contentAlignment = Alignment.Center,
+        ) {
           DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
         }
-        Box(Modifier.size(18.dp, 14.dp).hand().clickable { step(-1) }, contentAlignment = Alignment.Center) {
+        Box(
+          Modifier.size(18.dp, 14.dp).hand().focusProperties { canFocus = false }.clickable { step(-1) },
+          contentAlignment = Alignment.Center,
+        ) {
           DrawnIcon(Icon.CHEVRON, p.muted, 12.dp)
         }
       }
