@@ -25,6 +25,25 @@ class PlayerYamlsTest {
   }
 
   @Test
+  fun `a slot's name is no path step and one line without direction controls`() {
+    val result = PlayerYamls.inspect(
+      listOf(
+        UploadedYaml("up.yaml", "name: '..'\ngame: APQuest"),
+        UploadedYaml("dot.yaml", "name: '.'\ngame: APQuest"),
+        UploadedYaml("turned.yaml", "name: \"Bob\\u202e\"\ngame: APQuest"),
+        UploadedYaml("lines.yaml", "name: \"A\\nB\"\ngame: APQuest"),
+        // Dots inside a name, and Archipelago's placeholders, are fine
+        UploadedYaml("fine.yaml", "name: A.B{number}\ngame: APQuest"),
+      )
+    )
+    assertEquals(
+      listOf("up.yaml", "dot.yaml", "turned.yaml", "lines.yaml").map { it to Problem.YAML_NAME_CHARACTERS },
+      result.problems.map { it.args["file"] to it.code },
+    )
+    assertEquals(listOf("A.B{number}"), result.worlds.map { it.name })
+  }
+
+  @Test
   fun `broken files, missing names, duplicates and World Locks YAMLs are problems`() {
     val result = PlayerYamls.inspect(
       listOf(

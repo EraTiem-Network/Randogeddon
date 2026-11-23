@@ -163,8 +163,11 @@ data class SessionInfo(
   val keepRunning: Boolean = false,
   /** Once it is a past session, it is deleted then; `null`: never (kept, or no auto-deletion). */
   val deletesAt: Long? = null,
-  /** How far its slots got, live (or as it finished). */
+  /** How far its slots got, live (or as it finished); 100 only when [checked] is [total]. */
   val percent: Double = 0.0,
+  /** Its slots' checked locations and all of them: it is complete when they are the same (and [total] isn't 0). */
+  val checked: Int = 0,
+  val total: Int = 0,
 )
 
 /** A session in the lists: of the sessions a player is part of, of every session for admins. */
@@ -187,7 +190,11 @@ data class SessionEntry(
   /** What the one asking is in it; `null` for an Administrator without a role there. */
   val myRole: SessionRole? = null,
   val slots: Int = 0,
+  /** 100 only when [checked] is [total]. */
   val percent: Double = 0.0,
+  /** Its slots' checked locations and all of them: it is complete when they are the same (and [total] isn't 0). */
+  val checked: Int = 0,
+  val total: Int = 0,
   val goals: Int = 0,
   /** Players with a game client connected now. */
   val online: Int = 0,

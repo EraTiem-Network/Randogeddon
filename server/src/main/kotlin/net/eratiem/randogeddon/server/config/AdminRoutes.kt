@@ -332,7 +332,7 @@ fun Route.manageRoutes(
   // The game server's state ("state", whenever it changes) and its new log lines ("log"), polled from the gateway
   sse("/stream") {
     val id = call.parameters["id"]?.takeIf(SessionIds::valid) ?: return@sse
-    val token = call.request.cookies[SESSION_COOKIE]
+    val token = call.sessionToken
     // Ends once the login does, or the right to manage the session (as RequireSessionRole asks it for a call)
     val stillAllowed: suspend () -> Boolean = {
       token?.let { logins.userOf(it) }?.let { logins.roleIn(it, id) == SessionRole.MANAGER || logins.administratorProblem(it) == null } == true

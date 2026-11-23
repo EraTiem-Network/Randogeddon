@@ -58,10 +58,20 @@ class HardeningTest {
     // Scripts only from the page's own files: nothing inline, no eval but WebAssembly's
     assertTrue("script-src 'self' 'wasm-unsafe-eval';" in PAGE_POLICY)
     assertFalse("script-src 'self' 'unsafe" in PAGE_POLICY)
+    // Nothing comes from a data: or blob: URL (the fonts are fetched, the QR code is inline SVG)
+    assertFalse("data:" in PAGE_POLICY || "blob:" in PAGE_POLICY, PAGE_POLICY)
+    assertTrue("img-src 'self';" in PAGE_POLICY && "font-src 'self';" in PAGE_POLICY, PAGE_POLICY)
+    // Full screen and the clipboard for the page itself, nothing else; a window of its own
+    assertEquals(PERMISSIONS_POLICY, page.headers["Permissions-Policy"])
+    assertTrue("fullscreen=(self)" in PERMISSIONS_POLICY && "clipboard-write=(self)" in PERMISSIONS_POLICY)
+    assertTrue("camera=()" in PERMISSIONS_POLICY && "microphone=()" in PERMISSIONS_POLICY && "geolocation=()" in PERMISSIONS_POLICY)
+    assertEquals("same-origin", page.headers["Cross-Origin-Opener-Policy"])
     assertEquals("max-age=31536000; includeSubDomains", page.headers[HttpHeaders.StrictTransportSecurity])
     // The page itself may be kept (it is revalidated); the API's answers not
     assertNull(page.headers[HttpHeaders.CacheControl])
     assertEquals("no-store", client.get("/api/me").headers[HttpHeaders.CacheControl])
+    // Every API answer, a refusal too (the service worker's rule aside, nothing keeps it)
+    assertEquals("no-store", client.get("/api/nothing-here").headers[HttpHeaders.CacheControl])
     // A refusal carries them too
     assertEquals("nosniff", client.get("/nothing-here").headers["X-Content-Type-Options"])
   }

@@ -219,6 +219,45 @@ class SessionStateTest {
   }
 
   @Test
+  fun `a chat line is one line without direction controls, and cut`() {
+    val s = makeState()
+    // A line break that would draw a line of its own, a right-to-left override, an isolate, and very long
+    val long = "x".repeat(2_000)
+    s.onPrintJson(json("""{"type":"Chat","team":0,"slot":1,"message":"gg\n\nServer: restart‮ now⁦!⁩ $long"}"""))
+    val chat = s.summary("t", null).events.last()
+    assertEquals(EventType.CHAT, chat.type)
+    val message = chat.message!!
+    assertTrue(message.startsWith("gg Server: restart now! xxx"), message)
+    assertEquals(MAX_CHAT, message.length)
+    assertFalse(message.any { it == '\n' || it == '‮' || it == '⁦' || it.isISOControl() }, message)
+    // The server's own lines too
+    s.onPrintJson(json("""{"type":"ServerChat","message":"a\r\nb"}"""))
+    assertEquals("a b", s.events.last().message)
+  }
+
+  @Test
+  fun `an alias is one short line without direction controls, else the slot's name`() {
+    val s = makeState()
+    s.onRoomUpdate(1, json("""{"cmd":"RoomUpdate","players":[{"team":0,"slot":1,"alias":"Ser\nver‮${"y".repeat(100)}","name":"Alice"},
+                                                    {"team":0,"slot":2,"alias":"‏\n","name":"Bob"}]}"""))
+    val alice = s.players[1]!!.alias
+    assertTrue(alice.startsWith("Ser veryyy"), alice)
+    assertEquals(MAX_ALIAS, alice.length)
+    // Nothing left: its name
+    assertEquals("Bob", s.players[2]!!.alias)
+    assertEquals(alice, s.summary("t", null).players.first { it.slot == 1 }.name)
+  }
+
+  @Test
+  fun `a percentage is 100 only when nothing is left`() {
+    assertEquals(99.9, percent(4_998, 5_000))
+    assertEquals(99.9, percent(19_999, 20_000))
+    assertEquals(100.0, percent(5_000, 5_000))
+    assertEquals(16.7, percent(1, 6))
+    assertEquals(0.0, percent(0, 0))
+  }
+
+  @Test
   fun `the gateway's events are taken in their order, each once, with their own times`() {
     val s = makeState()
     val join = """{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}"""

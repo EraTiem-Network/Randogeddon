@@ -16,17 +16,27 @@ class SecurityHeadersConfig {
 
 /**
  * What a browser may do with the page, for every answer. Everything comes from the page's own address: scripts only
- * as its files (none inline, no `eval`; the web app is WebAssembly, hence `wasm-unsafe-eval`), requests only to it.
- * Styles may be inline (index.html's own, and what the scripts set). Nothing frames it, nothing is posted elsewhere, no
- * plugins and no `<base>`.
+ * as its files (none inline, no `eval`; the web app is WebAssembly, hence `wasm-unsafe-eval`), requests only to it (the
+ * fonts too: the app fetches them as bytes), images only as its files (the two-factor QR code is inline SVG, no
+ * image), no `data:` or `blob:` sources. Styles may be inline (index.html's own block). Nothing frames it, nothing is
+ * posted elsewhere, no plugins and no `<base>`.
  */
 const val PAGE_POLICY = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; " +
+  "img-src 'self'; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; " +
   "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
 /**
- * The headers every answer carries: [PAGE_POLICY], HTTPS only for a year (with [SecurityHeadersConfig.secure]), and
- * for the API's answers (the connection with its passwords among them) no storing.
+ * What the page may use of the browser: full screen (the dashboard's) and writing to the clipboard (the copy buttons),
+ * for itself only; nothing else it doesn't use (camera, microphone, location, payments, devices, sensors).
+ */
+const val PERMISSIONS_POLICY = "fullscreen=(self), clipboard-write=(self), clipboard-read=(), camera=(), microphone=(), " +
+  "geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=(), display-capture=(), accelerometer=(), " +
+  "gyroscope=(), magnetometer=()"
+
+/**
+ * The headers every answer carries: [PAGE_POLICY] and [PERMISSIONS_POLICY], a window of its own (no page that opens
+ * it, or that it opens, can reach it), HTTPS only for a year (with [SecurityHeadersConfig.secure]), and for the API's
+ * and the bridge's answers (the connection with its passwords among them) no storing.
  */
 val SecurityHeaders = createApplicationPlugin("SecurityHeaders", ::SecurityHeadersConfig) {
   val secure = pluginConfig.secure
@@ -36,6 +46,8 @@ val SecurityHeaders = createApplicationPlugin("SecurityHeaders", ::SecurityHeade
     headers.append("Referrer-Policy", "no-referrer")
     headers.append("X-Frame-Options", "DENY")
     headers.append("Content-Security-Policy", PAGE_POLICY)
+    headers.append("Permissions-Policy", PERMISSIONS_POLICY)
+    headers.append("Cross-Origin-Opener-Policy", "same-origin")
     if (secure) headers.append(HttpHeaders.StrictTransportSecurity, "max-age=31536000; includeSubDomains")
     val path = call.request.path()
     if (path.startsWith("/api/") || path.startsWith("/bridge/")) headers.append(HttpHeaders.CacheControl, "no-store")

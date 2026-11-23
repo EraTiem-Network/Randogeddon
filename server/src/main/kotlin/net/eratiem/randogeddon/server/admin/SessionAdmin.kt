@@ -216,7 +216,8 @@ class SessionAdmin(
     val setup = live.setup
     val finish = live.finish
     val finishedAt = finish?.finishedAt
-    val percent = live.summary().totals.percent
+    val totals = live.summary().totals
+    val percent = totals.percent
     val info = SessionInfo(
       id = id,
       seedName = live.seedName,
@@ -231,6 +232,8 @@ class SessionAdmin(
       keepRunning = setup?.keepRunning == true,
       deletesAt = finishedAt?.let { deletesAt(it, finish.keep, config.sessionRetentionDays, finish.retainedSince)?.toEpochMilli() },
       percent = percent,
+      checked = totals.checked,
+      total = totals.total,
     )
     return AdminSessionView(
       session = info,
@@ -622,8 +625,9 @@ class SessionAdmin(
    * Administrator switches it on ([administrator]); off, its server is stopped (its world stays).
    */
   suspend fun setDirect(id: String, slot: String, direct: Boolean, administrator: Boolean, actor: String) {
-    val live = sessions.require(id)
+    // Whoever may not is told so whatever the session: not whether it is there
     if (direct && !administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS)
+    val live = sessions.require(id)
     val game = Room.read(live.roomJson)?.players?.firstOrNull { it.name == slot }?.game
     if (slot !in live.setup?.hosted.orEmpty() || game != MINECRAFT_DIG) throw SessionProblem(HttpStatusCode.BadRequest, Problem.NOT_POSSIBLE)
     if (!setups.setDirect(live.seedName, slot, direct)) throw SessionProblem(HttpStatusCode.NotFound, Problem.NO_SESSION, "id" to id)

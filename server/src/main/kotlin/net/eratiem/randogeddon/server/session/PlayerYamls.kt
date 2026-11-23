@@ -9,6 +9,7 @@ import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
 import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
+import net.eratiem.randogeddon.server.util.unsafeText
 import net.eratiem.randogeddon.shared.InspectResult
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.YamlWorld
@@ -60,6 +61,8 @@ object PlayerYamls {
         }
         when {
           name.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_NAME)
+          // A slot's name is a part of the panel's paths (`.` and `..` would move them), and the feed shows it as one line
+          name == "." || name == ".." || unsafeText(name) -> refuse(file, Problem.YAML_NAME_CHARACTERS)
           game.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_GAME, "name" to name)
           // The World Locks slot comes from "starts locked" in the panel
           game == WORLD_LOCKS_GAME -> refuse(file, Problem.YAML_WORLD_LOCKS, "name" to name)

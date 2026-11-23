@@ -21,6 +21,10 @@ class LoginProblemTest {
     assertTrue("Max-Age=60" in attributes && "Path=/" in attributes && "Secure" in attributes && "SameSite=Lax" in attributes, header)
     // The page's script reads it
     assertFalse(attributes.any { it.equals("HttpOnly", ignoreCase = true) }, header)
+    // Only this host sets it where it is Secure; over plain HTTP (a local demo) the prefix can't be used
+    assertTrue(header.startsWith("__Host-$LOGIN_PROBLEM_COOKIE="), header)
+    assertFalse(attributes.any { it.startsWith("Domain", ignoreCase = true) }, header)
+    assertTrue(renderSetCookieHeader(problemCookie(text, secure = false)).startsWith("$LOGIN_PROBLEM_COOKIE="))
   }
 
   @Test

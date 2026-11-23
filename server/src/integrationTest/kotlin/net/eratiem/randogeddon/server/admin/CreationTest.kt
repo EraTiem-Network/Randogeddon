@@ -14,6 +14,7 @@ import net.eratiem.randogeddon.shared.CreationState
 import net.eratiem.randogeddon.shared.GenerateResult
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.Problem
+import net.eratiem.randogeddon.shared.SeedUpload
 import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.WorldPlan
 import kotlin.test.AfterTest
@@ -120,6 +121,29 @@ class CreationTest {
     assertEquals("same-seed", tracker.sessionStore.byId("first-otter")?.seedName)
     assertNull(tracker.sessionStore.byId("second-otter"))
     assertEquals(setOf(ann.id), tracker.setups.of("same-seed")!!.members.keys)
+  }
+
+  @Test
+  fun `what the panel offers only Administrators the tracker refuses everyone else`() = runBlocking<Unit> {
+    val ben = tracker.user("Ben")
+    // A seed generated elsewhere, before the gateway sees it
+    val seed = assertFailsWith<SessionProblem> { tracker.admin.takeSeed(SeedUpload("seed.zip", "UEs="), ben) }
+    assertEquals(HttpStatusCode.Forbidden, seed.status)
+    assertEquals(Problem.ONLY_ADMINISTRATORS_SEED, seed.refusal.problem)
+    // A hosted Minecraft server Randogeddon runs itself (direct): in a new session, and its ID stays free
+    val hosted = request("quiet-heron", ben).let { it.copy(worlds = it.worlds.map { w -> w.copy(hosted = true, direct = true) }) }
+    val created = assertFailsWith<SessionProblem> { tracker.admin.create(hosted, ben) }
+    assertEquals(HttpStatusCode.Forbidden, created.status)
+    assertEquals(Problem.ONLY_ADMINISTRATORS, created.refusal.problem)
+    tracker.admin.checkId("quiet-heron")
+    // And switched on in a running one, which Ben manages
+    tracker.admin.create(request("quiet-heron", ben), ben)
+    assertEquals(CreationState.DONE, ended("quiet-heron", ben).state)
+    val switched = assertFailsWith<SessionProblem> {
+      tracker.admin.setDirect("quiet-heron", "Ben-HK", direct = true, administrator = false, actor = "Ben")
+    }
+    assertEquals(HttpStatusCode.Forbidden, switched.status)
+    assertEquals(Problem.ONLY_ADMINISTRATORS, switched.refusal.problem)
   }
 
   @Test

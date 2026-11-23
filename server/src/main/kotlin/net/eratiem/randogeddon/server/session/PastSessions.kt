@@ -70,6 +70,8 @@ class SessionList(private val config: TrackerConfig, private val sessions: LiveS
       myRole = role,
       slots = s?.totals?.players ?: 0,
       percent = percent,
+      checked = s?.totals?.checked ?: 0,
+      total = s?.totals?.total ?: 0,
       goals = s?.totals?.goals ?: 0,
       online = s?.totals?.online ?: 0,
       reopenUntil = finishedAt?.let { reopenUntil(it, completed(percent))?.toEpochMilli() },

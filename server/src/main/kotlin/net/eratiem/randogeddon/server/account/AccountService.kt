@@ -198,7 +198,8 @@ class AccountService(
       twoFactor = user.twoFactor,
       recoveryCodesLeft = twoFactor.codesLeft(user),
       singleSignOn = config.providerOf(user)?.name,
-      singleSignOnAccount = config.providerOf(user)?.account,
+      // Only a web page: the app opens it in a new tab
+      singleSignOnAccount = config.providerOf(user)?.account?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
       language = Language.of(user.language),
       theme = Theme.of(user.theme),
       themeMode = ThemeMode.of(user.themeMode),
