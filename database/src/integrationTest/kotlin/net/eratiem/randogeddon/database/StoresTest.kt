@@ -521,6 +521,48 @@ class StoresTest {
   }
 
   @Test
+  fun `a password reset link works once and until it runs out, a new one replaces it, and using it ends the logins`() = runBlocking<Unit> {
+    val users = UserStore(db)
+    val logins = LoginSessionStore(db)
+    val resets = PasswordResetStore(db)
+    val iva = users.create("Iva", "old", email = "iva@example.org")
+    val jon = users.create("Jon", "old", email = "jon@example.org")
+    val now = Instant.now()
+    val later = now.plus(15, ChronoUnit.MINUTES)
+    logins.create("iva-login", iva.id, now.plus(1, ChronoUnit.DAYS))
+    logins.create("jon-login", jon.id, now.plus(1, ChronoUnit.DAYS))
+    resets.create("first", iva.id, later, now)
+    resets.create("second", iva.id, later, now)
+    resets.create("jons", jon.id, later, now)
+    assertNull(resets.find("first", now))
+    assertEquals(iva.id, resets.find("second", now))
+    // Not after it ran out
+    assertNull(resets.find("second", later))
+    assertNull(resets.use("second", "new", later))
+    assertEquals("old", users.findActive(iva.id)?.passwordHash)
+
+    assertEquals(iva.id, resets.use("second", "new", now))
+    assertEquals("new", users.findActive(iva.id)?.passwordHash)
+    assertNull(logins.userOf("iva-login"))
+    // Once
+    assertNull(resets.use("second", "newer", now))
+    assertEquals("new", users.findActive(iva.id)?.passwordHash)
+    // Another account's link and logins stay
+    assertEquals(jon.id, logins.userOf("jon-login"))
+    assertEquals(jon.id, resets.find("jons", now))
+    // A new address takes its link away, and so does a deletion
+    resets.create("iva-again", iva.id, later, now)
+    users.setEmail(iva.id, "iva@example.com")
+    assertNull(resets.find("iva-again", now))
+    users.delete(jon.id)
+    assertNull(resets.use("jons", "new", now))
+    // The ones that ran out go
+    resets.create("kept", iva.id, later, now)
+    assertEquals(0, resets.deleteExpired(now))
+    assertEquals(1, resets.deleteExpired(later.plusSeconds(1)))
+  }
+
+  @Test
   fun `a sign-up uses its link in the same transaction, and one whose name was taken leaves the link as it was`() = runBlocking {
     val users = UserStore(db)
     val invitations = InvitationStore(db)

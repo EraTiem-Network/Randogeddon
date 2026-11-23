@@ -83,6 +83,15 @@ object EmailChangesTable : Table("email_changes") {
   override val primaryKey = PrimaryKey(tokenHash)
 }
 
+/** The links of a forgotten password (V30), by the SHA-256 of their token; one per account, gone once used. */
+object PasswordResetsTable : Table("password_resets") {
+  val tokenHash = varchar("token_hash", 64)
+  val userId = uuid("user_id") references UsersTable.id
+  val createdAt = timestamp("created_at")
+  val expiresAt = timestamp("expires_at")
+  override val primaryKey = PrimaryKey(tokenHash)
+}
+
 object LoginSessionsTable : Table("login_sessions") {
   val tokenHash = varchar("token_hash", 64)
   val userId = uuid("user_id") references UsersTable.id
