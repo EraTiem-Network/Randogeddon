@@ -207,9 +207,11 @@ internal object EnglishProblems : ProblemTexts {
       NO_APWORLD -> "No APWorld for ${a("game")} in Archipelago ${a("version")}: upload it under APWorlds"
       YAML_NAME_TOO_LONG -> "${a("file")}: the name ${a("name")} is longer than ${a("max")} characters; Archipelago " +
         "would cut it, and the slot would no longer be found by its name. Shorten it"
-      YAML_NAME_PLACEHOLDER -> "${a("file")}: the name ${a("name")} has %, { or }; Archipelago would fill in its " +
-        "placeholders (such as {player} or {number}), and the slot would no longer be found by its name. Write the " +
-        "name out in full"
+      YAML_NAME_PLACEHOLDER -> "${a("file")}: the name ${a("name")} has a brace, %%, %player% or %number%; " +
+        "Archipelago reads braces as placeholders (such as {player} or {number}) and fails on a lone one, and fills " +
+        "in the others, so the slot would no longer be found by its name. Write the name out in full without them"
+      YAML_LOCKS_SLOT -> "${a("file")}: the name ${a("name")} is the locks' slot's: a session with locks has a World " +
+        "Locks slot of that name, and Archipelago takes each name once (whatever its case). Rename the slot"
     }
   }
 }
@@ -393,9 +395,13 @@ internal object GermanProblems : ProblemTexts {
       NO_APWORLD -> "Keine APWorld für ${a("game")} in Archipelago ${a("version")}: Lade sie unter APWorlds hoch"
       YAML_NAME_TOO_LONG -> "${a("file")}: Der Name ${a("name")} ist länger als ${a("max")} Zeichen; Archipelago würde " +
         "ihn kürzen, und der Slot wäre unter seinem Namen nicht mehr zu finden. Kürze ihn"
-      YAML_NAME_PLACEHOLDER -> "${a("file")}: Der Name ${a("name")} enthält %, { oder }; Archipelago würde seine " +
-        "Platzhalter (wie {player} oder {number}) ausfüllen, und der Slot wäre unter seinem Namen nicht mehr zu " +
-        "finden. Schreib den Namen voll aus"
+      YAML_NAME_PLACEHOLDER -> "${a("file")}: Der Name ${a("name")} enthält eine geschweifte Klammer, %%, %player% " +
+        "oder %number%; Archipelago liest Klammern als Platzhalter (wie {player} oder {number}) und scheitert an " +
+        "einer einzelnen, und es füllt die anderen aus, sodass der Slot unter seinem Namen nicht mehr zu finden wäre. " +
+        "Schreib den Namen ohne sie voll aus"
+      YAML_LOCKS_SLOT -> "${a("file")}: Der Name ${a("name")} ist der des Locks-Slots: Eine Session mit Sperren hat " +
+        "einen World-Locks-Slot dieses Namens, und Archipelago nimmt jeden Namen nur einmal (egal in welcher " +
+        "Schreibweise). Benenne den Slot um"
     }
   }
 }

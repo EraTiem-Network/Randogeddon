@@ -1,0 +1,103 @@
+package net.eratiem.randogeddon.shared.web
+
+/** The admin panel's page besides the sessions (a new session's form); no session ID looks like it. */
+const val NEW_PAGE = "+new"
+
+/**
+ * Where the web app's page is, kept in the URL's hash so a view survives a reload and can be linked: `#/` the
+ * sessions, `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/manage` the panel (`#/admin` before),
+ * `#/manage/<id>` a session in it, `#/manage/new` a new session, `#/manage/<id>/spoiler` a spoiler log opened from it,
+ * `#/settings` the user's account; `#/invite/<token>` and `#/email/<token>` are the links of the mails, `#/watch/<token>`
+ * a share link (without a login). No session ID is one of these words (they are reserved).
+ */
+sealed interface Route {
+  /** The sessions to pick from. */
+  data object Home : Route
+
+  data class Dashboard(val id: String) : Route
+
+  /** [fromAdmin]: back goes to the admin panel. */
+  data class Spoiler(val id: String, val fromAdmin: Boolean) : Route
+
+  /** [page]: a session, [NEW_PAGE], or `null` for the newest running one. */
+  data class Admin(val page: String?) : Route
+
+  /** The user's own account. */
+  data object Settings : Route
+
+  /** An invitation's link; the sign-up form of index.html takes it without a login. */
+  data class Invite(val token: String) : Route
+
+  /** The link of the mail confirming a new e-mail address. */
+  data class ConfirmEmail(val token: String) : Route
+
+  /** A session's share link: its dashboard without a login, read-only. */
+  data class Watch(val token: String) : Route
+
+  companion object {
+    /**
+     * The route of [hash]. Its IDs and tokens go into the API's paths, so only what such a one is made of passes
+     * ([sessionId], [token]): a link with anything else (`..`, `?`, `%`) is the sessions' page.
+     */
+    fun parse(hash: String): Route {
+      val parts = hash.removePrefix("#").trim('/').split('/').filter { it.isNotEmpty() }
+      return when {
+        parts.isEmpty() -> Home
+        parts[0] == "manage" || parts[0] == "admin" -> when {
+          parts.size == 1 -> Admin(null)
+          parts[1] == "new" -> Admin(NEW_PAGE)
+          !sessionId(parts[1]) -> Admin(null)
+          parts.size >= 3 && parts[2] == "spoiler" -> Spoiler(parts[1], fromAdmin = true)
+          else -> Admin(parts[1])
+        }
+        parts[0] == "settings" -> Settings
+        // A link of these without a token (or a broken one): the sessions' page
+        parts[0] == "invite" || parts[0] == "email" || parts[0] == "watch" -> when {
+          parts.size < 2 || !token(parts[1]) -> Home
+          parts[0] == "invite" -> Invite(parts[1])
+          parts[0] == "email" -> ConfirmEmail(parts[1])
+          else -> Watch(parts[1])
+        }
+        // index.html's login form uses these (a CLI login link, a refused login through the provider)
+        parts[0] == "login" || parts[0] == "login-problem" -> Home
+        !sessionId(parts[0]) -> Home
+        parts.size >= 2 && parts[1] == "spoiler" -> Spoiler(parts[0], fromAdmin = false)
+        else -> Dashboard(parts[0])
+      }
+    }
+
+    /**
+     * Could be a session's ID: letters, digits, `-` and `_`, at most 64 (wider than today's IDs, `SessionIds`, so a
+     * session of an older rule still opens; the list of sessions decides whether it exists).
+     */
+    private fun sessionId(part: String): Boolean = SESSION_ID.matches(part)
+
+    /** Could be a token of the server's (an invitation, a share link, an e-mail's confirmation): base64url. */
+    private fun token(part: String): Boolean = TOKEN.matches(part)
+
+    private val SESSION_ID = Regex("[A-Za-z0-9_-]{1,64}")
+    private val TOKEN = Regex("[A-Za-z0-9_-]{16,128}")
+  }
+}
+
+/** The hash of a link for index.html's login form (`#/login/<token>`, `#/login-problem`), which the route doesn't keep. */
+fun loginLink(hash: String): Boolean = LOGIN_LINK.containsMatchIn(hash)
+
+private val LOGIN_LINK = Regex("^#/login(-problem)?(/|$)")
+
+/** [this] as the URL's hash. */
+val Route.hash: String
+  get() = when (this) {
+    Route.Home -> "#/"
+    is Route.Dashboard -> "#/$id"
+    is Route.Spoiler -> if (fromAdmin) "#/manage/$id/spoiler" else "#/$id/spoiler"
+    is Route.Admin -> when (page) {
+      null -> "#/manage"
+      NEW_PAGE -> "#/manage/new"
+      else -> "#/manage/$page"
+    }
+    Route.Settings -> "#/settings"
+    is Route.Invite -> "#/invite/$token"
+    is Route.ConfirmEmail -> "#/email/$token"
+    is Route.Watch -> "#/watch/$token"
+  }
