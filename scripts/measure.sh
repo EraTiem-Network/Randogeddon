@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Measures a local stack (./scripts/demo.sh running, both sessions live), run in WSL from the repository:
 #   ./scripts/measure.sh [viewers] [seconds]          default: 20 viewers for 60 s
-#   ./scripts/measure.sh --build [viewers] [seconds]  also a build from nothing (BuildKit's cache cleared first)
-#                                                      and one without changes
+#   ./scripts/measure.sh --build [viewers] [seconds]  also a build of the three images from nothing and one without
+#                                                      changes. BuildKit's whole cache is cleared first: every
+#                                                      project's on this machine, not only this one's
+# The first screen is measured in Microsoft's Playwright image (PLAYWRIGHT_IMAGE), by its tag; its Python package is
+# installed from PyPI at each run (PLAYWRIGHT_VERSION, the image's own)
 # Prints a Markdown report: the page's files as sent (plain, gzip, Brotli), the images and what is in them, the
 # containers' memory and CPU idle and with the viewers' live streams open, the API's answer times, and how long the
 # first screen takes in headless Chromium (a share link's dashboard, no login). Phase 18 compares each step with it.
@@ -14,10 +17,14 @@ if [[ -z "${INTERNAL_TOKEN:-}" ]] && ! grep -qs '^INTERNAL_TOKEN=.' .env; then e
 build=""
 [[ "${1:-}" == "--build" ]] && { build=1; shift; }
 viewers="${1:-20}" seconds="${2:-60}"
-AP_VERSION="${AP_VERSION:-0.6.8}"
+# The Archipelago release the compose file names, as it tags the gateway's image
+ap_default="$(sed -n 's/^ *AP_VERSION: \${AP_VERSION:-\([^}]*\)}$/\1/p' docker-compose.yml)"
+AP_VERSION="${AP_VERSION:-$ap_default}"
+: "${AP_VERSION:?docker-compose.yml names no AP_VERSION}"
 gateway_image="randogeddon-gateway:$AP_VERSION"
 BASE=http://localhost:8000
-PLAYWRIGHT="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright/python:v1.49.1-noble}"
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.49.1}"
+PLAYWRIGHT="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright/python:v$PLAYWRIGHT_VERSION-noble}"
 [[ -r output/demo/admin.password ]] || { echo "No demo: ./scripts/demo.sh first"; exit 1; }
 curl -sf "$BASE/healthz" >/dev/null || { echo "The tracker isn't up at $BASE: ./scripts/demo.sh first"; exit 1; }
 
@@ -25,10 +32,16 @@ echo "# Randogeddon $(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts) ($(g
 
 if [[ -n "$build" ]]; then
   echo; echo "## Build"; echo; echo "| What | Time |"; echo "|---|---|"
+  # The three images one after the other (each native-image compile takes several GB at its peak); the database
+  # password and the token come from the lines above (or .env), as for the demo
+  build_images() {
+    local service
+    for service in tracker gateway minecraft; do docker compose build -q "$service" >/dev/null; done
+  }
   docker builder prune -af >/dev/null
-  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker >/dev/null && POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q gateway >/dev/null
+  start=$(date +%s); build_images
   echo "| from nothing (no cache) | $(( $(date +%s) - start )) s |"
-  start=$(date +%s); POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q tracker >/dev/null && POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build -q gateway >/dev/null
+  start=$(date +%s); build_images
   echo "| again, nothing changed | $(( $(date +%s) - start )) s |"
 fi
 
@@ -55,15 +68,16 @@ mb() { awk -v b="$1" 'BEGIN { printf "%.0f MB", b / 1048576 }'; }
 inside() { docker run --rm --entrypoint sh "$1" -c "du -sm $2 2>/dev/null" | awk '{printf "%s %s MB, ", $2, $1}' | sed 's/, $//'; }
 echo "| tracker | $(mb "$(docker image inspect -f '{{.Size}}' randogeddon-tracker:latest)") | $(inside randogeddon-tracker:latest '/app/*') |"
 echo "| gateway | $(mb "$(docker image inspect -f '{{.Size}}' "$gateway_image")") | $(inside "$gateway_image" '/app/* /opt/archipelago /usr/local/lib/python3*/site-packages') |"
+echo "| minecraft | $(mb "$(docker image inspect -f '{{.Size}}' randogeddon-minecraft:latest)") | $(inside randogeddon-minecraft:latest '/app/* /opt/forge /opt/java') |"
 
 stats() { docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | grep '^randogeddon-' | grep -v demo-sim; }
 echo; echo "## Containers"; echo; echo "| Container | Idle: CPU, memory | With $viewers viewers: CPU (most), memory (most) |"; echo "|---|---|---|"
 idle="$(stats)"
 # The viewers' streams held open in the background; the containers sampled meanwhile
 out="$(mktemp)"
-docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" \
-  -e DEMO_ADMIN=Alice -e DEMO_PASSWORD="$(cat output/demo/admin.password)" --entrypoint python "$gateway_image" \
-  /demo/admin.py measure "$seconds" "$viewers" > "$out" &
+# As the demo's admin calls: uid 1000, the password read from output/demo/ (/out), not from the command line
+docker run --rm --network randogeddon_default -v "$PWD/demo:/demo:ro" -v "$PWD/output/demo:/out" --user randogeddon \
+  -e DEMO_ADMIN=Alice --entrypoint python "$gateway_image" /demo/admin.py measure "$seconds" "$viewers" > "$out" &
 measuring=$!
 until grep -q VIEWERS_OPEN "$out" 2>/dev/null || ! kill -0 "$measuring" 2>/dev/null; do sleep 1; done
 sleep 5
@@ -96,8 +110,10 @@ rm -f "$out"
 echo; echo "## First screen (headless Chromium, a share link's dashboard)"; echo
 # The share link allows 60 requests a minute per address (WATCH_RATE_LIMIT): after the viewers' ones, a minute's pause
 (( viewers > 15 )) && sleep 61
-# The image has the browsers; the Python package comes with pip (once per run)
-docker run --rm -i --ipc=host --network randogeddon_default -e URL="http://tracker:8000/#/watch/$token" "$PLAYWRIGHT"   sh -c 'pip install -q --break-system-packages "playwright==${PLAYWRIGHT_VERSION:-1.49.1}" >/dev/null 2>&1; python3 -' <<'PY'
+# The image has the browsers; the Python package comes with pip (once per run; its errors shown, and then no measuring)
+docker run --rm -i --ipc=host --network randogeddon_default -e URL="http://tracker:8000/#/watch/$token" \
+  -e PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" "$PLAYWRIGHT" \
+  sh -c 'pip install -q --break-system-packages "playwright==$PLAYWRIGHT_VERSION" >/dev/null && python3 -' <<'PY'
 import os, statistics
 from playwright.sync_api import sync_playwright
 # The dashboard is drawn once Compose has started (it removes index.html's loading splash, Main.kt) and the session's
