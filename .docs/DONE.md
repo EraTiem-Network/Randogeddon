@@ -1610,3 +1610,21 @@ games' real map images moved to Later.*
       with and without locks, the roles' limits (12 and 6) and both refused a temporary table, the gateway's
       start with leftover session folders (one line, no error in the database's log); the deploy's switch
       against the scratch folder again, eleven cases, with a move that fails
+- [x] 0.23.9: a forgotten password (asked for on 2026-11-23; 0.23.9). Decided by the user: they type their name or
+      address, are shown the account's address partly hidden (as `m•••@p•••.me`) and type the whole address to
+      prove they know it (names are public, on share links for example); the mail's link works 15 minutes and
+      once, 3 mails an account an hour; two-factor login stays; every password field gets the eye that shows it.
+      By the main session: nothing tells whether an account exists (a made-up hidden address for an unknown
+      one, always the same answer after the address); every login of the account ended and a mail about the
+      change; not offered without a mail server or for accounts of single sign-on
+    - [x] With it (the user on 2026-11-23, asked what a password needs today: its length, 12 to 256, nothing
+          else): a new password that is obvious is refused (the account's name or address in it, a repeated
+          character or pattern, a run, a common word with only digits or symbols around it); no character
+          types required (length does more: the guidance since 2017)
+    - Built by two Opus subagents (the tracker with the database, the mails and the rule; the web app: the login
+      page's forms are plain HTML, so the new steps and the eye are too)
+    - Tried: all unit tests and the database-backed ones (seven new for the reset); in the demo, in a browser
+      with its mail catcher: the eye, a made-up hidden address for an unknown name (the same twice), the real
+      one for an account, a wrong address (the same answer after 1.3 s, no mail), the right one in capitals (the
+      mail), the link's page, three obvious passwords refused each with its sentence, a phrase accepted, the
+      second mail, the link gone afterwards, the new password logging in

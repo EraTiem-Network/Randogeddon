@@ -102,7 +102,9 @@ http:
 - **Mail:** `MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM` (`MAIL_ADDRESS`: an internal address for a server
   whose public one leads back to this host). Without `MAIL_HOST` mails only go to the tracker's log (whole, with their
   links: for local testing); with it, the log names a mail's account, never its address.
-- **`TOTP_KEY`** (`openssl rand -base64 32`) encrypts the two-factor secrets: keep it with the backups.
+- **`TOTP_KEY`** (`openssl rand -base64 32`) encrypts the two-factor secrets: keep it with the backups. The made-up
+  hidden addresses of the forgotten-password page are derived with it too (another key: other made-up addresses).
+  That page is only offered with `MAIL_HOST` set.
 - **Hosted Minecraft:** `MINECRAFT_EULA=true` accepts Mojang's EULA for every hosted server, and `MINECRAFT_TOKEN`
   (`openssl rand -hex 32`, not the internal one) is what the gateway calls the minecraft service with (nothing runs
   without both; the deploy sets a token if there is none); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` for all of

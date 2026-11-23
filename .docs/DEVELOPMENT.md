@@ -128,6 +128,7 @@ All under `/api`, JSON; without a login 401, for someone else's session 403. `GE
 |---|---|
 | Login | `POST /api/login` (name or address, password; with two-factor `{"next": "code"\|"setup"}` for `…/code`, `…/setup`, `…/setup/confirm`), `POST /api/logout`; single sign-on `GET /api/login/options`, `/api/login/oidc`, `…/callback`, `POST …/backchannel`, `…/updated`, `…/deleted`; `POST /api/login/link` (a CLI login) |
 | Sign-up | `GET /api/invitations/<token>`, `POST /api/signup`, `POST /api/email/confirm` |
+| A forgotten password | `POST /api/login/forgot` (the hidden address), `POST /api/login/forgot/send` (always 204), `GET /api/login/reset/<token>`, `POST /api/login/reset` |
 | Account | `GET /api/account`; `PUT …/name`, `…/password`, `…/auto-delete`; `POST …/email`, `…/2fa/setup`, `…/2fa/enable`, `…/2fa/disable`, `…/2fa/codes`; bridge keys `/api/account/bridge-keys` |
 | Sessions | `GET /api/me`, `/api/sessions`; per session `…/state`, `…/stream` (SSE), `…/player/<slot>`, `…/connection`, `…/archive`, `…/spoiler`, `…/spoiler/log?from=&count=` (≤ 400), `…/spoiler/search?q=` (one at a time per user), `…/files`, `…/files/<name>` |
 | Managing | `/api/manage`, `/api/sessions/new` (`/id?id=`), `POST /api/sessions`; `/api/sessions/<id>/manage/…`, `…/people`, `…/support`, `…/watchers`, `…/share`; Administrators `/api/admin/sessions`, `…/users`, `…/settings` |
