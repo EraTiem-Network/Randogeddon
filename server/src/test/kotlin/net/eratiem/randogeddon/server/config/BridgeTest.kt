@@ -16,6 +16,8 @@ import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.account.LoginCheck
 import net.eratiem.randogeddon.server.account.LoginMethods
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.BridgeDownload
+import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.palettes
@@ -105,6 +107,27 @@ class BridgeTest {
     val exe = java.security.MessageDigest.getInstance("SHA-256").digest("exe".toByteArray()).joinToString("") { "%02x".format(it) }
     assertEquals("$exe  randogeddon-bridge-0.12.2-windows-amd64.exe", bridgeChecksums(dir).trim().lines().last())
     assertEquals("randogeddon-bridge-0.12.2-windows-amd64.exe", offered.downloads.last().file)
+  }
+
+  @Test
+  fun `a build is served by its name, and for another version's name or none the build for that system`() {
+    val offered = BridgeDownloads(
+      "0.12.2",
+      listOf(
+        BridgeDownload("linux", "arm64", "randogeddon-bridge-0.12.2-linux-arm64", 3),
+        BridgeDownload("windows", "amd64", "randogeddon-bridge-0.12.2-windows-amd64.exe", 3),
+      ),
+    )
+    val exe = "randogeddon-bridge-0.12.2-windows-amd64.exe"
+    assertEquals(exe, offered.buildFor(exe)?.file)
+    // A bridge from before asks by the name without the version, or by its own version's
+    assertEquals(exe, offered.buildFor("randogeddon-bridge-windows-amd64.exe")?.file)
+    assertEquals(exe, offered.buildFor("randogeddon-bridge-0.11.0-windows-amd64.exe")?.file)
+    assertEquals("randogeddon-bridge-0.12.2-linux-arm64", offered.buildFor("randogeddon-bridge-dev-linux-arm64")?.file)
+    // No build for that system, or not a build's name at all
+    assertNull(offered.buildFor("randogeddon-bridge-macos-arm64"))
+    assertNull(offered.buildFor("SHA256SUMS"))
+    assertNull(offered.buildFor("../randogeddon-bridge-0.12.2-linux-arm64"))
   }
 
   @Test

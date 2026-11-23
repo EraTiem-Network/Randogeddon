@@ -54,7 +54,7 @@ data class TrackerConfig(
    * demo, never for a public server; ignored with single sign-on.
    */
   val adminPasswordLogin: Boolean = false,
-  /** Randogeddon Bridge's builds (`randogeddon-bridge-<os>-<arch>[.exe]` and `VERSION`), offered for download. */
+  /** Randogeddon Bridge's builds (`randogeddon-bridge-<version>-<os>-<arch>[.exe]` and `VERSION`), offered for download. */
   val bridgeDir: Path = Path.of("bridge/build/dist"),
   /**
    * The proxies (Traefik) whose `X-Forwarded-For` is believed for the client's address ([clientAddress]); empty: every
