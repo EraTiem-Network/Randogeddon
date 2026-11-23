@@ -12,6 +12,50 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.4: The database reviewed
+35 findings (none high, 9 medium, 26 low), listed in `.docs/DONE.md`. Schema version 29 (one migration, at the
+tracker's start). The compose files change (a network, the database's settings): an update recreates the database's
+container; nothing has to be set.
+
+To know before updating:
+- The recovery codes of accounts that turned two-factor login on before 2026-11-17 are deleted (codes from before
+  0.13.17 were kept in a form a stolen dump would break in seconds, and the table can't tell them from later ones):
+  those accounts make new codes under *Your account*; their authenticator works as before.
+- A server whose programs were the database's superuser so far gets roles of their own at the update, by itself.
+
+Security:
+- Each program always has a database role of its own, never the superuser's (without settings the gateway was the
+  superuser, and the docs said otherwise): made by `database-roles`, named and given passwords without anything
+  set (derived: the tracker's from `POSTGRES_PASSWORD`, the gateway's from `INTERNAL_TOKEN`, the user's choice).
+  The gateway's role can't be the tracker's or a superuser.
+- The gateway's role adds events without naming their number, 2 MiB at most each, only for a session that is there,
+  and holds ten connections at most; its password is no longer part of a statement's text.
+- The database is on a network of its own (not reachable from the minecraft service), and its superuser logs in
+  only inside its own container.
+- A statement ends after 20 s, a wait for a lock after 5 s; a failed statement's values (addresses, password
+  hashes) no longer reach the log.
+- A dump is whole or not there, and a restore stops at the first error (a cut dump restored by half, silently).
+- Used login links are deleted; a deleted account loses its name and preferences, and its row when no session
+  names it.
+
+Fixed:
+- A seed already used by a session set up in the panel is refused for a second one (it took the first one's row).
+- Deleting a session removes its events and snapshots with it, by the database (four steps before: what one left
+  showed in the next session of that ID, an old group's chat among it); nothing makes a session's row on its own
+  any more.
+- Events can't be passed over (their numbers were given before they were written); a live snapshot can't be
+  written over a finished session's archive; an invitation and a pending address are one per account by the
+  database.
+- A restart replays only the events since the tracker last kept a session's state (it replayed all of them, every
+  time); the tracker reads events in bounded batches.
+- The tracker's start leaves the gateway's rights alone when they are as they should be (it re-made them every
+  time, behind a lock the gateway's writes waited for).
+
+New:
+- An account has a time zone (the browser's, told at login): the mails give their times in it (`2026-11-25 15:00
+  Europe/Berlin`; without one, and for an address without an account, UTC). The views showed times in the browser's
+  zone already.
+
 ### 0.23.3: Randogeddon Bridge reviewed
 31 findings (none high, 7 medium, 24 low), listed in `.docs/DONE.md`. A bridge from before still works with this
 tracker (its `/bridge/me` is kept); the fixes on the player's PC come with the new download.

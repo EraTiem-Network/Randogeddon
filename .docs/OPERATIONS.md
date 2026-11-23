@@ -59,10 +59,19 @@ http:
 
 ## Settings worth knowing
 
-- **Database logins of their own** (`openssl rand -hex 32` each): `TRACKER_DB_USER` / `TRACKER_DB_PASSWORD` (made by
-  the one-off `database-roles` before each start; the superuser's password then stays with it and the dumps) and
-  `GATEWAY_DB_USER` / `GATEWAY_DB_PASSWORD` (made by the tracker; only what the gateway needs, since Archipelago's
-  Python runs beside it). Without them the tracker logs in as the superuser and the gateway as the tracker.
+- **Database logins:** each program always has a role of its own, never the superuser's: the tracker's owns the
+  tables, the gateway's has only what the gateway needs (Archipelago's Python runs beside it) and ten connections
+  at most. The one-off `database-roles` makes both before each start, the tracker gives the gateway's its login and
+  rights. `TRACKER_DB_USER` / `TRACKER_DB_PASSWORD` and `GATEWAY_DB_USER` / `GATEWAY_DB_PASSWORD` name them
+  (`openssl rand -hex 32` each; printable characters); unset, the names are `randogeddon_tracker` and
+  `randogeddon_gateway` and the passwords are derived (the tracker's from `POSTGRES_PASSWORD`, the gateway's from
+  `INTERNAL_TOKEN`). A name that is the superuser's, or the same for both, is refused: the tracker doesn't start
+  then (`docker compose logs database-roles`). A gateway role renamed by hand leaves the old one behind
+  (`DROP OWNED BY <old>; DROP ROLE <old>`).
+- **The database's reach:** on a network of its own that only the tracker, the gateway and `database-roles` join
+  (the minecraft service doesn't); its superuser logs in only inside its own container
+  (`docker compose exec postgres psql -U randogeddon`). A statement ends after 20 s and a wait for a lock after 5 s
+  (not for a migration); the programs' logs are in UTC.
 - **`TRUSTED_PROXIES`** (addresses or CIDR ranges, comma-separated): only these peers' `X-Forwarded-For` is believed,
   by the tracker (the rate limits, the streams' counts) and the gateway (the waiting connections per address). Unset:
   every peer's; set it to Traefik's address wherever their ports can be reached past Traefik
@@ -149,11 +158,24 @@ A rollback to before 0.21.6 needs a `minecraft` image tagged for it first
 **Restoring a dump:**
 
 ```sh
-cd /srv/randogeddon && docker compose stop tracker gateway
-docker compose exec -T postgres psql -U randogeddon -d postgres -c 'DROP DATABASE randogeddon' -c 'CREATE DATABASE randogeddon OWNER randogeddon'
-gunzip -c /srv/backups/<dump>.sql.gz | docker compose exec -T postgres psql -U randogeddon -d randogeddon
-docker compose up -d
+cd /srv/randogeddon
+gzip -t /srv/backups/<dump>.sql.gz          # a damaged file stops here
+docker compose stop tracker gateway
+docker compose exec -T postgres psql -X -U randogeddon -d postgres -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE randogeddon' -c 'CREATE DATABASE randogeddon OWNER randogeddon'
+docker compose run --rm database-roles      # the roles the dump's policy names
+gunzip -c /srv/backups/<dump>.sql.gz | docker compose exec -T postgres \
+  psql -X -U randogeddon -d randogeddon -v ON_ERROR_STOP=1 --single-transaction
+docker compose up -d                        # the tables to the tracker's role, the gateway's rights made again
 ```
+
+It stops at the first error and then leaves the database empty: nothing is restored by half. A dump is whole or not
+there (written under `.part`, renamed once `pg_dump` finished and its last line is in it; a switch stops before it
+changes anything if its dump fails). Dumps hold no owners or rights (made at every start); they name the gateway's
+role in a policy, so `GATEWAY_DB_USER` must be the server's. A dump from before 0.23.4 carries owners and rights
+and restores this way only where those roles exist. What a dump doesn't hold: `TOTP_KEY` or the key file in the
+tracker's state volume (without it the two-factor secrets are lost), and `data/` (seeds, saves). On a new server:
+`docker compose up -d postgres` first, then from `run --rm database-roles` on.
 
 ## Updating Archipelago
 

@@ -57,8 +57,12 @@ The parts:
       until the page takes it (S5: narrowed, not closed); two starts that both find a stale lock in the same
       instant can both run (B9); not tried by hand: the bridge against a live session with a real game, its page
       in a browser, a release's check for the signing key before it builds (first run: the next publish)
-- [ ] 0.23.4: the database (the stores, the roles, the migrations)
-    - Noted by the tracker's scan: `EmailChangeStore.take` selects and then deletes (not atomic; harmless so far)
+- [ ] Left from 0.23.4 (the database's review): the gateway warns at each start for every session folder whose
+      session is gone from the database (its stop is refused now); the temporary-table right of every role and a
+      connection limit on the tracker's role (S3, D23: not decided); Archipelago's Python beside the gateway can
+      still reach the database's port (D23); the tracker's refresh still reads `sessions` four times (D19, in
+      part); not tried: the update on the live server (the database's container recreated, V29 on its data), a
+      mail's time in an account's zone as it arrives
 - [ ] 0.23.5: the web app
 - [ ] 0.23.6: Archipelago's wrappers and the World Locks APWorld
 - [ ] 0.23.7: the scripts, the containers and the dependencies (the images, compose files, `audit.sh`)
@@ -67,6 +71,10 @@ The parts:
 
 *Points without a phase yet.*
 
+- [ ] How the available checks are worked out, looked at again: they should be more precise than they are now
+      (asked for on 2026-11-23)
+- [ ] Sent and received as two values each, all and progression, as the checks have them, with matching symbols;
+      in the Overview's panel of the items transported too (asked for on 2026-11-23; can be one pull request)
 - [ ] One user per session for Archipelago's processes (left by the gateway's review, 0.23.2.1; the user on
       2026-11-23: later): they share one user, so a world's code can read and change another session's files and
       read another game server's memory. A redesign of the directories, with the existing sessions' moved
