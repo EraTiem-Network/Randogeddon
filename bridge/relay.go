@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,6 +18,14 @@ import (
 
 // maxMessage is the largest message passed on: Archipelago's DataPackage can be several megabytes.
 const maxMessage = 64 << 20
+
+// maxGames is how many game connections one relay (or tunnel) carries at once: far more than a real setup has (a game
+// and a text client or a tracker), so only a runaway reconnect loop meets it.
+const maxGames = 32
+
+// refreshEvery is the least time between two fetches of a relay's password: a game that keeps reconnecting while it is
+// refused makes one dashboard call, not one per attempt.
+const refreshEvery = 10 * time.Second
 
 // The states a relay shows.
 const (
@@ -40,16 +49,20 @@ type Relay struct {
 	// refresh fetches the slot's password and the session's address again (after a refusal: it may have changed)
 	refresh func() (Slot, string, error)
 
-	mu        sync.Mutex
-	password  string
-	upstream  string
-	open      int // game connections now
-	connected int // of them, the ones the server took in
-	detail    string
-	listener  net.Listener
-	server    *http.Server // nil for a tunnel
-	closing   context.Context
-	close     context.CancelFunc
+	mu           sync.Mutex
+	password     string
+	upstream     string
+	open         int // game connections now
+	connected    int // of them, the ones the server took in
+	limit        int // the most game connections at once ([maxGames])
+	detail       string
+	refreshing   bool      // a fetch of the password runs
+	refreshed    time.Time // when the last one started
+	pagesRefused int       // connections from web pages refused (only the first is logged)
+	listener     net.Listener
+	server       *http.Server // nil for a tunnel
+	closing      context.Context
+	close        context.CancelFunc
 }
 
 // RelayView is a relay as the page shows it.
@@ -75,7 +88,7 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 	}
 	r := &Relay{
 		ID: id, Session: session, Title: title, Slot: slot.Name, Game: slot.Game, Port: ln.Addr().(*net.TCPAddr).Port,
-		refresh: refresh, password: slot.secret(), upstream: upstream, listener: ln,
+		refresh: refresh, password: slot.secret(), upstream: upstream, limit: maxGames, listener: ln,
 	}
 	r.closing, r.close = context.WithCancel(context.Background())
 	if slot.Tunnel != "" {
@@ -93,7 +106,8 @@ func startRelay(id, session, title string, slot Slot, upstream string, refresh f
 	return r, nil
 }
 
-// Close ends the relay and its game connections.
+// Close ends the relay and its game connections: they watch [Relay.closing] (the server's Shutdown doesn't know a
+// connection taken over by a WebSocket).
 func (r *Relay) Close() {
 	r.close()
 	if r.server == nil {
@@ -136,60 +150,119 @@ func (r *Relay) note(change func()) {
 	change()
 }
 
+// enter counts a game connection in (a new attempt: the last one's problem goes), unless the relay carries
+// [Relay.limit] already.
+func (r *Relay) enter() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.open >= r.limit {
+		return false
+	}
+	r.open++
+	r.detail = ""
+	return true
+}
+
+// leave counts a game connection out.
+func (r *Relay) leave() { r.note(func() { r.open-- }) }
+
+// unreachable notes that the game server (or the gateway) couldn't be reached, for the page and the log.
+func (r *Relay) unreachable(kind, address string, err error) {
+	r.note(func() { r.detail = "unreachable: " + err.Error() })
+	log.Printf("%s %s: %s unreachable: %v", kind, r.Slot, address, err)
+}
+
+// refused notes why the server refused the slot, for the page and the log.
+func (r *Relay) refused(kind, reason string) {
+	r.note(func() { r.detail = reason })
+	log.Printf("%s %s: refused (%s)", kind, r.Slot, reason)
+}
+
+// dial connects to a session's game server (or the gateway's end of a tunnel) at [address]: over wss://, ws:// only on
+// this computer ([checkUpstream]), and without following a redirect (the headers, a tunnel key among them, stay with
+// the address the dashboard named).
+func dial(ctx context.Context, address string, opts websocket.DialOptions) (*websocket.Conn, error) {
+	if err := checkUpstream(address); err != nil {
+		return nil, err
+	}
+	if opts.HTTPHeader == nil {
+		opts.HTTPHeader = http.Header{}
+	}
+	opts.HTTPHeader.Set("User-Agent", userAgent())
+	opts.HTTPClient = noRedirects
+	dialCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(dialCtx, address, &opts)
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadLimit(maxMessage)
+	return conn, nil
+}
+
 // ServeHTTP takes one game connection. A request with an Origin header comes from a web page in a browser, not from
 // a game: refused, so no page the player has open can act as their slot.
 func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("Origin") != "" {
 		http.Error(w, "Randogeddon Bridge doesn't take connections from web pages.", http.StatusForbidden)
-		log.Printf("relay %s: refused a connection from a web page (%s)", r.Slot, req.Header.Get("Origin"))
+		r.mu.Lock()
+		r.pagesRefused++
+		first := r.pagesRefused == 1
+		r.mu.Unlock()
+		if first {
+			log.Printf("relay %s: refused a connection from a web page (%s; more aren't logged)", r.Slot, req.Header.Get("Origin"))
+		}
 		return
 	}
 	if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
 		fmt.Fprintf(w, "Randogeddon Bridge: connect your game to localhost:%d\n", r.Port)
 		return
 	}
+	if !r.enter() {
+		http.Error(w, fmt.Sprintf("Randogeddon Bridge: this relay carries %d game connections already.", maxGames), http.StatusServiceUnavailable)
+		return
+	}
+	defer r.leave()
 	game, err := websocket.Accept(w, req, &websocket.AcceptOptions{CompressionMode: websocket.CompressionContextTakeover})
 	if err != nil {
 		return
 	}
 	game.SetReadLimit(maxMessage)
 	defer game.CloseNow()
-	r.note(func() { r.open++; r.detail = "" })
-	defer r.note(func() { r.open-- })
 
-	ctx, cancel := context.WithCancel(req.Context())
-	defer cancel()
 	address, password := r.target()
-	dialCtx, dialCancel := context.WithTimeout(ctx, 20*time.Second)
-	server, _, err := websocket.Dial(dialCtx, address, &websocket.DialOptions{
-		HTTPHeader:      http.Header{"User-Agent": {"RandogeddonBridge/" + version}},
-		CompressionMode: websocket.CompressionContextTakeover,
-	})
-	dialCancel()
+	server, err := dial(r.closing, address, websocket.DialOptions{CompressionMode: websocket.CompressionContextTakeover})
 	if err != nil {
-		r.note(func() { r.detail = "unreachable: " + err.Error() })
-		log.Printf("relay %s: %s unreachable: %v", r.Slot, address, err)
+		r.unreachable("relay", address, err)
 		_ = game.Close(websocket.StatusTryAgainLater, "Randogeddon can't be reached")
 		return
 	}
-	server.SetReadLimit(maxMessage)
 	defer server.CloseNow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Closing the relay (✕, logout, a key that's gone) ends the game connection too, as a server going away does
+	stop := context.AfterFunc(r.closing, func() {
+		_ = game.Close(websocket.StatusGoingAway, "Randogeddon Bridge closed the relay")
+		_ = server.Close(websocket.StatusGoingAway, "")
+	})
+	defer stop()
 
 	var inSlot atomic.Bool
 	done := make(chan error, 2)
-	// The game's messages, with the slot's name and password in its Connect
+	// The game's messages, with the slot's name and password in its Connect (until the slot is in)
 	go func() {
 		done <- pump(ctx, game, server, func(typ websocket.MessageType, data []byte) []byte {
-			if typ == websocket.MessageText {
+			if typ == websocket.MessageText && !inSlot.Load() {
 				data, _ = fillConnect(data, r.Slot, password)
 			}
 			return data
 		})
 	}()
-	// The server's, watched for whether the slot got in
+	// The server's, watched for whether the slot got in: only a frame that can be the answer to the Connect
+	// (Connected, ConnectionRefused) is parsed, and none once the slot is in (not the DataPackage of megabytes)
 	go func() {
 		done <- pump(ctx, server, game, func(typ websocket.MessageType, data []byte) []byte {
-			if typ != websocket.MessageText {
+			if typ != websocket.MessageText || inSlot.Load() || !bytes.Contains(data, []byte("Connect")) {
 				return data
 			}
 			connected, refused := serverReply(data)
@@ -198,21 +271,17 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				r.note(func() { r.connected++; r.detail = "" })
 			case len(refused) > 0:
 				reason := strings.Join(refused, ", ")
-				r.note(func() { r.detail = reason })
-				log.Printf("relay %s: refused (%s)", r.Slot, reason)
+				r.refused("relay", reason)
 				if strings.Contains(reason, "InvalidPassword") || strings.Contains(reason, "InvalidSlot") {
-					go r.update()
+					r.refreshSoon()
 				}
 			}
 			return data
 		})
 	}()
 	err = <-done
-	cancel()
-	if inSlot.Load() {
-		r.note(func() { r.connected-- })
-	}
-	// The other side ends the way this one did
+	// The other side ends the way this one did: closed with its code first (that also ends the other pump's read),
+	// cancelled after (a cancelled read would end the connection without the code)
 	code, reason := websocket.StatusNormalClosure, ""
 	var closed websocket.CloseError
 	if errors.As(err, &closed) && closed.Code != websocket.StatusNoStatusRcvd && closed.Code != websocket.StatusAbnormalClosure {
@@ -220,16 +289,38 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	_ = game.Close(code, reason)
 	_ = server.Close(code, reason)
+	cancel()
+	<-done
+	if inSlot.Load() {
+		r.note(func() { r.connected-- })
+	}
 }
 
-// update fetches the slot's password and the session's address again, for the next game connection.
+// refreshSoon fetches the slot's password and the session's address again, for the next game connection: one fetch
+// at a time, and at most one every [refreshEvery].
+func (r *Relay) refreshSoon() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.refresh == nil || r.refreshing || (!r.refreshed.IsZero() && time.Since(r.refreshed) < refreshEvery) {
+		return
+	}
+	r.refreshing, r.refreshed = true, time.Now()
+	go r.update()
+}
+
+// update fetches the slot's password and the session's address again; a slot that's gone (or can't be fetched) says
+// so on the page.
 func (r *Relay) update() {
 	slot, upstream, err := r.refresh()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.refreshing = false
 	if err != nil {
+		r.detail = err.Error()
 		log.Printf("relay %s: the password couldn't be fetched again: %v", r.Slot, err)
 		return
 	}
-	r.note(func() { r.password = slot.secret(); r.upstream = upstream })
+	r.password, r.upstream = slot.secret(), upstream
 }
 
 // pump sends every message of from on to to, after mapping it, until either side ends.

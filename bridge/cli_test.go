@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -14,12 +15,12 @@ import (
 func dashboard(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /bridge/me", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /bridge/info", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer good" {
-			w.WriteHeader(http.StatusUnauthorized)
+			keyGoneAnswer(w)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(Me{Name: "Alice"})
+		_ = json.NewEncoder(w).Encode(Info{Name: "Alice"})
 	})
 	mux.HandleFunc("GET /bridge/sessions", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]Session{
@@ -65,10 +66,13 @@ func TestOfferedSessions(t *testing.T) {
 		want    bool
 	}{
 		{Session{MySlots: []string{"A"}, MyRole: "player"}, true},
-		{Session{MyRole: "manager"}, true},
-		{Session{}, true}, // an Administrator without a part
+		// Only slots open to all or hosted ones: the connection's slot list says which
+		{Session{MyRole: "player"}, true},
+		{Session{MyRole: "manager", Status: "finishing"}, true},
 		{Session{MyRole: "watcher"}, false},
-		{Session{MyRole: "manager", Status: "finished"}, false},
+		{Session{MyRole: "support"}, false},
+		{Session{}, false}, // a key never acts as an Administrator: no session without a part
+		{Session{MyRole: "manager", Status: "paused"}, false},
 	}
 	for _, c := range cases {
 		if got := c.session.Offered(); got != c.want {
@@ -122,6 +126,91 @@ func TestARelayOpensAHostedSlotButNotALockedOne(t *testing.T) {
 		if _, _, err := slotOf(c, "friday", name); err == nil {
 			t.Errorf("%s opened", name)
 		}
+	}
+}
+
+func TestARelayIsRefusedAnUnencryptedAddressElsewhere(t *testing.T) {
+	for address, ok := range map[string]bool{
+		"ws://example.org:38281/friday":      false,
+		"ws://127.0.0.1:38281/friday":        true,
+		"friday.randogeddon.eratiem.net:443": true,
+	} {
+		stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(Connection{Server: address, Slots: []Slot{{Name: "Alice", Game: "Game", Password: "pw"}}})
+		}))
+		_, _, err := slotOf(newClient(stub.URL, "good", ""), "friday", "Alice")
+		stub.Close()
+		if (err == nil) != ok {
+			t.Errorf("%s: %v", address, err)
+		}
+	}
+}
+
+func TestTheKeyGoesOnlyToItsDashboard(t *testing.T) {
+	dir := t.TempDir()
+	if err := (Config{Server: "https://randogeddon.example", Key: "good"}).save(dir); err != nil {
+		t.Fatal(err)
+	}
+	// Without -server, or with the same address: the saved login
+	for _, flagServer := range []string{"", "https://randogeddon.example/"} {
+		if cfg, err := resolveConfig(dir, flagServer); err != nil || cfg.Key != "good" || cfg.Server != "https://randogeddon.example" {
+			t.Errorf("-server %q: %+v %v", flagServer, cfg, err)
+		}
+	}
+	// Another dashboard: logged out there; it never sees the key, and the saved one stays
+	var keys atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Authorization"), "good") {
+			keys.Add(1)
+		}
+		keyGoneAnswer(w)
+	}))
+	defer other.Close()
+	cfg, err := resolveConfig(dir, other.URL)
+	if err != nil || cfg.Key != "" || cfg.Server != other.URL {
+		t.Fatalf("another dashboard: %+v %v", cfg, err)
+	}
+	var out bytes.Buffer
+	if code := runCLI(dir, cfg, []string{"slots"}, nil, &out); code == 0 {
+		t.Error("slots without a login there")
+	}
+	if keys.Load() != 0 {
+		t.Error("the key went to another dashboard")
+	}
+	if saved := loadConfig(dir); saved.Key != "good" {
+		t.Errorf("the saved login went: %+v", saved)
+	}
+	// Unencrypted and not on this computer: refused, by -server or by the config itself
+	if cfg, err := resolveConfig(dir, "http://randogeddon.example"); err == nil || cfg.Key != "" {
+		t.Errorf("-server http://: %+v %v", cfg, err)
+	}
+	if err := (Config{Server: "http://192.0.2.1", Key: "good"}).save(dir); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := resolveConfig(dir, ""); err == nil || cfg.Key != "" {
+		t.Errorf("a config with http://: %+v %v", cfg, err)
+	}
+	if err := newClient("http://192.0.2.1", "good", "").Logout(); err == nil {
+		t.Error("a call over http:// to another computer")
+	}
+}
+
+func TestTheKeyFollowsNoRedirect(t *testing.T) {
+	var reached atomic.Int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Add(1)
+		_ = json.NewEncoder(w).Encode(Info{Name: "Mallory"})
+	}))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer redirecting.Close()
+	if _, err := newClient(redirecting.URL, "good", "").Info(); err == nil {
+		t.Error("a redirect was taken")
+	}
+	if reached.Load() != 0 {
+		t.Error("the key went elsewhere")
 	}
 }
 

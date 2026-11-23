@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,6 +177,169 @@ func TestRelayWhenTheServerIsUnreachable(t *testing.T) {
 		t.Fatalf("closed with %v", err)
 	}
 	waitFor(t, relay, StateError)
+}
+
+func TestClosingARelayEndsItsGameConnections(t *testing.T) {
+	ended := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		ctx := r.Context()
+		_ = c.Write(ctx, websocket.MessageText, []byte(`[{"cmd":"RoomInfo"}]`))
+		for {
+			_, data, err := c.Read(ctx)
+			if err != nil {
+				close(ended)
+				return
+			}
+			if strings.Contains(string(data), `"Connect"`) {
+				_ = c.Write(ctx, websocket.MessageText, []byte(`[{"cmd":"Connected","slot":1}]`))
+			}
+		}
+	}))
+	defer server.Close()
+	relay, err := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "pw"}, wsURL(server), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	game, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d", relay.Port), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer game.CloseNow()
+	read(t, ctx, game)
+	_ = game.Write(ctx, websocket.MessageText, []byte(`[{"cmd":"Connect","name":"x"}]`))
+	read(t, ctx, game)
+	waitFor(t, relay, StateConnected)
+
+	// ✕, a logout or a key that's gone: the game is out of the slot at once
+	relay.Close()
+	readCtx, readCancel := context.WithTimeout(ctx, time.Second)
+	defer readCancel()
+	if _, _, err := game.Read(readCtx); websocket.CloseStatus(err) != websocket.StatusGoingAway {
+		t.Fatalf("the game: %v", err)
+	}
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("the server's connection stayed")
+	}
+}
+
+func TestTheServersCloseReachesTheGame(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = c.Write(r.Context(), websocket.MessageText, []byte(`[{"cmd":"RoomInfo"}]`))
+		_ = c.Close(websocket.StatusTryAgainLater, "Session x isn't running")
+	}))
+	defer server.Close()
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "pw"}, wsURL(server), nil, 0)
+	defer relay.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for try := 0; try < 20; try++ {
+		game, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d", relay.Port), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		read(t, ctx, game)
+		_, _, err = game.Read(ctx)
+		var closed websocket.CloseError
+		if !errors.As(err, &closed) || closed.Code != websocket.StatusTryAgainLater || closed.Reason != "Session x isn't running" {
+			t.Fatalf("try %d: %v", try, err)
+		}
+		game.CloseNow()
+	}
+}
+
+func TestRelayFetchesThePasswordOnceForManyRefusals(t *testing.T) {
+	seen := make(chan map[string]any, 20)
+	server := gameServer(t, "right", seen)
+	defer server.Close()
+	var refreshes atomic.Int32
+	refresh := func() (Slot, string, error) {
+		refreshes.Add(1)
+		return Slot{Name: "Alice", Game: "Game", Password: "still wrong"}, wsURL(server), nil
+	}
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "wrong"}, wsURL(server), refresh, 0)
+	defer relay.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// A game that keeps reconnecting while it is refused
+	for try := 0; try < 20; try++ {
+		game, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d", relay.Port), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		read(t, ctx, game)
+		_ = game.Write(ctx, websocket.MessageText, []byte(`[{"cmd":"Connect","name":"x"}]`))
+		<-seen
+		if got := read(t, ctx, game); !strings.Contains(got, "ConnectionRefused") {
+			t.Fatalf("reply %s", got)
+		}
+		game.CloseNow()
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := refreshes.Load(); n != 1 {
+		t.Errorf("fetched %d times", n)
+	}
+}
+
+func TestARelayCarriesAtMostItsLimit(t *testing.T) {
+	seen := make(chan map[string]any, 1)
+	server := gameServer(t, "pw", seen)
+	defer server.Close()
+	relay, _ := startRelay("1", "s", "S", Slot{Name: "Alice", Game: "Game", Password: "pw"}, wsURL(server), nil, 0)
+	defer relay.Close()
+	relay.note(func() { relay.limit = 1 })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	address := fmt.Sprintf("ws://127.0.0.1:%d", relay.Port)
+	first, _, err := websocket.Dial(ctx, address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(t, ctx, first)
+	if _, resp, err := websocket.Dial(ctx, address, nil); err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("one too many: %v %v", resp, err)
+	}
+	// Once it is gone, the next gets in
+	first.CloseNow()
+	waitFor(t, relay, StateWaiting)
+	again, _, err := websocket.Dial(ctx, address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.CloseNow()
+	read(t, ctx, again)
+}
+
+func TestOnlyThisComputerUnencrypted(t *testing.T) {
+	for address, ok := range map[string]bool{
+		"wss://friday.randogeddon.eratiem.net":      true,
+		"ws://localhost:38281/friday":               true,
+		"ws://127.0.0.1:38281/friday":               true,
+		"ws://[::1]:38281/friday":                   true,
+		"ws://randogeddon.eratiem.net:38281/friday": false,
+		"ws://192.168.1.20:38281/friday":            false,
+		"https://randogeddon.eratiem.net":           false,
+	} {
+		if err := checkUpstream(address); (err == nil) != ok {
+			t.Errorf("%s: %v", address, err)
+		}
+	}
+	// Nor does a relay dial one
+	if _, err := dial(context.Background(), "ws://randogeddon.eratiem.net:38281/friday", websocket.DialOptions{}); err == nil {
+		t.Error("dialled unencrypted")
+	}
 }
 
 func TestUpstreamURL(t *testing.T) {

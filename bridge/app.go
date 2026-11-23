@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -23,8 +24,21 @@ import (
 //go:embed ui
 var uiFiles embed.FS
 
-// The cookie that holds the page's token: only the link the bridge opened gets in.
-const tokenCookie = "randogeddon_bridge"
+// aliveProtocol is the subprotocol of the page's WebSocket (/api/alive); the page's token comes as the second one (a
+// browser's WebSocket can't set a header).
+const aliveProtocol = "randogeddon-bridge"
+
+// checkEvery is how often the bridge checks that its key still works.
+const checkEvery = 15 * time.Second
+
+// refreshPause is how soon after a check the page's return (POST /api/refresh) checks again.
+const refreshPause = 3 * time.Second
+
+// codeLife is how long a link that opens the page works (once): the browser opens it at once.
+const codeLife = 5 * time.Minute
+
+// maxBody is the most the page sends in a body (a key, a session and a slot).
+const maxBody = 64 << 10
 
 // App is the bridge while it runs: the login, the relays, and the page on localhost that shows them.
 type App struct {
@@ -39,15 +53,19 @@ type App struct {
 	me       *Me
 	info     *Info
 	problem  string
-	language string // the page's Accept-Language, so the dashboard words its refusals for the user
+	language string    // the page's Accept-Language, so the dashboard words its refusals for the user
+	checked  time.Time // when the last check of the key started
 	relays   []*Relay
 	next     int
-	fonts    map[string][]byte // the dashboard's font files this page showed, by their path there
+	fonts    map[string][]byte    // the files of the account's font (as the page showed it), by their path there
+	codes    map[string]time.Time // the codes of the links that open the page, until when each works
 
-	// The pages open now (each keeps /api/alive open); once the last is gone for [App.pageGrace], the bridge quits
+	// The pages open now (each keeps /api/alive open); once the last is gone for [App.pageGrace] and no game is
+	// connected through a relay, the bridge quits
 	pages     int
 	pageGrace time.Duration
 	lastPage  *time.Timer
+	staying   bool // the page is gone, but a game is connected: the bridge stays until it has left
 }
 
 // pageGrace is how long the bridge waits for a page after the last one closed (a reload comes back within it).
@@ -57,8 +75,38 @@ func newApp(dir, token string, cfg Config) *App {
 	return &App{dir: dir, token: token, cfg: cfg, quit: make(chan struct{}), pageGrace: pageGrace}
 }
 
-// openURL is the page's link with its token; the page then keeps the token as a cookie.
+// openURL is the page's link with its token itself: what the lock file holds, for a second start (readable only by
+// the user). The browser gets a link with a code instead ([App.newLink]).
 func (a *App) openURL() string { return fmt.Sprintf("http://127.0.0.1:%d/?t=%s", a.port, a.token) }
+
+// newLink is a link that opens the page: its code is exchanged by the page for the token, once and within
+// [codeLife], so a link read from the process list (the browser's opener has it on its command line) is soon dead.
+func (a *App) newLink() string {
+	code := make([]byte, 16)
+	_, _ = rand.Read(code)
+	now := time.Now()
+	a.mu.Lock()
+	for c, until := range a.codes {
+		if now.After(until) {
+			delete(a.codes, c)
+		}
+	}
+	if a.codes == nil {
+		a.codes = map[string]time.Time{}
+	}
+	a.codes[hex.EncodeToString(code)] = now.Add(codeLife)
+	a.mu.Unlock()
+	return fmt.Sprintf("http://127.0.0.1:%d/?c=%s", a.port, hex.EncodeToString(code))
+}
+
+// redeem is whether [code] opens the page; it works once.
+func (a *App) redeem(code string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	until, ok := a.codes[code]
+	delete(a.codes, code)
+	return ok && time.Now().Before(until)
+}
 
 func (a *App) client() *Client {
 	a.mu.Lock()
@@ -66,65 +114,87 @@ func (a *App) client() *Client {
 	return newClient(a.cfg.Server, a.cfg.Key, a.language)
 }
 
+// current is whether [c] asks with the login the bridge has now (an answer to an earlier one changes nothing); a.mu
+// is held.
+func (a *App) current(c *Client) bool {
+	return a.cfg.Key == c.Key && strings.TrimRight(a.cfg.Server, "/") == c.Server
+}
+
+// watch calls [check] at once and then every [checkEvery], until it returns false or [quit] closes.
+func watch(quit <-chan struct{}, check func() bool) {
+	for check() {
+		select {
+		case <-quit:
+			return
+		case <-time.After(checkEvery):
+		}
+	}
+}
+
 // resume logs in with the saved key at the start, and checks every 15 seconds that the key still works: once the
 // dashboard no longer takes it (ended under Your account, expired), the bridge logs out and closes its relays.
 func (a *App) resume() {
-	for {
-		a.check()
-		select {
-		case <-a.quit:
-			return
-		case <-time.After(15 * time.Second):
-		}
-	}
+	watch(a.quit, func() bool { a.check(); return true })
 }
 
 // check asks the dashboard who the key belongs to and how they see Randogeddon (theme, mode, language: a change there
-// shows here within moments); a key that's gone logs out.
+// shows here within moments), in one call; a key that's gone logs out. When the call fails otherwise, what the page
+// showed stays.
 func (a *App) check() {
 	a.mu.Lock()
-	key, known := a.cfg.Key, a.me != nil
+	a.checked = time.Now()
 	a.mu.Unlock()
-	if key == "" {
+	c := a.client()
+	if c.Key == "" {
 		return
 	}
-	c := a.client()
-	me, err := c.Me()
-	var refusal *APIError
-	switch {
-	case errors.As(err, &refusal) && refusal.KeyGone():
-		a.forget(refusal.Message)
-	case err != nil:
-		if !known {
-			a.setProblem(err.Error())
-		}
-	default:
-		info, _ := c.Info()
-		a.mu.Lock()
-		a.me, a.info, a.problem = &me, &info, ""
-		a.mu.Unlock()
+	info, err := c.Info()
+	if keyGone(err) {
+		a.forget(c, err.Error())
+		return
 	}
-}
-
-func (a *App) setProblem(problem string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.problem = problem
+	if !a.current(c) {
+		return
+	}
+	if err != nil {
+		if a.me == nil {
+			a.problem = err.Error()
+		}
+		return
+	}
+	a.me, a.info, a.problem = &Me{Name: info.Name}, &info, ""
 }
 
-// forget logs out here: the key goes from the config, the relays close.
-func (a *App) forget(problem string) {
+// forget logs out here, if [c] is still the login: the key goes from the config, the relays close.
+func (a *App) forget(c *Client, problem string) {
 	a.mu.Lock()
-	relays := a.relays
-	a.relays, a.me, a.info, a.problem = nil, nil, nil, problem
+	if c.Key == "" || !a.current(c) {
+		a.mu.Unlock()
+		return
+	}
+	relays := a.takeRelays()
+	a.me, a.info, a.problem = nil, nil, problem
 	a.cfg.Key = ""
 	cfg := a.cfg
 	a.mu.Unlock()
-	for _, r := range relays {
-		r.Close()
-	}
+	closeRelays(relays)
 	if err := cfg.save(a.dir); err != nil {
 		log.Printf("The config couldn't be saved: %v", err)
+	}
+}
+
+// takeRelays takes the relays out of the list, to be closed once a.mu is free ([closeRelays]); a.mu is held.
+func (a *App) takeRelays() []*Relay {
+	relays := a.relays
+	a.relays = nil
+	return relays
+}
+
+func closeRelays(relays []*Relay) {
+	for _, r := range relays {
+		r.Close()
 	}
 }
 
@@ -132,12 +202,9 @@ func (a *App) forget(problem string) {
 func (a *App) Quit() {
 	a.quitOnce.Do(func() {
 		a.mu.Lock()
-		relays := a.relays
-		a.relays = nil
+		relays := a.takeRelays()
 		a.mu.Unlock()
-		for _, r := range relays {
-			r.Close()
-		}
+		closeRelays(relays)
 		close(a.quit)
 	})
 }
@@ -149,10 +216,31 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /ping", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "randogeddon-bridge") })
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, static, "index.html") })
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	// The page's link carries a code: the page exchanges it for the token, which it sends with every call
+	mux.HandleFunc("POST /api/exchange", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		if readJSON(w, r, &body) != nil || !a.redeem(body.Code) {
+			writeProblem(w, http.StatusForbidden, "This link works once and for a few minutes: start Randogeddon Bridge again (it opens its page).")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"token": a.token})
+	})
+	// A link of its own for a second start (it has the token from the lock file): it opens this page
+	mux.HandleFunc("POST /api/link", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"link": a.newLink()})
+	})
 	mux.HandleFunc("GET /api/state", a.handleState)
-	// The page got the focus back: the account's theme, mode and language now, not at the next check
+	// The page got the focus back: the account's theme, mode and language now, not at the next check (unless that was
+	// a moment ago)
 	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
-		a.check()
+		a.mu.Lock()
+		recent := time.Since(a.checked) < refreshPause
+		a.mu.Unlock()
+		if !recent {
+			a.check()
+		}
 		a.handleState(w, r)
 	})
 	// The account's font, fetched from the dashboard by the bridge: the page loads nothing from elsewhere
@@ -172,8 +260,9 @@ func (a *App) Handler() http.Handler {
 }
 
 // guard lets only this computer's browser, with the page's token, use the page: the Host must be the bridge's own
-// (no other name pointing at 127.0.0.1, DNS rebinding), the token cookie must match (SameSite=Strict: other sites'
-// requests don't carry it), and changes need the page's own header (another site can't set it without asking first).
+// (no other name pointing at 127.0.0.1, DNS rebinding), and every call carries the token in its X-Bridge header (no
+// cookie: a browser would send that to every server on 127.0.0.1, whatever its port; and another site can't set the
+// header without asking first). Changes also come from no other site's page (Origin).
 func (a *App) guard(next http.Handler) http.Handler {
 	hosts := map[string]bool{fmt.Sprintf("127.0.0.1:%d", a.port): true, fmt.Sprintf("localhost:%d", a.port): true}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -188,29 +277,29 @@ func (a *App) guard(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-store")
-		if r.URL.Path == "/ping" {
+		// The ping and the page's own files: nothing in them to keep from anyone (the page then needs its token)
+		if r.Method == http.MethodGet && (r.URL.Path == "/ping" || r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/static/")) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if t := r.URL.Query().Get("t"); r.URL.Path == "/" && t != "" {
-			if !a.validToken(t) {
-				http.Error(w, "This link is from an earlier start of the bridge: open it from the bridge again.", http.StatusForbidden)
-				return
-			}
-			http.SetCookie(w, &http.Cookie{Name: tokenCookie, Value: a.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		cookie, err := r.Cookie(tokenCookie)
-		if err != nil || !a.validToken(cookie.Value) {
-			http.Error(w, "Open this page from Randogeddon Bridge (start it again: it opens the page).", http.StatusForbidden)
-			return
-		}
 		if r.Method != http.MethodGet {
-			if origin := r.Header.Get("Origin"); (origin != "" && !hosts[strings.TrimPrefix(origin, "http://")]) || r.Header.Get("X-Bridge") != "1" {
+			if origin := r.Header.Get("Origin"); origin != "" && !hosts[strings.TrimPrefix(origin, "http://")] {
 				http.Error(w, "Not from the bridge's page.", http.StatusForbidden)
 				return
 			}
+		}
+		// The link's code is what lets it in; the header still keeps other sites out
+		if r.URL.Path == "/api/exchange" {
+			if r.Header.Get("X-Bridge") == "" {
+				http.Error(w, "Not from the bridge's page.", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !a.validToken(pageToken(r)) {
+			http.Error(w, "Open this page from Randogeddon Bridge (start it again: it opens the page).", http.StatusForbidden)
+			return
 		}
 		if lang := r.Header.Get("Accept-Language"); lang != "" && strings.HasPrefix(r.URL.Path, "/api/") {
 			a.mu.Lock()
@@ -221,17 +310,35 @@ func (a *App) guard(next http.Handler) http.Handler {
 	})
 }
 
+// pageToken is the token a call of the page carries: its X-Bridge header, or for its WebSocket (/api/alive) the
+// subprotocol after [aliveProtocol].
+func pageToken(r *http.Request) string {
+	if r.URL.Path != "/api/alive" {
+		return r.Header.Get("X-Bridge")
+	}
+	for _, protocols := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, p := range strings.Split(protocols, ",") {
+			if p = strings.TrimSpace(p); p != "" && p != aliveProtocol {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
 // handleAlive keeps a WebSocket open while the page is (it sends nothing). The browser closes it with the tab, and the
 // system with a killed browser: once no page is left and none comes back within [App.pageGrace], the bridge quits,
-// relays and all. Only after a page was there: started with -no-browser it runs until Quit.
+// relays and all; while a game is connected through a relay, it stays until the last one has left. Only after a page
+// was there: started with -no-browser it runs until Quit.
 func (a *App) handleAlive(w http.ResponseWriter, r *http.Request) {
 	// Accept also refuses another site's page (its Origin isn't this host)
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{aliveProtocol}})
 	if err != nil {
 		return
 	}
 	a.mu.Lock()
 	a.pages++
+	a.staying = false
 	if a.lastPage != nil {
 		a.lastPage.Stop()
 		a.lastPage = nil
@@ -248,16 +355,36 @@ func (a *App) handleAlive(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	a.pages--
 	if a.pages == 0 && a.lastPage == nil {
-		a.lastPage = time.AfterFunc(a.pageGrace, func() {
-			a.mu.Lock()
-			gone := a.pages == 0
-			a.mu.Unlock()
-			if gone {
-				log.Printf("The page was closed: quitting")
-				a.Quit()
-			}
-		})
+		a.lastPage = time.AfterFunc(a.pageGrace, a.quitWithoutPage)
 	}
+}
+
+// quitWithoutPage quits the bridge once no page is open: at once if no game is connected through a relay, else once
+// the last one has left (looked at again every [App.pageGrace]).
+func (a *App) quitWithoutPage() {
+	a.mu.Lock()
+	if a.pages > 0 {
+		a.mu.Unlock()
+		return
+	}
+	games := 0
+	for _, r := range a.relays {
+		games += r.View().Games
+	}
+	if games > 0 {
+		if !a.staying {
+			a.staying = true
+			log.Printf("The page was closed: running on while a game is connected")
+		}
+		if a.lastPage != nil {
+			a.lastPage.Reset(a.pageGrace)
+		}
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Unlock()
+	log.Printf("The page was closed: quitting")
+	a.Quit()
 }
 
 func (a *App) validToken(t string) bool {
@@ -271,7 +398,7 @@ type State struct {
 	User      *Me         `json:"user"`
 	Info      *Info       `json:"info"`
 	Update    string      `json:"update,omitempty"`    // a newer bridge the dashboard offers
-	UpdateURL string      `json:"updateUrl,omitempty"` // its download for this system
+	UpdateURL string      `json:"updateUrl,omitempty"` // its download for this system; none if it offers none
 	Problem   string      `json:"problem,omitempty"`
 	Relays    []RelayView `json:"relays"`
 }
@@ -286,25 +413,29 @@ func (a *App) handleState(w http.ResponseWriter, _ *http.Request) {
 	}
 	if s.Info != nil && s.Info.Version != nil && newer(*s.Info.Version, version) {
 		s.Update = *s.Info.Version
-		s.UpdateURL = s.Server + "/downloads/bridge/" + buildName(runtime.GOOS, runtime.GOARCH)
+		if file := s.Info.buildFor(runtime.GOOS, runtime.GOARCH); file != "" {
+			s.UpdateURL = s.Server + "/downloads/bridge/" + url.PathEscape(file)
+		}
 	}
 	writeJSON(w, http.StatusOK, s)
 }
 
 // handleFont serves the regular or the bold file of the account's font (as `GET /bridge/info` named it), fetched from
-// the dashboard once and kept while the bridge runs. Without a font, or if it can't be fetched: 404, and the page
-// keeps the system's font.
+// the dashboard once and kept while the bridge runs (only the current font's files). Without a font, or if it can't be
+// fetched: 404, and the page keeps the system's font.
 func (a *App) handleFont(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
-	var path string
+	var path, other string
 	if a.info != nil && a.info.Font != nil {
+		var bold string
+		if a.info.Font.Bold != nil {
+			bold = *a.info.Font.Bold
+		}
 		switch r.PathValue("weight") {
 		case "regular":
-			path = a.info.Font.Regular
+			path, other = a.info.Font.Regular, bold
 		case "bold":
-			if a.info.Font.Bold != nil {
-				path = *a.info.Font.Bold
-			}
+			path, other = bold, a.info.Font.Regular
 		}
 	}
 	data := a.fonts[path]
@@ -322,14 +453,21 @@ func (a *App) handleFont(w http.ResponseWriter, r *http.Request) {
 		}
 		data = fetched
 		a.mu.Lock()
-		if a.fonts == nil {
-			a.fonts = map[string][]byte{}
+		// The font's other file stays; one the account no longer reads in goes
+		kept := map[string][]byte{path: data}
+		if d, ok := a.fonts[other]; ok {
+			kept[other] = d
 		}
-		a.fonts[path] = data
+		a.fonts = kept
 		a.mu.Unlock()
 	}
 	w.Header().Set("Content-Type", "font/ttf")
 	w.Write(data)
+}
+
+// readJSON reads the page's JSON body, of at most [maxBody].
+func readJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	return json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(v)
 }
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -337,7 +475,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Key    string `json:"key"`
 		Server string `json:"server"`
 	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil {
+	if readJSON(w, r, &body) != nil {
 		writeProblem(w, http.StatusBadRequest, "not a login")
 		return
 	}
@@ -354,67 +492,61 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := newClient(server, key, language)
-	me, err := c.Me()
+	info, err := c.Info()
 	if err != nil {
 		writeProblem(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	info, _ := c.Info()
 	a.mu.Lock()
-	a.cfg.Server, a.cfg.Key = server, key
-	a.me, a.info, a.problem = &me, &info, ""
+	// Another dashboard or another account: the relays of the login before close
+	var relays []*Relay
+	if strings.TrimRight(a.cfg.Server, "/") != c.Server || a.me == nil || a.me.Name != info.Name {
+		relays = a.takeRelays()
+	}
+	a.cfg.Server, a.cfg.Key = c.Server, key
+	a.me, a.info, a.problem = &Me{Name: info.Name}, &info, ""
 	cfg := a.cfg
 	a.mu.Unlock()
+	closeRelays(relays)
 	if err := cfg.save(a.dir); err != nil {
 		log.Printf("The config couldn't be saved: %v", err)
 	}
-	log.Printf("Logged in as %s at %s", me.Name, server)
+	log.Printf("Logged in as %s at %s", info.Name, c.Server)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// checkServer allows the dashboard over HTTPS, and over plain HTTP only on this computer (the local demo): the key
-// never goes over the network unencrypted.
-func checkServer(server string) error {
-	u, err := url.Parse(server)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("%q is not an address", server)
-	}
-	local := u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"
-	if u.Scheme == "https" || (u.Scheme == "http" && local) {
-		return nil
-	}
-	return fmt.Errorf("%s: only https:// (or http:// on this computer)", server)
-}
-
 func (a *App) handleLogout(w http.ResponseWriter, _ *http.Request) {
-	if err := a.client().Logout(); err != nil {
-		log.Printf("The key couldn't be ended on the dashboard: %v", err)
+	c := a.client()
+	if c.Key != "" {
+		if err := c.Logout(); err != nil {
+			log.Printf("The key couldn't be ended on the dashboard: %v", err)
+		}
 	}
-	a.forget("")
+	a.forget(c, "")
 	log.Printf("Logged out")
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// call runs a dashboard call for the page; a key the dashboard no longer takes logs the bridge out.
-func (a *App) call(w http.ResponseWriter, err error) bool {
+// call runs a dashboard call of [c] for the page; a key the dashboard no longer takes logs the bridge out.
+func (a *App) call(w http.ResponseWriter, c *Client, err error) bool {
 	if err == nil {
 		return true
 	}
-	var refusal *APIError
-	if errors.As(err, &refusal) && refusal.KeyGone() {
-		a.forget(refusal.Message)
-		writeProblem(w, http.StatusUnauthorized, refusal.Message)
+	if keyGone(err) {
+		a.forget(c, err.Error())
+		writeProblem(w, http.StatusUnauthorized, err.Error())
 		return false
 	}
 	writeProblem(w, http.StatusBadGateway, err.Error())
 	return false
 }
 
-// handleSessions answers the sessions the user plays in now, by their ID (as the game addresses name them; the title is
-// the dashboard's own unless a session has one).
+// handleSessions answers the running sessions the user plays in or manages: their ID (as the game addresses name
+// them) and their title.
 func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
-	sessions, err := a.client().Sessions()
-	if !a.call(w, err) {
+	c := a.client()
+	sessions, err := c.Sessions()
+	if !a.call(w, c, err) {
 		return
 	}
 	type entry struct {
@@ -424,7 +556,11 @@ func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
 	out := []entry{}
 	for _, s := range sessions {
 		if s.Offered() {
-			out = append(out, entry{s.ID, s.ID})
+			title := s.Title
+			if title == "" {
+				title = s.ID
+			}
+			out = append(out, entry{s.ID, title})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -432,8 +568,9 @@ func (a *App) handleSessions(w http.ResponseWriter, _ *http.Request) {
 
 // handleSlots answers the user's slots in a session (without their passwords: the page never needs them).
 func (a *App) handleSlots(w http.ResponseWriter, r *http.Request) {
-	conn, err := a.client().Connection(r.URL.Query().Get("session"))
-	if !a.call(w, err) {
+	c := a.client()
+	conn, err := c.Connection(r.URL.Query().Get("session"))
+	if !a.call(w, c, err) {
 		return
 	}
 	type entry struct {
@@ -450,28 +587,38 @@ func (a *App) handleSlots(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// relayFor is the open relay for [slot] of [session], if there is one; a.mu is held.
+func (a *App) relayFor(session, slot string) *Relay {
+	for _, r := range a.relays {
+		if r.Session == session && r.Slot == slot {
+			return r
+		}
+	}
+	return nil
+}
+
 func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Session string `json:"session"`
 		Title   string `json:"title"`
 		Slot    string `json:"slot"`
 	}
-	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Session == "" || body.Slot == "" {
+	if readJSON(w, r, &body) != nil || body.Session == "" || body.Slot == "" {
 		writeProblem(w, http.StatusBadRequest, "pick a session and a slot")
 		return
 	}
+	c := a.client()
 	a.mu.Lock()
-	for _, existing := range a.relays {
-		if existing.Session == body.Session && existing.Slot == body.Slot {
-			a.mu.Unlock()
-			writeJSON(w, http.StatusOK, existing.View())
-			return
-		}
-	}
+	existing := a.relayFor(body.Session, body.Slot)
 	a.mu.Unlock()
-	fetch := func() (Slot, string, error) { return slotOf(a.client(), body.Session, body.Slot) }
+	if existing != nil {
+		writeJSON(w, http.StatusOK, existing.View())
+		return
+	}
+	// The relay belongs to this login: its password is fetched again with it
+	fetch := func() (Slot, string, error) { return slotOf(c, body.Session, body.Slot) }
 	slot, upstream, err := fetch()
-	if !a.call(w, err) {
+	if !a.call(w, c, err) {
 		return
 	}
 	a.mu.Lock()
@@ -487,9 +634,23 @@ func (a *App) handleOpen(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Kept only if the login is still the one it was opened with, and no other click opened the slot meanwhile
 	a.mu.Lock()
-	a.relays = append(a.relays, relay)
+	existing = a.relayFor(body.Session, body.Slot)
+	kept := existing == nil && a.current(c)
+	if kept {
+		a.relays = append(a.relays, relay)
+	}
 	a.mu.Unlock()
+	if !kept {
+		relay.Close()
+		if existing != nil {
+			writeJSON(w, http.StatusOK, existing.View())
+			return
+		}
+		writeProblem(w, http.StatusConflict, "logged out meanwhile")
+		return
+	}
 	writeJSON(w, http.StatusOK, relay.View())
 }
 
@@ -522,18 +683,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeProblem(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"message": message})
-}
-
-// buildName is the bridge's file for a system, as the dashboard offers it.
-func buildName(goos, goarch string) string {
-	switch goos {
-	case "windows":
-		return "randogeddon-bridge-windows-" + goarch + ".exe"
-	case "darwin":
-		return "randogeddon-bridge-macos-" + goarch
-	default:
-		return "randogeddon-bridge-" + goos + "-" + goarch
-	}
 }
 
 // newer is whether version a is newer than b (`0.12.3` > `0.12.2.1`); a build without a version (`dev`) is never
