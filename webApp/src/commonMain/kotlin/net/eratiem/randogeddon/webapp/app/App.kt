@@ -34,6 +34,7 @@ import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.ThemeRequest
+import net.eratiem.randogeddon.shared.TimeZoneRequest
 import net.eratiem.randogeddon.shared.i18n.ago
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.texts
@@ -177,6 +178,14 @@ private fun TrackerApp() {
     val user = me ?: return@LaunchedEffect
     if (user.theme == null && user.themeMode == null) saveTheme(Themes.theme, Themes.mode)
     else Themes.apply(user.theme, user.themeMode)
+  }
+  // The browser's time zone, told to the account when it isn't the one it has: the mails give their times in it
+  LaunchedEffect(me?.name, me?.timeZone) {
+    val user = me ?: return@LaunchedEffect
+    val zone = Platform.timeZone()?.takeIf { it.isNotBlank() && it.length <= 64 } ?: return@LaunchedEffect
+    if (zone != user.timeZone) {
+      call("PUT", "api/account/time-zone", ApiJson.encodeToString(TimeZoneRequest.serializer(), TimeZoneRequest(zone))) { }
+    }
   }
   // The account's font choice (nothing chosen: the theme's)
   LaunchedEffect(me?.name, me?.font, me?.fontScope) {

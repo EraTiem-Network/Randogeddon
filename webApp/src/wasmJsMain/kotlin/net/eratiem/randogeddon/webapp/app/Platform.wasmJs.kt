@@ -71,6 +71,8 @@ actual object Platform {
 
   actual fun systemDarkMode(): Boolean = jsDarkMode()
 
+  actual fun timeZone(): String? = jsTimeZone()
+
   actual fun onSystemDarkModeChange(onChange: (Boolean) -> Unit) = jsOnDarkModeChange(onChange)
 
   actual fun setPageTheme(json: String) = jsSetPageTheme(json)
@@ -191,6 +193,9 @@ private fun jsOpenEvents(
 private fun jsCloseStream(source: JsAny): Unit = js("source.close()")
 
 private fun jsDarkMode(): Boolean = js("window.matchMedia('(prefers-color-scheme: dark)').matches")
+
+private fun jsTimeZone(): String? =
+  js("{ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { return null; } }")
 
 private fun jsOnDarkModeChange(onChange: (Boolean) -> Unit): Unit =
   js("window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => onChange(e.matches))")

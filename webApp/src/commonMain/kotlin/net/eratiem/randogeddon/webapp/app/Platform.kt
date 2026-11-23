@@ -70,6 +70,9 @@ expect object Platform {
 
   fun systemDarkMode(): Boolean
 
+  /** The browser's time zone by its name (`Europe/Berlin`); `null`: it doesn't say. */
+  fun timeZone(): String?
+
   /** Calls [onChange] whenever the device switches between light and dark. */
   fun onSystemDarkModeChange(onChange: (Boolean) -> Unit)
 
