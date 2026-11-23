@@ -147,7 +147,8 @@ private val WORD = Regex("[ _]+")
  * leads nowhere stands right below the box before it, beside what that one leads to). So every line stays in
  * the gap between two columns, beside the boxes it joins: none crosses a box or another line. What a box connects to
  * besides (a way back, a second way in) is kept as [MapNode.also]. Parts that can't be reached from the start follow
- * below it, each from its own first box.
+ * below it, each from its own first box. Where the logic says what it reaches ([MapView.blocked]), the tree follows
+ * the open ways first.
  */
 internal fun layoutMap(map: MapView): MapLayout {
   val nodes = mutableListOf<MapNode>()
@@ -174,7 +175,9 @@ internal fun layoutMap(map: MapView): MapLayout {
     neighbours[b] += a
   }
 
-  // The tree: breadth first from the start, then from each part that isn't reached from it
+  // The tree: breadth first from the start, then from each part that isn't reached from it. The open ways first:
+  // a region the logic reaches hangs under one it reaches where they connect, and what is blocked follows from there
+  // (so no open box stands behind a blocked one while an open way leads to it; a region that opens may move)
   val parent = IntArray(nodes.size) { -1 }
   val seen = BooleanArray(regions)
   val roots = mutableListOf<Int>()
@@ -182,7 +185,20 @@ internal fun layoutMap(map: MapView): MapLayout {
     if (seen[root]) continue
     seen[root] = true
     roots += root
-    val queue = ArrayDeque(listOf(root))
+    val open = mutableListOf<Int>()
+    var queue = ArrayDeque(listOf(root))
+    while (queue.isNotEmpty()) {
+      val at = queue.removeFirst()
+      open += at
+      if (nodes[at].blocked) continue
+      for (next in neighbours[at]) if (!seen[next] && !nodes[next].blocked) {
+        seen[next] = true
+        parent[next] = at
+        nodes[at].children += next
+        queue += next
+      }
+    }
+    queue = ArrayDeque(open)
     while (queue.isNotEmpty()) {
       val at = queue.removeFirst()
       for (next in neighbours[at]) if (!seen[next]) {

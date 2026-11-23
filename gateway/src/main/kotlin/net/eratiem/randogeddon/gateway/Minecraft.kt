@@ -25,12 +25,16 @@ import net.eratiem.randogeddon.shared.MinecraftServerView
 import net.eratiem.randogeddon.shared.MinecraftServers
 import net.eratiem.randogeddon.shared.MinecraftStatus
 import org.slf4j.LoggerFactory
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.InputStream
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.inputStream
 import kotlin.io.path.name
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -51,22 +55,84 @@ internal data class DigSlot(val number: Int, val name: String, val data: String)
 internal const val MAX_DIG_DATA = 1024 * 1024
 
 /**
+ * The most bytes of a patch that are read to find its `data.json`: a real patch (`data.json` and `archipelago.json`) is
+ * a few KB; one whose `data.json` isn't within this is no slot.
+ */
+internal const val MAX_DIG_PATCH = 4L * 1024 * 1024
+
+/**
+ * At most [left] bytes of [input], which stays open when this closes (a patch's bytes in the seed zip, whose next
+ * entries are still to be read).
+ */
+private class PatchBytes(input: InputStream, private var left: Long) : FilterInputStream(input) {
+  override fun read(): Int {
+    if (left <= 0) return -1
+    return super.read().also { if (it >= 0) left-- }
+  }
+
+  override fun read(b: ByteArray, off: Int, len: Int): Int {
+    if (left <= 0) return -1
+    return super.read(b, off, minOf(len.toLong(), left).toInt()).also { if (it > 0) left -= it }
+  }
+
+  override fun skip(n: Long): Long = super.skip(minOf(n, left)).also { left -= it }
+
+  override fun available(): Int = minOf(super.available().toLong(), left).toInt()
+
+  override fun close() {}
+}
+
+/**
  * The Minecraft Dig slots of the seed zip [seed], from their patches (each a zip with its `data.json`, of at most
- * [MAX_DIG_DATA] bytes).
+ * [MAX_DIG_DATA] bytes). Each patch is read as it comes, up to its `data.json` and no further than [MAX_DIG_PATCH]
+ * bytes, never whole into the memory.
  */
 internal fun digSlots(seed: Path): List<DigSlot> = buildList {
   ZipInputStream(seed.inputStream()).use { zip ->
     while (true) {
       val entry = zip.nextEntry ?: break
       val match = DIG_PATCH.matchEntire(entry.name.substringAfterLast('/')) ?: continue
-      val data = ZipInputStream(zip.readBytes().inputStream()).use { patch ->
-        generateSequence { patch.nextEntry }.firstOrNull { it.name == "data.json" }
-          ?.let { patch.readNBytes(MAX_DIG_DATA + 1) }?.takeIf { it.size <= MAX_DIG_DATA }?.decodeToString()
+      // A patch that isn't a zip, or is cut by the limit before its data.json ends, is no slot (the others still are)
+      val data = try {
+        ZipInputStream(PatchBytes(zip, MAX_DIG_PATCH)).use { patch ->
+          generateSequence { patch.nextEntry }.firstOrNull { it.name == "data.json" }
+            ?.let { patch.readNBytes(MAX_DIG_DATA + 1) }?.takeIf { it.size <= MAX_DIG_DATA }?.decodeToString()
+        }
+      } catch (_: IOException) {
+        null
       } ?: continue
       add(DigSlot(match.groupValues[1].toInt(), match.groupValues[2], data))
     }
   }
 }.sortedBy { it.number }
+
+/** How long a session found not finished counts as not finished, before the database is asked again. */
+internal val FINISHED_AGAIN = 30.seconds
+
+/**
+ * Whether a session is finished, as [finished] says, asked again only once [again] has passed since the session was
+ * last found not finished: the servers are looked at every few seconds, each session's question goes to the database.
+ * A finished one is asked every time (its servers are stopped, and it may be reopened).
+ */
+internal class FinishedSessions(
+  private val finished: suspend (String) -> Boolean,
+  private val again: Duration = FINISHED_AGAIN,
+  private val now: () -> Long = System::currentTimeMillis,
+) {
+  /** When each session was last found not finished. */
+  private val unfinished = ConcurrentHashMap<String, Long>()
+
+  suspend fun of(id: String): Boolean {
+    val time = now()
+    if (unfinished[id]?.let { time - it < again.inWholeMilliseconds } == true) return false
+    return finished(id).also { if (it) unfinished.remove(id) else unfinished[id] = time }
+  }
+
+  /** Session [id] is deleted: it is asked anew (for a new session of its ID). */
+  fun forget(id: String) {
+    unfinished.remove(id)
+  }
+}
 
 /** What the Minecraft service says of one server. */
 @Serializable
@@ -146,6 +212,8 @@ class Minecraft(
   private val slots = ConcurrentHashMap<Path, Pair<Long, List<DigSlot>>>()
   /** Why the last start of a server failed, by key (shown until it starts). */
   private val problems = ConcurrentHashMap<String, String>()
+  /** Whether the session of a running server is finished, as [look] asks it: once per session and [FINISHED_AGAIN]. */
+  private val finishedSessions = FinishedSessions(finished)
 
   /** The minecraft service is there, but the gateway has no token for it: hosted Minecraft is off, and says why. */
   private val withoutToken = api.isNotBlank() && token.isBlank()
@@ -276,6 +344,7 @@ class Minecraft(
   suspend fun remove(id: String) {
     val dir = dirs.dir(id)
     slots.keys.removeIf { it.startsWith(dir) }
+    finishedSessions.forget(id)
     serverKeysOf(id, problems.keys + lastPlayer.keys).forEach { key ->
       problems.remove(key)
       lastPlayer.remove(key)
@@ -299,9 +368,9 @@ class Minecraft(
         // One that doesn't answer now is asked again at its next first player
         if (before?.players.isNullOrEmpty()) runCatching { connect(server) }
       }
-      // Its session ended or paused: its game server is stopped, so is it (its world stays)
+      // Its session ended or paused: its game server is stopped, so is it (its world stays; FINISHED_AGAIN late)
       val session = sessionOfKey(server.key)
-      if (server.status in setOf(HOST_STARTING, HOST_RUNNING) && session != null && finished(session)) {
+      if (server.status in setOf(HOST_STARTING, HOST_RUNNING) && session != null && finishedSessions.of(session)) {
         logger.info("Minecraft server {} stops: its session is finished", server.key)
         stopServer(server.key)
         continue

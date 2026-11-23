@@ -7,12 +7,12 @@ import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.TwoFactorStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.server.config.TrackerConfig
+import net.eratiem.randogeddon.server.util.ExpiringMap
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.TotpSetup
 import org.koin.core.annotation.Single
 import java.lang.invoke.MethodHandles
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 
@@ -116,25 +116,24 @@ class TwoFactor(
  */
 @Single
 class PendingLogins {
-  private data class Pending(val userId: Uuid, val expiresAt: Long, var wrongCodes: Int = 0)
+  private class Pending(val userId: Uuid, var wrongCodes: Int = 0)
 
-  private val pending = ConcurrentHashMap<String, Pending>()
+  private val pending = ExpiringMap<String, Pending>(VALID)
 
   fun create(userId: Uuid, now: Long = System.currentTimeMillis()): String {
-    pending.entries.removeIf { it.value.expiresAt <= now }
     val token = newToken()
-    pending[tokenHash(token)] = Pending(userId, now + VALID.inWholeMilliseconds)
+    pending.put(tokenHash(token), Pending(userId), now)
     return token
   }
 
   /** Whose pending login [token] is; `null` once it expired, was finished or had too many wrong codes. */
-  fun userOf(token: String, now: Long = System.currentTimeMillis()): Uuid? =
-    pending[tokenHash(token)]?.takeIf { it.expiresAt > now }?.userId
+  fun userOf(token: String, now: Long = System.currentTimeMillis()): Uuid? = pending.get(tokenHash(token), now)?.userId
 
   /** A wrong code; after 5 the pending login is gone (the password is needed again). */
   fun wrongCode(token: String) {
     val key = tokenHash(token)
-    val entry = pending[key] ?: return
+    // Whatever its age: an expired one has no user for [userOf] already
+    val entry = pending.peek(key) ?: return
     if (++entry.wrongCodes >= MAX_WRONG_CODES) pending.remove(key)
   }
 

@@ -39,42 +39,20 @@ The parts:
 - [ ] Left from 0.23.1 (the tracker's review):
     - [ ] `X-Forwarded-Proto` and `X-Forwarded-Host` are still taken from any peer (Ktor's handler can't be gated
           by peer); only the client address follows `TRUSTED_PROXIES`. Nothing in the tracker reads them
-    - [ ] Tests that need a database in the tracker's module (it has no harness for one): the mail limit's probes,
-          the failed invitation, the provider's sync, the logins ended by a grant, a creation's reserved ID
-    - [ ] F37: four hand-made expiring maps as one (optional; left)
-- [ ] 0.23.2: the gateway and its tunnel (the relay, the slot passwords' check, the Minecraft tunnel, generating,
-      the internal API, Archipelago's processes beside it). Scanned on 2026-11-22: 5 high (3 of them found by both
-      scanners), 16 medium, 26 low (47 in all; G: the review's, S: the security scan's)
-    - [ ] Left by its decisions (0.23.2.1): every session's Archipelago processes share one user, so a world's code
-          can still read and change another session's files and read another game server's memory (one user per
-          session would close it: a redesign of the directories); hosted Minecraft with `MINECRAFT_TOKEN` and the
-          deploy's setting of it weren't run (the demo has no hosted server); whether every real game client takes
-          a `RoomUpdate` right before `Connected` (sent when a session's options changed while it slept)
-    - [ ] Left by its fixes: a patch for Minecraft Dig is still read whole when its slots are looked up (only its
-          `data.json` has a limit); the question whether a server is finished asks the database every 3 s per
-          running Minecraft server
-- [ ] Left by the steps of 2026-11-22 (0.23.2.2 to 0.23.2.7):
-    - [ ] Not seen on screen: the hover text of a blocked box, the map in its small panel, the *received* and
-          *sent* pills counting every item (0.23.2.6); the pinned feed as a window on the dashboard and its
-          remembered place (0.23.2.7); the browser's real full screen for the map (0.23.2.2: a headless browser
-          has none)
-    - [ ] Never tried: the spoiler page with only its first level, and an item hint while *next in playthrough*
-          is hidden (0.23.2.4: the demo's seeds have all three levels within a minute)
-    - [ ] The map: a region the logic reaches can hang under a blocked box, by a dashed line (it is reached
-          another way); the tree could prefer the open ways, at the price of boxes moving as items arrive
-    - [ ] A copy says *Copied* in the web app even when the browser refuses the clipboard (the bridge's page
-          only when it worked)
-    - [ ] The pinned feed is the top panel's session's, also while the Management panel shows another one
-    - [ ] `v0.23.2` has its tag and pre-release but no images (a gateway test fails in its image build; left as
-          it is on the user's word, 0.23.2.1 has everything in it)
+    - [ ] No test of the command line's `admins --grant` and `--reset-2fa` ending an account's logins (their
+          functions aren't reachable from a test; the same ending is tested where two-factor login is turned on)
+- [ ] Left from 0.23.2 (the gateway's review), none of it can be tried in the demo: hosted Minecraft with
+      `MINECRAFT_TOKEN` and the deploy's setting of it (the demo has no hosted server); whether every real game
+      client takes a `RoomUpdate` right before `Connected` (sent when a session's options changed while it slept)
+- [ ] Left by the steps of 2026-11-22 (0.23.2.2 to 0.23.2.8):
+    - [ ] Not seen: the browser's real full screen for the map (a headless browser has none); the spoiler page
+          with only its first level, and an item hint while *next in playthrough* is hidden (the demo's seeds
+          have all three levels within a minute); the views' page arrows and slot filters (the search was tried)
+    - [ ] A game's part of the spoiler log that the views don't read is only in its text
     - [ ] The registry (not this repository's): its hourly warning that deleted image manifests can't be removed
           for good (scan results still point at them); `BLOB_GC_ENABLED` is set on its server only, not where
           its compose file is kept; on 2026-11-22 only 0.23.2.5 and `latest` were left in it (the user hasn't
           said whether they deleted the rest)
-    - [ ] Not seen on screen: the spoiler page's views (settings, placements, paths), built against one real log
-          (0.23.2.8); a game's part of the log that the views don't read is only in its text
-    - Dropped by the user on 2026-11-22: a slot's lists and map with the checks in other worlds that hold its
-      items; saying who blocks a region (the map only says that it is blocked)
 - [ ] 0.23.3: Randogeddon Bridge (the key, the relays, the tunnel, its page, the downloads' signing)
 - [ ] 0.23.4: the database (the stores, the roles, the migrations)
     - Noted by the tracker's scan: `EmailChangeStore.take` selects and then deletes (not atomic; harmless so far)
@@ -86,5 +64,8 @@ The parts:
 
 *Points without a phase yet.*
 
+- [ ] One user per session for Archipelago's processes (left by the gateway's review, 0.23.2.1; the user on
+      2026-11-23: later): they share one user, so a world's code can read and change another session's files and
+      read another game server's memory. A redesign of the directories, with the existing sessions' moved
 - [ ] Maps: the games' real map images, uploaded by an Administrator, under the generated map (from Phase 22; the
       user: maybe later). Never in the repository: they are the games' own images

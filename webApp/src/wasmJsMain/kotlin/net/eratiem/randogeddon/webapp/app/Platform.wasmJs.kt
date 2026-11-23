@@ -63,7 +63,7 @@ actual object Platform {
 
   actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
 
-  actual fun copy(text: String) = jsCopy(text)
+  actual fun copy(text: String, onDone: (Boolean) -> Unit) = jsCopy(text, onDone)
 
   actual fun openLink(url: String) = jsOpenLink(url)
 
@@ -155,7 +155,10 @@ private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> U
        input.click(); }"""
 )
 
-private fun jsCopy(text: String): Unit = js("{ try { navigator.clipboard.writeText(text); } catch (e) {} }")
+// The browser's answer: taken, or refused (no clipboard on a page without HTTPS, no permission)
+private fun jsCopy(text: String, onDone: (Boolean) -> Unit): Unit = js(
+  "{ try { navigator.clipboard.writeText(text).then(() => onDone(true), () => onDone(false)); } catch (e) { onDone(false); } }"
+)
 
 private fun jsOpenLink(url: String): Unit = js("{ window.open(url, '_blank', 'noopener'); }")
 

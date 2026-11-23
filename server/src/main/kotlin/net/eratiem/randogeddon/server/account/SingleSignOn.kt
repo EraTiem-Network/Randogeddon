@@ -4,7 +4,6 @@ import java.lang.invoke.MethodHandles
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +17,7 @@ import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.config.english
+import net.eratiem.randogeddon.server.util.ExpiringMap
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.EmailAddresses
@@ -118,9 +118,9 @@ class SingleSignOn(
   private val sessions: LoginSessionStore,
   private val slots: SlotRenewal,
 ) {
-  private data class Pending(val nonce: String, val verifier: String, val expiresAt: Long)
+  private class Pending(val nonce: String, val verifier: String)
 
-  private val pending = ConcurrentHashMap<String, Pending>()
+  private val pending = ExpiringMap<String, Pending>(PENDING)
   private val client = config.oidc?.let { OidcClient(it, callbackUrl(config)) }
 
   /** The provider's name for the login button; `null` without one. */
@@ -131,10 +131,9 @@ class SingleSignOn(
   /** Starts a login: its `state` (for the cookie) and the provider's page to go to. */
   suspend fun start(now: Long = System.currentTimeMillis()): Pair<String, String> {
     val oidc = client ?: throw SsoRefused(Problem.NO_SSO)
-    pending.entries.removeIf { it.value.expiresAt <= now }
     val state = newToken()
-    val login = Pending(newToken(), newToken(), now + PENDING.inWholeMilliseconds)
-    pending[state] = login
+    val login = Pending(newToken(), newToken())
+    pending.put(state, login, now)
     return state to oidc.authorizationUrl(state, login.nonce, login.verifier)
   }
 
@@ -144,7 +143,7 @@ class SingleSignOn(
    */
   suspend fun finish(state: String, code: String, now: Long = System.currentTimeMillis()): Pair<User, String?> {
     val oidc = client ?: throw SsoRefused(Problem.NO_SSO)
-    val login = pending.remove(state)?.takeIf { it.expiresAt > now } ?: throw SsoRefused(Problem.SSO_EXPIRED)
+    val login = pending.remove(state, now) ?: throw SsoRefused(Problem.SSO_EXPIRED)
     val identity = try {
       oidc.identity(code, login.nonce, login.verifier)
     } catch (e: OidcProblem) {
@@ -189,8 +188,8 @@ class SingleSignOn(
     return (users.findActive(user.id)?.copy(administrator = true) ?: user.copy(administrator = true)) to identity.sessionId
   }
 
-  /** Recently seen logout tokens (`jti`, until when): one isn't taken twice. */
-  private val seenLogouts = ConcurrentHashMap<String, Long>()
+  /** Recently seen logout tokens (`jti`), for 10 minutes: one isn't taken twice. */
+  private val seenLogouts = ExpiringMap<String, Unit>(PENDING)
 
   /**
    * The provider's back-channel logout ([logoutToken], checked): its session ended (logged out there, ended by an
@@ -206,8 +205,7 @@ class SingleSignOn(
       return false
     }
     jti(logoutToken)?.let { id ->
-      seenLogouts.entries.removeIf { it.value <= now }
-      if (seenLogouts.putIfAbsent(id, now + PENDING.inWholeMilliseconds) != null) {
+      if (!seenLogouts.putIfAbsent(id, Unit, now)) {
         logger.warn("A back-channel logout from {} came twice: refused", config.oidc?.name)
         return false
       }

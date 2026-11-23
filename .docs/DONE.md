@@ -1154,7 +1154,7 @@ games' real map images moved to Later.*
             - [x] F35: session predicates (still locked slots, "manages", the pick list of users)
             - [x] F36: inside single files (the cheats' carrying out, the feed's append, the OIDC key retry, the
                   login-check loop)
-            - [ ] F37: four hand-made expiring maps (optional): left, see TODO
+            - [x] F37: four hand-made expiring maps: one `ExpiringMap` (0.23.2.9)
             - [x] F38: misplaced KDoc
     - Not as the finding said, or only in part:
         - F6: the by-name match stays for seeds from before Phase 4 (a setup without options and members), since
@@ -1163,7 +1163,6 @@ games' real map images moved to Later.*
         - F27: finished sessions aren't skipped in the refresh: batched, they cost nothing more, and their roles
           stay current
         - F30: Argon2 stays where it is in the CLI (it has no request thread)
-        - F37: left (optional)
         - O1: as the user decided (the opt-in setting), not a second factor per login
 - [x] The top panel's status pills say what they are: `<icon> Game server: <state>`, `<icon> Logic: <state>` (asked
       for on 2026-11-22) (0.23.1)
@@ -1269,3 +1268,23 @@ games' real map images moved to Later.*
       dashboard"): pinned, it is the floating window on every view; where it was moved to is remembered (0.23.2.7)
 - [x] The spoiler page's full log and paths as views like the playthrough's (asked for on 2026-11-22) instead of
       plain text; the text keeps a tab of its own (0.23.2.8)
+- [x] What the reviews of the tracker and the gateway and the steps of 2026-11-22 left (0.23.2.9; the user on
+      2026-11-23: "let's continue fixing/checking every point in TODO"):
+    - [x] The map's tree prefers the open ways (the user's choice): an open region hangs under an open box
+    - [x] A copy says *Copied* only when the browser took it
+    - [x] A Minecraft Dig patch is read as a stream with a limit, not whole
+    - [x] Whether a Minecraft server's session is finished: asked once per session every 30 s, not every 3 s
+          per server
+    - [x] The tracker's tests against a database: a harness (`:server:integrationTest`) and ten tests for the
+          mail limit's probes, the failed invitation, the provider's sync, the logins ended when an
+          Administrator's rights change, a creation's reserved ID
+    - [x] Seen in the demo: the hover text of a blocked box, the map in its small panel, the *received* and
+          *sent* pills against the slot's lists (39 and 55, as listed), the pinned feed moved on the dashboard
+          and in its place after a reload, the spoiler page's views and their search, a copy on `localhost`
+          with the clipboard allowed
+    - Decided by the user on 2026-11-23: the pinned feed stays the top panel's session's (also while the
+      Management panel shows another); one user per session for Archipelago's processes: later (see TODO)
+    - As decided on 2026-11-22: `v0.23.2` keeps its tag and pre-release without images (0.23.2.1 has everything
+      in it)
+    - Dropped by the user on 2026-11-22: a slot's lists and map with the checks in other worlds that hold its
+      items; saying who blocks a region (the map only says that it is blocked)

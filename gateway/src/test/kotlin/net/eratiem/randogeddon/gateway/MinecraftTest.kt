@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
@@ -27,6 +28,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeBytes
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,6 +72,51 @@ class MinecraftTest {
     )
     assertEquals(listOf("Fits"), digSlots(seed).map { it.name })
     Files.delete(seed)
+  }
+
+  @Test
+  fun `a patch is read only up to its limit, and one whose data json lies past it is no slot`() {
+    // Bytes that don't pack smaller: the patch itself is longer than the limit before its data.json
+    val filler = ByteArray(MAX_DIG_PATCH.toInt() + 1).also { Random(23).nextBytes(it) }
+    val seed = Files.createTempFile("AP_123", ".zip")
+    seed.writeBytes(
+      zip(
+        "AP_123_P1_Late.apmcdig" to zip("filler.bin" to filler, "data.json" to "{}".toByteArray()),
+        "AP_123_P2_Early.apmcdig" to zip("data.json" to """{"slot":2}""".toByteArray(), "filler.bin" to filler),
+        "AP_123_P3_Next.apmcdig" to zip("data.json" to """{"slot":3}""".toByteArray()),
+      ),
+    )
+    // The cut patch spoils neither the one with its data.json first nor the ones after it
+    assertEquals(listOf(2 to """{"slot":2}""", 3 to """{"slot":3}"""), digSlots(seed).map { it.number to it.data })
+    Files.delete(seed)
+  }
+
+  @Test
+  fun `whether a session is finished is asked again only after a while, unless it was`() = runBlocking {
+    var now = 0L
+    val asked = mutableListOf<String>()
+    var ended = setOf<String>()
+    val sessions = FinishedSessions({ id -> asked += id; id in ended }, again = 30.seconds, now = { now })
+    assertFalse(sessions.of("brave-otter"))
+    // Its other servers, and the next looks within the time, don't ask the database
+    now += 3_000
+    assertFalse(sessions.of("brave-otter"))
+    ended = setOf("brave-otter")
+    now += 26_000
+    assertFalse(sessions.of("brave-otter"))
+    assertEquals(listOf("brave-otter"), asked)
+    // Once the time is past it is asked again, and a finished one each time (it may be reopened)
+    now += 1_000
+    assertTrue(sessions.of("brave-otter"))
+    assertTrue(sessions.of("brave-otter"))
+    ended = emptySet()
+    assertFalse(sessions.of("brave-otter"))
+    assertEquals(List(4) { "brave-otter" }, asked)
+    // Each session on its own; a deleted one is asked anew
+    assertFalse(sessions.of("calm-heron"))
+    sessions.forget("brave-otter")
+    assertFalse(sessions.of("brave-otter"))
+    assertEquals(List(4) { "brave-otter" } + "calm-heron" + "brave-otter", asked)
   }
 
   @Test

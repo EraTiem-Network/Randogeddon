@@ -28,6 +28,24 @@ dependencies {
   testImplementation(libs.ktor.server.test.host)
 }
 
+// The tracker's services on a real PostgreSQL (Testcontainers, needs Docker), only the mails and the gateway faked; as
+// the database's own, not part of `test` and the Docker image build: `./gradlew :server:integrationTest`
+val integrationTest by sourceSets.creating {
+  compileClasspath += sourceSets.main.get().output
+  runtimeClasspath += sourceSets.main.get().output
+}
+configurations[integrationTest.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
+configurations[integrationTest.runtimeOnlyConfigurationName].extendsFrom(configurations.testRuntimeOnly.get())
+dependencies {
+  "integrationTestImplementation"(libs.testcontainers.postgresql)
+}
+tasks.register<Test>("integrationTest") {
+  description = "Runs the tracker's tests against PostgreSQL in a container."
+  group = "verification"
+  testClassesDirs = integrationTest.output.classesDirs
+  classpath = integrationTest.runtimeClasspath
+}
+
 // Native executable (Linux x86_64), set up in the root build
 graalvmNative {
   binaries {
