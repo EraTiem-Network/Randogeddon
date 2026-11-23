@@ -750,14 +750,44 @@ internal fun pickMixed(plans: List<WorldPlan>, open: Int, random: Random): List<
   return plans.filter { if (it.random) it.name !in picked else it.locked }.map { it.name }
 }
 
-/** What to tell the admin when Generate.py made no seed: the games that may be the cause, then its output. */
+/**
+ * What to tell the admin when Generate.py made no seed: World Locks' own refusal in plain words, else the games that
+ * may be the cause; then its output.
+ */
 internal fun failure(result: GenerateResult): Refusal {
   val output = result.log.joinToString("\n")
   result.stoppedAfterMinutes?.let { return Refusal.of(Problem.GENERATION_TOO_LONG, "minutes" to it, detail = output) }
+  worldLocksRefusal(result.log)?.let { return Refusal(it, detail = output) }
   if (result.suspects.isEmpty()) return Refusal(Problem.GENERATION_FAILED, detail = output)
   val suspects = result.suspects.joinToString("\n") { s ->
     val file = listOfNotNull(s.apworld, s.from?.let { "Archipelago $it" })
     "• ${s.game}" + (if (file.isNotEmpty()) " (${file.joinToString(", ")})" else "") + ": ${s.reason}"
   }
   return Refusal.of(Problem.GENERATION_SUSPECTS, "suspects" to suspects, detail = output)
+}
+
+/** How far from the end of Generate.py's output World Locks' refusal is looked for (its traceback ends with it). */
+private const val WORLD_LOCKS_LINES = 60
+
+/**
+ * World Locks' `OptionError`s by a stable part of their texts: too few filler items in the other worlds to make room
+ * for the world keys, and no world left open.
+ */
+private val LOCK_FILLERS = Regex("(?i)filler.*world keys|world keys.*filler")
+private val ALL_LOCKED = Regex(
+  "(?i)no world (would |will )?(stays?|starts?|is left|left|remains?) open|(every|all) (other )?worlds? (is|are|would be) " +
+    "locked|at least one world (has to|must|needs to) (stay|start|remain|be) open"
+)
+
+/**
+ * World Locks refused the generation (an `OptionError` in Generate.py's last lines): too few fillers for the keys
+ * ([Problem.GENERATION_LOCK_FILLERS]) or no world open ([Problem.GENERATION_ALL_LOCKED]); `null`: neither.
+ */
+internal fun worldLocksRefusal(log: List<String>): Problem? {
+  val last = log.takeLast(WORLD_LOCKS_LINES)
+  return when {
+    last.any { LOCK_FILLERS.containsMatchIn(it) } -> Problem.GENERATION_LOCK_FILLERS
+    last.any { ALL_LOCKED.containsMatchIn(it) } -> Problem.GENERATION_ALL_LOCKED
+    else -> null
+  }
 }

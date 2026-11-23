@@ -86,6 +86,26 @@ class SessionAdminTest {
     assertTrue(stopped.english().startsWith("Generating took longer than 60 minutes and was stopped"), stopped.english())
   }
 
+  @Test
+  fun `World Locks' refusals are said in plain words, before the suspects`() {
+    val suspects = listOf(Suspect("World Locks", "named in the error", null, null))
+    val fillers = failure(
+      GenerateResult(
+        log = listOf("Traceback (most recent call last):", "Options.OptionError: Not enough filler items in the " +
+          "multiworld to make room for 3 world keys"),
+        suspects = suspects,
+      )
+    )
+    assertEquals(Problem.GENERATION_LOCK_FILLERS, fillers.problem)
+    assertTrue(fillers.english().startsWith("Generation failed: the other worlds have too few filler items"), fillers.english())
+    assertTrue(fillers.detail!!.endsWith("3 world keys"), fillers.detail)
+    val allLocked = failure(GenerateResult(log = listOf("Options.OptionError: Locks: no world would stay open"), suspects = suspects))
+    assertEquals(Problem.GENERATION_ALL_LOCKED, allLocked.problem)
+    assertEquals(Problem.GENERATION_ALL_LOCKED, worldLocksRefusal(listOf("OptionError: at least one world must stay open")))
+    // Other failures as before
+    assertEquals(null, worldLocksRefusal(listOf("Game appears as unbeatable. Aborting.", "No more spots to place")))
+  }
+
   private val ann = Uuid.random()
   private val ben = Uuid.random()
 

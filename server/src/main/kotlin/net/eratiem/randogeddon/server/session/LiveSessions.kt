@@ -234,8 +234,8 @@ class LiveSession(
   private var logicSince: Long? = null
 
   /**
-   * Asks its logic about the slots whose items or checks changed, while it runs and the tracker is connected (only
-   * then does it know what they received).
+   * Asks its logic about the slots whose items or checks changed (every slot when another key was found), with the
+   * keys found, while it runs and the tracker is connected (only then does it know what they received).
    */
   suspend fun askLogic(gameServer: GameServerClient) {
     val logic = server?.logic?.takeIf { it.status == LogicStatus.RUNNING } ?: return
@@ -244,12 +244,13 @@ class LiveSession(
       tracker.forgetAvailableAsks()
       logicSince = logic.since
     }
-    val asks = tracker.read { availableAsks() }
+    // The keys found with the slots they were counted for: read together
+    val (asks, locks) = tracker.read { availableAsks() to locksFound() }
     // The slots' maps, once per build
     val maps = tracker.read { mapsWanted() }
     if (asks.isEmpty() && maps.isEmpty()) return
-    val answer = gameServer.available(id, AvailableRequest(asks, maps)) ?: return
-    tracker.onAvailable(asks, answer, maps)
+    val answer = gameServer.available(id, AvailableRequest(asks, maps, locks = locks)) ?: return
+    tracker.onAvailable(asks, answer, maps, locks)
   }
 
   /** Its game server sleeps (nobody played for a while): no connection to it, and that's no problem. */
@@ -279,10 +280,14 @@ class LiveSession(
     val finish = finish
     val live = tracker.read { summary(config.title, error, people, options.pointHints, options.autoHints) }
     val shown = shownKept?.summary?.let { withPresence(it, live) } ?: live
-    // The available checks not counted since the tracker's start: the last ones kept
-    val keptAvailable = kept?.summary?.players?.associate { it.slot to it.available }.orEmpty()
+    // The available checks not counted since the tracker's start: the last ones kept (with whether they may be wrong)
+    val keptAvailable = kept?.summary?.players?.associateBy { it.slot }.orEmpty()
     return shown.copy(
-      players = shown.players.map { if (it.available == null) it.copy(available = keptAvailable[it.slot]) else it },
+      players = shown.players.map { p ->
+        if (p.available != null) return@map p
+        val k = keptAvailable[p.slot]
+        p.copy(available = k?.available, logicMismatch = k?.logicMismatch)
+      },
       logic = server?.logic,
       sessionId = id,
       errorRefused = error != null && tracker.lastErrorRefused,
