@@ -28,6 +28,9 @@ import kotlin.test.assertTrue
 class CrossSiteTest {
   private val public = "https://randogeddon.eratiem.net"
 
+  /** The tokens whose logins the guard ended, as a logout does. */
+  private val ended = mutableListOf<String>()
+
   private fun test(secure: Boolean = true, block: suspend ApplicationTestBuilder.(handled: () -> Int) -> Unit) {
     var handled = 0
     testApplication {
@@ -35,6 +38,7 @@ class CrossSiteTest {
       install(CrossSiteGuard) {
         publicUrl = public
         this.secure = secure
+        endLogin = { ended += it }
       }
       routing {
         get("/api/me") { call.respondText("token ${call.sessionToken}") }
@@ -115,9 +119,12 @@ class CrossSiteTest {
     assertEquals("token null", old.bodyAsText())
     val cleared = old.headers.getAll(HttpHeaders.SetCookie).orEmpty().single { it.startsWith("$SESSION_COOKIE=") }
     assertTrue("Max-Age=0" in cleared && "Path=/" in cleared && "Secure" in cleared, cleared)
+    // Its login is ended on the server, as a logout does: it no longer waits to run out
+    assertEquals(listOf("old"), ended)
     val now = client.get("/api/me") { cookie(SECURE_SESSION_COOKIE, "new") }
     assertEquals("token new", now.bodyAsText())
     assertNull(now.headers[HttpHeaders.SetCookie])
+    assertEquals(listOf("old"), ended)
   }
 
   @Test
@@ -125,6 +132,8 @@ class CrossSiteTest {
     val demo = client.get("/api/me") { cookie(SESSION_COOKIE, "demo") }
     assertEquals("token demo", demo.bodyAsText())
     assertNull(demo.headers[HttpHeaders.SetCookie])
+    // The current login there: nothing ends
+    assertEquals(emptyList(), ended)
   }
 
   @Test

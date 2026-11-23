@@ -105,7 +105,8 @@ fun Route.publicWatchRoutes(links: ShareLinks, archives: Archives, settings: App
   rateLimit(WATCH_RATE_LIMIT) {
     route("/api/watch/{token}") {
       get("/state") { shared(links) { call.respondText(it.publicJson(), ContentType.Application.Json) } }
-      get("/player/{slot}") { shared(links) { playerDetail(it, archives) } }
+      // A share link's viewers get the logic's warnings without their reasons
+      get("/player/{slot}") { shared(links) { playerDetail(it, archives, reasons = false) } }
       sse("/stream") {
         val token = call.parameters["token"].orEmpty()
         val live = links.sessionOf(token) ?: return@sse

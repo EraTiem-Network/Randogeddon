@@ -25,6 +25,9 @@ import net.eratiem.randogeddon.server.session.SpoilerSearches
 import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.server.session.managedBy
 import net.eratiem.randogeddon.server.session.markChecked
+import net.eratiem.randogeddon.server.session.readsLogicReasons
+import net.eratiem.randogeddon.server.session.withoutLogicReason
+import net.eratiem.randogeddon.server.session.withoutLogicReasons
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
@@ -57,14 +60,17 @@ fun Route.sessionRoutes(
   get("/sessions") { call.respond(list.visibleTo(call.actor)) }
   route("/sessions/{id}") {
     install(RequireSessionMember) { this.logins = logins }
-    get("/state") { session(sessions) { call.respondText(it.json(), ContentType.Application.Json) } }
-    get("/player/{slot}") { session(sessions) { playerDetail(it, archives) } }
+    // Why a slot's logic doesn't fit only for its Session-Managers, its support and Administrators (readsLogicReasons)
+    get("/state") {
+      session(sessions) { call.respondText(it.json(it.readsLogicReasons(call.actor)), ContentType.Application.Json) }
+    }
+    get("/player/{slot}") { session(sessions) { playerDetail(it, archives, it.readsLogicReasons(call.actor)) } }
     connectionRoute(config, sessions, slotPasswords)
     // A finished session as it was when it finished, with every slot's details
     get("/archive") {
       session(sessions) { live ->
         val archived = archives.read(live.id) ?: return@session call.refuse(HttpStatusCode.NotFound, Refusal.of(Problem.NOT_FINISHED, "id" to live.id))
-        call.respond(archived)
+        call.respond(if (live.readsLogicReasons(call.actor)) archived else archived.withoutLogicReasons())
       }
     }
     // The seed's files of the user's slots (patches, mods; every slot's for Session-Managers and Administrators)
@@ -145,7 +151,9 @@ fun Route.sessionRoutes(
       val stillAllowed: suspend () -> Boolean = {
         token?.let { logins.userOf(it) }?.let { logins.maySee(logins.actorOf(it), live.id) } == true
       }
-      OpenStreams.counted(call.loggedIn.user.id.toString()) { follow(live, stillAllowed) { live.json() } }
+      // Whether it gets the logic's reasons as the viewer's part in it is at each update
+      val actor = call.actor
+      OpenStreams.counted(call.loggedIn.user.id.toString()) { follow(live, stillAllowed) { live.json(live.readsLogicReasons(actor)) } }
     }
   }
 }
@@ -192,14 +200,17 @@ internal fun Route.connectionRoute(config: TrackerConfig, sessions: LiveSessions
   }
 }
 
-/** The details of the path's `{slot}` of [live]; a finished session's from its archive, else maybe its kept snapshot. */
-internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives) {
+/**
+ * The details of the path's `{slot}` of [live]; a finished session's from its archive, else maybe its kept snapshot.
+ * [reasons]: with why its logic doesn't fit ([readsLogicReasons]); else the warning without it.
+ */
+internal suspend fun RoutingContext.playerDetail(live: LiveSession, archives: Archives, reasons: Boolean) {
   val slot = call.parameters["slot"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest)
   // A running session's kept one while its tracker isn't connected yet
   val archived = if (live.finished) archives.read(live.id) else live.shownKept
   val detail = (if (archived != null) archived.details.firstOrNull { it.slot == slot } else live.tracker.read { playerDetail(slot) })
     ?: return call.respond(HttpStatusCode.NotFound)
-  call.respond(detail)
+  call.respond(if (reasons) detail else detail.withoutLogicReason())
 }
 
 /** The session of the path's `{id}`, or 404. */

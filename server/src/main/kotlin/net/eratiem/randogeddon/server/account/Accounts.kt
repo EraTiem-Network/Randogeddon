@@ -200,6 +200,15 @@ class LoginService(
 
   suspend fun logout(token: String) = logins.delete(tokenHash(token))
 
+  /**
+   * Ends the login of a browser's cookie [token] as [logout] does (a kept-out account's too); a bridge key, never a
+   * browser's cookie, is left as it is.
+   */
+  suspend fun logoutCookie(token: String) {
+    val (_, method) = logins.loginOf(tokenHash(token)) ?: return
+    if (method != LoginMethods.BRIDGE) logout(token)
+  }
+
   override fun maySee(user: User, id: String): Boolean = sessions.canSee(user, id)
 
   override fun roleIn(user: User, id: String): SessionRole? = sessions.roleIn(user, id)

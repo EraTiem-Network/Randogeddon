@@ -19,6 +19,12 @@ class CrossSiteGuardConfig {
 
   /** The login cookie is Secure ([TrackerConfig.cookieSecure]), so its name has the `__Host-` prefix. */
   var secure: Boolean = true
+
+  /**
+   * Ends the login of a token, as a logout does ([net.eratiem.randogeddon.server.account.LoginService.logout]): the
+   * one of a login cookie of before, where it is no login any more.
+   */
+  var endLogin: suspend (String) -> Unit = {}
 }
 
 private val SESSION_COOKIE_NAME = AttributeKey<String>("SessionCookieName")
@@ -42,18 +48,23 @@ private const val PROVIDER_CALLS = "/api/login/oidc/"
  * domain; this does. The command line, the bridge, the provider and curl send neither header and pass.
  *
  * And the login cookie's name ([sessionCookieName], for [sessionToken]): where it is Secure, the one of before (without
- * the `__Host-` prefix) is no login any more, and a browser that still sends it is told to forget it.
+ * the `__Host-` prefix) is no login any more: its login is ended on the server ([CrossSiteGuardConfig.endLogin], it
+ * would otherwise stay valid until it runs out), and a browser that still sends it is told to forget it.
  */
 val CrossSiteGuard = createApplicationPlugin("CrossSiteGuard", ::CrossSiteGuardConfig) {
   val publicUrl = pluginConfig.publicUrl
   val secure = pluginConfig.secure
+  val endLogin = pluginConfig.endLogin
   val name = sessionCookieName(secure)
   onCall { call ->
     call.attributes.put(SESSION_COOKIE_NAME, name)
     // Refused already (too large): a second answer would fail
     if (call.response.isCommitted) return@onCall
     val cookies = call.request.cookies
-    if (secure && cookies[SESSION_COOKIE] != null) {
+    val old = cookies[SESSION_COOKIE]?.takeIf { secure }
+    if (old != null) {
+      // Forgotten by the browser whether the database could be told or not (its login runs out then)
+      if (old.isNotEmpty()) runCatching { endLogin(old) }
       call.response.cookies.append(
         Cookie(SESSION_COOKIE, "", maxAge = 0, path = "/", secure = true, httpOnly = true, extensions = mapOf("SameSite" to "Strict"))
       )

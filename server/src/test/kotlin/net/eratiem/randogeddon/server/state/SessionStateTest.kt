@@ -4,7 +4,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import net.eratiem.randogeddon.server.session.withoutLogicReason
+import net.eratiem.randogeddon.server.session.withoutLogicReasons
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.ArchivedSession
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.LocksFound
@@ -601,6 +604,23 @@ class SessionStateTest {
     s.onRoomUpdate(3, json("""{"checked_locations":[10]}"""))
     s.onAvailable(s.availableAsks(), AvailableAnswer(mapOf(3 to 1)))
     assertEquals(null, s.playerDetail(3)!!.logicMismatch)
+  }
+
+  @Test
+  fun `whoever may not read the logic's reason gets the warning without it`() {
+    val s = lockedSession()
+    s.onAvailable(s.availableAsks(), AvailableAnswer(mapOf(1 to 2, 2 to 0, 3 to 1), mismatches = mapOf(3 to "Chest B: not reachable")))
+    val summary = s.summary("t", null)
+    // An empty reason is a warning without its words; no warning stays none
+    val blanked = summary.withoutLogicReasons().players
+    assertEquals("" to null, blanked.first { it.slot == 3 }.logicMismatch to blanked.first { it.slot == 1 }.logicMismatch)
+    assertEquals("", s.playerDetail(3)!!.withoutLogicReason().logicMismatch)
+    assertEquals(null, s.playerDetail(1)!!.withoutLogicReason().logicMismatch)
+    val archived = ArchivedSession(summary, listOfNotNull(s.playerDetail(3), s.playerDetail(1))).withoutLogicReasons()
+    assertEquals(listOf("", null), archived.details.map { it.logicMismatch })
+    assertEquals("", archived.summary.players.first { it.slot == 3 }.logicMismatch)
+    // The summary itself keeps the reason, for those who may read it
+    assertEquals("Chest B: not reachable", summary.players.first { it.slot == 3 }.logicMismatch)
   }
 
   @Test

@@ -77,9 +77,6 @@ import org.koin.core.annotation.Single
 
 private val logger = logger(MethodHandles.lookup().lookupClass())
 
-/** The World Locks slot's name in a seed made in the admin panel (gateway/.../Archipelago.kt, locksYaml). */
-private const val LOCKS_SLOT = "Locks"
-
 /** A request the admin panel can't carry out, with what to tell the admin. */
 class SessionProblem(val status: HttpStatusCode, val refusal: Refusal) : Exception(refusal.english()) {
   constructor(status: HttpStatusCode, problem: Problem, vararg args: Pair<String, Any?>) : this(status, Refusal.of(problem, *args))
@@ -249,7 +246,7 @@ class SessionAdmin(
    * can't list the release's games, that check is left to Generate.py.
    */
   suspend fun inspect(request: InspectRequest): InspectResult {
-    val inspected = PlayerYamls.inspect(request.yamls)
+    val inspected = PlayerYamls.inspect(request.yamls, request.locks)
     val release = runCatching { gameServer.archipelago() }.getOrNull()?.releases?.let { releases ->
       releases.firstOrNull { it.version == request.apVersion } ?: releases.firstOrNull().takeIf { request.apVersion == null }
     }
@@ -493,6 +490,10 @@ class SessionAdmin(
     }
     // Someone has to start: the keys are found in the open slots
     if (locked.size >= plans.size) throw SessionProblem(HttpStatusCode.BadRequest, Problem.ONE_OPEN)
+    // With locks the seed gets a World Locks slot of its own name, and Archipelago takes each name once
+    if (locked.isNotEmpty()) found.firstOrNull { PlayerYamls.isLocksSlot(it.name) }?.let {
+      throw SessionProblem(HttpStatusCode.BadRequest, Problem.YAML_LOCKS_SLOT, "file" to it.fileName, "name" to it.name)
+    }
     logger.info("{} creates session {}: {} slots, {} players, Archipelago {}", admin, id, plans.size, people.size, version)
     val games = found.flatMap { it.game.split(" / ") }.distinct()
     return {
@@ -530,7 +531,7 @@ class SessionAdmin(
         runCatching { gameServer.delete(id, true) }
         throw SessionProblem(HttpStatusCode.Conflict, Problem.SEED_IN_USE)
       }
-      slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
+      slotPasswords.ensure(seed, plans.keys + listOfNotNull(PlayerYamls.LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
       // No one connects a locked slot until its key is found (the tracker opens it then)
       slotPasswords.setLocked(seed, locked.toSet())
       stages[id] = GenerationProgress(GenerationStage.SERVER, 97)

@@ -37,14 +37,30 @@ object PlayerYamls {
   const val MAX_NAME = 16
 
   /**
-   * Characters of Archipelago's name placeholders: `handle_name` turns `%number%`, `%player%` and `%%`, then
-   * `{number}`, `{NUMBER}`, `{player}`, `{PLAYER}` (and `{{`, `}}`) into something else, and a lone brace fails the
-   * generation. Every `%`, `{` and `}` is refused: whatever the exact rules, a name that passes stays as
-   * written.
+   * What Archipelago 0.6.8's `handle_name` changes in a name: it replaces exactly `%number%`, `%player%` and `%%`
+   * (as written), then runs the name through Python's `str.format`, which turns `{player}`, `{NUMBER}`, `{}`, `{{`,
+   * `{x!r}` and the like into something else and fails the generation on a lone brace or `{x.y}`. So every brace is
+   * refused, and `%` only in those three; a lone `%` (`100%`) stays as written.
    */
-  private val NAME_PLACEHOLDERS = setOf('%', '{', '}')
+  private val NAME_PLACEHOLDERS = Regex("[{}]|%%|%player%|%number%")
 
-  fun inspect(files: List<UploadedYaml>): InspectResult {
+  /** The World Locks slot's name in a seed made in the admin panel (gateway/.../Archipelago.kt, locksYaml). */
+  const val LOCKS_SLOT = "Locks"
+
+  /**
+   * Whether [name] is [LOCKS_SLOT]'s to Archipelago: Generate.py takes each name once, compared in lower case (as the
+   * duplicates in [inspect] are told).
+   */
+  fun isLocksSlot(name: String): Boolean = name.lowercase() == LOCKS_SLOT.lowercase()
+
+  /** Whether [name] has something of Archipelago's name placeholders ([NAME_PLACEHOLDERS]). */
+  internal fun hasPlaceholder(name: String): Boolean = NAME_PLACEHOLDERS.containsMatchIn(name)
+
+  /**
+   * [files]' slots and their problems. [locks]: the session uses locks, so a slot named like [LOCKS_SLOT] is a
+   * problem too (not an invalid file: it is a player YAML, and the locks may still be switched off).
+   */
+  fun inspect(files: List<UploadedYaml>, locks: Boolean = false): InspectResult {
     // Too many aren't even read
     if (files.size > MAX_FILES) {
       return InspectResult(emptyList(), listOf(Refusal.of(Problem.TOO_MANY_YAMLS, "max" to MAX_FILES).toApiError()), emptyList())
@@ -82,7 +98,7 @@ object PlayerYamls {
           // A name Archipelago would change is another name in the seed than the one the panel and the locks know
           name.codePointCount(0, name.length) > MAX_NAME ->
             refuse(file, Problem.YAML_NAME_TOO_LONG, "name" to name, "max" to MAX_NAME)
-          name.any { it in NAME_PLACEHOLDERS } -> refuse(file, Problem.YAML_NAME_PLACEHOLDER, "name" to name)
+          hasPlaceholder(name) -> refuse(file, Problem.YAML_NAME_PLACEHOLDER, "name" to name)
           // The World Locks slot comes from "starts locked" in the panel, in whatever form a YAML could roll it
           couldBeWorldLocks(map) -> refuse(file, Problem.YAML_WORLD_LOCKS, "name" to name)
           game.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_GAME, "name" to name)
@@ -95,6 +111,9 @@ object PlayerYamls {
       problems += Refusal.of(
         Problem.YAML_DUPLICATE, "n" to same.size, "name" to same.first().name, "files" to same.joinToString { it.fileName },
       ).toApiError()
+    }
+    if (locks) worlds.filter { isLocksSlot(it.name) && it.fileName !in invalid }.forEach {
+      problems += Refusal.of(Problem.YAML_LOCKS_SLOT, "file" to it.fileName, "name" to it.name).toApiError()
     }
     // A refused file's slots don't count
     return InspectResult(worlds.filter { it.fileName !in invalid }, problems, invalid.toList())

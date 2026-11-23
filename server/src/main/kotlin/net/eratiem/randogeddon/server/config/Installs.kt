@@ -105,9 +105,12 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   install(SecurityHeaders) { secure = trackerConfig.cookieSecure }
   install(RequestLimits)
   // The login cookie's name; nothing changes from another site's page
+  val loginService by inject<LoginService>()
   install(CrossSiteGuard) {
     publicUrl = trackerConfig.publicUrl
     secure = trackerConfig.cookieSecure
+    // A login cookie of before ends as a logout does
+    endLogin = { loginService.logoutCookie(it) }
   }
   // Behind Traefik: how the client reached it comes from the X-Forwarded headers
   install(XForwardedHeaders) {
