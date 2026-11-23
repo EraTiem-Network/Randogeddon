@@ -12,6 +12,38 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.8: What the review left
+The points the seven parts of the review left open, gone through with the user: these were built, the rest is
+tried on the live server, planned for Phase 24 or accepted as it is (`.docs/DONE.md`, `.docs/TODO.md`).
+
+Fixed:
+- At its start the gateway no longer writes a stop for session folders whose session is gone (the database
+  refused each with an error line since 0.23.4); it names them in one line.
+- The deploy's switch says so when the minecraft folder can't be moved, changes nothing and starts the version
+  before again; a folder already moved is put back first.
+- A warning's text no longer ends in "The logic says:" with nothing after it.
+
+Changed, as the user decided:
+- A slot's name is refused only where Archipelago would change it or fail on it: any brace (a lone one ends the
+  generation with an error), and `%` only as `%%`, `%player%` or `%number%`. `100%` is a name again.
+- With locks, a slot named like the locks' slot ("Locks", whatever its case) is a problem of its YAML while the
+  form is filled in, and Generate refuses it.
+- The reason of a slot's logic warning is for Session-Managers, Support and Administrators; players, Watchers and
+  share links get the warning without it (it may name a location).
+- The database roles: twelve connections at most for the tracker's, six for the gateway's (ten before), and no
+  temporary tables for either.
+- A browser that still sends the login cookie's name of before 0.23.5 over HTTPS has that login ended on the
+  server.
+
+New:
+- The in-place confirmations take Enter (yes) and Escape (no); a tip opens when its button gets the focus by
+  keyboard.
+- Polling pauses while the page's tab is hidden and asks at once when it is shown again (the session list, the
+  panel and its sections, a generation's progress); the streams stay.
+- The web app's pure functions (routes, retry waits, a summary's order, the home target, the combined logic
+  warning) have tests: they moved into the shared module, where tests run without a browser.
+- `measure.sh`'s browser image is pinned by digest like the others.
+
 ### 0.23.7: The scripts, the containers and the dependencies reviewed
 53 findings in two reports (1 high, 21 medium, 31 low; many found by both), listed in `.docs/DONE.md`. The last
 part of the review.

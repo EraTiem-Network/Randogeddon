@@ -45,6 +45,8 @@ Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25; a Maven mirror as `randogeddon.maven
 
 ```sh
 ./gradlew :shared:jvmTest :server:test :gateway:test :database:test  # unit tests (also in the Docker build)
+#   the web app's pure functions (routes, retry waits, ...) are in shared's package `web` and tested there: a test
+#   inside :webApp would need a browser (its binary doesn't load without one)
 python -m unittest discover -s archipelago/tests  # the wrappers' tests (also in the Docker build; Linux)
 ./gradlew :database:integrationTest             # against PostgreSQL (Testcontainers, Linux Docker)
 ./gradlew :server:integrationTest               # the tracker's classes on PostgreSQL, a fake gateway and mailer

@@ -93,7 +93,8 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   slot has: its items as the seed classed them, its starting items, and the World Keys found (an opened world has
   its real counts and map). At its build the logic replays the seed's own order against the rebuilt rules: a slot
   whose rebuild doesn't fit keeps its numbers and map, under a warning nobody overlooks (its pill framed, a banner
-  above its checks and its map, its reason in the panel's logic section).
+  above its checks and its map, its reason in the panel's logic section). The reason is for Session-Managers,
+  Support and Administrators: everyone else, share links too, sees the warning without it (it may name a location).
 
 ## The Management panel
 
