@@ -233,7 +233,8 @@ data class PlayerSummary(
   val lock: LockInfo? = null,
   /**
    * Why its logic's rebuild doesn't fit the seed (the logic's own words, one line): its [available] checks and its map
-   * may be wrong; `null`: it fits (or isn't known to differ).
+   * may be wrong; `null`: it fits (or isn't known to differ). Only its Session-Managers, its support and Administrators
+   * get the words: for everyone else (players, watchers, a share link) it is empty, a warning without its reason.
    */
   val logicMismatch: String? = null,
 )

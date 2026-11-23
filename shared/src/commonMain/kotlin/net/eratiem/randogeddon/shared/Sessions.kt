@@ -72,6 +72,11 @@ data class InspectRequest(
   val yamls: List<UploadedYaml>,
   /** `null`: the gateway's newest release. */
   val apVersion: String? = null,
+  /**
+   * The session uses locks (a slot starts locked or is left to chance): it gets a World Locks slot, whose name no
+   * other slot may have then ([Problem.YAML_LOCKS_SLOT]).
+   */
+  val locks: Boolean = false,
 )
 
 /** The slots of the uploaded YAMLs, and what's wrong with them (a game the release has no apworld for, too). */

@@ -16,12 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SpoilerProgress
 import net.eratiem.randogeddon.shared.SpoilerRunView
 import net.eratiem.randogeddon.webapp.api.load
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -73,7 +73,7 @@ fun SpoilerRunSection(id: String, base: String) {
         }
       }
       // Complete (no run left), or none to be had: nothing changes any more
-      delay(if (progress == null) ASK_DONE_MS else ASK_MS)
+      pollWait(if (progress == null) ASK_DONE_MS else ASK_MS)
     }
   }
   val now = progress

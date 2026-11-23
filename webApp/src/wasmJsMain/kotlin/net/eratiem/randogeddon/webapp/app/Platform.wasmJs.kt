@@ -92,6 +92,10 @@ actual object Platform {
 
   actual fun onSystemDarkModeChange(onChange: (Boolean) -> Unit) = jsOnDarkModeChange(onChange)
 
+  actual fun pageVisible(): Boolean = jsPageVisible()
+
+  actual fun onVisibilityChange(onChange: (Boolean) -> Unit) = jsOnVisibilityChange(onChange)
+
   actual fun setPageTheme(json: String) = jsSetPageTheme(json)
 
   actual fun touchScreen(): Boolean = jsTouchScreen()
@@ -244,6 +248,12 @@ private fun jsTimeZone(): String? =
 
 private fun jsOnDarkModeChange(onChange: (Boolean) -> Unit): Unit =
   js("window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => onChange(e.matches))")
+
+// Only `hidden` counts as hidden (a browser without the API, or a state of the future: shown)
+private fun jsPageVisible(): Boolean = js("document.visibilityState !== 'hidden'")
+
+private fun jsOnVisibilityChange(onChange: (Boolean) -> Unit): Unit =
+  js("document.addEventListener('visibilitychange', () => onChange(document.visibilityState !== 'hidden'))")
 
 // index.html applies it to its login form and keeps it (window.randogeddonTheme)
 private fun jsSetPageTheme(json: String): Unit = js("window.randogeddonTheme(json)")

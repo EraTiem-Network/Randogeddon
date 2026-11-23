@@ -69,8 +69,9 @@ SH
 
 # The server's switch to a tag, its checks; run there as root. Arguments: IMAGES, the tag, the gateway's tag (both
 # empty: back to the last good version). In this order, so that a failure before the stop changes nothing, and one
-# before the new settings are written starts the version before again: pull, stop the tracker and the gateway, dump,
-# the version's compose files and .env, start, check
+# before the new settings are written puts the minecraft service's folder back and starts the version before again:
+# pull, stop the tracker and the gateway, dump, the minecraft folder's move, the version's compose files and .env,
+# start, check
 read -r -d '' SWITCH <<'SH' || true
 set -euo pipefail
 IMAGES="$1" tag="$2" gateway_tag="$3"
@@ -230,12 +231,37 @@ was_running=()
 for service in "${stop[@]}"; do
   if grep -qx "$service" <<<"$running"; then was_running+=("$service"); fi
 done
-state=""
+# What became of the minecraft service's folder before the new settings: moved (from $other/ to $minecraft/), removed
+# (an empty $other/, with its owner and mode in other_mode), failed (a move that stopped halfway), or nothing
+state="" moved="" other_mode=""
 on_exit() {
   local status=$?
-  if (( status != 0 )) && [[ "$state" == stopped ]] && (( ${#was_running[@]} )); then
-    echo "Starting the version before again: ${was_running[*]}"
-    compose start "${was_running[@]}" || echo "They didn't start: docker compose up -d (the settings are still the version before's)"
+  local restart=()
+  if (( ${#was_running[@]} )); then restart=("${was_running[@]}"); fi
+  # Not switched: the folder goes back where the version before mounts it, before that one starts again
+  if (( status != 0 )) && [[ "$state" == "" || "$state" == stopped ]]; then
+    if [[ "$moved" == moved ]]; then
+      if mv -T "$minecraft" "$other"; then
+        echo "The minecraft service's folder is back in $other/"
+      else
+        moved=failed
+      fi
+    elif [[ "$moved" == removed ]]; then
+      install -d -o "${other_mode%% *}" -g "$(cut -d' ' -f2 <<<"$other_mode")" -m "${other_mode##* }" "$other" \
+        || echo "The empty /srv/randogeddon/$other/ couldn't be made again (the version before mounts it): make it before the minecraft service starts"
+    fi
+    # A move that failed without moving anything (a rename either happens or not) left it where it was
+    if [[ "$moved" == failed && -d "$other" && ! -e "$minecraft" ]]; then moved=""; fi
+    if [[ "$moved" == failed ]]; then
+      echo "The minecraft service's folder isn't wholly in /srv/randogeddon/$other/ (look at $other/ and $minecraft/): put it back there by hand, then docker compose start minecraft"
+      local service kept=()
+      for service in ${restart[@]+"${restart[@]}"}; do [[ "$service" == minecraft ]] || kept+=("$service"); done
+      restart=(${kept[@]+"${kept[@]}"})
+    fi
+  fi
+  if (( status != 0 )) && [[ "$state" == stopped ]] && (( ${#restart[@]} )); then
+    echo "Starting the version before again: ${restart[*]}"
+    compose start "${restart[@]}" || echo "They didn't start: docker compose up -d (the settings are still the version before's)"
   elif (( status != 0 )) && [[ "$state" == switched && -n "$rollback" ]]; then
     echo "The server is on $tag's compose files and settings, which didn't pass: look at its logs (docker compose logs)"
   elif (( status != 0 )) && [[ "$state" == switched ]]; then
@@ -254,12 +280,16 @@ fi
 # Checked again: the gateway, which could change data/, is stopped now
 check_minecraft
 [[ -d data ]] || install -d -o 1000 -g 1000 data
+# Until the new settings are written, a failure puts it back (on_exit)
 if [[ -d "$other" ]]; then
   if [[ -d "$minecraft" ]] && empty "$other"; then
+    other_mode="$(stat -c '%u %g %a' -- "$other")"
     rmdir "$other"
+    moved=removed
   else
     if [[ -d "$minecraft" ]]; then rmdir "$minecraft"; fi
-    mv -T "$other" "$minecraft"
+    mv -T "$other" "$minecraft" || { moved=failed; fail "The minecraft service's folder couldn't be moved from $other/ to $minecraft/ (above): nothing switched"; }
+    moved=moved
     echo "The minecraft service's folder moved from $other/ to $minecraft/"
   fi
 fi

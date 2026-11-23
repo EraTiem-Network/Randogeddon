@@ -53,21 +53,50 @@ class PlayerYamlsTest {
         UploadedYaml("upper.yaml", "name: P{PLAYER}\ngame: APQuest"),
         UploadedYaml("percent.yaml", "name: P%number%\ngame: APQuest"),
         UploadedYaml("brace.yaml", "name: \"A{\"\ngame: APQuest"),
+        UploadedYaml("closing.yaml", "name: \"A}\"\ngame: APQuest"),
+        UploadedYaml("empty.yaml", "name: \"A{}\"\ngame: APQuest"),
+        UploadedYaml("double.yaml", "name: \"A{{B\"\ngame: APQuest"),
+        UploadedYaml("format.yaml", "name: \"A{x!r}\"\ngame: APQuest"),
+        UploadedYaml("attribute.yaml", "name: \"A{x.y}\"\ngame: APQuest"),
+        UploadedYaml("player.yaml", "name: \"A%player%\"\ngame: APQuest"),
+        UploadedYaml("percents.yaml", "name: \"100%%\"\ngame: APQuest"),
         // 16 characters (code points: an emoji is one) is kept as it is
         UploadedYaml("sixteen.yaml", "name: Dave-Timespinner\ngame: APQuest"),
         UploadedYaml("emoji.yaml", "name: \"Dave-Timespinne😀\"\ngame: APQuest"),
+        // A lone % and the placeholders in another case are kept as they are by Archipelago
+        UploadedYaml("lone.yaml", "name: \"100%\"\ngame: APQuest"),
+        UploadedYaml("apart.yaml", "name: \"A%B%C\"\ngame: APQuest"),
+        UploadedYaml("cased.yaml", "name: \"A%PLAYER%\"\ngame: APQuest"),
       )
     )
     assertEquals(
-      listOf(
-        "long.yaml" to Problem.YAML_NAME_TOO_LONG, "number.yaml" to Problem.YAML_NAME_PLACEHOLDER,
-        "upper.yaml" to Problem.YAML_NAME_PLACEHOLDER, "percent.yaml" to Problem.YAML_NAME_PLACEHOLDER,
-        "brace.yaml" to Problem.YAML_NAME_PLACEHOLDER,
-      ),
+      listOf("long.yaml" to Problem.YAML_NAME_TOO_LONG) +
+        listOf("number", "upper", "percent", "brace", "closing", "empty", "double", "format", "attribute", "player", "percents")
+          .map { "$it.yaml" to Problem.YAML_NAME_PLACEHOLDER },
       result.problems.map { it.args["file"] to it.code },
     )
     assertEquals("16", result.problems.first().args["max"])
-    assertEquals(listOf("Dave-Timespinner", "Dave-Timespinne😀"), result.worlds.map { it.name })
+    assertEquals(
+      listOf("Dave-Timespinner", "Dave-Timespinne😀", "100%", "A%B%C", "A%PLAYER%"), result.worlds.map { it.name },
+    )
+  }
+
+  @Test
+  fun `a slot named like the locks' slot is a problem only while the session uses locks`() {
+    val files = listOf(
+      UploadedYaml("locks.yaml", "name: locks\ngame: APQuest"),
+      UploadedYaml("other.yaml", "name: Locksmith\ngame: APQuest"),
+    )
+    // Without locks it is a slot like any other
+    assertEquals(emptyList(), PlayerYamls.inspect(files).problems)
+    val result = PlayerYamls.inspect(files, locks = true)
+    assertEquals(listOf("locks.yaml" to Problem.YAML_LOCKS_SLOT), result.problems.map { it.args["file"] to it.code })
+    assertEquals("locks", result.problems.single().args["name"])
+    assertTrue("the locks' slot's" in result.problems.single().message, result.problems.single().message)
+    // A player YAML all the same: the locks may be switched off again
+    assertEquals(emptyList(), result.invalid)
+    assertEquals(listOf("locks", "Locksmith"), result.worlds.map { it.name })
+    assertTrue(PlayerYamls.isLocksSlot("LOCKS"))
   }
 
   @Test

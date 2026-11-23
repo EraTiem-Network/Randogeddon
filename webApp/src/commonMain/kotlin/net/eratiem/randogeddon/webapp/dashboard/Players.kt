@@ -56,7 +56,8 @@ import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.shared.i18n.texts
-import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.shared.web.mismatches
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.AppPopup
 import net.eratiem.randogeddon.webapp.ui.Avatar
@@ -340,7 +341,8 @@ internal data class Progress(
   val trapLinks: Int = 0,
   /**
    * Why its logic's rebuild doesn't fit the seed (its available checks may be wrong); for several slots together, each
-   * one that doesn't by its name, one a line. `null`: they fit.
+   * one that doesn't by its name, one a line. `null`: they fit; empty: they don't, without why (only Session-Managers,
+   * Support and Administrators get the reason).
    */
   val logicMismatch: String? = null,
 ) {
@@ -366,7 +368,7 @@ internal data class Progress(
         // Those of its slots that are known (a slot the logic has no answer for adds none)
         worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
         worlds.sumOf { it.deaths }, worlds.sumOf { it.trapLinks },
-        worlds.filter { it.logicMismatch != null }.joinToString("\n") { "${it.name}: ${it.logicMismatch}" }.ifEmpty { null },
+        mismatches(worlds),
       )
     }
   }

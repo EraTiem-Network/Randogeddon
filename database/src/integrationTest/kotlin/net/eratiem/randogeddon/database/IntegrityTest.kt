@@ -95,7 +95,7 @@ class IntegrityTest {
     }
     assertNull(SessionFinishStore(db).of("seed-busy")?.finishedAt)
     // At most so many connections at once
-    raw().use { assertEquals(10L, it.number("SELECT rolconnlimit FROM pg_roles WHERE rolname = 'work_gateway'")) }
+    raw().use { assertEquals(6L, it.number("SELECT rolconnlimit FROM pg_roles WHERE rolname = 'work_gateway'")) }
   }
 
   @Test

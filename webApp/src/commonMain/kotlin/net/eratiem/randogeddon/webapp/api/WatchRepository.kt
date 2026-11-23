@@ -9,6 +9,9 @@ import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.Summary
+import net.eratiem.randogeddon.shared.web.pathSegment
+import net.eratiem.randogeddon.shared.web.replaces
+import net.eratiem.randogeddon.shared.web.retryDelay
 import net.eratiem.randogeddon.webapp.app.Platform
 
 /**

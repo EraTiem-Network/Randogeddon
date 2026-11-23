@@ -46,6 +46,8 @@ enum class Problem {
   YAML_DUPLICATE, NO_APWORLD, TOO_MANY_YAMLS, TOO_MANY_SLOTS,
   // A slot's name Archipelago would change: cut to its length, or with a placeholder
   YAML_NAME_TOO_LONG, YAML_NAME_PLACEHOLDER,
+  // A slot named like the World Locks slot a session with locks gets
+  YAML_LOCKS_SLOT,
 }
 
 /**

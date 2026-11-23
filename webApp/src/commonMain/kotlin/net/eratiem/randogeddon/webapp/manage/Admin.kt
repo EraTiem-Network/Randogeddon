@@ -33,7 +33,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.GameServerState
@@ -43,10 +42,11 @@ import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.api.AdminCache
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.StatusPill
 import net.eratiem.randogeddon.webapp.ui.Action
@@ -103,7 +103,7 @@ fun AdminView(
   LaunchedEffect(Unit) {
     while (true) {
       load()
-      delay(15_000)
+      pollWait(15_000)
     }
   }
   val all = overview?.sessions.orEmpty()

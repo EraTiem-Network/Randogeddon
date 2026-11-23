@@ -1,7 +1,7 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
 import kotlin.math.round
-import net.eratiem.randogeddon.webapp.api.pathSegment
+import net.eratiem.randogeddon.shared.web.pathSegment
 
 /**
  * For a URL's path or query: letters, digits, `-`, `_` and `~` as they are, everything else percent-encoded (UTF-8),

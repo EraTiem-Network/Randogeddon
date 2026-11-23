@@ -38,9 +38,9 @@ import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.ThemeRequest
 import net.eratiem.randogeddon.shared.fontOf
 import net.eratiem.randogeddon.shared.i18n.Language
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.Languages
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform

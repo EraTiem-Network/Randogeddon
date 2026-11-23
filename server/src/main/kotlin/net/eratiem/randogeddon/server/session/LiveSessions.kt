@@ -324,21 +324,37 @@ class LiveSession(
 
   suspend fun summary(): Summary = mutex.withLock { current().first }
 
-  suspend fun json(): String = mutex.withLock { current().second }
+  /**
+   * The summary for one of its viewers. [reasons]: with why a slot's logic doesn't fit, for whoever may read it
+   * ([readsLogicReasons]); else the warnings without it, made once per summary however many get it.
+   */
+  suspend fun json(reasons: Boolean): String = mutex.withLock {
+    val (summary, full) = current()
+    if (reasons) return@withLock full
+    if (summary !== blankedFor) {
+      blankedJson = ApiJson.encodeToString(Summary.serializer(), summary.withoutLogicReasons())
+      blankedFor = summary
+    }
+    blankedJson
+  }
+
+  private var blankedFor: Summary? = null
+  private var blankedJson = ""
 
   private var publicFor: Summary? = null
   private var publicJson = ""
 
   /**
-   * The summary for its share link: the people without their accounts, no connection error (it names our hosts).
-   * Made once per summary, however many watch it.
+   * The summary for its share link: the people without their accounts, no connection error (it names our hosts), the
+   * logic's warnings without their reasons ([readsLogicReasons]). Made once per summary, however many watch it.
    */
   suspend fun publicJson(): String = mutex.withLock {
     val summary = current().first
     if (summary !== publicFor) {
       publicJson = ApiJson.encodeToString(
         Summary.serializer(),
-        summary.copy(error = null, people = summary.people.map { it.copy(userId = null) }, managerUnavailable = false),
+        summary.withoutLogicReasons()
+          .copy(error = null, people = summary.people.map { it.copy(userId = null) }, managerUnavailable = false),
       )
       publicFor = summary
     }

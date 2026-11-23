@@ -105,6 +105,21 @@ class TextsTest {
   }
 
   @Test
+  fun `a logic warning without its reason leaves the logic's words out`() {
+    for (language in Language.entries) {
+      val dashboard = texts(language).dashboard
+      for (text in listOf(dashboard.availableMismatch(""), dashboard.mismatchBanner(""), dashboard.availableMismatch(" "))) {
+        assertTrue(text.isNotBlank(), "${language.label}: $text")
+        assertTrue("The logic says" !in text && "Die Logik sagt" !in text, "${language.label}: $text")
+        assertTrue(!text.endsWith(":") && !text.endsWith(": ") && !text.endsWith("\n"), "${language.label}: $text")
+      }
+      // With one, it is there
+      assertTrue(dashboard.mismatchBanner("Chest B").endsWith("Chest B"), language.label)
+      assertTrue(dashboard.availableMismatch("Chest B").endsWith("Chest B"), language.label)
+    }
+  }
+
+  @Test
   fun `numbers and times are written as the language writes them`() {
     assertEquals("12,345", English.number(12345))
     assertEquals("12.345", German.number(12345))

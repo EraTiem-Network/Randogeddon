@@ -51,9 +51,9 @@ import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.Versions
 import net.eratiem.randogeddon.shared.i18n.Language
 import net.eratiem.randogeddon.shared.i18n.text
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date

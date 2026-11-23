@@ -1566,3 +1566,47 @@ games' real map images moved to Later.*
       audit on the built images; the deploy's switch against a scratch folder in ten cases (a first deploy, a
       missing version, a missing setting, a link, a stopped database, a switch with its dump and the folder's
       move, a version that fails its check, two rollbacks each with its own compose files, none left)
+- [x] The review's leftovers gone through with the user (2026-11-23). Settled since they were written: the npm
+      lock and the pinning by hash (0.23.7); a release's build through the signer check, the release cache and
+      the audit gate, and the bridge's signing-key check (v0.23.7's publish). **Accepted as they are:**
+    - Three narrow races in the gateway's handling of links (a file swapped for a pipe between check and open,
+      a seed's zip opened by its path after the check, a folder made through a link put there in that moment):
+      each needs an APWorld's code winning the race at that instant, and gains a denial of service or an old
+      seed's entries
+    - The lock stays in rules on the origin's exits (A17): a region of its own would change how existing seeds
+      rebuild; Lockageddon replaces World Locks in Phase 24
+    - The server pulls images by tag, not by digest (S6, C19: the user's decision, "only the signer check")
+    - The bridge's signing key has no passphrase (S15: a release is built without anyone at the keyboard); the
+      list of release signers is read from the tagged commit itself
+    - The bridge: its page's one-time code is on the browser opener's command line until the page takes it; two
+      starts that find a stale lock in the same instant can both run
+    - Large uploads go as base64 (W11); `AdminUsers.kt` and `AdminApworlds.kt` aren't split (W29); chat lines
+      from before 0.23.5 stay as they were
+    - `X-Forwarded-Proto` and `X-Forwarded-Host` are taken from any peer (nothing in the tracker reads them)
+    - `host.yaml` stays writable by Archipelago's user (settings only); a hosted server's folder has no size
+      limit (A25); pip, setuptools and cython stay in the gateway's image (the audit reads them, Archipelago
+      imports `pkg_resources`); the build's question before reading files outside the repository is off (S16)
+- [x] 0.23.8: what the review's parts left, gone through with the user on 2026-11-23 (0.23.8):
+    - [x] The gateway writes a stop event at its start for every session folder, also for one whose session is
+          gone from the database (refused since 0.23.4: an error line each)
+    - [x] The in-place confirmations take Enter and Escape; a tip opens when its button gets the focus by keyboard
+    - [x] Polling pauses while the tab is hidden
+    - [x] The deploy's switch puts the minecraft folder back if it fails between its move and the new settings
+    - [x] `measure.sh`'s browser image pinned by digest
+    - [x] The web app's first tests (`Summary.replaces`, `retryDelay`, `homeTarget`, `Route.parse`, `pathSegment`)
+    - [x] An old login cookie's login (the name before 0.23.5) is ended on the server, not left to run out
+    - [x] Decided: a slot's name is refused only where Archipelago would change it or fail on it (its
+          placeholders `%player%`, `%number%`, `%%` and anything in braces: a lone brace ends a generation
+          with an error); a single `%` is allowed again
+    - [x] Decided: the reason of a slot's logic warning is shown to Session-Managers, Support and
+          Administrators only; everyone else sees the warning without it
+    - [x] Decided: a slot named like the locks' slot is refused while the session uses locks
+    - [x] Decided: no temporary tables for the tracker's and the gateway's database roles, and a connection
+          limit on each
+    - Fixed by three Opus fixers (the tracker with shared and the database; the web app; the gateway and the
+      scripts, with the roles' script). The web app's tests were first put into the web app: their binary
+      doesn't load without a browser (skiko's wasm), so the functions moved into `shared`
+    - Tried: all unit tests and the database-backed ones; the demo: the YAML check's answers for nine names
+      with and without locks, the roles' limits (12 and 6) and both refused a temporary table, the gateway's
+      start with leftover session folders (one line, no error in the database's log); the deploy's switch
+      against the scratch folder again, eleven cases, with a move that fails

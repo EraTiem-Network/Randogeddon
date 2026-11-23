@@ -36,85 +36,31 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
-- [ ] Left from 0.23.1 (the tracker's review):
-    - [ ] `X-Forwarded-Proto` and `X-Forwarded-Host` are still taken from any peer (Ktor's handler can't be gated
-          by peer); only the client address follows `TRUSTED_PROXIES`. Nothing in the tracker reads them
-    - [ ] No test of the command line's `admins --grant` and `--reset-2fa` ending an account's logins (their
-          functions aren't reachable from a test; the same ending is tested where two-factor login is turned on)
-- [ ] Left from 0.23.2 (the gateway's review), none of it can be tried in the demo: hosted Minecraft with
-      `MINECRAFT_TOKEN` and the deploy's setting of it (the demo has no hosted server); whether every real game
-      client takes a `RoomUpdate` right before `Connected` (sent when a session's options changed while it slept)
-- [ ] Left by the steps of 2026-11-22 (0.23.2.2 to 0.23.2.8):
-    - [ ] Not seen: the browser's real full screen for the map (a headless browser has none); the spoiler page
-          with only its first level, and an item hint while *next in playthrough* is hidden (the demo's seeds
-          have all three levels within a minute); the views' page arrows and slot filters (the search was tried)
-    - [ ] A game's part of the spoiler log that the views don't read is only in its text
-    - [ ] The registry (not this repository's): its hourly warning that deleted image manifests can't be removed
-          for good (scan results still point at them); `BLOB_GC_ENABLED` is set on its server only, not where
-          its compose file is kept; on 2026-11-22 only 0.23.2.5 and `latest` were left in it (the user hasn't
-          said whether they deleted the rest)
-- [ ] Left from 0.23.3 (the bridge's review): the page's one-time code is on the browser opener's command line
-      until the page takes it (S5: narrowed, not closed); two starts that both find a stale lock in the same
-      instant can both run (B9); not tried by hand: the bridge against a live session with a real game, its page
-      in a browser, a release's check for the signing key before it builds (first run: the next publish)
-- [ ] Left from 0.23.4 (the database's review): the gateway warns at each start for every session folder whose
-      session is gone from the database (its stop is refused now); the temporary-table right of every role and a
-      connection limit on the tracker's role (S3, D23: not decided); Archipelago's Python beside the gateway can
-      still reach the database's port (D23); the tracker's refresh still reads `sessions` four times (D19, in
-      part); not tried: the update on the live server (the database's container recreated, V29 on its data), a
-      mail's time in an account's zone as it arrives
-- [ ] Left from 0.23.5 (the web app's review):
-    - [ ] S2: no npm lock file is committed. Looked at: the project has no npm dependencies of its own (its lock
-          file is empty); webpack and the rest come with the Kotlin plugin. Whether the plugin pins them wasn't
-          confirmed: with 0.23.7 (the dependencies)
-    - [ ] The content policy still allows inline styles: the login page has none any more; to drop it once a
-          browser shows that Compose adds none of its own
-    - [ ] W32: the web app has no tests (no test source set; its new pure functions are ready for them:
-          `Summary.replaces`, `retryDelay`, `homeTarget`, `Route.parse`, `pathSegment`)
-    - [ ] Not done: a tip doesn't open when its button gets the focus by keyboard; the in-place confirmations
-          don't take Enter or Escape; polling doesn't pause while the tab is hidden; large uploads still go as
-          base64 (W11); `AdminUsers.kt` and `AdminApworlds.kt` aren't split (W29); chat lines from before the
-          update stay as they were; an old login cookie's login isn't ended on the server (it runs out)
-    - [ ] Not seen: the file pickers (their folders, their messages), a person's panel on a share-link page,
-          someone with one session, Enter in the forms, a text selection kept in its panel, the page on a phone,
-          whether Space presses a focused button and a phone keyboard's Go key sends a form
-- [ ] Left from 0.23.6 (the wrappers' review):
-    - [ ] To ask the user: a slot's name with `%`, `{` or `}` is refused altogether (stricter than Archipelago's
-          own placeholders); the warning's reason is shown on share links too (it may name a location); a slot
-          named like the locks' slot ("Locks") isn't refused (A29)
-    - [ ] Three narrow races left in the gateway's handling of links (S1): a file swapped for a pipe between
-          check and open, a seed's zip opened by its path after the check, a folder made through a link put
-          there in that moment
-    - [ ] Not done: the lock as a region of its own (A17: it would change how existing seeds rebuild); a size
-          limit for a hosted server's folder (A25); what Archipelago's user reaches on the network (S13);
-          pinning by hash (S14: with 0.23.7); `host.yaml` stays writable by Archipelago's user (settings only)
-    - [ ] Not tried: a hosted Minecraft server on the new image (its own user, the join and leave lines'
-          pattern against a real server's log: if it didn't match, a server would sleep while people play);
-          `!getitem` refused by a real client; the warning on screen (no demo slot's rebuild differs); a
-          broken save through the panel (tried with the script in the image: it stops with its line)
-- [ ] Left from 0.23.7 (the scripts, the containers and the dependencies):
-    - [ ] Not done, by the user's decision: the server pulls images by tag, not by digest (S6, C19)
-    - [ ] Not done: the hosted Minecraft servers' way out to the internet (C17: they check accounts with
-          Mojang); the gateway's internal API bound to one address (C18's second half: in the gateway); read-only
-          roots for the gateway and the minecraft service (they write into their image); pip, setuptools and
-          cython left in the gateway's image (C30); `FAIL_ON_PROJECT_REPOS` (the Kotlin plugin adds its own);
-          the Playwright image of `measure.sh` not pinned; a notice when the nightly dump fails beyond the
-          deploy's line (C22); the bridge's signing key without a passphrase (S15); the build's file prompt
-          switched off (S16); `release-signers` is read from the tagged commit itself (a trusted copy outside
-          the tree wasn't decided); a failure between the minecraft folder's move and the new settings starts
-          the version before without its folder in place
-    - [ ] Found on the way: at its start the gateway writes a stop event for every session folder, also for
-          one whose session is gone from the database (the foreign key of 0.23.4 refuses it: an error line each)
-    - [ ] Not tried: a real deploy with the new script (the upload, `sudo` over SSH, the systemd units, the real
-          images' checks: the switch itself was tried against a scratch folder with stub services); a release's
-          build (the release cache, the audit gate inside `deploy.sh`, the signer check against a tag that
-          carries `release-signers`); `publish-bridge.sh`'s comparison of an existing file (whether the
-          registry's address answers a GET with the file); `measure.sh`; the Traefik overlay's rule on a real
-          Traefik; the build's negative checks (a wrong hash in a lock, a wrong wrapper checksum)
-    - [ ] Standing chores from the pinning: `scripts/base-images.sh` and the audit before a phase's release;
-          `gradle/verification-metadata.xml` at each dependency change; the tooling lock at a Kotlin update; the
-          Python lock at an Archipelago update; `osv-scanner.toml`'s entries run out on 2027-02-23
-- [ ] After 0.23.7: every "Left from" point above gone through with the user (the user on 2026-11-23)
+- [ ] Left from 0.23.8: not seen on screen (built and unit-tested; the demo has no slot whose logic doesn't
+      fit and runs on plain http): Enter and Escape in a confirmation, a tip on keyboard focus, polling paused
+      in a hidden tab, the warning without its reason for a player, the old cookie's login ended; the deploy
+      putting back a folder it had already moved (only a move that fails outright could be forced)
+- [ ] To try on the live server and with real clients (nothing to build; from the parts' "not tried" lists):
+    - [ ] At the switch to 0.23.7 or later: the rewritten deploy over SSH (the upload, `sudo`, the systemd
+          units, the real images' checks); the database's container made anew on its data; hosted Minecraft on
+          its new image and user, with `MINECRAFT_TOKEN`; whether its join and leave lines are recognised (if
+          not, a server sleeps while people play)
+    - [ ] With real game clients: `!getitem` refused; the bridge against a live session and its page in a
+          browser; a client taking a `RoomUpdate` right before `Connected` (after a session's options changed
+          while it slept); a broken save through the panel; a mail's time in the account's zone
+    - [ ] In a real browser: the map's full screen; the file pickers (their folders, their messages); a
+          person's panel on a share-link page; someone with one session; Enter in the forms; a text selection
+          kept in its panel; Space on a focused button; the page on a phone and its keyboard's Go key; the
+          spoiler page with only its first level and an item hint while *next in playthrough* is hidden; the
+          views' page arrows and slot filters; the logic's warning on screen
+    - [ ] Scripts: `publish-bridge.sh`'s comparison of an existing file (a second `--publish` of one version);
+          `measure.sh`; the Traefik overlay on a real Traefik; the build's refusals (a wrong hash in a lock, a
+          wrong wrapper checksum)
+- [ ] The registry (not this repository's): its hourly warning that deleted image manifests can't be removed for
+      good; `BLOB_GC_ENABLED` is set on its server only, not where its compose file is kept
+- [ ] Standing chores since 0.23.7: `scripts/base-images.sh` and the audit before a phase's release;
+      `gradle/verification-metadata.xml` at each dependency change; the tooling lock at a Kotlin update; the
+      Python lock at an Archipelago update; `osv-scanner.toml`'s entries run out on 2027-02-23
 
 ## Phase 24: what was noted for later (planned)
 
@@ -144,6 +90,11 @@ The parts:
       session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
       should shut down after a number of minutes without players that an Administrator sets, 5 by default
 - [ ] The bridge's page: a copy option for the slot's name (asked for on 2026-11-23)
+- [ ] The dashboard's players (asked for on 2026-11-23):
+    - [ ] Sorting by: the player's name, the slot's name, progression of the player, progression of the slot,
+          last activity
+    - [ ] A button with which someone pins themselves to the top
+- [ ] Avatars (asked for on 2026-11-23): for slots and games, and for users
 - [ ] The locks in the new session's form, reworked for Lockageddon (asked for on 2026-11-23): the locks' drop-down goes, only the
       mixed mode stays:
     - a checkbox that turns locking on
@@ -165,6 +116,15 @@ The parts:
       that loses all its slots is gone, and every higher one moves down a number (*SyncLock 2* becomes
       *SyncLock 1*): no gaps in the numbers (the user, 2026-11-23)
     - several keys a world: a fixed number or a range picked by chance, for all worlds or per slot
+- [ ] What Archipelago's processes reach on the network, with the per-session users below (the user on
+      2026-11-23): code of an uploaded APWorld can still open connections to the internet, the database's port
+      and the tracker (0.23.4's D23, 0.23.6's S13, 0.23.7's C17 and C18); the gateway's internal API bound to
+      one address
+- [ ] Left by the review for later: a game's part of the spoiler log that the views don't read is only in its
+      text; the content policy still allows inline styles (to drop once a browser shows Compose adds none);
+      the tracker's refresh reads `sessions` four times (D19); a notice when the nightly dump fails beyond the
+      deploy's line; read-only roots for the gateway and the minecraft service; `FAIL_ON_PROJECT_REPOS`; a test
+      of the command line's `admins --grant` and `--reset-2fa` ending an account's logins
 - [ ] One user per session for Archipelago's processes (left by the gateway's review, 0.23.2.1; the user on
       2026-11-23: later): they share one user, so a world's code can read and change another session's files and
       read another game server's memory. A redesign of the directories, with the existing sessions' moved

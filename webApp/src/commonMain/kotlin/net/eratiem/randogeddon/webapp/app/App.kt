@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
-import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -39,12 +38,16 @@ import net.eratiem.randogeddon.shared.TimeZoneRequest
 import net.eratiem.randogeddon.shared.i18n.ago
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.texts
+import net.eratiem.randogeddon.shared.web.Route
+import net.eratiem.randogeddon.shared.web.hash
+import net.eratiem.randogeddon.shared.web.homeTarget
+import net.eratiem.randogeddon.shared.web.loginLink
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.account.ConfirmEmailView
 import net.eratiem.randogeddon.webapp.account.SettingsView
 import net.eratiem.randogeddon.webapp.api.TrackerRepository
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.post
-import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.dashboard.Banner
 import net.eratiem.randogeddon.webapp.dashboard.BridgeFold
 import net.eratiem.randogeddon.webapp.dashboard.CONNECTION_NARROW
@@ -447,15 +450,3 @@ internal suspend fun saveTheme(theme: Theme, mode: ThemeMode) {
 
 /** Where back from the admin panel goes: the dashboard's session, or the sessions' page without one. */
 private fun back(selected: String?): Route = selected?.let { Route.Dashboard(it) } ?: Route.Home
-
-/**
- * The session the sessions' page opens by itself, of [sessions] (the ones the user sees): the user's only one, always
- * (there is nothing to pick, and the top card has no switch then); [arriving] (the first page after loading it or the
- * login), their only running one with a slot of theirs. `null`: none, the page lists them. Asked for on purpose (the
- * name on top, *All sessions*), the list shows for whoever has more than one.
- */
-internal fun homeTarget(sessions: List<SessionEntry>, arriving: Boolean): String? {
-  sessions.singleOrNull { it.myRole != null }?.let { return it.id }
-  if (!arriving) return null
-  return sessions.filter { it.mySlots.isNotEmpty() && it.status.running }.singleOrNull()?.id
-}

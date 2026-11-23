@@ -72,8 +72,8 @@ http:
 ## Settings worth knowing
 
 - **Database logins:** each program always has a role of its own, never the superuser's: the tracker's owns the
-  tables, the gateway's has only what the gateway needs (Archipelago's Python runs beside it) and ten connections
-  at most. The one-off `database-roles` makes both before each start, the tracker gives the gateway's its login and
+  tables and has twelve connections at most, the gateway's has only what the gateway needs (Archipelago's Python
+  runs beside it) and six. Neither may make temporary tables (taken from everyone but the superuser). The one-off `database-roles` makes both before each start, the tracker gives the gateway's its login and
   rights. `TRACKER_DB_USER` / `TRACKER_DB_PASSWORD` and `GATEWAY_DB_USER` / `GATEWAY_DB_PASSWORD` name them
   (`openssl rand -hex 32` each; printable characters); unset, the names are `randogeddon_tracker` and
   `randogeddon_gateway` and the passwords are derived (the tracker's from `POSTGRES_PASSWORD`, the gateway's from
@@ -81,7 +81,8 @@ http:
   then (`docker compose logs database-roles`). A gateway role renamed by hand leaves the old one behind
   (`DROP OWNED BY <old>; DROP ROLE <old>`).
 - **The browser's side:** over HTTPS the login cookie is `__Host-randogeddon_session` (the plain name on a plain
-  `http://` test instance); a change asked for by another site's page is refused (403 `OTHER_SITE`: the `Origin` or
+  `http://` test instance; a browser that still sends the plain one over HTTPS has that login ended on the
+  server); a change asked for by another site's page is refused (403 `OTHER_SITE`: the `Origin` or
   `Sec-Fetch-Site` header says so; the command line, the bridge and scripts send neither). The page may use full
   screen and write the clipboard, nothing else (`Permissions-Policy`); its content policy loads only from itself.
 - **The database's reach:** on a network of its own that only the tracker, the gateway and `database-roles` join

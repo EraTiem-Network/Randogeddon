@@ -1,11 +1,11 @@
-package net.eratiem.randogeddon.webapp.app
+package net.eratiem.randogeddon.shared.web
 
-import net.eratiem.randogeddon.webapp.api.running
-import net.eratiem.randogeddon.webapp.manage.NEW_PAGE
+/** The admin panel's page besides the sessions (a new session's form); no session ID looks like it. */
+const val NEW_PAGE = "+new"
 
 /**
- * Where the page is, kept in the URL's hash so a view survives a reload and can be linked: `#/` the sessions,
- * `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/manage` the panel (`#/admin` before),
+ * Where the web app's page is, kept in the URL's hash so a view survives a reload and can be linked: `#/` the
+ * sessions, `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/manage` the panel (`#/admin` before),
  * `#/manage/<id>` a session in it, `#/manage/new` a new session, `#/manage/<id>/spoiler` a spoiler log opened from it,
  * `#/settings` the user's account; `#/invite/<token>` and `#/email/<token>` are the links of the mails, `#/watch/<token>`
  * a share link (without a login). No session ID is one of these words (they are reserved).
@@ -81,7 +81,7 @@ sealed interface Route {
 }
 
 /** The hash of a link for index.html's login form (`#/login/<token>`, `#/login-problem`), which the route doesn't keep. */
-internal fun loginLink(hash: String): Boolean = LOGIN_LINK.containsMatchIn(hash)
+fun loginLink(hash: String): Boolean = LOGIN_LINK.containsMatchIn(hash)
 
 private val LOGIN_LINK = Regex("^#/login(-problem)?(/|$)")
 

@@ -15,7 +15,7 @@ import net.eratiem.randogeddon.shared.AdminOverview
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.decimal
-import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -23,8 +23,8 @@ import net.eratiem.randogeddon.webapp.ui.PageButton
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Txt
 
-/** The admin panel's page besides the sessions; no session ID looks like it. */
-internal const val NEW_PAGE = "+new"
+/** The admin panel's page besides the sessions; no session ID looks like it (the route's, `shared.web`). */
+internal const val NEW_PAGE = net.eratiem.randogeddon.shared.web.NEW_PAGE
 
 /** The admin panel's headings (the session's, the general part's), a little bigger than the sections' below them. */
 internal val ADMIN_HEADING = 20.sp

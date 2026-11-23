@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.Spoiler
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.pathSegment
+import net.eratiem.randogeddon.shared.web.pathSegment
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.Icon

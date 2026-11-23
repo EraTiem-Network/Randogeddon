@@ -70,3 +70,31 @@ fun Modifier.focusRing(shape: Shape = RoundedCornerShape(10.dp), gap: Dp = 3.dp)
       }
     }
 }
+
+/** Whether something had the focus when it last changed; not a state: nothing is drawn from it. */
+private class HadFocus {
+  var yes = false
+}
+
+/**
+ * Calls [onChange] with `true` when the keyboard puts the focus here or on something inside (Tab), told apart from a
+ * pointer's press as [focusRing] does it (a focus by the pointer calls nothing), and with `false` when the focus leaves.
+ * Put it before the focus target it watches.
+ */
+fun Modifier.onKeyboardFocus(onChange: (Boolean) -> Unit): Modifier = composed {
+  val pressed = remember { PressClock() }
+  val had = remember { HadFocus() }
+  this
+    .pointerInput(Unit) {
+      // Seen before the button handles it, without taking it away from it
+      awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        pressed.at = Platform.now()
+      }
+    }
+    .onFocusChanged {
+      if (it.hasFocus == had.yes) return@onFocusChanged
+      had.yes = it.hasFocus
+      if (!it.hasFocus) onChange(false) else if (Platform.now() - pressed.at > POINTER_FOCUS_MS) onChange(true)
+    }
+}

@@ -40,7 +40,7 @@ import net.eratiem.randogeddon.shared.SpoilerLines
 import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.pathSegment
+import net.eratiem.randogeddon.shared.web.pathSegment
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
