@@ -85,7 +85,7 @@ DNS needs `randogeddon.eratiem.net` and `*.randogeddon.eratiem.net`; Traefik rou
 | Setting | What it is |
 |---|---|
 | `POSTGRES_PASSWORD`, `INTERNAL_TOKEN` | The database's superuser, and the token between tracker and gateway |
-| `TRACKER_DB_*`, `GATEWAY_DB_*` | Database logins of their own for tracker and gateway (recommended) |
+| `TRACKER_DB_*`, `GATEWAY_DB_*` | The tracker's and the gateway's own database logins (optional: made and derived without) |
 | `BASE_DOMAIN`, `TRAEFIK_*` | The public domain and Traefik's network, entrypoint and cert resolvers |
 | `OIDC_*` | Administrators through Authentik (single sign-on) |
 | `MAIL_*`, `TOTP_KEY` | The mail server for invitations, and the key of the two-factor secrets |

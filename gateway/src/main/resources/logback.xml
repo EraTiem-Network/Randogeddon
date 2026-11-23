@@ -8,6 +8,8 @@
     <logger name="net.eratiem" level="${LOG_LEVEL:-INFO}"/>
     <logger name="io.netty" level="WARN"/>
     <logger name="io.ktor" level="INFO"/>
+    <!-- Exposed's warnings name a failed transaction's statements with their values -->
+    <logger name="Exposed" level="ERROR"/>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>

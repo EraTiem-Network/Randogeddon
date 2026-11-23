@@ -224,7 +224,8 @@ private suspend fun printSlots(config: TrackerConfig, db: RandogeddonDatabase, i
     return 1
   }
   val seed = room.seedName ?: return 1
-  val passwords = SlotPasswordStore(db).ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() })
+  // A seed from before Phase 4 gets its bare session here (s-<seed>); the panel's sessions have theirs
+  val passwords = SlotPasswordStore(db).ensure(seed, room.players.map { it.name }, { PasswordGenerator.generate() }, create = true)
   if (json) {
     println(buildJsonObject {
       put("session", id)

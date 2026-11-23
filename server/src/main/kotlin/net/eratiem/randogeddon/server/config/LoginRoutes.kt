@@ -267,6 +267,7 @@ fun Route.meRoute(list: SessionList, limit: SessionLimit? = null) {
         font = user.font.takeIf(FontChoice::valid), fontScope = FontScope.of(user.fontScope),
         // [limit]: only the app asks (a bridge key creates nothing)
         createsSessions = user.administrator || limit?.of(user.id)?.let { it.unlimited || it.limit > 0 } == true,
+        timeZone = user.timeZone,
       )
     )
   }

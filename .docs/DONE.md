@@ -1329,3 +1329,61 @@ games' real map images moved to Later.*
     - Tried: `gofmt`, `go vet`, `go test -race` in the bridge's build image; the tracker's tests and its tests
       on PostgreSQL (the key limit with twenty requests at once); the publish check with an unsigned build, a
       signed one, a key ID without its key, an `http://` registry, a wrong version
+- [x] 0.23.4: the database reviewed (0.23.4). Scanned on 2026-11-23: no high, 9 medium, 26
+      low (35 in all, some found by both; D: the review's, S: the security scan's). Live was checked for D1 / S1:
+      both its programs have roles of their own, neither is a superuser
+    - Decided by the user on 2026-11-23: roles of their own by default, a password derived where none is set
+      (D1, S1, D24); the gateway's event inserts tightened by a migration (S2, D13); a connection limit on its
+      role and timeouts on both programs' connections (S3, D5); a restart replays events from the snapshot's
+      position, old events pruned (D4); foreign keys from events and snapshots to their session (D10, S10, D15);
+      unique indexes for invitations and pending addresses (D11); the old recovery codes deleted (S6); login
+      links pruned, a deleted account's name and preferences cleared (D20); UTC pinned in code, no change of the
+      columns (D21); dumps written to a temporary name, the restore stopping at an error, no encryption (S7, S8,
+      D22); a network of its own for the database (S9, D23)
+    - [x] D1, S1, D24 (medium): without its own role's password the gateway is the database's superuser; the
+          default role names differ between the service that makes a role and the one that logs in
+    - [x] D2 (medium): `SessionSetupStore.create` takes over an existing session that has the same seed
+    - [x] D3 (medium): `GatewayRole.ensure` on the tracker's own role takes the tracker's rights away
+    - [x] D4 (medium): nothing prunes `session_events`, and every tracker start replays all of it
+    - [x] D5, S3 (medium): no time limits in the pool; the gateway's role without a connection limit, able to
+          hold locks the tracker waits on
+    - [x] D6 (medium): every tracker start re-creates the policy and re-grants everything (a lock the gateway's
+          inserts queue behind)
+    - [x] S2, D13 (medium): the gateway's inserts into `session_events` are bounded only by their kind
+    - [x] D7: events can be passed over for good (read by ID, IDs given before the commit)
+    - [x] D8: `saveLive` can write a live snapshot over the archive
+    - [x] D9: the session time's count reads, then writes
+    - [x] D10, S10, D15: deleting a session is four transactions; leftovers show in the next session of that ID;
+          three stores make a session row on their own
+    - [x] D11: one invitation and one pending address per user is kept by code only
+    - [x] D12: `EmailChangeStore.take` selects, then deletes (noted by the tracker's scan)
+    - [x] D14: a gateway role no longer used keeps its login and its rights
+    - [x] D16: check-then-insert where the database could decide
+    - [x] D17, S4: the gateway role's password travels as SQL text at every start
+    - [x] D18: the gateway can meet a schema older than its code
+    - [x] D19: reads fetch password hashes and TOTP secrets they don't use, every 10 seconds
+    - [x] D20: used login links and deleted accounts' rows are never removed
+    - [x] D21: the times are `timestamp` without a zone, written in the JVM's zone
+    - [x] D22, S8: a dump that failed looks like one that worked; the restore doesn't notice errors
+    - [x] D23, S9: the database listens to every container of the project; the superuser may log in over the
+          network
+    - [x] D25: what the tests don't cover
+    - [x] S5: SQL with its values in the tracker's log
+    - [x] S6: recovery codes from before the keyed hash can be cracked from a dump
+    - [x] S7: the dumps lie beside the key that unlocks their secrets (decided: no encryption)
+    - The gateway's default password is derived from `INTERNAL_TOKEN`, not from `POSTGRES_PASSWORD` as first
+      decided (the fixer's reason: a suffix can be taken off, so the gateway would hold the superuser's password;
+      the user on 2026-11-23: keep it)
+    - Fixed by two Opus fixers (the code of the database, the tracker and the gateway with the migration V29;
+      the compose files and the dumps), the web app's part of the time zone by the main session. Not as the
+      finding said, or only in part: S6 deletes the recovery codes of every account with two-factor login from
+      before 2026-11-17 (the table can't tell the old form); D19 in part; D4 prunes with the session, not by age
+    - Tried: all unit tests; 54 tests of the database module and 15 of the tracker on PostgreSQL (V29 on data in
+      the old shape; the gateway's role and what it is refused; writers at once; a restore without rights); the
+      demo on its database from before (schema 28, all the superuser's): both roles made, the tables given to
+      the tracker's, V29 run, the gateway with ten connections at most, the minecraft service without a way to
+      the database, the superuser refused over the network, a time zone kept by the native tracker; a dump
+      taken as the script does and restored into a scratch database with the documented command
+- [x] Dates and times in the user's time zone (asked for on 2026-11-23, with D21): the web app's views already
+      show them in the browser's zone; the mails said UTC. Decided by the user: a time zone per account (the
+      browser's, stored at login), used in the mails; an address without an account and the command line keep UTC (0.23.4)

@@ -111,6 +111,7 @@ internal object EnglishProblems : ProblemTexts {
       ONLY_ADMINISTRATORS_CREATE -> "Only Administrators create sessions here"
       ONLY_ADMINISTRATORS_REOPEN -> "Only Administrators reopen sessions here"
       NO_SUCH_FONT -> "There is no such font"
+      NO_SUCH_TIME_ZONE -> "There is no such time zone"
       ACCOUNT_TIMED_OUT -> "An Administrator has timed your account out until ${a("until")}." + a("reason").let { if (it.isEmpty()) "" else " Reason: $it" }
       ACCOUNT_SUSPENDED -> "An Administrator has suspended your account." + a("reason").let { if (it.isEmpty()) "" else " Reason: $it" }
       NOT_YOUR_OWN -> "Not your own account"
@@ -282,6 +283,7 @@ internal object GermanProblems : ProblemTexts {
       ONLY_ADMINISTRATORS_CREATE -> "Hier erstellen nur Administratoren Sessions"
       ONLY_ADMINISTRATORS_REOPEN -> "Hier öffnen nur Administratoren Sessions wieder"
       NO_SUCH_FONT -> "Diese Schrift gibt es nicht"
+      NO_SUCH_TIME_ZONE -> "Diese Zeitzone gibt es nicht"
       ACCOUNT_TIMED_OUT -> "Ein Administrator hat dein Konto bis ${a("until")} gesperrt." + a("reason").let { if (it.isEmpty()) "" else " Grund: $it" }
       ACCOUNT_SUSPENDED -> "Ein Administrator hat dein Konto gesperrt." + a("reason").let { if (it.isEmpty()) "" else " Grund: $it" }
       NOT_YOUR_OWN -> "Nicht dein eigenes Konto"

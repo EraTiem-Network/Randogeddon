@@ -81,7 +81,8 @@ private data class Hint(
 
 /**
  * What the tracker kept of a seed in its history file until 0.19.10 (the feed, the last activity, the connection
- * logs): read once more as the baseline its events are replayed onto.
+ * logs), and since 0.23.4 with a running session's live snapshot (everything its events make, up to [serverCursor]):
+ * the baseline its events after that are replayed onto.
  */
 @Serializable
 private data class SavedState(
@@ -96,6 +97,19 @@ private data class SavedState(
   val savedAt: Long? = null,
   /** Up to which of the gateway's events of the game server (by their IDs) this was heard. */
   val serverCursor: Long = 0,
+  /**
+   * The game clients connected to each slot when it was kept, from the events up to [serverCursor] (the events after
+   * it say who left since); `null` in a history file of before, whose open sessions were cut.
+   */
+  val online: Map<Int, Int>? = null,
+  val lastCheckAt: Map<Int, Long> = emptyMap(),
+  val releasedAt: Map<Int, Long> = emptyMap(),
+  /** The deaths and traps each slot passed on, and of every slot (a link's source isn't always a slot). */
+  val deaths: Map<Int, Int> = emptyMap(),
+  val trapLinks: Map<Int, Int> = emptyMap(),
+  val totalDeaths: Int = 0,
+  val totalTrapLinks: Int = 0,
+  val unlockedByServer: Set<String> = emptySet(),
 )
 
 /** A cheat's feed line as it is kept among the game server's events (written by the tracker, kind `cheat`). */
@@ -890,17 +904,35 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
    * What the tracker's history file of before held ([text], the baseline), as it wrote it every 15 s until 0.19.10;
    * a test makes one so. The events after its [serverCursor] are replayed onto it.
    */
-  internal fun historyJson(): String = ApiJson.encodeToString(
-    SavedState.serializer(),
-    SavedState(
-      seedName, eventSeq, events.toList(), serverCursor = serverCursor,
-      lastActivity = players.mapNotNull { (s, p) -> p.lastActivity?.let { s to it } }.toMap(),
-      sessions = players.filterValues { it.sessions.isNotEmpty() }.mapValues { it.value.sessions.toList() },
-      firstCheckAt = players.mapNotNull { (s, p) -> p.firstCheckAt?.let { s to it } }.toMap(),
-      goalAt = players.mapNotNull { (s, p) -> p.goalAt?.let { s to it } }.toMap(),
-      savedAt = clock(),
-    ),
-  )
+  internal fun historyJson(): String = ApiJson.encodeToString(SavedState.serializer(), saved(all = false))
+
+  /**
+   * Everything its events have made of the state, up to [serverCursor] (who is connected too): kept with a running
+   * session's live snapshot as the baseline the events after it are replayed onto, so a restart replays only what came
+   * after.
+   */
+  internal fun keptJson(): String = ApiJson.encodeToString(SavedState.serializer(), saved(all = true))
+
+  private fun saved(all: Boolean) = SavedState(
+    seedName, eventSeq, events.toList(), serverCursor = serverCursor,
+    lastActivity = players.mapNotNull { (s, p) -> p.lastActivity?.let { s to it } }.toMap(),
+    sessions = players.filterValues { it.sessions.isNotEmpty() }.mapValues { it.value.sessions.toList() },
+    firstCheckAt = players.mapNotNull { (s, p) -> p.firstCheckAt?.let { s to it } }.toMap(),
+    goalAt = players.mapNotNull { (s, p) -> p.goalAt?.let { s to it } }.toMap(),
+    savedAt = clock(),
+  ).let { history ->
+    if (!all) return@let history
+    history.copy(
+      online = players.mapValues { it.value.online }.filterValues { it > 0 },
+      lastCheckAt = players.mapNotNull { (s, p) -> p.lastCheckAt?.let { s to it } }.toMap(),
+      releasedAt = players.mapNotNull { (s, p) -> p.releasedAt?.let { s to it } }.toMap(),
+      deaths = players.mapValues { it.value.deaths }.filterValues { it > 0 },
+      trapLinks = players.mapValues { it.value.trapLinks }.filterValues { it > 0 },
+      totalDeaths = deaths,
+      totalTrapLinks = trapLinks,
+      unlockedByServer = unlockedByServer.toSet(),
+    )
+  }
 
   /** Reads the baseline ([historyJson]); it is only applied by [applySaved], once the seed is known to match. */
   fun loadSaved(text: String?) {
@@ -925,12 +957,24 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
     data.sessions.forEach { (s, saved) ->
       val p = players[s] ?: return@forEach
-      // Sessions still open at the last save were cut by the restart
-      val closed = saved.map { if (it.end == null) it.copy(end = data.savedAt ?: it.start, cut = true) else it }
+      // Still connected when it was kept (a state kept while running): the events after it say when they left
+      val online = data.online?.get(s)?.takeIf { it > 0 && p.sessions.isEmpty() && p.online == 0 && saved.lastOrNull()?.end == null }
+      // Else sessions still open at the last save were cut by the restart
+      val closed = saved.mapIndexed { i, it ->
+        if (it.end == null && !(online != null && i == saved.lastIndex)) it.copy(end = data.savedAt ?: it.start, cut = true) else it
+      }
       p.sessions = (closed + p.sessions).takeLast(MAX_SESSIONS).toMutableList()
+      if (online != null) p.online = online
     }
     data.firstCheckAt.forEach { (s, ts) -> players[s]?.let { p -> p.firstCheckAt = minOf(ts, p.firstCheckAt ?: ts) } }
     data.goalAt.forEach { (s, ts) -> players[s]?.let { p -> p.goalAt = minOf(ts, p.goalAt ?: ts) } }
+    data.lastCheckAt.forEach { (s, ts) -> players[s]?.let { p -> p.lastCheckAt = maxOf(ts, p.lastCheckAt ?: ts) } }
+    data.releasedAt.forEach { (s, ts) -> players[s]?.let { p -> p.releasedAt = minOf(ts, p.releasedAt ?: ts) } }
+    data.deaths.forEach { (s, n) -> players[s]?.let { p -> p.deaths += n } }
+    data.trapLinks.forEach { (s, n) -> players[s]?.let { p -> p.trapLinks += n } }
+    deaths += data.totalDeaths
+    trapLinks += data.totalTrapLinks
+    unlockedByServer += data.unlockedByServer
     // The history file had no release times: its feed has them (its last 500 events)
     data.events.filter { it.type == EventType.RELEASE }.forEach { e ->
       e.slot?.let { players[it] }?.let { p -> p.releasedAt = minOf(e.ts, p.releasedAt ?: e.ts) }

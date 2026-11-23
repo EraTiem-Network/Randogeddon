@@ -45,8 +45,8 @@ class Archives(private val config: TrackerConfig, private val snapshots: Session
   /** Every archive, into memory; the files from before into the database first (those it has none of). */
   suspend fun load() {
     val kept = snapshots.finals()
-    importFiles(kept.keys)
-    for ((id, json) in snapshots.finals()) {
+    // Read once: the imported ones are known from their files
+    for ((id, json) in kept + importFiles(kept.keys)) {
       runCatching { ApiJson.decodeFromString(ArchivedSession.serializer(), json) }
         .onSuccess { cache[id] = it }
         .onFailure { logger.warn("Could not read {}'s archive: {}", id, it.message) }
@@ -54,22 +54,33 @@ class Archives(private val config: TrackerConfig, private val snapshots: Session
     logger.info("{} archived sessions", cache.size)
   }
 
-  private suspend fun importFiles(kept: Set<String>) {
+  /** The archive files of before, of sessions without one in the database, into it; the ones imported (id -> JSON). */
+  private suspend fun importFiles(kept: Set<String>): Map<String, String> {
     val root = config.stateDir.resolve("sessions")
-    if (!root.isDirectory()) return
+    if (!root.isDirectory()) return emptyMap()
+    val imported = mutableMapOf<String, String>()
     for (dir in root.listDirectoryEntries().filter { it.isDirectory() && SessionIds.valid(it.name) && it.name !in kept }) {
       val file = dir.resolve("archive.json").takeIf { it.exists() } ?: continue
       runCatching {
         val text = file.readText()
         ApiJson.decodeFromString(ArchivedSession.serializer(), text)
+        // Only a session that is there has one (V29): a deleted one's file is refused
         snapshots.saveFinal(dir.name, file.getLastModifiedTime().toMillis(), text)
+        imported[dir.name] = text
       }.onSuccess { logger.info("Imported {}'s archive into the database", dir.name) }
         .onFailure { logger.warn("Could not import {}: {}", file, it.message) }
     }
+    return imported
   }
 
-  suspend fun write(id: String, archived: ArchivedSession) {
-    snapshots.saveFinal(id, System.currentTimeMillis(), ApiJson.encodeToString(ArchivedSession.serializer(), archived))
+  /** [archived] as it is kept in the database (the session's final snapshot). */
+  fun encode(archived: ArchivedSession): String = ApiJson.encodeToString(ArchivedSession.serializer(), archived)
+
+  /**
+   * Session [id] finished with [archived], written to the database with the finish itself
+   * (`SessionFinishStore.finish`): it is read from here from now on.
+   */
+  fun remember(id: String, archived: ArchivedSession) {
     cache[id] = archived
   }
 

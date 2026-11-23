@@ -4,6 +4,7 @@ import net.eratiem.randogeddon.shared.AccountActionRequest
 import net.eratiem.randogeddon.shared.FontRequest
 import net.eratiem.randogeddon.shared.SessionLimitRequest
 import net.eratiem.randogeddon.shared.ThemeRequest
+import net.eratiem.randogeddon.shared.TimeZoneRequest
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import net.eratiem.randogeddon.server.config.refuse
@@ -147,6 +148,13 @@ fun Route.accountRoutes(
       apiCall {
         val request = call.receive<ThemeRequest>()
         accounts.setTheme(call.loggedIn.user, request.theme, request.mode)
+        call.respond(HttpStatusCode.NoContent)
+      }
+    }
+    // The browser's time zone, for the times in the mails
+    put("/time-zone") {
+      apiCall {
+        accounts.setTimeZone(call.loggedIn.user, call.receive<TimeZoneRequest>().zone)
         call.respond(HttpStatusCode.NoContent)
       }
     }

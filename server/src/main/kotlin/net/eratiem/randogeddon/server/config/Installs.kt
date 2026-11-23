@@ -58,12 +58,25 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       // Migrates on start; the gateway only reads
       single {
         RandogeddonDatabase.connect(trackerConfig.database, migrate = true).also { database ->
-          // The gateway's own role, with exactly its rights (after the migrations: the tables are there)
+          if (runBlocking { runCatching { database.superuser() }.getOrDefault(false) }) {
+            log.warn("The tracker logs in as a superuser of the database ({}): give it a role of its own (TRACKER_DB_USER)", trackerConfig.database.user)
+          }
+          val gateway = trackerConfig.gatewayDbUser
           if (trackerConfig.gatewayDbPassword.isNotBlank()) {
-            runBlocking { GatewayRole.ensure(database, trackerConfig.gatewayDbUser, trackerConfig.gatewayDbPassword) }
-            log.info("The gateway's database role {} has its rights", trackerConfig.gatewayDbUser)
+            // The gateway's own role, with exactly its rights (after the migrations: the tables are there); never the
+            // tracker's own login, whose rights it would take (GatewayRole refuses it, a superuser and the owner too)
+            check(gateway != trackerConfig.database.user) {
+              "GATEWAY_DB_USER is the tracker's own login ($gateway): the gateway needs a role of its own"
+            }
+            runBlocking { GatewayRole.ensure(database, gateway, trackerConfig.gatewayDbPassword) }
+            log.info("The gateway's database role {} has its rights", gateway)
           } else {
-            log.warn("No GATEWAY_DB_PASSWORD: the gateway uses the tracker's database login")
+            // Outside compose (which always sets one): the gateway logs in with whatever it is given, and a role made
+            // before can't log in any more
+            runCatching { runBlocking { GatewayRole.retire(database, gateway) } }
+              .onSuccess { if (it) log.warn("No GATEWAY_DB_PASSWORD: the gateway's database role {} can't log in any more", gateway) }
+              .onFailure { log.warn("Could not take the rights of the gateway's database role {} away: {}", gateway, it.message) }
+            log.warn("No GATEWAY_DB_PASSWORD: the tracker makes no database role for the gateway (it logs in as DB_USER says)")
           }
         }
       }

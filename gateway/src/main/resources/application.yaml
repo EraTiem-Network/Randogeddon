@@ -36,5 +36,5 @@ gateway:
   database:
     # PostgreSQL: the slot passwords (created by the tracker)
     url: "$DB_URL:jdbc:postgresql://localhost:5432/randogeddon"
-    user: "$DB_USER:randogeddon"
+    user: "$DB_USER:randogeddon_gateway"
     password: "$DB_PASSWORD:"

@@ -34,12 +34,22 @@ x-build: &build
     RANDOGEDDON_MAVEN: ${RANDOGEDDON_MAVEN:-}
     RANDOGEDDON_MAVEN_NAME: ${RANDOGEDDON_MAVEN_NAME:-}
 
-# The tracker's database login: its own role once TRACKER_DB_USER and TRACKER_DB_PASSWORD are set (database-roles
-# makes it); until then the database's superuser
+# The programs' database logins: a role of its own each, never the database's superuser. database-roles makes both
+# before the tracker starts, the tracker gives the gateway's its rights. Each value is written once, here, and used by
+# whoever makes the role and whoever logs in with it. Without TRACKER_DB_PASSWORD / GATEWAY_DB_PASSWORD a password is
+# derived from a secret the program holds anyway: the tracker's from POSTGRES_PASSWORD (the superuser can't log in
+# from the tracker's container, see pg_hba below), the gateway's from INTERNAL_TOKEN, so that nothing in the gateway's
+# environment leads to the tracker's or the superuser's password
+x-tracker-db-user: &tracker-db-user ${TRACKER_DB_USER:-randogeddon_tracker}
+x-tracker-db-password: &tracker-db-password ${TRACKER_DB_PASSWORD:-${POSTGRES_PASSWORD}-tracker}
+x-gateway-db-user: &gateway-db-user ${GATEWAY_DB_USER:-randogeddon_gateway}
+x-gateway-db-password: &gateway-db-password ${GATEWAY_DB_PASSWORD:-${INTERNAL_TOKEN}-gateway}
+
+# The tracker's database login
 x-database: &database
   DB_URL: jdbc:postgresql://postgres:5432/randogeddon
-  DB_USER: ${TRACKER_DB_USER:-randogeddon}
-  DB_PASSWORD: ${TRACKER_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
+  DB_USER: *tracker-db-user
+  DB_PASSWORD: *tracker-db-password
 
 # Between tracker and gateway (the admin panel's control of the game servers)
 x-internal-token: &internal-token ${INTERNAL_TOKEN:?set INTERNAL_TOKEN in .env}
@@ -58,22 +68,30 @@ services:
     restart: unless-stopped
     logging: *logging
     security_opt: ["no-new-privileges:true"]
+    # Who may log in from where: pg_hba (below) in place of the one the image writes into the data folder
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    configs:
+      - source: pg_hba
+        target: /etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_DB: randogeddon
       POSTGRES_USER: randogeddon
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql
+    # Only on the database's network: the tracker and the gateway reach it, the minecraft service and the rest can't
+    networks: [database]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "randogeddon", "-d", "randogeddon"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # The tracker's own database role, made (or brought back to its rights) by the database's superuser before the
-  # tracker starts: the tracker owns the tables (it migrates them) and may make roles (the gateway's), but it is no
+  # The programs' database roles, made (or brought back to their rights) by the database's superuser before the
+  # tracker starts: the tracker's owns the tables (it migrates them) and may change the gateway's, but neither is a
   # superuser, which could run programs in the database's container. So the superuser's password stays with this
-  # one-off service and the dumps. Without TRACKER_DB_PASSWORD it does nothing
+  # one-off service and the dumps. A setting that names the superuser for either, or one role for both, is refused here
+  # (the tracker then doesn't start)
   database-roles:
     image: postgres:18-alpine
     restart: "no"
@@ -84,22 +102,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # In the database's own container's network (so on the database's network too): the only place the superuser may
+    # log in from over the network (pg_hba)
+    network_mode: service:postgres
     environment:
-      PGHOST: postgres
+      PGHOST: 127.0.0.1
       PGDATABASE: randogeddon
       PGUSER: randogeddon
       PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      TRACKER_DB_USER: ${TRACKER_DB_USER:-randogeddon_tracker}
-      TRACKER_DB_PASSWORD: ${TRACKER_DB_PASSWORD:-}
-      GATEWAY_DB_USER: ${GATEWAY_DB_USER:-randogeddon_gateway}
+      TRACKER_DB_USER: *tracker-db-user
+      TRACKER_DB_PASSWORD: *tracker-db-password
+      GATEWAY_DB_USER: *gateway-db-user
     configs:
       - source: database_roles
         target: /database-roles.sql
     entrypoint: ["sh", "-c"]
     command:
       - |
-        if [ -z "$$TRACKER_DB_PASSWORD" ]; then echo "No TRACKER_DB_PASSWORD: the tracker uses the database's superuser"; exit 0; fi
-        psql -X -q -v ON_ERROR_STOP=1 -f /database-roles.sql && echo "The tracker's database role $$TRACKER_DB_USER has its rights"
+        psql -X -q -v ON_ERROR_STOP=1 -f /database-roles.sql && echo "The database roles $$TRACKER_DB_USER (the tracker's) and $$GATEWAY_DB_USER (the gateway's) are there"
 
   gateway:
     # Locally as built; on the server from the registry (GATEWAY_IMAGE, GATEWAY_TAG set by scripts/deploy.sh)
@@ -118,6 +138,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      database-roles:
+        condition: service_completed_successfully
+    # The project's network (the tracker, the minecraft service, game clients through Traefik) and the database's
+    networks: [default, database]
     # Generate.py and the game servers share this container: a seed too large for it ends there, not the VM. Full, the
     # kernel ends a generation or a logic first, then a game server, the gateway last (their out-of-memory scores)
     mem_limit: ${GATEWAY_MEMORY:-5g}
@@ -130,12 +154,12 @@ services:
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, KILL]
     environment:
-      # Its own database role with only its rights, once GATEWAY_DB_USER and GATEWAY_DB_PASSWORD are set (the tracker
-      # makes the role at its start); until then the tracker's login. Archipelago's Python runs here, as another user
-      # that can't read this environment; with the role, not even the gateway has the tracker's password
+      # Its own database role with only its rights (database-roles makes it, the tracker gives it its password and
+      # rights at each start; until then the gateway waits). Archipelago's Python runs here, as another user that can't
+      # read this environment; even the gateway has neither the tracker's password nor the superuser's
       DB_URL: jdbc:postgresql://postgres:5432/randogeddon
-      DB_USER: ${GATEWAY_DB_USER:-randogeddon}
-      DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
+      DB_USER: *gateway-db-user
+      DB_PASSWORD: *gateway-db-password
       INTERNAL_TOKEN: *internal-token
       # Whose X-Forwarded-For counts for a game client's address (its limit per address), as the tracker's; empty:
       # every peer's
@@ -213,15 +237,17 @@ services:
         condition: service_completed_successfully
       gateway:
         condition: service_started
+    # The project's network (the gateway, Traefik's overlay, the local overlay's mailpit) and the database's
+    networks: [default, database]
     environment:
       <<: *database
       # The gateway runs the sessions' MultiServers; their ports are not published, only the tracker connects there
       GATEWAY_HOST: gateway
       GAME_SERVER_API: http://gateway:8001
       INTERNAL_TOKEN: *internal-token
-      # The gateway's own database role: made here at each start, with only the gateway's rights
-      GATEWAY_DB_USER: ${GATEWAY_DB_USER:-randogeddon_gateway}
-      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:-}
+      # The gateway's own database role: given its password and only the gateway's rights here, at each start
+      GATEWAY_DB_USER: *gateway-db-user
+      GATEWAY_DB_PASSWORD: *gateway-db-password
       # Shown to a session's players ({id}: the session); the Traefik overlay sets the public host names
       PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-ws://localhost:38281/{id}}
       TRACKER_TITLE: ${TRACKER_TITLE:-Randogeddon}
@@ -265,18 +291,49 @@ volumes:
   tracker-state:
   postgres-data:
 
+networks:
+  # The database's own: postgres, the tracker and the gateway (database-roles in postgres' container), with no way out
+  # of the host. Everything else (the minecraft service, the local overlay's mailpit, the demo's helpers) stays on the
+  # project's default network (randogeddon_default) with the tracker and the gateway
+  database:
+    internal: true
+
 configs:
+  # Who may log in to PostgreSQL, and from where (the first line that fits decides). Over the socket (docker compose
+  # exec postgres: the dumps, the deploy's check, a restore) without a password, as the image has it; the superuser over
+  # the network only from inside the database's own container (database-roles shares it), so its password is of no use
+  # from the tracker's or the gateway's container or anywhere else; every other role with its password
+  pg_hba:
+    content: |
+      local all all                      trust
+      host  all randogeddon 127.0.0.1/32 scram-sha-256
+      host  all randogeddon ::1/128      scram-sha-256
+      host  all randogeddon all          reject
+      host  all all         all          scram-sha-256
+
   # What database-roles runs (psql, as the superuser). Every statement is made from the names with format(), so a
   # name or a password is never part of the script's text
   database_roles:
     content: |
+      -- A statement that fails isn't written into the database's log (two of them hold the tracker's password), and
+      -- psql's errors show no statement either
+      SET log_min_error_statement = panic;
+      \set VERBOSITY terse
       \getenv tracker TRACKER_DB_USER
       \getenv password TRACKER_DB_PASSWORD
       \getenv gateway GATEWAY_DB_USER
-      SELECT :'tracker' = current_user AS same \gset
-      \if :same
-        \echo TRACKER_DB_USER is the superuser itself: nothing to do
-        \quit
+      -- Two roles of their own, neither a superuser: a setting that names the superuser, or one role for both, is
+      -- refused before anything is changed
+      SELECT :'tracker' = current_user AS tracker_super, :'gateway' IN (current_user, :'tracker') AS gateway_taken,
+        EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway' AND rolsuper) AS gateway_super \gset
+      \if :tracker_super
+        DO 'BEGIN RAISE EXCEPTION ''TRACKER_DB_USER names the superuser of the database: the tracker needs a role of its own''; END';
+      \endif
+      \if :gateway_taken
+        DO 'BEGIN RAISE EXCEPTION ''GATEWAY_DB_USER names the superuser or the tracker: the gateway needs a role of its own''; END';
+      \endif
+      \if :gateway_super
+        DO 'BEGIN RAISE EXCEPTION ''GATEWAY_DB_USER names a superuser: the gateway needs a role of its own''; END';
       \endif
       SELECT format('CREATE ROLE %I', :'tracker') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'tracker') \gexec
       SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', :'tracker', :'password') \gexec
@@ -291,11 +348,11 @@ configs:
         WHERE t.typnamespace = 'public'::regnamespace AND t.typtype IN ('e', 'd') AND t.typowner <> :'tracker'::regrole \gexec
       SELECT format('ALTER ROUTINE %s OWNER TO %I', p.oid::regprocedure, :'tracker') FROM pg_proc p
         WHERE p.pronamespace = 'public'::regnamespace AND p.proowner <> :'tracker'::regrole \gexec
-      -- The gateway's role, if the superuser made it before: no more than a login, and the tracker's to change from now on
-      SELECT format('ALTER ROLE %I NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', :'gateway')
-        WHERE :'gateway' <> :'tracker' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
-      SELECT format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET FALSE', :'gateway', :'tracker')
-        WHERE :'gateway' <> :'tracker' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
+      -- The gateway's role: made here if it isn't there (without a login until the tracker gives it its password and
+      -- rights at its start), no more than a login if the superuser made it before, and the tracker's to change
+      SELECT format('CREATE ROLE %I', :'gateway') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
+      SELECT format('ALTER ROLE %I NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', :'gateway') \gexec
+      SELECT format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET FALSE', :'gateway', :'tracker') \gexec
 
 secrets:
   # Gradle init script with the login for the Maven mirror (RANDOGEDDON_MAVEN); only read when the images are built

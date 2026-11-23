@@ -2554,6 +2554,23 @@
       ]
     },
     {
+      "type": "net.eratiem.randogeddon.shared.TimeZoneRequest",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "net.eratiem.randogeddon.shared.TimeZoneRequest$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "net.eratiem.randogeddon.shared.LanguageRequest",
       "fields": [
         {
@@ -3106,7 +3123,7 @@
           "parameterTypes": []
         }
       ]
-    },
+    },
     {
       "type": "net.eratiem.randogeddon.shared.MinecraftLogs",
       "fields": [
@@ -3123,7 +3140,7 @@
           "parameterTypes": []
         }
       ]
-    },
+    },
     {
       "type": "net.eratiem.randogeddon.shared.MinecraftServerView",
       "fields": [

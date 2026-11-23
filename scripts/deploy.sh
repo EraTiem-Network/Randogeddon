@@ -52,14 +52,27 @@ if [[ -z "$tag" ]]; then
   [[ -n "$tag" ]] || { echo "No previous tag to roll back to"; exit 1; }
 fi
 current="$(setting IMAGE_TAG)" current_gateway="$(setting GATEWAY_TAG)"
-# Before every switch: the database as it is
+# Before every switch: the database as it is. Nothing is changed unless the dump is whole
 if docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
   mkdir -p /srv/backups
   chmod 700 /srv/backups
   dump="/srv/backups/randogeddon-$(date +%Y%m%d-%H%M%S)-before-${tag}.sql.gz"
+  # As scripts/backup.sh takes it: under a temporary name, which goes whatever happens, and without owners and rights.
   # </dev/null: this script itself comes over stdin, which `exec -T` would read. The dump (password hashes, addresses,
   # the slot passwords) for root only
-  (umask 077; docker compose exec -T postgres pg_dump -U randogeddon randogeddon </dev/null | gzip > "$dump")
+  trap 'rm -f "$dump.part"' EXIT
+  if ! (umask 077; docker compose exec -T postgres pg_dump -U randogeddon --no-owner --no-privileges randogeddon \
+    </dev/null | gzip > "$dump.part"); then
+    echo "The database dump failed (pg_dump or gzip): nothing switched"
+    exit 1
+  fi
+  # Whole: a sound gzip, and pg_dump's own last lines are in it (a dump cut off anywhere lacks them)
+  if [[ ! -s "$dump.part" ]] || ! gzip -t "$dump.part" \
+    || [[ "$(gzip -dc "$dump.part" | tail -n 10)" != *"-- PostgreSQL database dump complete"* ]]; then
+    echo "The database dump isn't whole: nothing switched"
+    exit 1
+  fi
+  mv "$dump.part" "$dump"
   echo "Database dumped to $dump"
 fi
 sed -i '/^IMAGE_REGISTRY=/d' .env
@@ -86,7 +99,8 @@ for _ in $(seq 1 60); do
   curl -sf http://localhost:8000/healthz >/dev/null && break
   sleep 2
 done
-curl -sf http://localhost:8000/healthz >/dev/null || { echo "The tracker isn't healthy: docker compose logs tracker"; exit 1; }
+curl -sf http://localhost:8000/healthz >/dev/null \
+  || { echo "The tracker isn't healthy: docker compose logs database-roles tracker"; exit 1; }
 echo "Running: tracker $tag, gateway $gateway_tag; schema version $(docker compose exec -T postgres psql -U randogeddon -d randogeddon -tAc 'select max(version::int) from flyway_schema_history' </dev/null)"
 # Only the running images and the ones before (for a rollback) stay on the server
 keep=" $(setting IMAGE_TAG) $(setting GATEWAY_TAG) $(setting PREVIOUS_IMAGE_TAG) $(setting PREVIOUS_GATEWAY_TAG) "

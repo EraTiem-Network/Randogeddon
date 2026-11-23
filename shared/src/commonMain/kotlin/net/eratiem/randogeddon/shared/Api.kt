@@ -88,6 +88,8 @@ data class Me(
   val fontScope: FontScope = FontScope.AUTO,
   /** They may create sessions at all: an Administrator, or someone whose limit isn't 0. */
   val createsSessions: Boolean = false,
+  /** The time zone the mails give their times in (an IANA name, the browser's); `null`: not known, UTC. */
+  val timeZone: String? = null,
 )
 
 /**

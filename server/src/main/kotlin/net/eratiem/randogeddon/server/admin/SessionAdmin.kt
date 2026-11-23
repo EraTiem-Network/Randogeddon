@@ -512,7 +512,7 @@ class SessionAdmin(
       }
       stages[id] = GenerationProgress(GenerationStage.SAVING, 93)
 
-      setups.create(
+      val created = setups.create(
         id, seed, version, ApiJson.encodeToString(SessionOptions.serializer(), request.options),
         plans.mapValues { (_, plan) -> plan.userIds.distinct().mapNotNull { accounts[it]?.id } },
         hosted = plans.filterValues { it.hosted }.keys,
@@ -521,6 +521,12 @@ class SessionAdmin(
         direct = direct,
         open = open,
       )
+      if (!created) {
+        // The same seed became another session meanwhile (uploaded twice at once): that one stays as it is, and the
+        // gateway's files of this one go
+        runCatching { gameServer.delete(id, true) }
+        throw SessionProblem(HttpStatusCode.Conflict, Problem.SEED_IN_USE)
+      }
       slotPasswords.ensure(seed, plans.keys + listOfNotNull(LOCKS_SLOT.takeIf { locked.isNotEmpty() }), { PasswordGenerator.generate() })
       // No one connects a locked slot until its key is found (the tracker opens it then)
       slotPasswords.setLocked(seed, locked.toSet())
@@ -566,10 +572,10 @@ class SessionAdmin(
     gameServer.delete(id, purge)
     live.disconnect()
     live.tracker.clear()
-    archives.delete(id)
+    // Its row, and with it (one statement) its setup, its events and its snapshot: its ID may be a new session's later,
+    // nothing of this one is left to be heard then (V29)
     setups.delete(live.seedName)
-    // Its ID may be a new session's later: nothing of this one is left to be heard then
-    runCatching { events.delete(id) }
+    archives.delete(id)
     spoilers.forget(id)
     sessions.refresh()
     logger.info("{} deleted session {} (seed {}){}", admin, id, live.seedName, if (purge) " for good" else "")

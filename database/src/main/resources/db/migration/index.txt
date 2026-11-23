@@ -27,3 +27,4 @@ V25__session_snapshots.sql
 V26__minecraft_direct.sql
 V27__open_slots.sql
 V28__gateway_event_kinds.sql
+V29__review.sql

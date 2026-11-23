@@ -47,7 +47,7 @@ Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25; a Maven mirror as `randogeddon.maven
 ./gradlew :server:test :gateway:test :database:test  # unit tests (also in the Docker build)
 ./gradlew :database:integrationTest             # against PostgreSQL (Testcontainers, Linux Docker)
 ./gradlew :server:integrationTest               # the tracker's classes on PostgreSQL, a fake gateway and mailer
-./gradlew :server:run                           # tracker on :8000 (builds the web app first)
+./gradlew :server:run                           # tracker on :8000 (builds the web app first); DB_USER, DB_PASSWORD
 AP_ROOT=<one Archipelago checkout per release> ./gradlew :gateway:run   # gateway on :38281
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun   # the web app with hot reload, /api proxied to :8000
 ```

@@ -6,6 +6,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.util.concurrent.ConcurrentHashMap
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.time.Duration
@@ -58,14 +59,25 @@ const val MAX_LOGINS = 20
 fun loginDuration(method: String): Duration =
   if (method == LoginMethods.OIDC || method == LoginMethods.LINK) SSO_LOGIN_DURATION else LOGIN_DURATION
 
-/** Until when a time-out lasts, as the person reads it (the server's time: UTC, said so). */
-internal val UNTIL: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+/** An account's time zone ([User.timeZone], an IANA name); UTC when it has none, or one this Java doesn't know. */
+internal fun zoneOf(name: String?): ZoneId =
+  name?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneOffset.UTC
+
+/**
+ * [at] as the person reads it, a time to the minute in their time zone [zone] (an account's), said by its name
+ * (`2026-11-25 15:00 Europe/Berlin`); without one in UTC, said so (`2026-11-25 14:00 UTC`).
+ */
+internal fun timeFor(at: Instant, zone: String?): String {
+  val id = zoneOf(zone)
+  val label = if (id == ZoneOffset.UTC) "UTC" else id.id
+  return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(id).format(at) + " " + label
+}
 
 /** Why [user] is kept out at [now] (timed out until when, or suspended; with the reason if one was given); `null`: they aren't. */
 internal fun keptOutRefusal(user: User, now: Instant): Refusal? {
   val block = user.block?.takeIf { it.holds(now) } ?: return null
   val reason = listOfNotNull(block.reason?.let { "reason" to it }).toTypedArray()
-  return block.until?.let { Refusal.of(Problem.ACCOUNT_TIMED_OUT, "until" to UNTIL.format(it), *reason) }
+  return block.until?.let { Refusal.of(Problem.ACCOUNT_TIMED_OUT, "until" to timeFor(it, user.timeZone), *reason) }
     ?: Refusal.of(Problem.ACCOUNT_SUSPENDED, *reason)
 }
 

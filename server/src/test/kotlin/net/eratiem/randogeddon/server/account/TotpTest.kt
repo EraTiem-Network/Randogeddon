@@ -82,7 +82,7 @@ class TotpTest {
     assertEquals(10, codes.distinct().size)
     assertTrue(codes.all { Regex("[a-z2-9]{4}-[a-z2-9]{4}").matches(it) })
     val code = codes.first()
-    assertEquals(RecoveryCodes.hash(code), RecoveryCodes.hash(" ${code.uppercase().replace("-", " ")} "))
+    assertEquals(RecoveryCodes.normalize(code), RecoveryCodes.normalize(" ${code.uppercase().replace("-", " ")} "))
     assertTrue(RecoveryCodes.looksLike(code))
     assertTrue(!RecoveryCodes.looksLike("123456"))
   }
@@ -111,7 +111,7 @@ class TotpTest {
     assertEquals(64, hash.length)
     assertEquals(hash, box.mac("recovery codes", "abcdefgh"))
     // Not the plain hash a database dump could be searched with, another under another key, purpose or text
-    assertTrue(hash != RecoveryCodes.hash("abcdefgh"))
+    assertTrue(hash != tokenHash("abcdefgh"))
     assertTrue(hash != SecretBox(ByteArray(32)).mac("recovery codes", "abcdefgh"))
     assertTrue(hash != box.mac("something else", "abcdefgh"))
     assertTrue(hash != box.mac("recovery codes", "abcdefgj"))
