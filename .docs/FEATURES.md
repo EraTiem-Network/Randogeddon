@@ -89,7 +89,11 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
 - **The logic** counts each slot's available checks: the seed generated again up to the fill (`logic_run.py`), kept
   running from the game server's start until as long after it sleeps as the game servers wait (at least 10 min).
   It names the locations, too: a slot's panel lists them first. The last counts show while it doesn't run. Not for
-  seeds from elsewhere, races, or a changed APWorld.
+  seeds from elsewhere, races, or a changed APWorld. Available means reachable by the game's rules with what the
+  slot has: its items as the seed classed them, its starting items, and the World Keys found (an opened world has
+  its real counts and map). At its build the logic replays the seed's own order against the rebuilt rules: a slot
+  whose rebuild doesn't fit keeps its numbers and map, under a warning nobody overlooks (its pill framed, a banner
+  above its checks and its map, its reason in the panel's logic section).
 
 ## The Management panel
 

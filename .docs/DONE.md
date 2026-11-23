@@ -1445,3 +1445,59 @@ games' real map images moved to Later.*
       panel, the new session's form, the map after its rewrite (blocked regions, the hover's marks, enlarged),
       the spoiler page asking and opening on *Everything*, Tab's ring through the panel, no complaint of the
       content policy in the browser's console
+- [x] 0.23.6: Archipelago's wrappers and World Locks reviewed (0.23.6). Scanned on 2026-11-23: 3 high, 17 medium, 25 low
+      (45 in all, some found by both; A: the review's, S: the security scan's)
+    - Decided by the user on 2026-11-23: an opened world's keys reach the logic, and the rebuild is checked
+      against the seed's own order: a slot that doesn't fit keeps its numbers, with a warning nobody overlooks
+      (A1, A5, A6); a YAML that could roll the locks' game is refused, a second locks slot too (S3); a slot's name
+      Archipelago would change is refused (A10); a save that can't be read stops the game server with a reason,
+      a copy of the last readable one kept, cleaned up with the session (A7); `!getitem` off for everyone (A30).
+      World Locks itself is only mended (the filler it chose, not another of its name: A2): its successor comes
+      in Phase 24
+    - [x] A1 (high): the logic never has a World Key: an opened world shows 0 available and a blocked map
+    - [x] A2 (high): World Locks removes pool items by equality: a progression copy instead of the filler
+    - [x] S1 (high): the gateway follows symbolic links Archipelago's user can plant in the folders both write
+    - [x] S2, A15 (medium): Archipelago's directory belongs to its processes' user (its code replaced for good)
+    - [x] S3 (medium): a player can add a World Locks slot by a weighted `game:`
+    - [x] S4 (medium): no limit on processes or disk for Archipelago's user
+    - [x] S5 (medium): Python start-up files in that user's own folder run at every start
+    - [x] A3 (medium): `spoiler_run.py`'s fallback runs on a multiworld Archipelago left damaged
+    - [x] A4, S9 (medium): the room password in plain in Archipelago's own log file
+    - [x] A5 (medium): what "available" can get wrong (twelve ways)
+    - [x] A6 (medium): the rebuild is trusted when the location IDs match
+    - [x] A7 (medium): a save that can't be read makes MultiServer start anew and overwrite it
+    - [x] A8 (medium): nothing fixes Python's hash order: the runs of one seed can build different worlds
+    - [x] A9 (medium): a seed doesn't record which World Locks built it
+    - [x] A10 (medium): a slot's name over 16 characters or with a placeholder is another name in the seed
+    - [x] A11, S11 (medium): a chat line can add or remove a "player" of a hosted Minecraft server
+    - [x] A12 (medium): World Locks' `remove` leaves the locked world's regions reachable
+    - [x] A13 (medium): the logic's answer glued to a half-written line is lost; later questions wait a minute
+    - [x] A14 (medium): `minecraft_host.py` starts, prepares and deletes a server without a lock per server
+    - [x] A16: early keys that find no early location are silently not early; all worlds locked fails late
+    - [x] A17: the lock lives in rules on the origin's exits and locations (set again later, it is gone)
+    - [x] A18: `logic_run.py` patches one of the two fill functions
+    - [x] A19: the monkey patches and private names the wrappers depend on
+    - [x] A20: `serve.py` waits for its first line for ever
+    - [x] A21, S6: `seed_info.py` holds the multidata three times; one seed can take several GB
+    - [x] A22, S12: `minecraft_host.py`'s HTTP server: no timeouts, waiting connections without a bound
+    - [x] A23, S10: the token stays readable beside the Java process
+    - [x] A24: a console line may carry a carriage return
+    - [x] A25: hosted Minecraft: what has no limit
+    - [x] A26: the slot's password typed into a console whose log may be kept
+    - [x] A27: three scripts find and read the multidata, each its own way
+    - [x] A28: `logic_run.py` builds a state from nothing for every slot of every question
+    - [x] A29: the APWorld as an Archipelago world
+    - [x] A30: `!getitem` is open to every player
+    - [x] A31: the demo doesn't exercise what this review found, and hides A2
+    - [x] S7: a YAML's option name crashes the progress parser and leaves Generate.py running
+    - [x] S8: the logic's output lines are read into the gateway's memory without a limit
+    - [x] S13: Archipelago's user reaches the internet, the proxy's network and the internal ports
+    - [x] S14: Python's dependencies and the base images aren't pinned by hash (with 0.23.7)
+    - Fixed by three Opus fixers (the Python and the APWorld; the gateway with its images; the tracker and the
+      web app). Decided by the main session: A8 and A9 done, S14 to 0.23.7, S13 noted
+    - Tried: 59 Python tests, the unit tests of the shared module, the gateway and the tracker, the tracker's
+      on PostgreSQL; the demo on the new images: both sessions generated at the first attempt, no error in any
+      log; an opened Celeste 64 with 9 available checks (0 before); the self-check run at the logic's build
+      (9 spheres, no mismatch); Archipelago's code not replaceable by its user, a file added there not loaded
+      for `json`; a game server with its limits, `--disable_item_cheat` and no token in its environment; a
+      game server started over a cut save in the image: exit 3, its line, the save kept and copied
