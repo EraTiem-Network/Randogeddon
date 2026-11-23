@@ -159,10 +159,19 @@ Session-Managers, the hosted ones; never a locked one. Command line: `login`, `s
   the session with the slot's password once a player is on it; it sleeps after the idle time (kept by the minecraft
   service), stops with its session's finish, by hand, when no longer hosted, or when its session is deleted. Nothing
   runs without `MINECRAFT_EULA=true` and `MINECRAFT_TOKEN`; `MINECRAFT_SERVERS` at once, each up to 3 GB.
-- **Safe:** a key reaches only `/bridge/…`, checked every 15 s; relays listen on `127.0.0.1` only and refuse web pages
-  (an `Origin` header); a tunnel ends anything that isn't a Minecraft handshake; the page answers only on its own
-  address, with its link's token.
-- **Checking a download:** `SHA256SUMS` signed with `bridge/signing-key.pub` (see the README).
+- **Safe:** a key reaches only `/bridge/…`, checked every 15 s with one call (an outage doesn't log out: only the
+  dashboard's own "key gone" does), and goes only to the dashboard it was made for (another `-server` is logged out
+  for that run); nothing goes out unencrypted but to this computer (`https://`, `wss://`; no redirect followed).
+  Relays listen on `127.0.0.1` only, refuse web pages (an `Origin` header) and carry 32 games at most; closing one,
+  logging out or an ended key ends its games. A tunnel ends anything that isn't a Minecraft handshake. The page
+  answers only on its own address, with its token (no cookie: its link works once, for five minutes; a second start
+  gives a new one). At most ten keys an account.
+- **Its page:** sessions by their titles (every running one the user plays in or manages, also with only open or
+  hosted slots). Closing the page closes the bridge, unless a game is connected: then it quits when the last one
+  left (the page says so).
+- **Checking a download:** `SHA256SUMS` signed with `bridge/signing-key.pub`; the key's fingerprint is shown under
+  *Your connection* (from the web app's own build) and in the README, to check the key by before the signature; the
+  bridge's update notice says so. A release isn't published unless its builds are signed with that key.
 
 ## The dashboard
 

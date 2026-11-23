@@ -12,6 +12,44 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.3: Randogeddon Bridge reviewed
+31 findings (none high, 7 medium, 24 low), listed in `.docs/DONE.md`. A bridge from before still works with this
+tracker (its `/bridge/me` is kept); the fixes on the player's PC come with the new download.
+
+Security:
+- Closing a relay, logging out or an ended key ends the games connected through it (they went on until the game
+  left).
+- The key goes only to the dashboard it was made for: started with another `-server`, the bridge is logged out for
+  that run (the saved login stays). Nothing goes out unencrypted but to this computer: `http://` and `ws://` only
+  for localhost, everything else `https://` and `wss://` (a session address handed out as `ws://` elsewhere is
+  refused with a message); no redirect is followed, so a key can't travel along.
+- The page's token is no cookie any more (it went to every port of 127.0.0.1): the link the browser is opened with
+  works once, for five minutes; a reload keeps working, a second start gives a new link.
+- A download is checked by the signing key's fingerprint first: shown under *Your connection* from the web app's own
+  build and in the README (the key beside the downloads proved nothing alone; the README's command for it didn't
+  work on that file). The bridge's update notice says so.
+- A release isn't published unless the bridge's builds are signed with the key of `bridge/signing-key.pub`, checked
+  before building and before pushing; a build cached without the key is no longer taken for a signed one.
+- At most 32 games a relay or tunnel; the page's requests and the font cache have limits; the limit of ten keys an
+  account holds for requests at the same moment. The Go build image is pinned by digest, `audit.sh` runs
+  govulncheck.
+
+Fixed:
+- Only the dashboard's own "key gone" answer logs the bridge out: an outage that answered 401 wiped the key and
+  closed every relay.
+- A refused tunnel says why (it showed "Connected") and fetches a renewed tunnel key.
+- A session where the user has only open-to-all or hosted slots is offered (the user's choice); sessions show their
+  titles, the ID beside it.
+- The bridge stays open while a game is connected when its page is closed or discarded by the browser, and quits
+  when the last game left; the page says so (the user's choice).
+- An answer that came late is no longer applied to another login; a second start doesn't empty the running
+  bridge's log; the server's reason for closing reaches the game.
+
+Lighter:
+- A bridge's check is one call (`/bridge/info` carries the account's name) and a key's last use is written at most
+  every five minutes; many refusals fetch a slot's password once; the relay reads the server's packets only until
+  the slot is in.
+
 ### 0.23.2.9: What the reviews left
 - The map's tree follows the open ways first: a region the logic reaches hangs under one it reaches where they
   connect, so no open box stands behind a blocked one by a dashed line while an open way leads to it (the user's

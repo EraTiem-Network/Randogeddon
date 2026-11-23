@@ -105,11 +105,14 @@ game connects to `localhost:<port>`, and the bridge takes it to the session over
 there and paste it into the bridge's page; a key is a login for 30 days. It listens on `127.0.0.1` only and belongs on
 a computer that is yours alone.
 
-The builds aren't signed by a bought certificate, so the systems warn. Check a download against Randogeddon's key
-(`bridge/signing-key.pub`, `SHA256:Y/hZRRTeTgoizXJ9CVzWCpIcr3RISfCy+STg3hp+v6w`), in the folder with *Checksums* and
-*Signature* from beside the downloads:
+The builds aren't signed by a bought certificate, so the systems warn. Check a download against Randogeddon's key,
+in the folder with *Checksums*, *Signature* and *Key* from beside the downloads. The key first: it comes from the
+same place as the builds, so it only proves something once its fingerprint is the one written here (and shown under
+*Your connection*, from the web app's own build), `SHA256:Y/hZRRTeTgoizXJ9CVzWCpIcr3RISfCy+STg3hp+v6w`; or take
+`bridge/signing-key.pub` from this repository instead:
 
 ```sh
+awk '{print $3, $4}' signing-key.pub | ssh-keygen -lf -     # must print the fingerprint above
 ssh-keygen -Y verify -f signing-key.pub -I bridge@randogeddon -n randogeddon-bridge -s SHA256SUMS.sig < SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS     # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
 ```

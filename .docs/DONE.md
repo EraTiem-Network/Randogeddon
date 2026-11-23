@@ -1288,3 +1288,44 @@ games' real map images moved to Later.*
       in it)
     - Dropped by the user on 2026-11-22: a slot's lists and map with the checks in other worlds that hold its
       items; saying who blocks a region (the map only says that it is blocked)
+- [x] 0.23.3: Randogeddon Bridge reviewed (0.23.3) (the key, the relays, the tunnel, its page, the downloads' signing). Scanned on
+      2026-11-23: no high, 7 medium, 24 low (31 in all, some found by both; B: the review's, S: the security
+      scan's)
+    - Decided by the user on 2026-11-23: the key is tied to its server, and nothing goes out over plain http or
+      ws but to localhost (B2, S3, B7, S6); sessions with only open-to-all or hosted slots are offered too (B3);
+      the bridge stays while a game is connected and says so on its page (B10); the signing key's fingerprint in
+      the web app and the docs (B12, S2: the cheap variant); `/bridge/info` carries the name, old bridges may
+      break (B17); a session's title with its ID as a detail (B21); a release refuses unsigned builds (B11, S8)
+    - [x] B1, S1 (medium): closing a relay, logging out or an ended key doesn't end the games connected through it
+    - [x] B2, S3 (medium): the saved key is sent to whatever `-server` names, also over plain http; that
+          server's 401 then wipes it
+    - [x] B3 (medium): a player whose slots are only open-to-all or hosted ones isn't offered the session
+    - [x] B4 (medium): any 401 counts as "the key is gone": an outage wipes the key and closes every relay
+    - [x] B5 (medium): a refused tunnel shows "Connected", loses the gateway's reason, never fetches a renewed key
+    - [x] S2, B12 (medium): the download check is circular (builds, checksums, signature and key from one place)
+    - [x] B6: answers that arrive late are applied to a login they don't belong to
+    - [x] B7, S6: a slot's password or the tunnel key goes wherever the connection answer says, also over ws
+    - [x] B8, S4, S5: the page's token is a cookie for all of 127.0.0.1 and on the browser opener's command line
+    - [x] B9: a second start empties the running bridge's log; the lock file stays after a failure
+    - [x] B10: the bridge quits ten seconds after its tab is gone, also when the browser only discarded it
+    - [x] B11, S8: a release can go out with unsigned builds; publishing never checks the signature
+    - [x] B13: `check` throws the account's look away whenever `/bridge/info` fails once
+    - [x] B14: `BridgeKeys.make` counts, then inserts: two requests at once pass the limit of ten
+    - [x] B15: every refusal with `InvalidPassword` or `InvalidSlot` starts a dashboard call of its own
+    - [x] B16: the relay parses every frame from the server in full to find two packet names
+    - [x] B17: an idle bridge costs the tracker two requests and six database statements every 15 s
+    - [x] B18: after one side ends, the close code for the other races with the context's cancel
+    - [x] B19: the same things written twice in the bridge
+    - [x] B20: what a build's file is called is decided in three places
+    - [x] B21: smaller ones (the title that is the ID, bodies without a limit, the font cache, the log filled by
+          refused origins, Ctrl+C waiting for a hanging check, two starts in the same instant)
+    - [x] S7: redirects can carry the tunnel key or the bearer key along
+    - [x] S9: no cap on a relay's or tunnel's connections, refetches without a bound
+    - [x] S10: the Go build image pinned by tag, not digest; no vulnerability scan of the Go dependencies
+    - Fixed by three Opus fixers (the bridge; the tracker, database, shared code and web app; the scripts and the
+      build stage), each finding with its test where one could be written; the Go image's digest by the main
+      session. Not as the finding said, or only in part: S5 (the code on the command line: once, five minutes);
+      B3 needed nothing in the tracker; B16 without a benchmark; S10's scan in `audit.sh`, not in the image build
+    - Tried: `gofmt`, `go vet`, `go test -race` in the bridge's build image; the tracker's tests and its tests
+      on PostgreSQL (the key limit with twenty requests at once); the publish check with an unsigned build, a
+      signed one, a key ID without its key, an `http://` registry, a wrong version
