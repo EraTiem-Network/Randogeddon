@@ -1,4 +1,22 @@
-# Run on Linux (WSL, the servers, the images) even when checked out on Windows: always LF
+# Text is stored with LF; a checkout gives it the platform's line ends, except for what follows
+* text=auto
+# Run or read on Linux (WSL, the servers, the images) even when checked out on Windows: always LF. That is also
+# everything the images take as it is (the Python, the apworlds, the bridge's key) and the files that become files in
+# a container (the compose files' configs)
 *.sh text eol=lf
 gradlew text eol=lf
 scripts/randogeddon-backup.* text eol=lf
+kotlin.Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose*.yml text eol=lf
+.env.example text eol=lf
+archipelago/** text eol=lf
+apworlds/** text eol=lf
+bridge/** text eol=lf
+kotlin-js-store/** text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.ttf binary
+*.woff2 binary
+*.ico binary

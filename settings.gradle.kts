@@ -18,7 +18,8 @@ pluginManagement {
     } else {
       gradlePluginPortal()
       mavenCentral()
-      google()
+      // Only for what Google publishes (androidx, com.google, com.android), as in build.gradle.kts
+      google { content { includeGroupByRegex("""androidx\..*|com\.google\..*|com\.android\..*""") } }
     }
   }
 }

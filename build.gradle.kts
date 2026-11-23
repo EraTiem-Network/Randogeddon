@@ -33,7 +33,8 @@ allprojects {
       }
     } else {
       mavenCentral()
-      google()
+      // Only for what Google publishes (androidx, com.google, com.android): every other group comes from Maven Central
+      google { content { includeGroupByRegex("""androidx\..*|com\.google\..*|com\.android\..*""") } }
     }
   }
 }
@@ -121,7 +122,8 @@ fun Project.configureNativeImage() {
           // save the game. Without this, a native image as PID 1 ignores SIGTERM and is killed after the grace period
           "--install-exit-handlers",
           // Flyway builds https help links when it starts. GraalVM 25.0.4 enables the URL handlers from the metadata
-          // by itself, but the Docker build image (native-image-community:25) is 25.0.2, which needs this
+          // by itself; 25.0.2 (the Docker build image, native-image-community:25, when this was written: it is pinned
+          // by digest in kotlin.Dockerfile) needs this
           "--enable-url-protocols=http,https",
         )
         if (nativeMaxHeap.isNotBlank()) buildArgs.add("-J-Xmx$nativeMaxHeap")

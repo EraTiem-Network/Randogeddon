@@ -1,15 +1,30 @@
-# The Gradle build and archipelago/ (serve.py, room_info.py, ap-generate) go into the images of kotlin.Dockerfile
+# The build context of kotlin.Dockerfile: only what its stages copy (the Gradle build, kotlin-js-store/, bridge/,
+# archipelago/, apworlds/). Everything else stays out (.env, .git, data/, output/, demo/, the documents), even for a
+# COPY that would take more than it names
+*
+!gradlew
+!settings.gradle.kts
+!build.gradle.kts
+!gradle.properties
+!gradle/
+!kotlin-js-store/
+!shared/
+!database/
+!server/
+!gateway/
+!webApp/
+!bridge/
+!archipelago/
+!apworlds/
+# What builds, IDEs and Python leave inside those (a git-ignored file isn't in a commit, so it must not reach an image
+# either); a source package named build stays in, as in .gitignore
 **/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
 **/.gradle/
-.gradle/
-.kotlin/
-.idea/
-*.iml
-data/
-output/
-players/
-roms/
-custom_worlds/
-scripts/
-tracker/
-*.md
+**/.kotlin/
+**/.idea/
+**/*.iml
+**/__pycache__/
+**/*.pyc
+**/node_modules/

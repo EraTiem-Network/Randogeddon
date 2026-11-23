@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 # The images of this repository; the Kotlin apps are native executables (GraalVM Native Image, Linux x86_64):
 #   target tracker   the dashboard server (:server) with the Compose web app (:webApp)
 #   target gateway   the game host: runs MultiServer (Archipelago, pinned release) and is the game clients' entry to it,
@@ -11,19 +11,32 @@
 # Gradle takes its libraries from the Maven mirror in RANDOGEDDON_MAVEN if there is one (else Maven Central, the Gradle
 # plugin portal and Google); its login comes from your Gradle init script as a BuildKit secret (see docker-compose.yml),
 # only mounted while Gradle runs and never in an image layer.
+#
+# Every image from outside (the `syntax` line above too) is pinned by its digest beside its tag, as are postgres and
+# mailpit in the compose files: a base changes only when its digest here is raised. ./scripts/base-images.sh shows
+# which tags have moved since.
 
-FROM ghcr.io/graalvm/native-image-community:25 AS build
-# Node.js, which the Kotlin/Wasm build downloads for webpack, needs libatomic; gradlew needs xargs (findutils)
-RUN microdnf install -y libatomic findutils && microdnf clean all
+FROM ghcr.io/graalvm/native-image-community:25@sha256:0d936f32bb8acb5bc60c41b33e05f064d7a6aaf36b726538296c54949bd4a3c0 AS build
+# Node.js, which the Kotlin/Wasm build downloads for webpack, needs libatomic; gradlew needs xargs (findutils); the
+# npm lock's check needs diff (diffutils)
+RUN microdnf install -y libatomic findutils diffutils && microdnf clean all
 WORKDIR /src
 ENV GRADLE_USER_HOME=/gradle-home
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
+# gradle/ holds the wrapper (with the distribution's checksum) and verification-metadata.xml, which Gradle checks
+# every download against
 COPY gradle gradle
+# The npm locks: kotlin-npm-tooling/<hash>/yarn.lock is the lock of the Kotlin plugin's npm tooling (webpack and its
+# tools, which it installs for the Wasm build; <hash> names the tooling of one Kotlin version). The project's own lock
+# (wasm/yarn.lock) isn't there: the project has no npm dependencies, and the plugin stores no empty lock
+COPY kotlin-js-store kotlin-js-store
 COPY shared shared
 COPY database database
 COPY server server
 COPY gateway gateway
 COPY webApp webApp
+# :shared's tests check the fingerprint the web app shows against it
+COPY bridge/signing-key.pub bridge/signing-key.pub
 # CPU level of the native code: x86-64-v3 runs on the i7-8700 (and every AVX2 CPU); `native` only when building on it
 ARG NATIVE_MARCH=x86-64-v3
 # native-image's heap while it builds (it takes most of the machine's memory otherwise), and its optimisation: `quick`
@@ -32,14 +45,61 @@ ARG NATIVE_MAX_HEAP=6g
 ARG NATIVE_OPTIMIZATION=
 ARG RANDOGEDDON_MAVEN=
 ARG RANDOGEDDON_MAVEN_NAME=
+# Gradle's home is a cache mount kept between builds. GRADLE_CACHE_ID gives a build a cache of its own (for a release:
+# one no other build has written to); GRADLE_NO_BUILD_CACHE (any value) takes no task's result from the build cache,
+# so the executables are made from this build's sources. The defaults: the one shared cache, with the build cache.
+# GRADLE_VERIFICATION=sha256 writes gradle/verification-metadata.xml anew from what this build downloads (the target
+# verification-metadata hands it out); empty: every download is checked against the committed file.
+ARG GRADLE_CACHE_ID=/gradle-home
+ARG GRADLE_NO_BUILD_CACHE=
+ARG GRADLE_VERIFICATION=
 # Mounted with a .kts name: Gradle picks the script language from the file extension. --build-cache: the tasks' results
 # are kept in the cache mount (Gradle's home), so a change to one app doesn't compile, test and natively build the
-# other again (the build directories start empty in every image build)
+# other again (the build directories start empty in every image build). What Gradle would apply from its home by itself
+# (init scripts, gradle.properties) is removed first: nothing an earlier build left in the cache runs in this one.
+# The unit tests of every module but :webApp (the integration tests need Docker: not here).
+# The npm tooling's locks: the plugin installs its tooling in <user home>/.kotlin/kotlin-npm-tooling/yarn/<hash>/ and,
+# when a yarn.lock is there already, installs from it and leaves it as it is. This stage runs as root (no USER), and
+# nothing moves .kotlin (no kotlin.user.home), so that is /root/.kotlin, which is no cache mount: each build starts
+# without it, and each committed lock is put in its place (over an older one, should there be one). Afterwards the
+# build fails if the plugin used a tooling no lock is committed for (a Kotlin update) or changed a lock. And
+# kotlin-js-store/ must come out as it went in: a lock the plugin would change or add there (the project's own, once
+# it has npm dependencies) fails the build instead of being taken silently.
 RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gradle.kts \
-    --mount=type=cache,target=/gradle-home \
-    RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon --build-cache --console=plain --init-script /run/secrets/init.gradle.kts -PnativeMarch="$NATIVE_MARCH" \
+    --mount=type=cache,id=${GRADLE_CACHE_ID},target=/gradle-home \
+    rm -rf /gradle-home/init.d /gradle-home/init.gradle /gradle-home/init.gradle.kts /gradle-home/gradle.properties \
+ && cp -a kotlin-js-store /tmp/kotlin-js-store \
+ && tooling=/root/.kotlin/kotlin-npm-tooling/yarn \
+ && for locked in kotlin-js-store/kotlin-npm-tooling/*/; do \
+      [ -f "${locked}yarn.lock" ] || continue; \
+      mkdir -p "$tooling/$(basename "$locked")" && cp "${locked}yarn.lock" "$tooling/$(basename "$locked")/yarn.lock" || exit 1; \
+    done \
+ && RANDOGEDDON_MAVEN="$RANDOGEDDON_MAVEN" RANDOGEDDON_MAVEN_NAME="$RANDOGEDDON_MAVEN_NAME" ./gradlew --no-daemon \
+      --${GRADLE_NO_BUILD_CACHE:+no-}build-cache --console=plain --init-script /run/secrets/init.gradle.kts \
+      ${GRADLE_VERIFICATION:+--write-verification-metadata "$GRADLE_VERIFICATION"} -PnativeMarch="$NATIVE_MARCH" \
       -PnativeMaxHeap="$NATIVE_MAX_HEAP" ${NATIVE_OPTIMIZATION:+-PnativeOptimization="$NATIVE_OPTIMIZATION"} \
-      :server:test :gateway:test :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution
+      :shared:jvmTest :database:test :server:test :gateway:test \
+      :server:nativeCompile :gateway:nativeCompile :webApp:wasmJsBrowserDistribution \
+ && for used in "$tooling"/*/; do \
+      [ -d "$used" ] || continue; \
+      hash="$(basename "$used")"; \
+      if [ ! -f "kotlin-js-store/kotlin-npm-tooling/$hash/yarn.lock" ]; then \
+        echo "The Kotlin plugin's npm tooling is a new one ($hash; a Kotlin update): no lock is committed for it. Take" \
+             "its yarn.lock (<user home>/.kotlin/kotlin-npm-tooling/yarn/$hash/yarn.lock after a local build) into" \
+             "kotlin-js-store/kotlin-npm-tooling/$hash/, review it and commit it (see .docs/DEVELOPMENT.md)" >&2; \
+        exit 1; \
+      fi; \
+      cmp "kotlin-js-store/kotlin-npm-tooling/$hash/yarn.lock" "$used/yarn.lock" \
+        || { echo "The Kotlin plugin changed the npm tooling's lock $hash instead of installing from it" >&2; exit 1; }; \
+    done \
+ && { diff -r /tmp/kotlin-js-store kotlin-js-store \
+      || { echo "The build changed kotlin-js-store/ (see above): a new or changed lock of the project's own, to commit" \
+                "after a review (see .docs/DEVELOPMENT.md)" >&2; exit 1; }; }
+
+# gradle/verification-metadata.xml as the build stage wrote it with GRADLE_VERIFICATION=sha256 (only built on purpose:
+# docker buildx build --target verification-metadata --output type=local,dest=gradle ...)
+FROM scratch AS verification-metadata
+COPY --from=build /src/gradle/verification-metadata.xml /
 
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
 # Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it); it is in each
@@ -79,14 +139,14 @@ RUN --mount=type=secret,id=bridge_signing_key,required=false \
 
 # The executables link only glibc (--static-nolibc). The build stage (Oracle Linux 9, glibc 2.34) is older than
 # Debian 12 (glibc 2.36), and glibc is backwards compatible.
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
 RUN useradd --uid 1000 --home /app --no-create-home randogeddon && mkdir -p /app && chown randogeddon /app
 WORKDIR /app
 
 # The web app's files compressed once, at their best (Brotli 11, gzip 9), next to each file as .br and .gz: the
 # tracker sends those as they are (Routings.kt, preCompressed) instead of compressing every request. Only what is
 # worth it: text and wasm of 1 KB and more; images and woff2 are compressed already.
-FROM debian:bookworm-slim AS web
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS web
 RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /web
 RUN find /web -type f -size +1k \( -name '*.wasm' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' \
@@ -117,7 +177,7 @@ CMD ["/app/randogeddon"]
 # native gateway runs on it too.
 # Archipelago installed with what its install needs (git, compilers for the speedups and the worlds' packages); the
 # stage below takes only the result, without them (they were 350 MB of the gateway image)
-FROM python:3.12-slim-bookworm AS archipelago-build
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS archipelago-build
 ARG AP_VERSION=0.6.8
 # The commit the release's tag stands for: a tag can be moved, the commit can't (empty: not checked)
 ARG AP_COMMIT=54803be064fc7e80c4628777ed0b46a9390f255f
@@ -134,17 +194,42 @@ RUN git clone --depth 1 --branch "${AP_VERSION}" https://github.com/ArchipelagoM
  && { [ -z "${AP_COMMIT}" ] || [ "$(git rev-parse HEAD)" = "${AP_COMMIT}" ] \
       || { echo "Archipelago ${AP_VERSION} is $(git rev-parse HEAD), not ${AP_COMMIT}: set AP_COMMIT with AP_VERSION" >&2; exit 1; }; } \
  && rm -rf .git
-# Core requirements + compiled speedups (otherwise AP tries to build them at runtime)
-RUN pip install --no-cache-dir -r requirements.txt cython "setuptools>=75,<81" \
+# The packages of Archipelago and of every bundled world (so generation works for all games), as locked for this
+# release: archipelago/requirements-<AP_VERSION>.lock holds each one's exact version and its files' hashes, cython and
+# setuptools for the speedups among them, each at Archipelago's own pin where it has one (what is kept newer comes
+# after the check below; .docs/OPERATIONS.md, "Updating Archipelago", says how the locks are made). Nothing beyond it is installed
+# (--no-deps). A package that only comes from a git repository can't carry a hash: requirements-<AP_VERSION>.git.txt,
+# if there is one, names it by its commit (checked here). Then the compiled speedups (otherwise AP tries to build them
+# at runtime).
+COPY archipelago/requirements-${AP_VERSION}.* /tmp/requirements/
+RUN pip install --no-cache-dir --require-hashes --no-deps -r "/tmp/requirements/requirements-${AP_VERSION}.lock" \
+ && git_file="/tmp/requirements/requirements-${AP_VERSION}.git.txt" \
+ && if [ -f "$git_file" ]; then \
+      if grep -vE '^[[:space:]]*(#|$)' "$git_file" | grep -vE '@[0-9a-f]{40}([[:space:]]*(#.*)?)?$'; then \
+        echo "$git_file: each line must end in its commit (@ and 40 hex digits)" >&2; exit 1; \
+      fi; \
+      pip install --no-cache-dir --no-deps -r "$git_file"; \
+    fi \
  && cythonize -b -i _speedups.pyx
-# The requirements of every bundled world, so generation works for all games
-RUN python ModuleUpdate.py -y
-# The newest certificate bundle, whatever the requirements pulled in (scripts/audit.sh: an old one has known flaws)
-# hadolint ignore=DL3013
-RUN pip install --no-cache-dir --upgrade certifi
+# Archipelago's own updater (what `ModuleUpdate.py -y` did here before) must find every requirement of Archipelago and
+# of each world satisfied by the lock: it runs without network and with its installing replaced by a stop, so a
+# requirement the lock misses fails the build instead of being fetched, and nothing installed may have changed after it
+RUN --network=none pip freeze --all > /tmp/requirements/installed.txt \
+ && python -c 'import sys, ModuleUpdate as m; \
+ok = callable(getattr(m, "update_command", None)) and not getattr(m, "update_ran", True); \
+ok or sys.exit("ModuleUpdate.py is not as this check expects (update_command, update_ran): look at it again"); \
+m.update_command = lambda *a, **k: sys.exit("ModuleUpdate.py would install packages: the lock misses a requirement of Archipelago or of a world"); \
+m.update(yes=True)' \
+ && pip freeze --all | diff /tmp/requirements/installed.txt -
+# What is kept newer on purpose than Archipelago's own pin, after the check (which holds Archipelago to its pins):
+# requirements-<AP_VERSION>.newer.lock, if there is one, with hashes as the lock; today the CA bundle (certifi, which
+# Archipelago pins to an older one). scripts/audit.sh says when one of these is outdated
+RUN newer="/tmp/requirements/requirements-${AP_VERSION}.newer.lock" \
+ && if [ -f "$newer" ]; then pip install --no-cache-dir --require-hashes --no-deps -r "$newer"; fi \
+ && rm -rf /tmp/requirements
 
 # Archipelago as it runs: the installed packages and its directory, and the one system library it needs (libtk8.6)
-FROM python:3.12-slim-bookworm AS archipelago
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS archipelago
 ARG AP_VERSION=0.6.8
 ENV PYTHONUNBUFFERED=1 \
     AP_HOME=/opt/archipelago/${AP_VERSION}
@@ -159,9 +244,17 @@ WORKDIR ${AP_HOME}
 # Never try to pip-install anything at runtime
 ENV SKIP_REQUIREMENTS_UPDATE=true
 
+# The Python tests (archipelago/tests: the wrappers, World Locks and minecraft_host.py, each with stand-ins for what
+# they use of Archipelago) on the gateway's Python; the gateway's image isn't built unless they pass
+FROM archipelago AS python-tests
+WORKDIR /tests
+COPY archipelago/ archipelago/
+COPY apworlds/ apworlds/
+RUN python -m unittest discover -s archipelago/tests && touch /tests/passed
+
 # Forge's server for Minecraft Dig, with the APWorld's mod: each download checked against its checksum. The installer
 # fetches the libraries (Minecraft's server among them) and checks them itself
-FROM eclipse-temurin:17-jre-jammy AS forge
+FROM eclipse-temurin:17-jre-jammy@sha256:c6a5dd70fb24f4e07ef88cbda8efb613a5a649a1af071a41de8eaabd1ee6b5da AS forge
 ARG FORGE_VERSION=1.19.4-45.3.15
 ARG DIG_MOD=aprandomizer-MC1.19.4-0.0.11.jar
 WORKDIR /opt/forge
@@ -207,8 +300,10 @@ COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py arc
 # Our own apworlds (World Locks), next to the bundled worlds
 COPY apworlds/ worlds/
 # Compiled now: Archipelago's user can't write __pycache__ here, so every listing of the games, generation and game
-# server start compiled all of Archipelago again (listing the games: 5 s, compiled 2 s; the image grows by about 40 MB)
-RUN python -m compileall -q -j 0 .
+# server start compiled all of Archipelago again (listing the games: 5 s, compiled 2 s; the image grows by about 40 MB).
+# The Python tests' result is mounted here only so that this image depends on them; nothing of it stays in the image
+RUN --mount=type=bind,from=python-tests,source=/tests/passed,target=/tmp/python-tests-passed \
+    python -m compileall -q -j 0 .
 COPY --from=build /src/gateway/build/native/nativeCompile/randogeddon-gateway /src/gateway/build/native/nativeCompile/*.so /app/
 COPY --chmod=0755 gateway/docker-entrypoint.sh /app/
 EXPOSE 38281
