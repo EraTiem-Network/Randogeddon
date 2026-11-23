@@ -1387,3 +1387,61 @@ games' real map images moved to Later.*
 - [x] Dates and times in the user's time zone (asked for on 2026-11-23, with D21): the web app's views already
       show them in the browser's zone; the mails said UTC. Decided by the user: a time zone per account (the
       browser's, stored at login), used in the mails; an address without an account and the command line keep UTC (0.23.4)
+- [x] 0.23.5: the web app reviewed (0.23.5). Scanned on 2026-11-23: 1 high, 15 medium, 28 low (44 in all, some found by both; W: the
+      review's, S: the security scan's)
+    - Decided by the user on 2026-11-23: the tracker checks a request's origin and the login cookie gets the
+      `__Host-` prefix, everyone logged out once (S1); a running session's spoiler log asks before it shows,
+      by a direct link and in the support's panel too (S3); the spoiler page opens on its first tab; a logout
+      that didn't go through says so and stays (W3, S4); unsafe characters removed from chat lines and names so
+      nobody can fake messages (W6, S7); complete by counts, the panel's session info with them (W4); with one
+      session, straight to it and no session switch (W21); labels, Enter to submit, Tab consistent with a
+      clearly visible focus, a text selection staying in its panel (W30); file pickers with a limit and a
+      message, each kind of file remembering its folder (W11, S10); a sphere's steps a page at a time (W13); a
+      person's panel on the share-link page (W25)
+    - [x] W1 (high): after a tracker restart an open dashboard stays on its old state until reloaded
+    - [x] W2 (medium): after a login that ended, logging in again leaves the dashboard empty
+    - [x] W3, S4 (medium): logging out shows the login form even when the server never heard of it
+    - [x] W4 (medium): "complete" is decided from a rounded percentage
+    - [x] W5 (medium): a creation the tracker no longer knows keeps the form in "generating" for ever
+    - [x] W6, S7 (medium): a chat line reaches the feed as it was sent (any length, line breaks, bidi controls)
+    - [x] W7 (medium): the slot and person panels load every slot's whole detail again on every summary push
+    - [x] W8 (medium): the map redraws everything, and lays out every label again, on each pointer move
+    - [x] W9 (medium): the panel's sections poll every 3 s for ever
+    - [x] W10 (medium): overlapping YAML checks: a late answer overwrites a newer one
+    - [x] W11, S10 (medium): the file picker reads whatever is picked into memory and fails silently
+    - [x] W12, S9 (medium): the service worker stores every GET it sees and never removes anything; under a path
+          prefix it would keep API answers
+    - [x] W13 (medium): the playthrough filters every step on each recomposition; "Unfold all" composes all
+    - [x] S1 (medium): only the cookie's SameSite protects against forged cross-site requests
+    - [x] S2 (medium): no npm lock file is committed; every image build resolves webpack's dependencies afresh
+    - [x] S3 (medium): a direct link shows a running session's spoiler log without the panel's confirmation
+    - [x] W14, S6: IDs and tokens from the URL's hash go into request paths as they are (`..` among them)
+    - [x] W15: filters and a shown password survive a change of session
+    - [x] W16: the map's hover uses the checks of when it was first drawn
+    - [x] W17: the login forms have no `method`
+    - [x] W18, S8: the content policy allows more than the page uses; the provider's link opened unchecked
+    - [x] W19: failures that are ignored or shown wrongly
+    - [x] W20: buttons that can be pressed twice while their request runs
+    - [x] W21: "All sessions" does nothing for someone with exactly one running session
+    - [x] W22: while the tracker is away each open dashboard asks four things every 2 s
+    - [x] W23: what a logout leaves behind in the browser and the page
+    - [x] W24: two of the five log pollers don't notice a log that starts again
+    - [x] W25: on the share-link page a person's header looks clickable and isn't
+    - [x] W26: where the app hides or shows by role, and what guards it in the tracker
+    - [x] W27: the same patterns written several times
+    - [x] W28: texts no code reads, dead code, small leftovers
+    - [x] W29: files that grew too large to follow
+    - [x] W30: keyboard and screen-reader basics
+    - [x] W31: smaller things in hot paths
+    - [x] W32: the web app has no tests
+    - [x] W33: small leftovers in `index.html` and `page.js`
+    - [x] S5: a login link or an invitation opened while logged in stays unused in the URL; a malformed `%`
+          stops the login form
+    - [x] S11: share and e-mail tokens stay in the URL (by design; noted)
+    - Fixed in two waves by five Opus fixers (the UI helpers and the tracker's side first; then the app's core,
+      the dashboard, the panel and account pages), three call sites and the focus ring's colour on the top panel
+      by the main session. Not as the finding said, or only in part: S2 (see TODO); W29 for two files; W32
+    - Tried: all unit tests, the tracker's 16 tests on PostgreSQL; in the demo: the dashboard, the Management
+      panel, the new session's form, the map after its rewrite (blocked regions, the hover's marks, enlarged),
+      the spoiler page asking and opening on *Everything*, Tab's ring through the panel, no complaint of the
+      content policy in the browser's console

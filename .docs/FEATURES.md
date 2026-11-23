@@ -82,10 +82,10 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   A playthrough Archipelago can't reduce lists every progression item in order instead (`spoiler_run.py`).
 - **The spoiler page:** from the seed on what it was made with (its settings, each slot's options, what the games
   noted) and where every item lies (a row a location, checked ones marked; by slot, searched, a page at a time); by
-  tabs of their own once worked out: the playthrough sphere by sphere (checked steps marked; opened first), and the
-  paths (a location's regions from the start); and the log as text, 300 lines at a time, searched on the server.
-  Administrators, Session-Managers and support any time (behind a warning); players and
-  watchers once it's finished.
+  tabs of their own once worked out: the playthrough sphere by sphere (checked steps marked, 100 of a sphere at a
+  time), and the paths (a location's regions from the start); and the log as text, 300 lines at a time, searched on
+  the server. Administrators, Session-Managers and support any time, a running session's behind a warning (on the
+  panels' buttons and on the page itself, asked once a browser tab); players and watchers once it's finished.
 - **The logic** counts each slot's available checks: the seed generated again up to the fill (`logic_run.py`), kept
   running from the game server's start until as long after it sleeps as the game servers wait (at least 10 min).
   It names the locations, too: a slot's panel lists them first. The last counts show while it doesn't run. Not for
@@ -178,6 +178,15 @@ Session-Managers, the hosted ones; never a locked one. Command line: `login`, `s
 The tracker follows each running session as an Archipelago tracker client (one connection per slot) and keeps
 everything it hears in the database: the gateway writes every event (`session_events`), the tracker replays them at
 its start and keeps a snapshot of each dashboard (`session_snapshots`), so nothing is lost while it isn't connected.
+
+- **By keyboard:** Tab goes through every control, the focused one in a ring; Enter and Space press it, Enter sends
+  the form or search it is typed into, the arrow keys move sliders and numbers. A text selection stays in the panel
+  it was begun in. The file pickers remember a folder for each kind of file (YAMLs, seeds, APWorlds; in browsers
+  that can) and say when a file is too large or can't be read.
+- **Its frame:** an open page goes on by itself after the tracker restarted or was away (asking again after 2 s, then
+  less often, up to 30 s). Someone with one session is always in it, without a session switch. Logging out says so
+  if it didn't reach the server. A login or invitation link is taken out of the address bar once it was used. What
+  a player wrote (chat, an alias) arrives as one line without characters that could fake another's.
 
 - **Your connection:** server, slot and password as fields that can't be changed (the server copied as shown, host,
   port or `wss://`); the slot's patch files; the bridge (*Create key*, its downloads; folds away).

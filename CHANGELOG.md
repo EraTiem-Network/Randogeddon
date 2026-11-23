@@ -12,6 +12,55 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.5: The web app reviewed
+44 findings (1 high, 15 medium, 28 low), listed in `.docs/DONE.md`.
+
+To know before updating:
+- Everyone is logged out once: the login cookie has a new name over HTTPS (`__Host-randogeddon_session`).
+
+Security:
+- A change asked for by another site's page is refused by the tracker (the request's `Origin`; only the cookie's
+  SameSite stood against it), and no sibling address can set the login cookie.
+- A running session's spoiler log asks before it shows also when opened by its link, and in the support's panel
+  (which opened it without asking); asked once, not twice.
+- What a player wrote arrives as one line without control or direction-changing characters (chat 500 characters,
+  an alias 32), so it can't pass for another's line; the feed shows six lines of an entry at most. A slot named `.`
+  or `..`, or with such characters, is refused in a YAML, and never put into an address.
+- The page's policy no longer allows `data:` and `blob:` sources; it may use full screen and write the clipboard
+  and nothing else; the login page's styles are a file of their own. The service worker keeps only the app's own
+  files (it kept every answer it saw, for good).
+- A logout that didn't reach the server says so instead of showing the login form over a login that still holds.
+  A login or invitation link opened while logged in is taken out of the address bar and the history.
+
+Fixed:
+- An open dashboard or share-link page goes on by itself after the tracker restarted (it stayed on its old state
+  until reloaded); logging in again after a login ended brings the dashboard back.
+- "Complete" goes by the counts: a big session with a check or two left showed 100 % and counted as ended; a
+  percentage is 100 only when it is.
+- A generation lost to a tracker restart ends the form's waiting with a message; a late answer of a YAML check no
+  longer replaces a newer one; failures that were dropped are shown (the finish banner, the panel's sections, the
+  bridge's downloads); buttons that send something can't be pressed twice.
+- The map's hover shows a check's state of now, not of when it was first drawn.
+
+New, as the user decided:
+- Tab goes through every control with a clearly visible ring on the focused one (on the top panel in its text
+  colour); Enter sends the form or search it is typed into; every icon button has a name; the lock switch of the
+  new session's form works by keyboard.
+- A text selection stays in the panel it was begun in.
+- The file pickers remember a folder for each kind of file (YAMLs, seeds, APWorlds; in browsers that offer it) and
+  say when a file is too large or can't be read.
+- The spoiler page opens on *Everything*; a sphere of the playthrough shows 100 steps at a time.
+- Someone with exactly one session is always in it, and sees no session switch; *All sessions* shows the list to
+  everyone else (it sent them back into their only running one).
+- A person's panel opens on the share-link page too.
+
+Lighter:
+- The map draws its hover on a layer of its own instead of everything again at each move; a slot's panel loads
+  again only when that slot changed; the panel's sections ask once a minute when there is nothing to ask about;
+  while the tracker is away a page asks less and less often.
+- The same lists, pagers, fold rows and buttons written several times are one each; five texts nothing read are
+  gone; three large files are split.
+
 ### 0.23.4: The database reviewed
 35 findings (none high, 9 medium, 26 low), listed in `.docs/DONE.md`. Schema version 29 (one migration, at the
 tracker's start). The compose files change (a network, the database's settings): an update recreates the database's

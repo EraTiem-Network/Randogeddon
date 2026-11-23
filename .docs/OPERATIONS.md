@@ -68,6 +68,10 @@ http:
   `INTERNAL_TOKEN`). A name that is the superuser's, or the same for both, is refused: the tracker doesn't start
   then (`docker compose logs database-roles`). A gateway role renamed by hand leaves the old one behind
   (`DROP OWNED BY <old>; DROP ROLE <old>`).
+- **The browser's side:** over HTTPS the login cookie is `__Host-randogeddon_session` (the plain name on a plain
+  `http://` test instance); a change asked for by another site's page is refused (403 `OTHER_SITE`: the `Origin` or
+  `Sec-Fetch-Site` header says so; the command line, the bridge and scripts send neither). The page may use full
+  screen and write the clipboard, nothing else (`Permissions-Policy`); its content policy loads only from itself.
 - **The database's reach:** on a network of its own that only the tracker, the gateway and `database-roles` join
   (the minecraft service doesn't); its superuser logs in only inside its own container
   (`docker compose exec postgres psql -U randogeddon`). A statement ends after 20 s and a wait for a lock after 5 s
