@@ -1,0 +1,2 @@
+kivymd @ git+https://github.com/kivymd/KivyMD@5ff9d0de78260383fae0737716879781257155a8
+zilliandomizer @ git+https://github.com/beauxq/zilliandomizer@96d9a20f8278cee64bb4db859fbd874e0f332d36

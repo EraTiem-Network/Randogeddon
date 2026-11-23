@@ -1,0 +1,4 @@
+# The keys whose signature makes a tag v<version> a release (scripts/deploy.sh): one primary key's fingerprint a line
+# (gpg --fingerprint <key>, without the spaces); `#` starts a comment. A change here is reviewed like a change of the
+# deploy itself: it decides who can publish a release.
+A6B908B9B6C7AADCF1529736E6084C4CC61E8ABD

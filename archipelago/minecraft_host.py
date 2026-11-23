@@ -569,8 +569,8 @@ def main() -> None:
         os.makedirs(os.path.join(DATA, "servers"), exist_ok=True)
     except PermissionError:
         # Docker made the mounted folder itself (as root), because it wasn't there
-        print(f"{DATA} isn't writable for uid {os.getuid()}: on the host, data/minecraft/ must belong to it "
-              f"(mkdir -p data/minecraft && chown {os.getuid()} data/minecraft)", flush=True)
+        print(f"{DATA} isn't writable for uid {os.getuid()}: on the host, minecraft/ (beside data/) must belong to it "
+              f"(mkdir -p minecraft && chown {os.getuid()} minecraft)", flush=True)
         raise SystemExit(1)
     if not TOKEN:
         print("No MINECRAFT_TOKEN: every call of the gateway is refused, no Minecraft server runs (set it in .env, "

@@ -6,3 +6,5 @@ Requires=docker.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/randogeddon-backup
+# A dump that hangs (docker compose exec) ends here instead of blocking every later run
+TimeoutStartSec=30min

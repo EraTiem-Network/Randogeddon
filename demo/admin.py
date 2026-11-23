@@ -11,10 +11,11 @@
     admin.py measure <s> <n>       the API's answer times, then n live streams held open for s seconds
                                    (scripts/measure.sh)
 
-The admin's name and password come from DEMO_ADMIN and DEMO_PASSWORD, the tracker from DEMO_TRACKER
-(http://tracker:8000 inside the compose network). Admins log in with two-factor login: on the first login this sets it
-up and keeps the secret in /out/admin.totp (output/demo/), later logins compute the code from it. The login itself is
-kept in /out/admin.cookies and used again by the next step while it holds.
+The admin's name comes from DEMO_ADMIN, the password from /out/admin.password (output/demo/, written by scripts/demo.sh;
+DEMO_PASSWORD instead if set), the tracker from DEMO_TRACKER (http://tracker:8000 inside the compose network). Admins
+log in with two-factor login: on the first login this sets it up and keeps the secret in /out/admin.totp, later logins
+compute the code from it. The login itself is kept in /out/admin.cookies and used again by the next step while it
+holds. What it writes there is readable by its owner alone from the start.
 """
 import base64
 import collections
@@ -30,7 +31,9 @@ import time
 import urllib.error
 import urllib.request
 
+os.umask(0o077)
 TRACKER = os.environ.get("DEMO_TRACKER", "http://tracker:8000").rstrip("/")
+PASSWORD_FILE = pathlib.Path("/out/admin.password")
 TOTP_FILE = pathlib.Path("/out/admin.totp")
 # The login is kept between the demo's steps (output/demo/): they come from one address, and the tracker lets an
 # address log in 5 times a minute
@@ -96,8 +99,18 @@ def login():
     COOKIE_FILE.chmod(0o600)
 
 
+def password() -> str:
+    """The demo admin's password: from the file scripts/demo.sh keeps (not on a command line, where `ps` shows it)."""
+    if "DEMO_PASSWORD" in os.environ:
+        return os.environ["DEMO_PASSWORD"]
+    try:
+        return PASSWORD_FILE.read_text().strip()
+    except OSError as e:
+        sys.exit(f"No password in output/demo/admin.password ({e.strerror}): ./scripts/demo.sh makes it")
+
+
 def log_in():
-    status, answer = call("POST", "/api/login", {"username": os.environ["DEMO_ADMIN"], "password": os.environ["DEMO_PASSWORD"]})
+    status, answer = call("POST", "/api/login", {"username": os.environ["DEMO_ADMIN"], "password": password()})
     if status == 200 and answer.get("next") == "code":
         second_factor(answer["pending"])
     elif status == 200 and answer.get("next") == "setup":

@@ -8,8 +8,10 @@
 #   its settings), the generic repository `randogeddon-bridge`, as <version>/<file> with SHA256SUMS. The token of an account that may
 #   write there is read from ~/.config/randogeddon/bridge-publish.token (BRIDGE_TOKEN_FILE); without it or without
 #   BRIDGE_REGISTRY, nothing is published there.
-# - A GitHub release v<version> (gh, logged in), its notes the version's section of CHANGELOG.md; left alone if it
-#   exists. From 1.0.0 on a release with the same files; before, a pre-release without files.
+# - A GitHub release v<version> (gh, logged in, needed for every version), its notes the version's section of
+#   CHANGELOG.md (without one nothing is published); left alone if it exists. From 1.0.0 on a release with the same
+#   files; before, a pre-release without files.
+# A file already in Artifact Keeper is compared with this build's: another build's stops the publishing.
 # --dry-run: says what would be uploaded and created, and does neither.
 # --check: only the checks (deploy.sh, before it pushes a release's images).
 set -euo pipefail
@@ -31,12 +33,13 @@ TOKEN_FILE="${BRIDGE_TOKEN_FILE:-$HOME/.config/randogeddon/bridge-publish.token}
 # The GitHub repository by name: the deploy's clone (~/rg-deploy) has a local path as its remote, which gh can't place
 export GH_REPO="${GH_REPO:-EraTiem-Network/Randogeddon}"
 
-out="$(mktemp -d)"
-trap 'rm -rf "$out"' EXIT
+out="$(mktemp -d)" container=""
+trap 'rm -rf "$out"; [[ -z "$container" ]] || docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
 mkdir "$out/files"
 container="$(docker create "$image")"
 docker cp "$container:/app/bridge/." "$out/files/" >/dev/null
 docker rm "$container" >/dev/null
+container=""
 built="$(cat "$out/files/VERSION" 2>/dev/null || true)"
 [[ "$built" == "$version" ]] || { echo "The image's bridge is ${built:-missing}, not $version"; exit 1; }
 rm "$out/files/VERSION"
@@ -57,8 +60,21 @@ ssh-keygen -Y verify -q -f bridge/signing-key.pub -I bridge@randogeddon -n rando
 cmp -s "$out/files/signing-key.pub" bridge/signing-key.pub \
   || { echo "The image's signing-key.pub isn't bridge/signing-key.pub: not publishing $version"; exit 1; }
 echo "== The bridge's builds of $version are signed with the key of bridge/signing-key.pub"
+# The version's part of the changelog, the GitHub release's notes: from its heading to the next one. Checked before
+# anything is published (and with --check, before a release's images are pushed)
+awk -v heading="### $version:" '
+  index($0, heading) == 1 { found = 1; next }
+  found && (/^### / || /^## /) { exit }
+  found { print }
+' CHANGELOG.md > "$out/notes"
+grep -q '[^[:space:]]' "$out/notes" || { echo "CHANGELOG.md has no section \"### $version:\" (or it is empty): no notes for its release; not publishing $version"; exit 1; }
 [[ "$mode" != --check ]] || exit 0
 files=("$out"/files/*)
+# The GitHub release is made with gh, for every version: without it nothing is published, not half
+if [[ -z "$dry" ]] && ! command -v gh >/dev/null; then
+  echo "gh isn't installed here: no GitHub release v$version, so nothing is published (install and log in, then run this script again)"
+  exit 1
+fi
 
 echo "== The bridge's builds to $REGISTRY ($REPOSITORY/$version/)"
 if [[ -n "$dry" ]]; then
@@ -69,24 +85,30 @@ elif [[ -r "$TOKEN_FILE" ]]; then
   # The token in a header file (never on a command line, where other processes could see it)
   (umask 077 && printf 'Authorization: Bearer %s\n' "$(tr -d '\r\n' < "$TOKEN_FILE")" > "$out/auth")
   for file in "${files[@]}"; do
+    url="$REGISTRY/api/v1/repositories/$REPOSITORY/artifacts/$version/$(basename "$file")"
     status="$(curl -sS -o "$out/answer" -w '%{http_code}' -H @"$out/auth" -H 'Content-Type: application/octet-stream' \
-      -T "$file" "$REGISTRY/api/v1/repositories/$REPOSITORY/artifacts/$version/$(basename "$file")")"
+      -T "$file" "$url")"
     case "$status" in
       2??) echo "uploaded $(basename "$file")" ;;
-      409) echo "$(basename "$file") is there already" ;;
+      409)
+        # There already: this build's file, or another build's (the version published before from another image),
+        # which would leave the checksums and the builds from different builds
+        there="$(curl -sS -o "$out/there" -w '%{http_code}' -H @"$out/auth" "$url" || true)"
+        if [[ "$there" == 2?? ]] && cmp -s "$out/there" "$file"; then
+          echo "$(basename "$file") is there already, the same"
+        elif [[ "$there" == 2?? ]]; then
+          echo "$(basename "$file") is there already, but another one: sha256 $(sha256sum < "$out/there" | cut -d' ' -f1) there, $(sha256sum < "$file" | cut -d' ' -f1) here; not publishing over it"
+          exit 1
+        else
+          echo "$(basename "$file") is there already; it couldn't be fetched to compare ($there): check it by hand"
+        fi
+        ;;
       *) echo "$(basename "$file"): $status $(head -c 300 "$out/answer")"; exit 1 ;;
     esac
   done
 else
   echo "No token in $TOKEN_FILE: not published there"
 fi
-
-# The version's part of the changelog: from its heading to the next one
-awk -v heading="### $version:" '
-  index($0, heading) == 1 { found = 1; next }
-  found && (/^### / || /^## /) { exit }
-  found { print }
-' CHANGELOG.md > "$out/notes"
 
 # Before 1.0.0 a pre-release, without the files
 pre=""

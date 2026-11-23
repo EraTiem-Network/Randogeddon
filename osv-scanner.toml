@@ -1,0 +1,17 @@
+# Findings of scripts/audit.sh that are known and accepted, each with its reason and a date after which the audit
+# reports it again. A release stops on a finding in the project's own dependencies that isn't listed here.
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-3447"
+ignoreUntil = 2027-02-23
+reason = "setuptools 80.10.2 in the gateway's image: Archipelago 0.6.8 needs setuptools below 81 (it uses pkg_resources); to look at again with the next Archipelago update"
+
+[[IgnoredVulns]]
+id = "GHSA-h35f-9h28-mq5c"
+ignoreUntil = 2027-02-23
+reason = "The same finding as PYSEC-2026-3447 under its other name"
+
+[[IgnoredVulns]]
+id = "GHSA-xmj3-9gf7-h52w"
+ignoreUntil = 2027-02-23
+reason = "setuptools 80.10.2 in the gateway's image: Archipelago 0.6.8 needs setuptools below 81 (it uses pkg_resources); to look at again with the next Archipelago update"

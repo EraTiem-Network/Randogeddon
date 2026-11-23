@@ -7,9 +7,12 @@ data/*
 !data/.gitkeep
 roms/*
 !roms/.gitkeep
+# The minecraft service's folder (its servers' worlds), beside data/
+/minecraft/
 
 .env
 __pycache__/
+*.pyc
 
 ### Gradle / Kotlin ###
 .gradle
@@ -19,6 +22,9 @@ build/
 !**/src/test/**/build/
 /.kotlin/
 local.properties
+# The npm locks (the Kotlin plugin's npm tooling's, by its hash), which the image build installs from and fails on
+# when they don't fit: committed
+!/kotlin-js-store/
 
 ### IntelliJ IDEA ###
 /.idea/

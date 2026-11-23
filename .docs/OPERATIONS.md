@@ -15,7 +15,19 @@ docker compose build     # BuildKit (docker buildx); the native images need abou
   init script is passed into the build as a secret (`GRADLE_INIT_SCRIPT`, default `~/.gradle/init.gradle.kts`),
   never into an image; `BUILDX_BAKE_ENTITLEMENTS_FS=0` spares the build's question for it.
 - Too little memory on the server: build elsewhere, then
-  `docker save randogeddon-tracker:latest randogeddon-gateway:latest randogeddon-minecraft:latest | ssh you@server docker load`.
+  `docker save randogeddon-tracker:latest randogeddon-gateway:0.6.8 randogeddon-minecraft:latest | ssh you@server docker load`
+  (the gateway's tag is the Archipelago release).
+- Without a Maven mirror: `GRADLE_INIT_SCRIPT=/dev/null` (the file the setting names must exist).
+- Before the first start: `install -d -o 1000 -g 1000 data minecraft` (the gateway's and the minecraft service's
+  folders, both uid 1000's; Docker would make them root's).
+- **What a build takes is pinned by content:** the base images, the Dockerfile's frontend, postgres and the audit's
+  scanner by digest (`name:tag@sha256:…` where they are written); Archipelago's Python packages by
+  `archipelago/requirements-<AP_VERSION>.lock` (hashes; `.git.txt`: the two packages that only come from a git
+  repository, by commit; `.newer.lock`: what is kept newer than Archipelago's own pin, the CA bundle); Gradle's
+  libraries and plugins by `gradle/verification-metadata.xml`, its wrapper by `distributionSha256Sum`; the web
+  build's npm tooling by `kotlin-js-store/`. A build stops when one of them doesn't fit.
+  `./scripts/base-images.sh` says which pinned image has a newer digest under its tag (exit 1); to raise one,
+  change its digest where it is written, build, run the audit and the demo.
 
 ## Traefik and DNS
 
@@ -78,16 +90,23 @@ http:
   (not for a migration); the programs' logs are in UTC.
 - **`TRUSTED_PROXIES`** (addresses or CIDR ranges, comma-separated): only these peers' `X-Forwarded-For` is believed,
   by the tracker (the rate limits, the streams' counts) and the gateway (the waiting connections per address). Unset:
-  every peer's; set it to Traefik's address wherever their ports can be reached past Traefik
-  (`docker-compose.proxy.yml` publishes them).
+  every peer's. With `docker-compose.proxy.yml` and `docker-compose.traefik.yml` it is required, as `BASE_DOMAIN`
+  is: compose refuses every command without them (the proxy overlay: the address Traefik's host reaches the VM
+  from; the Traefik overlay: Traefik's address on its network).
+- **`PUBLISH_ADDRESS`** (the proxy overlay; default `0.0.0.0`, IPv4 only): the address the two ports are published
+  on, best the VM's own on the network Traefik comes from. `docker-compose.local.yml` publishes on `127.0.0.1` only
+  (local testing, with a mail catcher that has no login: never on a reachable server).
+- **`POSTGRES_MEMORY`** (default `1g`): the database's memory limit; it also has a limit on processes and only the
+  capabilities its start needs. The tracker's own file system is read-only (it writes its state volume).
 - **Mail:** `MAIL_HOST`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM` (`MAIL_ADDRESS`: an internal address for a server
   whose public one leads back to this host). Without `MAIL_HOST` mails only go to the tracker's log (whole, with their
   links: for local testing); with it, the log names a mail's account, never its address.
 - **`TOTP_KEY`** (`openssl rand -base64 32`) encrypts the two-factor secrets: keep it with the backups.
 - **Hosted Minecraft:** `MINECRAFT_EULA=true` accepts Mojang's EULA for every hosted server, and `MINECRAFT_TOKEN`
   (`openssl rand -hex 32`, not the internal one) is what the gateway calls the minecraft service with (nothing runs
-  without both; the deploy sets a token if there is none); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` each. The
-  service mounts only `data/minecraft/` (owned by uid 1000).
+  without both; the deploy sets a token if there is none); `MINECRAFT_SERVERS` at once, `MINECRAFT_MEMORY` for all of
+  them together. The service mounts only `minecraft/` beside `data/` (owned by uid 1000; out of `data/` since
+  0.23.7, which the gateway's user could change: the deploy moves an existing `data/minecraft/` there once).
 - **The gateway's two users:** the gateway is uid 1000 and owns `data/`; Archipelago's processes (the game servers,
   generations, APWorld code) are uid 1100 and get only the session folders, which the gateway gives to group 1100
   at each start (the host needs no group of that number). Its container starts as root with `cap_add: [SETUID,
@@ -124,27 +143,51 @@ outside this repository.
 
 | What | Where |
 |---|---|
-| `.env`, `docker-compose.yml`, `docker-compose.proxy.yml`, `data/`, `custom_worlds/` | `/srv/randogeddon/` |
+| `.env` (mode 600), `docker-compose.yml`, `docker-compose.proxy.yml`, `data/`, `minecraft/`, `custom_worlds/` | `/srv/randogeddon/` |
+| each kept version's compose files (the running one's and the good one before it) | `/srv/randogeddon/releases/<tag>/` |
 | the database | the volume `randogeddon_postgres-data` (the TOTP key file without `TOTP_KEY`: `randogeddon_tracker-state`) |
 | dumps (each update's, a daily one; 14 days; root only) | `/srv/backups/` |
 | the daily dump | `/usr/local/sbin/randogeddon-backup`, `randogeddon-backup.timer` (01:45) |
 
 `scripts/deploy.sh` keeps the image settings in its `.env`: `TRACKER_IMAGE`, `GATEWAY_IMAGE`, `MINECRAFT_IMAGE`,
-`IMAGE_TAG` and `GATEWAY_TAG` (the running version; for an `edge` build the commit), `PREVIOUS_IMAGE_TAG` and
-`PREVIOUS_GATEWAY_TAG` (for a rollback); `GRADLE_INIT_SCRIPT=/dev/null`. The server is logged in to the registry
-with a read-only token.
+`IMAGE_TAG` and `GATEWAY_TAG` (the running version; for an `edge` build the commit), `GOOD_IMAGE_TAG` and
+`GOOD_GATEWAY_TAG` (the last version that passed the switch's check), `PREVIOUS_IMAGE_TAG` and
+`PREVIOUS_GATEWAY_TAG` (the good one before that); `GRADLE_INIT_SCRIPT=/dev/null`. The server is logged in to the
+registry with a read-only token. With `.env` at mode 600, `docker compose` by hand there needs `sudo`.
 
 ## Deploying
 
-In WSL, from a committed state. A release only from its signed tag `v<version>` (checked against the machine's
-keyring: `gpg --import` the signers' keys there), anything else as `edge`, unchecked:
+In WSL, from a committed state. A release only from its tag `v<version>`, signed by a key whose fingerprint the
+tagged commit's `release-signers` names (the signers' public keys in the machine's keyring: `gpg --import`; a
+change to that file decides who can publish and is reviewed like a change to the deploy), anything else as `edge`,
+unchecked:
 
 ```sh
-./scripts/deploy.sh             # build, push, dump, switch, check (healthz, schema); a release's bridge and GitHub release
-./scripts/deploy.sh --publish   # build and push only; the server isn't touched
-./scripts/deploy.sh --switch    # build nothing: the server to this commit's images as published (dump, switch, check)
-./scripts/deploy.sh --rollback  # back to the previous tags (code only: a migration that ran needs its dump)
+./scripts/deploy.sh             # build, audit, push, switch, check; a release's bridge and GitHub release
+./scripts/deploy.sh --publish   # build, audit and push only; the server isn't touched
+./scripts/deploy.sh --switch    # build nothing: the server to this commit's images as published
+./scripts/deploy.sh --rollback  # back to the last good version (code only: a migration that ran needs its dump)
 ```
+
+- **A release is built** from the checkout alone (its `.env` isn't read; `NATIVE_MARCH` and `NATIVE_OPTIMIZATION`
+  must be unset), from a Gradle cache only releases write, and needs its section in `CHANGELOG.md`. Then
+  `scripts/audit.sh` looks at what was just built: a finding in the project's own dependencies (Go, JVM and
+  Kotlin, Python) stops the release before anything is pushed, as does an audit that couldn't run. A finding that
+  is known and accepted goes into `osv-scanner.toml` with its reason and a date; `SKIP_AUDIT=1` passes one release.
+  The images' operating system packages are reported (a line each, the full lists in the folder the audit names)
+  and stop nothing: they are the base images', and `scripts/base-images.sh` says when newer ones exist.
+- **The switch on the server**, in this order: the images pulled; the tracker and the gateway stopped; the
+  database dumped; the version's compose files and `.env` put in place; started; checked (the tracker's `/healthz`,
+  the gateway's and the minecraft service's ports, neither starting again within 15 seconds). The dashboard and
+  the game servers are down for the dump's seconds and the start. A failure before the settings are written
+  starts the version before again and says so; after it, the message names the last good version.
+  It refuses, with nothing changed: a database that is there but doesn't run (start it first), a missing
+  `TRUSTED_PROXIES` or `BASE_DOMAIN`, a minecraft folder that is a symbolic link. It says how old the newest
+  nightly dump is, and warns above 36 hours (nothing else tells when the nightly dump fails).
+- **A rollback** goes to the last version that passed the check, or from that one to the good one before it, each
+  with its own compose files (kept in `releases/<tag>/`; a version deployed before 0.23.7 has none and is refused
+  until its two files are put there: `git show <tag>:docker-compose.yml`). The minecraft folder goes back to where
+  that version mounts it.
 
 Needed once on the PC: `~/.config/randogeddon/deploy.env` with `IMAGES` (the registry's path), `RANDOGEDDON_MAVEN` and
 `BRIDGE_REGISTRY`; `docker login` with a token that may push; an SSH alias (`DEPLOY_SSH`, default `randogeddon-live`);
@@ -153,11 +196,8 @@ for the bridge, `~/.config/randogeddon/bridge-publish.token` (mode 0600) and the
 a new key means a new `bridge/signing-key.pub` and a new fingerprint in the README and the web app). A release stops
 before it builds without that key, and before it pushes unless the built bridge's checksums are signed with it
 (`scripts/publish-bridge.sh <version> <image> --check`; `ssh-keygen` needed); only a build that isn't a release may
-stay unsigned. `BRIDGE_REGISTRY` must be `https://`; from 1.0.0
-on, `gh` logged in. The server keeps the running and the previous images, WSL only what was just pushed.
-
-A rollback to before 0.21.6 needs a `minecraft` image tagged for it first
-(`docker tag <IMAGES>/minecraft:0.21.6 <IMAGES>/minecraft:<that tag>`).
+stay unsigned. `BRIDGE_REGISTRY` must be `https://`; `gh` logged in for every release. The server keeps the
+running and the good version before it (images and compose files), WSL only what was just pushed.
 
 **Restoring a dump:**
 
@@ -188,3 +228,11 @@ update: `AP_VERSION` to the new tag and `AP_COMMIT` to its commit
 (`git ls-remote https://github.com/ArchipelagoMW/Archipelago refs/tags/<version>`; the build checks it), `docker
 compose build`, then recreate the gateway once no session of the old release runs. The new release starts with an
 empty APWorld library; the old one's can be tried with it (*From other releases*).
+
+The new release needs its lock, `archipelago/requirements-<version>.lock`, or the build stops: build the
+`archipelago-build` stage once with Archipelago's own updater installing (as the Dockerfile did before 0.23.7:
+`python ModuleUpdate.py -y` in place of the lock's `pip install`), take `pip freeze --all` from it, and write each
+`name==version` line with the sha256 of every file PyPI has for it (`https://pypi.org/pypi/<name>/<version>/json`),
+at Archipelago's own pin where it has one. Lines with a git address go unchanged into `…<version>.git.txt` (each
+must end in its commit), what is kept newer on purpose (certifi) into `…<version>.newer.lock`. The build then
+checks that Archipelago's updater finds nothing to install.
