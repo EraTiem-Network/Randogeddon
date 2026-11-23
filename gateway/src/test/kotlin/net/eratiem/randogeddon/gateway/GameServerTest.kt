@@ -70,6 +70,15 @@ class GameServerTest {
       while read line; do [ "${'$'}line" = "/exit" ] && exit 0; done
       """.trimIndent()
     )
+    // One whose save can't be read: as serve.py, it keeps a copy, says so on its last line and ends
+    dir.resolve("broken-save.sh").writeText(
+      """
+      echo "serving ${'$'}1"
+      touch "${'$'}(dirname "${'$'}0")/AP_1.apsave.broken-${'$'}(date +%Y%m%d-%H%M%S%N)"
+      echo "[randogeddon-save] The save AP_1.apsave can't be read (EOFError: cut off): kept as it is"
+      exit 3
+      """.trimIndent()
+    )
     // One that takes its room password from its first console line (as serve.py does) and names it, as MultiServer
     // and a world may; and says its out-of-memory score
     dir.resolve("room.sh").writeText(
@@ -276,6 +285,49 @@ class GameServerTest {
     assertEquals(5, server.state.restarts, seen())
     server.stop()
     assertEquals(GameServerStatus.STOPPED, server.state.status, seen())
+  }
+
+  @Test
+  fun `one whose save can't be read fails at once, its line kept as its own, and only a few copies stay`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    // Copies of before: the newest few stay
+    for (i in 1..5) {
+      dir.resolve("AP_1.apsave.broken-2026010$i-000000").createFile().toFile().setLastModified(1_000_000L * i)
+    }
+    val server = server(script = "broken-save.sh")
+    server.start()
+    server.awaitStatus(GameServerStatus.FAILED)
+    // Once, not five quick crashes
+    assertEquals(1, server.state.restarts)
+    assertEquals(3, server.state.lastExitCode)
+    val lines = server.log(0).lines.map { it.text }
+    // The panel's reason: its last line that isn't the gateway's
+    assertEquals(
+      "[randogeddon-save] The save AP_1.apsave can't be read (EOFError: cut off): kept as it is",
+      lines.last { !it.startsWith("[gateway]") },
+    )
+    assertTrue(lines.any { "its save can't be read" in it && "stays stopped" in it }, lines.toString())
+    // The three newest of before (pruned before the start), and its own
+    val copies = brokenSaves(dir)
+    assertEquals(BROKEN_SAVES_KEPT + 1, copies.size, copies.toString())
+    assertTrue("AP_1.apsave.broken-20260101-000000" !in copies && "AP_1.apsave.broken-20260105-000000" in copies)
+    assertTrue(isSaveFile("AP_1.apsave.bak") && isSaveFile("AP_1.apsave.tmp") && isSaveFile(copies.first()))
+    server.stop()
+  }
+
+  @Test
+  fun `Archipelago's item cheat stays off, the console doesn't turn it on`() = runBlocking {
+    dir.resolve("AP_1.zip").createFile()
+    val server = server()
+    server.start()
+    server.awaitStatus(GameServerStatus.RUNNING)
+    assertTrue(server.command("/option item_cheat true"))
+    assertTrue(server.command("/say hi"))
+    server.awaitLine("console: /say hi")
+    val lines = server.log(0).lines.map { it.text }
+    assertTrue(lines.none { "console: /option" in it }, lines.toString())
+    assertTrue(lines.any { "item cheat" in it && "Not passed on" in it }, lines.toString())
+    server.stop()
   }
 
   @Test

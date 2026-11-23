@@ -3,8 +3,10 @@ package net.eratiem.randogeddon.gateway
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -150,6 +152,14 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   /** The library's file [name] for [version] (uploaded, else put by hand); `null`: none. */
   fun fileOf(version: String, name: String): Path? =
     uploads(version).firstOrNull { it.name == name } ?: manualFiles().firstOrNull { it.name == name }
+
+  /**
+   * What a seed's state keeps of the APWorld [name] for [version] now: its file's SHA-256, or of the World Locks the
+   * image brings ([BUNDLED_WORLD_LOCKS]) its own hash; `null`: there is none.
+   */
+  internal fun hashOf(version: String, name: String): String? =
+    if (name == BUNDLED_WORLD_LOCKS) runCatching { bundledWorldLocks(archipelago.home(version)) }.getOrNull()
+    else fileOf(version, name)?.let(::sha256)
 
   suspend fun upload(upload: ApworldUpload): ApworldResults {
     beforeChange()
@@ -324,6 +334,12 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
   private fun sync(version: String) {
     requireRelease(version)
     val target = archipelago.home(version).resolve("custom_worlds").createDirectories()
+    // The gateway's own folder in a directory Archipelago's user can't change (the image): a link there, or another's
+    // folder, would lead what is deleted and written here elsewhere
+    val attributes = Files.readAttributes(target, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    val own = runCatching { Files.getOwner(target, LinkOption.NOFOLLOW_LINKS) == Files.getOwner(library.createDirectories()) }
+      .getOrDefault(true)
+    check(attributes.isDirectory && own) { "$target is no folder of the gateway's own: its APWorlds aren't put there" }
     val wanted = (manualFiles() + uploads(version)).associateBy { it.name }
     target.listDirectoryEntries()
       .filter { (it.name.endsWith(".apworld") && it.name !in wanted) || it.name.endsWith(".apworld.new") }
@@ -346,9 +362,11 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
     val home = archipelago.home(version)
     sync(version)
     val work = processTempDir("games")
+    var started: Process? = null
     try {
       val out = work.resolve("games.json")
       val proc = startProcess(listOf(archipelago.python, "list_games.py", out.absolutePathString()), home)
+      started = proc
       proc.endAfter(LIST_TIME)
       // Only its end is of use (the error)
       val lines = ArrayDeque<String>()
@@ -357,11 +375,15 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
         if (lines.size > 20) lines.removeFirst()
       }
       val code = proc.waitFor()
-      if (code != 0 || !out.exists() || Files.size(out) == 0L) {
+      // Written by Archipelago's user: only a regular file is read, never through a link
+      val written = SharedFolder(work).takeIf { code == 0 }?.let { folder ->
+        folder.file(out.name)?.takeIf { it.size() > 0 }?.let { folder.readText(out.name, MAX_ANSWER_FILE) }
+      }
+      if (written == null) {
         val last = lines.joinToString("\n").trim().lines().takeLast(3).joinToString(" ")
         return ReleaseInfo(version, error = "Listing the games failed: $last")
       }
-      val listing = ApiJson.decodeFromString(Listing.serializer(), out.readText())
+      val listing = ApiJson.decodeFromString(Listing.serializer(), written)
       val uploaded = uploads(version).map { it.name }.toSet()
       val games = listing.games.filter { it.game != GENERIC_WORLD }.map { game ->
         val source = when (game.apworld) {
@@ -373,7 +395,8 @@ class Apworlds(private val archipelago: Archipelago, private val library: Path, 
       }.sortedBy { it.game.lowercase() }
       return ReleaseInfo(version, games, listing.failed)
     } finally {
-      work.toFile().deleteRecursively()
+      started?.takeIf { it.isAlive }?.endTree()
+      deleteTree(work)
     }
   }
 

@@ -9,11 +9,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import net.eratiem.randogeddon.database.SlotPasswordStore
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
-import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
-import kotlin.io.path.exists
-import kotlin.io.path.readAttributes
-import kotlin.io.path.readText
+import kotlin.io.path.name
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -126,19 +123,22 @@ class RoomJson(val path: Path) {
   /** The first player's slot: the gateway's listener connects as it. */
   fun firstSlot(): String? = read()?.firstSlot
 
+  /** Its session's directory is Archipelago's user's to write too: only a regular file is read, never a link's target. */
   private fun read(): Parsed? {
-    val attributes = runCatching { path.readAttributes<BasicFileAttributes>() }.getOrNull() ?: return null
+    val folder = SharedFolder(path.toAbsolutePath().parent)
+    val attributes = folder.file(path.name) ?: return null
     val key = attributes.lastModifiedTime() to attributes.size()
     parsed?.takeIf { it.key == key }?.let { return it }
-    val room = runCatching { Json.parseToJsonElement(path.readText()) as JsonObject }.getOrNull()
+    val room = runCatching { Json.parseToJsonElement(folder.readText(path.name, MAX_ANSWER_FILE)) as JsonObject }.getOrNull()
     return Parsed(key, room?.let(::seedNameIn), room?.let(::firstSlotOf)).also { parsed = it }
   }
 }
 
 /** The seed's name in room.json (not its file name): what the tracker and the database know it by. */
 fun readSeedName(roomJson: Path): String? = runCatching {
-  if (!roomJson.exists()) return null
-  seedNameIn(Json.parseToJsonElement(roomJson.readText()) as JsonObject)
+  val folder = SharedFolder(roomJson.toAbsolutePath().parent)
+  if (folder.file(roomJson.name) == null) return null
+  seedNameIn(Json.parseToJsonElement(folder.readText(roomJson.name, MAX_ANSWER_FILE)) as JsonObject)
 }.getOrNull()
 
 private fun seedNameIn(room: JsonObject): String? = (room["seed_name"] as? JsonPrimitive)?.content

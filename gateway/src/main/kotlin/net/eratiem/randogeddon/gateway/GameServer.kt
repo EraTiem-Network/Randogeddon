@@ -18,9 +18,6 @@ import org.slf4j.LoggerFactory
 import java.io.BufferedWriter
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import kotlin.io.path.exists
-import kotlin.io.path.getLastModifiedTime
-import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -29,6 +26,12 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Ga
 
 /** How many lines of a game server's output are kept (the panel pages through them). */
 private const val LOG_LINES = 10_000
+
+/**
+ * What serve.py's last line starts with when the save can't be read: it keeps the save as it is (and a copy,
+ * `<seed>.apsave.broken-<time>`) and ends, not starting a new game over it.
+ */
+internal const val SAVE_REFUSED = "[randogeddon-save] "
 
 /**
  * One start of MultiServer: the command line, extra environment variables and the directory to run in. [firstLines]:
@@ -70,9 +73,18 @@ internal fun withoutPasswords(line: String): String {
  * are the gateway's alone (the room password keeps every client but the gateway's out; without a server password
  * `!admin` stays off). Split as MultiServer's console splits it, like a shell: quotes and backslashes don't hide it.
  */
-internal fun setsPassword(line: String): Boolean {
+internal fun setsPassword(line: String): Boolean = optionOf(line) in setOf("password", "server_password")
+
+/**
+ * Whether console [line] would turn Archipelago's item cheat (`!getitem`) on again (`/option item_cheat …`): it is off
+ * on every game server (`--disable_item_cheat`); the panel's cheats are the ones there are.
+ */
+internal fun setsItemCheat(line: String): Boolean = optionOf(line) == "item_cheat"
+
+/** The option `/option <name> …` sets, split as MultiServer's console splits it; `null`: no `/option` line. */
+private fun optionOf(line: String): String? {
   val words = line.trim().split(Regex("\\s+")).map { word -> word.filterNot { it == '"' || it == '\'' || it == '\\' } }
-  return words.size >= 2 && words[0].lowercase() == "/option" && words[1] in setOf("password", "server_password")
+  return if (words.size >= 2 && words[0].lowercase() == "/option") words[1] else null
 }
 
 /** [line] as one console line: MultiServer's console takes every line break (`\r` too) as the end of a command. */
@@ -221,6 +233,10 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       note("Not passed on: the game server's passwords are the gateway's (remote commands: this console)")
       return@withLock true
     }
+    if (setsItemCheat(line)) {
+      note("Not passed on: Archipelago's item cheat (!getitem) is off on every game server (the panel has its own cheats)")
+      return@withLock true
+    }
     withContext(Dispatchers.IO) {
       writer.write(oneLine(line))
       writer.newLine()
@@ -254,6 +270,13 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       val code = run(seed)
       // Ended because an admin stopped it: not a crash
       if (!currentCoroutineContext().isActive) return
+      // Its save can't be read (serve.py kept a copy and ended, its last line says why): starting it again wouldn't help
+      if (saveRefused || brokenSave != null) {
+        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code, restarts = state.restarts + 1)
+        note("Game server ended with exit code $code: its save can't be read${brokenSave?.let { " (a copy is kept as $it)" }.orEmpty()}; " +
+          "it stays stopped until it is started again")
+        return
+      }
       // A run that lasted a while was no crash loop: the next crash starts with the short pause again
       val ran = System.currentTimeMillis() - started
       if (ran > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
@@ -271,8 +294,37 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     }
   }
 
-  /** Runs one MultiServer process until it ends; its exit code. */
+  /**
+   * A copy of a save that can't be read, which serve.py made in this run's end ([brokenSaves]: one that wasn't there
+   * before it started); `null`: none.
+   */
+  @Volatile
+  private var brokenSave: String? = null
+
+  /**
+   * This run's serve.py said its save can't be read ([SAVE_REFUSED], its last line, kept in the log as the server's
+   * own): it ended without starting a new game over it, and every start would end so again.
+   */
+  @Volatile
+  private var saveRefused = false
+
+  /**
+   * Runs one MultiServer process until it ends; its exit code. Before it starts, the copies of saves that couldn't be
+   * read are brought down to the newest few ([pruneBrokenSaves]).
+   */
   private fun run(seed: Path): Int {
+    brokenSave = null
+    saveRefused = false
+    runCatching { pruneBrokenSaves(config.dataDir) }
+    val brokenBefore = runCatching { brokenSaves(config.dataDir) }.getOrDefault(emptySet())
+    try {
+      return runProcess(seed)
+    } finally {
+      brokenSave = runCatching { brokenSaves(config.dataDir) - brokenBefore }.getOrDefault(emptySet()).maxOrNull()
+    }
+  }
+
+  private fun runProcess(seed: Path): Int {
     runCatching { config.prepare(seed) }.onFailure { note("Could not prepare ${seed.name}: ${it.message}") }
     val launch = runCatching { config.launch(seed) }.getOrElse {
       note("Can't start ${seed.name}: ${it.message}")
@@ -326,16 +378,15 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
     stdin = null
   }
 
-  private fun newestSeed(): Path? {
-    if (!config.dataDir.exists()) return null
-    return config.dataDir.listDirectoryEntries().filter(::isSeed).maxByOrNull { it.getLastModifiedTime().toMillis() }
-  }
+  /** Only a regular file: a link in its directory (Archipelago's user's to write too) is no seed ([newestSeed]). */
+  private fun newestSeed(): Path? = net.eratiem.randogeddon.gateway.newestSeed(config.dataDir)
 
   /** Why [seed] must not be served now; `null`: it may (also when that can't be asked). */
   private fun refusalOf(seed: Path): String? = runCatching { config.refuse(seed) }.getOrNull()
 
   /** A line of the server itself (cut as it was read); "server listening" means it accepts clients now. */
   private fun output(line: String) {
+    if (line.startsWith(SAVE_REFUSED)) saveRefused = true
     if (state.status == GameServerStatus.STARTING && "server listening" in line) {
       state = state.copy(status = GameServerStatus.RUNNING)
       state.seed?.let { runCatching { config.onRunning(it) } }

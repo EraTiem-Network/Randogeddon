@@ -9,6 +9,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +54,25 @@ private const val LINGER_MINUTES = 10
 
 /** How long a build may take. */
 private val BUILD_TIME = 30.minutes
+
+/**
+ * The longest line of the logic's output that is read (characters): an answer with the maps of a large world is some
+ * MB; a longer line (a world that prints without a line end) is cut as it is read, and as an answer it fails.
+ */
+internal const val MAX_LOGIC_LINE = 64 * 1024 * 1024
+
+/** The longest reason a slot's mismatch is kept with (one line of the script's). */
+private const val MAX_MISMATCH = 500
+
+/**
+ * The slots whose rebuild doesn't fit the seed, from the script's ready line (`"mismatches": {"<slot>": "<why>"}`), each
+ * reason on one line; none from a script of before.
+ */
+internal fun mismatchesOf(ready: JsonObject): Map<Int, String> =
+  (ready["mismatches"] as? JsonObject).orEmpty().entries.mapNotNull { (slot, why) ->
+    val reason = (why as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+    slot.toIntOrNull()?.let { it to oneLine(reason).take(MAX_MISMATCH) }
+  }.toMap()
 
 /**
  * Each session's logic: its seed's worlds generated again up to the fill (`logic_run.py`, with the seed's number and
@@ -100,8 +120,21 @@ class Logic(
     val answers = Channel<JsonObject>(Channel.UNLIMITED)
     val asking = Mutex()
 
-    /** Answers still to come for questions whose wait ran out (under [asking]): the next question drops them first. */
+    /** The last question's number (under [asking]): an answer that gives it back is taken for that question only. */
+    var asked = 0L
+
+    /**
+     * Answers still to come for questions whose wait ran out (under [asking]), from a script that doesn't give the
+     * number back: it answers in order, so the next question drops that many first, within its own wait.
+     */
     var owed = 0
+
+    /**
+     * The slots whose rebuilt worlds don't fit the seed's own order (its spheres), with what didn't fit, as the script
+     * said when it was built: they are answered all the same, and every answer says so.
+     */
+    @Volatile
+    var mismatches: Map<Int, String> = emptyMap()
 
     fun to(status: LogicStatus, problem: String? = null) {
       this.status = status
@@ -169,19 +202,22 @@ class Logic(
     endedAt.remove(id)
   }
 
-  /** How many of each asked slot's unchecked locations its logic reaches; `null`: it isn't running. */
+  /**
+   * How many of each asked slot's unchecked locations its logic reaches; `null`: it isn't running, or no answer came
+   * within [answerTime]. The question is passed on as it is (with the keys found, [AvailableRequest.locks]), with its
+   * number (`id`): an answer that gives it back is taken for it only, and a late one of a question before is dropped
+   * when it comes. A script that doesn't give it back answers in order: the late answers it owes are dropped as they
+   * come, within this question's one wait (not a wait of its own for each). Every question gets an answer line (one
+   * that can't be read counts as a failed one), so none is lost on the way.
+   */
   suspend fun available(id: String, request: AvailableRequest): AvailableAnswer? {
     val run = runs[id]?.takeIf { it.status == LogicStatus.RUNNING } ?: return null
     val process = run.process ?: return null
-    // One line, as the script reads it: {"slots": [{"slot": …, "items": […], "checked": […]}]}
-    val line = ApiJson.encodeToString(AvailableRequest.serializer(), request)
     return run.asking.withLock {
-      // The script answers in order: the late answers of questions before are dropped, so this one gets its own
-      while (run.owed > 0) {
-        val late = withTimeoutOrNull(answerTime) { run.answers.receiveCatching() } ?: return@withLock null
-        if (late.isClosed) return@withLock null
-        run.owed--
-      }
+      val number = ++run.asked
+      // One line, as the script reads it: {"slots": [{"slot": …, "items": […], "checked": […]}], …, "id": 7}
+      val question = ApiJson.encodeToJsonElement(AvailableRequest.serializer(), request).jsonObject
+      val line = JsonObject(question + ("id" to JsonPrimitive(number))).toString()
       val written = runCatching {
         withContext(Dispatchers.IO) {
           process.outputStream.write((line + "\n").toByteArray())
@@ -189,27 +225,46 @@ class Logic(
         }
       }.isSuccess
       if (!written) return@withLock null
-      val received = withTimeoutOrNull(answerTime) { run.answers.receiveCatching() }
-      if (received == null) run.owed++
-      val answer = received?.getOrNull() ?: return@withLock null
-      val answers = answer["available"]?.jsonObject ?: return@withLock null
+      val until = TimeSource.Monotonic.markNow() + answerTime
+      var answer: JsonObject? = null
+      while (answer == null) {
+        val left = -until.elapsedNow()
+        val received = if (left.isPositive()) withTimeoutOrNull(left) { run.answers.receiveCatching() } else null
+        if (received == null) {
+          run.owed++
+          return@withLock null
+        }
+        val message = received.getOrNull() ?: return@withLock null
+        val answered = (message["id"] as? JsonPrimitive)?.longOrNull
+        when {
+          answered != null -> if (answered == number) answer = message
+          // Without its number: the late ones come first
+          run.owed > 0 -> run.owed--
+          else -> answer = message
+        }
+      }
+      val reply = answer ?: return@withLock null
+      val answers = reply["available"]?.jsonObject ?: return@withLock null
       // Each slot's reachable locations (a number from a logic before 0.21.8: only how many)
       val locations = answers.entries.mapNotNull { (slot, found) ->
         (found as? JsonArray)?.let { list -> slot.toInt() to list.mapNotNull { it.jsonPrimitive.longOrNull } }
       }.toMap()
       // The maps asked for (none from a logic before 0.22.4)
-      val maps = answer["maps"]?.jsonObject?.entries?.mapNotNull { (slot, map) ->
+      val maps = reply["maps"]?.jsonObject?.entries?.mapNotNull { (slot, map) ->
         runCatching { slot.toInt() to ApiJson.decodeFromJsonElement(SlotMap.serializer(), map) }.getOrNull()
       }?.toMap().orEmpty()
       // Which of each slot's map's regions it reaches (none from a logic before 0.23.2.6)
-      val regions = answer["regions"]?.jsonObject?.entries?.mapNotNull { (slot, reached) ->
+      val regions = reply["regions"]?.jsonObject?.entries?.mapNotNull { (slot, reached) ->
         (reached as? JsonArray)?.let { list -> slot.toInt() to list.mapNotNull { it.jsonPrimitive.intOrNull } }
       }?.toMap().orEmpty()
+      // The asked slots whose rebuild doesn't fit the seed: with every answer
+      val asked = request.slots.map { it.slot }.toSet() + request.maps
       AvailableAnswer(
         answers.entries.associate { (slot, found) -> slot.toInt() to ((found as? JsonArray)?.size ?: (found as? JsonPrimitive)?.intOrNull) },
         locations,
         maps,
         regions,
+        run.mismatches.filterKeys { it in asked },
       )
     }
   }
@@ -270,33 +325,50 @@ class Logic(
     log.add("$ ${command.joinToString(" ")}")
     // Its questions go to its standard input
     val process = try {
-      startProcess(command, home, input = true)
+      startProcess(command, home, input = true, worlds = true)
     } catch (e: Exception) {
-      output.toFile().deleteRecursively()
+      deleteTree(output)
       throw e
     }
     run.process = process
     if (run.stopping) process.endTree()
     Thread {
-      // An answer is one line, whatever its length (a slot's map); only the log's lines are cut
-      process.eachLine(max = Int.MAX_VALUE) { line ->
-        if (line.startsWith(PREFIX)) {
-          val message = runCatching { ApiJson.parseToJsonElement(line.removePrefix(PREFIX)).jsonObject }.getOrNull()
-          when {
-            message == null -> log.add(line.take(MAX_LOG_LINE))
-            message.containsKey("ready") -> run.ready.complete(true)
-            else -> {
-              message["error"]?.jsonPrimitive?.contentOrNull
-                ?.let { log.add("[gateway] An answer failed: ${it.take(MAX_LOG_LINE)}") }
-              run.answers.trySend(message)
-            }
-          }
-        } else {
+      // An answer is one line (a slot's map can make it long), each cut at MAX_LOGIC_LINE as it is read, never held
+      // longer; what a world printed before it on the same line (without a line end) is its log
+      process.eachLine(max = MAX_LOGIC_LINE) { line ->
+        // The script writes one before each answer (so no answer is glued to what a world printed): nothing to keep
+        if (line.isBlank()) return@eachLine
+        val at = line.indexOf(PREFIX)
+        if (at < 0) {
           log.add(line.take(MAX_LOG_LINE))
+          return@eachLine
+        }
+        line.substring(0, at).takeIf { it.isNotBlank() }?.let { log.add(it.take(MAX_LOG_LINE)) }
+        val message = runCatching { ApiJson.parseToJsonElement(line.substring(at + PREFIX.length)).jsonObject }.getOrNull()
+        when {
+          message == null -> {
+            log.add("[gateway] An answer that can't be read (cut at ${MAX_LOGIC_LINE / 1024 / 1024} M characters, or no JSON): " +
+              line.substring(at).take(MAX_LOG_LINE))
+            // Its question gets no answer at once, not after its whole wait
+            if (run.ready.isDone) run.answers.trySend(JsonObject(mapOf("error" to JsonPrimitive("its answer can't be read"))))
+          }
+          message.containsKey("ready") -> {
+            run.mismatches = mismatchesOf(message)
+            // Each said once, in the logic's log
+            run.mismatches.toSortedMap().forEach { (slot, why) ->
+              log.add("[gateway] Slot $slot: its rebuilt worlds don't fit the seed's order (its numbers and map may be wrong): $why")
+            }
+            run.ready.complete(true)
+          }
+          else -> {
+            message["error"]?.jsonPrimitive?.contentOrNull
+              ?.let { log.add("[gateway] An answer failed: ${it.take(MAX_LOG_LINE)}") }
+            run.answers.trySend(message)
+          }
         }
       }
       val code = process.waitFor()
-      output.toFile().deleteRecursively()
+      deleteTree(output)
       if (!run.stopping) {
         val why = "it ended with exit code $code${killedHint(code)}"
         log.add("[gateway] ${why.replaceFirstChar { it.uppercase() }}")

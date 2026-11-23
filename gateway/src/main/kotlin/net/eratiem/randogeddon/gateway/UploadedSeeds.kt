@@ -24,8 +24,8 @@ import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.io.path.outputStream
-import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.UploadedSeeds")
@@ -45,6 +45,13 @@ private const val MAX_WAITING = 8
 /** How long seed_info.py may take to read an uploaded seed, and how many of its last lines are kept (for its error). */
 private val SEED_INFO_TIME = 120.seconds
 private const val SEED_INFO_LINES = 20
+
+/**
+ * The address space seed_info.py may take (bytes; as Archipelago's own user, `prlimit --as`): Python with
+ * Archipelago's modules and a real seed's multidata (some dozens of MB, unpickled a few hundred) needs well under it,
+ * and the gateway's container (5 GB) isn't filled by one upload.
+ */
+private const val SEED_INFO_MEMORY = 3L * 1024 * 1024 * 1024
 
 /** The game of the World Locks slot: its locks are set up when a seed is generated here, so not for one from elsewhere. */
 private const val WORLD_LOCKS_GAME = "World Locks"
@@ -226,10 +233,13 @@ class UploadedSeeds(
 
   private fun read(home: Path, zip: Path): SeedRead {
     val work = processTempDir("seed-info")
+    var started: Process? = null
     try {
       val answer = work.resolve("seed-info.json")
       val command = listOf(archipelago.python, "seed_info.py", zip.absolutePathString(), answer.absolutePathString())
-      val proc = startProcess(command, home)
+      // Bounded in its memory too: an uploaded multidata unpickles to many times its size
+      val proc = startProcess(command, home, memory = SEED_INFO_MEMORY)
+      started = proc
       val stopped = proc.endAfter(SEED_INFO_TIME)
       // Only its end is of use (the error): its last lines, each cut as it is read
       val lines = ArrayDeque<String>()
@@ -244,9 +254,11 @@ class UploadedSeeds(
         logger.info("seed_info.py: {}", output.takeLast(3).joinToString(" | ") { oneLine(it) })
         throw SeedProblem("it can't be read as a seed (${printable(output.lastOrNull())})")
       }
-      return ApiJson.decodeFromString(SeedRead.serializer(), answer.readText())
+      // Written by Archipelago's user: only a regular file is read, never through a link
+      return ApiJson.decodeFromString(SeedRead.serializer(), SharedFolder(work).readText(answer.name, MAX_ANSWER_FILE))
     } finally {
-      work.toFile().deleteRecursively()
+      started?.takeIf { it.isAlive }?.endTree()
+      deleteTree(work)
     }
   }
 }

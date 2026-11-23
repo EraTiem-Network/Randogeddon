@@ -179,21 +179,29 @@ FROM archipelago AS gateway
 # Archipelago's Python (archipelago, uid and group 1100), which runs third-party APWorld code and so can't read the
 # gateway's environment or memory. The image starts as root (docker-entrypoint.sh, with CAP_SETUID, CAP_SETGID and
 # CAP_KILL only), which becomes the gateway's user at once; the gateway starts each of Archipelago's processes as the
-# other one with setpriv and raises its out-of-memory score with choom (both util-linux: checked here).
+# other one with setpriv, bounds it with prlimit and raises its out-of-memory score with choom (all util-linux: checked
+# here).
 # MultiServer writes host.yaml and logs/ next to itself. Archipelago checks whether its own directory is writable: if
 # not, it moves to the home directory and copies folders there that a plain checkout doesn't have (and fails). So the
-# directory itself (not what's in it) belongs to Archipelago's user. custom_worlds/ is the gateway's: it fills it with
-# the apworlds of the library (uploaded in the admin panel, or in the server's custom_worlds/), which Archipelago's
-# group only reads (setgid: what is put there is that group's)
+# directory is its group's to write, but root's and sticky (1775): Archipelago's user can add files (host.yaml's
+# rewrite, its logs) but not rename, replace or delete what is root's (the code, worlds/, custom_worlds/, the scripts).
+# A file it adds can't stand in for a module either: the gateway runs Python with PYTHONSAFEPATH (the script's
+# directory isn't put first on the path), and randogeddon.pth puts the working directory (the release's) last, after
+# Python's own modules and the installed packages. logs/ and host.yaml are that user's (it writes them at every run).
+# custom_worlds/ is the gateway's: it fills it with the apworlds of the library (uploaded in the admin panel, or in the
+# server's custom_worlds/), which Archipelago's group only reads (setgid: what is put there is that group's)
 RUN groupadd --gid 1100 archipelago \
  && useradd --uid 1100 --gid archipelago --create-home archipelago \
  && useradd --uid 1000 --create-home --groups archipelago randogeddon \
  && mkdir -p logs custom_worlds \
  && touch host.yaml \
- && chown archipelago . logs host.yaml \
+ && chown root:archipelago . && chmod 1775 . \
+ && chown archipelago logs host.yaml \
  && chown randogeddon:archipelago custom_worlds \
  && chmod 2750 custom_worlds \
- && setpriv --version && choom --version
+ && echo 'import os, sys; sys.flags.safe_path and sys.path.append(os.getcwd())' \
+      > /usr/local/lib/python3.12/site-packages/randogeddon.pth \
+ && setpriv --version && choom --version && prlimit --version
 COPY archipelago/serve.py archipelago/room_info.py archipelago/list_games.py archipelago/spoiler_run.py archipelago/logic_run.py \
      archipelago/seed_info.py ./
 # Our own apworlds (World Locks), next to the bundled worlds
@@ -210,16 +218,30 @@ ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # The hosted Minecraft servers of Minecraft Dig slots (the minecraft service): Forge with the mod on Java 17, and the
 # program that runs them on the gateway's orders (minecraft_host.py: Python's standard library only). Nothing of
-# Archipelago or the gateway: the servers run third-party mod code, so their image holds no more than they need
+# Archipelago or the gateway: the servers run third-party mod code, so their image holds no more than they need.
+# Two users, as in the gateway's image: minecraft_host.py runs as randogeddon (uid 1000, the data folder's owner), the
+# Java servers as minecraft-server (uid 1200, in randogeddon's group for the servers' folders), which can't read the
+# host's environment (MINECRAFT_TOKEN) in /proc, signal or trace it. The image starts as root (minecraft-entrypoint.sh,
+# with CAP_SETUID, CAP_SETGID and CAP_KILL only), which becomes randogeddon at once keeping just those three; each
+# server's Java starts through java-as-server (JAVA), which drops to the servers' user with nothing left, bounded by
+# prlimit (both util-linux: checked here). Started as any other user (a compose file of before: user "1000"), all of it
+# runs as that one, as before
 FROM forge AS minecraft
 # hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --uid 1000 --create-home randogeddon
+ && useradd --uid 1000 --create-home randogeddon \
+ && useradd --uid 1200 --gid randogeddon --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin minecraft-server \
+ && setpriv --version && prlimit --version
 COPY archipelago/minecraft_host.py /app/
 # It must run on this image's Python, not only on a newer one
 RUN python3 -m py_compile /app/minecraft_host.py
-USER randogeddon
+# Its start and the servers' Java (beside the gateway's start, whose pattern they follow)
+COPY --chmod=0755 gateway/minecraft-entrypoint.sh /app/minecraft-entrypoint.sh
+COPY --chmod=0755 gateway/java-as-server.sh /app/java-as-server
+ENV JAVA=/app/java-as-server
 EXPOSE 8002
-CMD ["python3", "/app/minecraft_host.py"]
+# As root, which the script gives up at once (docker-compose.yml gives it no capability but those three)
+# hadolint ignore=DL3002
+ENTRYPOINT ["/app/minecraft-entrypoint.sh"]

@@ -3,14 +3,7 @@ package net.eratiem.randogeddon.gateway
 import kotlinx.serialization.Serializable
 import net.eratiem.randogeddon.shared.ApiJson
 import org.slf4j.LoggerFactory
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.io.path.createDirectories
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 
 private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.SpoilerStages")
 
@@ -42,27 +35,30 @@ class SpoilerStages(private val dirs: SessionDirs) {
   /** Each session's file as last read or written, with its state: read again only when it changed. */
   private val seen = ConcurrentHashMap<String, Pair<Stamp, State?>>()
 
-  private fun stampOf(file: Path): Stamp? = runCatching { Files.readAttributes(file, BasicFileAttributes::class.java) }
-    .getOrNull()?.takeIf { it.isRegularFile }?.let { Stamp(it.fileKey(), it.lastModifiedTime().toMillis(), it.size()) }
+  /**
+   * Its session's directory is Archipelago's user's to write too ([SharedFolder]): the file is read and written there
+   * without following a link, and only as a regular file.
+   */
+  private fun folder(id: String) = SharedFolder(dirs.dir(id))
+
+  private fun stampOf(id: String): Stamp? = folder(id).file(PATH)?.let { Stamp(it.fileKey(), it.lastModifiedTime().toMillis(), it.size()) }
 
   /** Session [id]'s state; `null`: it has none (generated before 0.19.3: its spoiler log is complete). */
   fun read(id: String): State? {
-    val file = dirs.generationDir(id).resolve(FILE)
-    val stamp = stampOf(file) ?: return null.also { seen.remove(id) }
+    val stamp = stampOf(id) ?: return null.also { seen.remove(id) }
     seen[id]?.takeIf { it.first == stamp }?.let { return it.second }
-    val state = runCatching { ApiJson.decodeFromString(State.serializer(), file.readText()) }
+    val state = runCatching { ApiJson.decodeFromString(State.serializer(), folder(id).readText(PATH, MAX_STATE)) }
       .onFailure { logger.warn("{}'s {}: {}", id, FILE, it.message) }.getOrNull()
     seen[id] = stamp to state
     return state
   }
 
   fun save(id: String, state: State) {
-    val dir = dirs.generationDir(id).createDirectories()
-    val written = dir.resolve("$FILE.new")
-    written.writeText(ApiJson.encodeToString(State.serializer(), state))
-    val file = Files.move(written, dir.resolve(FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    val folder = folder(id)
+    folder.folder(GENERATION)
+    folder.writeText(PATH, ApiJson.encodeToString(State.serializer(), state))
     // Kept as written: the next read needn't parse it again
-    val stamp = stampOf(file)
+    val stamp = stampOf(id)
     if (stamp != null) seen[id] = stamp to state else seen.remove(id)
   }
 
@@ -78,6 +74,11 @@ class SpoilerStages(private val dirs: SessionDirs) {
 
   companion object {
     const val FILE = "stages.json"
+    /** Its session's folder of what the seed was generated from ([SessionDirs.generationDir]), and the file in it. */
+    private const val GENERATION = "generation"
+    private const val PATH = "$GENERATION/$FILE"
+    /** The most a state is read of: a few KB (the seed's number, its APWorlds' checksums, its arguments). */
+    private const val MAX_STATE = 4L * 1024 * 1024
     /** Generate.py for the later levels, with a playthrough that falls back instead of failing (`archipelago/`). */
     const val SPOILER_RUN = "spoiler_run.py"
     /** Level 3: with the paths, the spoiler log is complete. */

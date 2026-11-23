@@ -39,6 +39,9 @@ class GeneratorTest {
     assertEquals(GenerationProgress(GenerationStage.PLAYTHROUGH, 66), generationProgress("Calculating playthrough."))
     assertEquals(GenerationProgress(GenerationStage.DONE, 100), generationProgress("Done. Enjoy. Total Time: 12.3"))
     assertEquals(null, generationProgress(" Hollow Knight : v0.6.8 | Items: 300"))
+    // A player's YAML can put any text into a line (an option's name Generate.py repeats): no exception, no stage
+    assertEquals(null, generationProgress("Current fill step (x) at 99999999999999999999999/1 items placed"))
+    assertEquals(GenerationProgress(GenerationStage.FILLING, 50), generationProgress("Current fill step (x) at 99999999999/1 items placed"))
   }
 
   private lateinit var root: Path
@@ -92,6 +95,8 @@ class GeneratorTest {
     val again = launcher.launch(seed, room, 38282)
     // Not on its command line (every process can read that); no server password at all: no `!admin`
     assertTrue(first.command.none { "password" in it || it == first.roomPassword }, first.command.toString())
+    // Archipelago's item cheat (`!getitem`) off on every game server
+    assertTrue("--disable_item_cheat" in first.command, first.command.toString())
     assertEquals(listOf(first.roomPassword), first.firstLines)
     assertEquals(32, first.roomPassword?.length)
     assertNotEquals(first.roomPassword, again.roomPassword)
@@ -144,6 +149,31 @@ class GeneratorTest {
     assertTrue("early_keys: false" in seen, seen)
     val files = root.resolve("files-0.6.8.txt").readText().lines().filter { it.isNotBlank() }
     assertEquals(listOf("000-Alice_HK.yaml", "zz-world-locks.yaml"), files)
+  }
+
+  @Test
+  fun `with locks, the bundled World Locks is kept with the seed, and a change of it is named`() = runBlocking {
+    val locks = root.resolve("0.6.8/worlds/world_locks").createDirectories()
+    locks.resolve("__init__.py").writeText("# 1.2.0")
+    locks.resolve("archipelago.json").writeText("""{"world_version": "1.2.0"}""")
+    locks.resolve("__pycache__").createDirectories().resolve("__init__.cpython-312.pyc").writeText("compiled")
+    generator.generate("brave-otter", GenerateRequest(listOf(UploadedYaml("a.yaml", "name: A")), locked = listOf("A"), apVersion = "0.6.8"))
+    generator.generate("quiet-fox", GenerateRequest(listOf(UploadedYaml("a.yaml", "name: A")), apVersion = "0.6.8"))
+    val stages = SpoilerStages(SessionDirs(data))
+    val kept = stages.read("brave-otter")!!.apworlds
+    assertEquals(setOf(BUNDLED_WORLD_LOCKS), kept.keys)
+    // Without locks it isn't part of the seed
+    assertEquals(emptyMap(), stages.read("quiet-fox")!!.apworlds)
+    val apworlds = Apworlds(archipelago, data.resolve("apworlds"), null)
+    assertNull(apworlds.changedSince("0.6.8", kept))
+    // Compiled anew by an image build, or its docs: the same world
+    locks.resolve("__pycache__/__init__.cpython-312.pyc").writeText("compiled again")
+    locks.resolve("docs").createDirectories().resolve("setup_en.md").writeText("docs")
+    assertNull(apworlds.changedSince("0.6.8", kept))
+    locks.resolve("__init__.py").writeText("# 1.3.0")
+    assertEquals(BUNDLED_WORLD_LOCKS, apworlds.changedSince("0.6.8", kept))
+    // A seed of before keeps none: allowed
+    assertNull(apworlds.changedSince("0.6.8", emptyMap()))
   }
 
   @Test
