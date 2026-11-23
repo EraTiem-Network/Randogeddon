@@ -1,7 +1,5 @@
 package net.eratiem.randogeddon.webapp.api
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,10 +28,16 @@ class WatchRepository(private val scope: CoroutineScope, private val token: Stri
 
   private var close: (() -> Unit)? = null
 
+  /** The stream's failures in a row: each waits longer before the next attempt ([retryDelay]). */
+  private var failures = 0
+
+  /** The token as a part of the API's paths (the route lets only a token's characters through; encoded all the same). */
+  private val path = "api/watch/${token.pathSegment()}"
+
   fun start() {
     if (close != null) return
     scope.launch {
-      val result = Platform.request("GET", "api/watch/$token/state")
+      val result = Platform.request("GET", "$path/state")
       when (result?.status) {
         200 -> accept(result.body)
         404 -> { _gone.value = true; return@launch }
@@ -49,27 +53,28 @@ class WatchRepository(private val scope: CoroutineScope, private val token: Stri
   }
 
   private fun open() {
-    close = Platform.stream("api/watch/$token/stream", onState = ::accept, onConnection = { open ->
+    close = Platform.stream("$path/stream", onState = ::accept, onConnection = { open ->
       _streamOpen.value = open
-      // The browser gives up on a refused stream: tried again while the link works
+      if (open) failures = 0
+      // The browser gives up on a refused stream: tried again while the link works, each time a little later
       if (!open) {
         stop()
+        failures++
+        val wait = retryDelay(failures)
         scope.launch {
-          delay(3_000)
-          if (Platform.request("GET", "api/watch/$token/state")?.status == 404) _gone.value = true else open()
+          delay(wait)
+          if (Platform.request("GET", "$path/state")?.status == 404) _gone.value = true else open()
         }
       }
     })
   }
 
-  override suspend fun player(slot: Int): PlayerDetail? =
-    load("api/watch/$token/player/$slot", PlayerDetail.serializer())
+  override suspend fun player(slot: Int): PlayerDetail? = load("$path/player/$slot", PlayerDetail.serializer())
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
 
   private fun accept(json: String) {
     val summary = runCatching { ApiJson.decodeFromString(Summary.serializer(), json) }.getOrNull() ?: return
-    val previous = _summary.value
-    if (summary.version >= (previous?.version ?: -1) || summary.finishedAt != previous?.finishedAt) _summary.value = summary
+    if (summary.replaces(_summary.value)) _summary.value = summary
   }
 }

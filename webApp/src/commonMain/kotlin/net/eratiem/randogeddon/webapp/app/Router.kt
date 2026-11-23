@@ -35,6 +35,10 @@ sealed interface Route {
   data class Watch(val token: String) : Route
 
   companion object {
+    /**
+     * The route of [hash]. Its IDs and tokens go into the API's paths, so only what such a one is made of passes
+     * ([sessionId], [token]): a link with anything else (`..`, `?`, `%`) is the sessions' page.
+     */
     fun parse(hash: String): Route {
       val parts = hash.removePrefix("#").trim('/').split('/').filter { it.isNotEmpty() }
       return when {
@@ -42,21 +46,44 @@ sealed interface Route {
         parts[0] == "manage" || parts[0] == "admin" -> when {
           parts.size == 1 -> Admin(null)
           parts[1] == "new" -> Admin(NEW_PAGE)
+          !sessionId(parts[1]) -> Admin(null)
           parts.size >= 3 && parts[2] == "spoiler" -> Spoiler(parts[1], fromAdmin = true)
           else -> Admin(parts[1])
         }
         parts[0] == "settings" -> Settings
-        parts[0] == "invite" && parts.size >= 2 -> Invite(parts[1])
-        parts[0] == "email" && parts.size >= 2 -> ConfirmEmail(parts[1])
-        parts[0] == "watch" && parts.size >= 2 -> Watch(parts[1])
+        // A link of these without a token (or a broken one): the sessions' page
+        parts[0] == "invite" || parts[0] == "email" || parts[0] == "watch" -> when {
+          parts.size < 2 || !token(parts[1]) -> Home
+          parts[0] == "invite" -> Invite(parts[1])
+          parts[0] == "email" -> ConfirmEmail(parts[1])
+          else -> Watch(parts[1])
+        }
         // index.html's login form uses these (a CLI login link, a refused login through the provider)
         parts[0] == "login" || parts[0] == "login-problem" -> Home
+        !sessionId(parts[0]) -> Home
         parts.size >= 2 && parts[1] == "spoiler" -> Spoiler(parts[0], fromAdmin = false)
         else -> Dashboard(parts[0])
       }
     }
+
+    /**
+     * Could be a session's ID: letters, digits, `-` and `_`, at most 64 (wider than today's IDs, `SessionIds`, so a
+     * session of an older rule still opens; the list of sessions decides whether it exists).
+     */
+    private fun sessionId(part: String): Boolean = SESSION_ID.matches(part)
+
+    /** Could be a token of the server's (an invitation, a share link, an e-mail's confirmation): base64url. */
+    private fun token(part: String): Boolean = TOKEN.matches(part)
+
+    private val SESSION_ID = Regex("[A-Za-z0-9_-]{1,64}")
+    private val TOKEN = Regex("[A-Za-z0-9_-]{16,128}")
   }
 }
+
+/** The hash of a link for index.html's login form (`#/login/<token>`, `#/login-problem`), which the route doesn't keep. */
+internal fun loginLink(hash: String): Boolean = LOGIN_LINK.containsMatchIn(hash)
+
+private val LOGIN_LINK = Regex("^#/login(-problem)?(/|$)")
 
 /** [this] as the URL's hash. */
 val Route.hash: String

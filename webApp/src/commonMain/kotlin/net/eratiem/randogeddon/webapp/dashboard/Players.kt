@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -74,6 +75,7 @@ import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
 import net.eratiem.randogeddon.webapp.ui.dimmedIf
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
 
 private enum class PeopleSort { PLAYER, PROGRESS, ACTIVITY }
@@ -83,21 +85,24 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
   val p = LocalPalette.current
   val d = LocalTexts.current.dashboard
   var sort by remember { mutableStateOf(PeopleSort.PLAYER) }
-  // By name first, so equal ones (the same progress, nothing done yet) always come in the same order
-  val byName = s.people.sortedBy { it.name.lowercase() }
-  val people = when (sort) {
-    PeopleSort.PLAYER -> byName
-    PeopleSort.PROGRESS -> byName.sortedByDescending { it.percent }
-    PeopleSort.ACTIVITY -> byName.sortedByDescending { it.lastActivity ?: 0 }
-  }
-  val worlds = s.players.associateBy { it.slot }
-  // A person's slots in the same order as the people: by name, by progress or by what happened last
-  fun slotsOf(person: PersonSummary): List<PlayerSummary> {
-    val own = person.slots.mapNotNull { worlds[it] }.sortedBy { it.name.lowercase() }
-    return when (sort) {
-      PeopleSort.PLAYER -> own
-      PeopleSort.PROGRESS -> own.sortedByDescending { it.percent }
-      PeopleSort.ACTIVITY -> own.sortedByDescending { it.lastActivity ?: 0 }
+  // Each person with their slots, sorted when they or the sort change (not on the clock's tick)
+  val sorted = remember(s.people, s.players, sort) {
+    val worlds = s.players.associateBy { it.slot }
+    // By name first, so equal ones (the same progress, nothing done yet) always come in the same order
+    val byName = s.people.sortedBy { it.name.lowercase() }
+    val people = when (sort) {
+      PeopleSort.PLAYER -> byName
+      PeopleSort.PROGRESS -> byName.sortedByDescending { it.percent }
+      PeopleSort.ACTIVITY -> byName.sortedByDescending { it.lastActivity ?: 0 }
+    }
+    // A person's slots in the same order as the people: by name, by progress or by what happened last
+    people.map { person ->
+      val own = person.slots.mapNotNull { worlds[it] }.sortedBy { it.name.lowercase() }
+      person to when (sort) {
+        PeopleSort.PLAYER -> own
+        PeopleSort.PROGRESS -> own.sortedByDescending { it.percent }
+        PeopleSort.ACTIVITY -> own.sortedByDescending { it.lastActivity ?: 0 }
+      }
     }
   }
   Section(
@@ -115,12 +120,13 @@ internal fun People(s: Summary, now: Long, width: Dp, onOpen: (Int) -> Unit, onO
       )
     },
   ) {
-    if (people.isEmpty()) {
+    if (sorted.isEmpty()) {
       Panel(Modifier.fillMaxWidth()) { Txt(d.waitingForServer, color = p.muted, modifier = Modifier.padding(16.dp)) }
     } else {
       // As many columns as fit, each card into the shortest one: no gaps, no stretched cards, the sort's order kept
-      Masonry(people.size, 330.dp) { i ->
-        PersonCard(people[i], slotsOf(people[i]), now, s.hintSettings.pointHints, Modifier.fillMaxWidth(), onOpen, onOpenPerson)
+      Masonry(sorted.size, 330.dp) { i ->
+        val (person, worlds) = sorted[i]
+        PersonCard(person, worlds, now, s.hintSettings.pointHints, Modifier.fillMaxWidth(), onOpen, onOpenPerson)
       }
     }
   }
@@ -230,10 +236,11 @@ private fun LockBadge(lock: LockInfo, now: Long, modifier: Modifier = Modifier) 
   val hovered by interaction.collectIsHoveredAsState()
   var tapped by remember { mutableStateOf(false) }
   Box(
-    modifier.width(34.dp).heightIn(min = 18.dp).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.18f))
+    modifier.width(34.dp).heightIn(min = 18.dp).focusRing(RoundedCornerShape(8.dp), gap = 1.dp).clip(RoundedCornerShape(8.dp))
+      .background(color.copy(alpha = 0.18f))
       .hoverable(interaction)
-      // Its own click: a tap shows the text instead of opening the world
-      .hand().clickable(interactionSource = interaction, indication = null) { tapped = !tapped },
+      // Its own click: a tap (or Enter) shows the text instead of opening the world
+      .hand().clickable(interactionSource = interaction, indication = null, role = Role.Button) { tapped = !tapped },
     contentAlignment = Alignment.Center,
   ) {
     DrawnIcon(if (lock.unlocked) Icon.KEY else Icon.LOCK, color, 11.dp)

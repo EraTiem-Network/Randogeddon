@@ -182,6 +182,9 @@ interface FeedTexts {
   val unpin: String
   val fold: String
   val unfold: String
+  /** The top panel's button that shows the feed on the dashboard, and the feed's own that hides it. */
+  val show: String
+  val hide: String
 }
 
 /** Under the top card while a session finishes, and once it has. */
@@ -480,6 +483,8 @@ internal object EnglishFeed : FeedTexts {
   override val unpin = "Unpin"
   override val fold = "Fold"
   override val unfold = "Unfold"
+  override val show = "Show the live feed"
+  override val hide = "Hide the live feed"
 }
 
 internal object GermanFeed : FeedTexts {
@@ -523,6 +528,8 @@ internal object GermanFeed : FeedTexts {
   override val unpin = "Lösen"
   override val fold = "Einklappen"
   override val unfold = "Ausklappen"
+  override val show = "Live-Feed zeigen"
+  override val hide = "Live-Feed ausblenden"
 }
 
 internal object EnglishFinish : FinishTexts {

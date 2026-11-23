@@ -13,8 +13,6 @@ interface UserAdminTexts {
   val invitedPill: String
   val administrator: String
   val noSession: String
-  fun inSession(id: String): String
-  fun inSessions(n: Int): String
   val linkExpired: String
   fun linkWorksUntil(date: String): String
   fun deletedOn(date: String): String
@@ -99,7 +97,6 @@ interface UserAdminTexts {
   fun timedOutDone(name: String): String
   fun suspendedDone(name: String): String
   fun letInDone(name: String): String
-  fun deletedDone(name: String): String
   val keptOutTip: String
   val managedElsewhere: String
 }
@@ -115,8 +112,6 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override val invitedPill = "invited"
   override val administrator = "Administrator"
   override val noSession = "no session"
-  override fun inSession(id: String) = "in $id"
-  override fun inSessions(n: Int) = "in $n sessions"
   override val linkExpired = "the link has expired"
   override fun linkWorksUntil(date: String) = "the link works until $date"
   override fun deletedOn(date: String) = "will be deleted on $date"
@@ -217,7 +212,6 @@ internal object EnglishUserAdmin : UserAdminTexts {
   override fun timedOutDone(name: String) = "$name is timed out and was told by mail."
   override fun suspendedDone(name: String) = "$name is suspended and was told by mail."
   override fun letInDone(name: String) = "$name can log in again and was told by mail."
-  override fun deletedDone(name: String) = "$name is deleted."
   override val keptOutTip =
     "A timed-out or suspended account can't log in, and its logins (Randogeddon Bridge's too) end at once. Its " +
       "sessions go on and its games stay connected. A time-out ends by itself."
@@ -235,8 +229,6 @@ internal object GermanUserAdmin : UserAdminTexts {
   override val invitedPill = "eingeladen"
   override val administrator = "Administrator"
   override val noSession = "keine Session"
-  override fun inSession(id: String) = "in $id"
-  override fun inSessions(n: Int) = "in $n Sessions"
   override val linkExpired = "der Link ist abgelaufen"
   override fun linkWorksUntil(date: String) = "der Link funktioniert bis $date"
   override fun deletedOn(date: String) = "wird am $date gelöscht"
@@ -339,7 +331,6 @@ internal object GermanUserAdmin : UserAdminTexts {
   override fun timedOutDone(name: String) = "$name hat eine Auszeit und wurde per Mail informiert."
   override fun suspendedDone(name: String) = "$name ist gesperrt und wurde per Mail informiert."
   override fun letInDone(name: String) = "$name kann sich wieder anmelden und wurde per Mail informiert."
-  override fun deletedDone(name: String) = "$name ist gelöscht."
   override val keptOutTip =
     "Ein Konto mit Auszeit oder Sperre kann sich nicht anmelden, und seine Anmeldungen (auch die von Randogeddon " +
       "Bridge) enden sofort. Seine Sessions laufen weiter, und seine Spiele bleiben verbunden. Eine Auszeit endet von selbst."

@@ -1,7 +1,7 @@
 // Loaded in index.html's head, before the first paint. A file of its own (not inline): the page's content policy
 // only runs scripts from here.
 // The user's theme for this page (the web app keeps its colours here, ap-theme-css), before the first paint; without
-// one, the CSS below follows the device's light or dark setting
+// one, page.css follows the device's light or dark setting
 window.randogeddonTheme = (function () {
   var theme = null;
   var media = window.matchMedia("(prefers-color-scheme: dark)");

@@ -33,11 +33,16 @@ import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
+import net.eratiem.randogeddon.webapp.dashboard.dotSegment
 import net.eratiem.randogeddon.webapp.dashboard.percentEncoded
+import net.eratiem.randogeddon.webapp.ui.Button
+import net.eratiem.randogeddon.webapp.ui.Check
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.Select
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /**
  * A running session's slots, for its Session-Managers and Administrators: one at a time, picked in the heading (*Edit
@@ -54,13 +59,24 @@ fun SlotsSection(id: String) {
   // The accounts to pick from, with those invited from here
   val people = remember(id) { mutableStateListOf<UserRef>() }
   var chosen by remember(id) { mutableStateOf<String?>(null) }
+  var problem by remember(id) { mutableStateOf<String?>(null) }
   fun load() = scope.launch {
-    (call("GET", "api/sessions/$id/manage", null, AdminSessionView.serializer()) as? Answer.Ok)?.value?.let { loaded ->
-      view = loaded
-      loaded.people.filter { ref -> people.none { it.id == ref.id } }.let { people.addAll(it) }
+    when (val answer = call("GET", "api/sessions/$id/manage", null, AdminSessionView.serializer())) {
+      is Answer.Ok -> {
+        val loaded = answer.value
+        view = loaded
+        problem = null
+        loaded.people.filter { ref -> people.none { it.id == ref.id } }.let { people.addAll(it) }
+      }
+      is Answer.Failed -> problem = answer.message
     }
   }
   LaunchedEffect(id) { load() }
+  // Not loaded: why, in place of the slots
+  if (view == null) {
+    problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+    return
+  }
   val worlds = view?.session?.worlds?.takeIf { it.isNotEmpty() } ?: return
   val world = worlds.firstOrNull { it.name == chosen } ?: worlds.first()
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -69,8 +85,11 @@ fun SlotsSection(id: String) {
       Txt(t.sessionAdmin.editSlot, size = 17.sp, weight = FontWeight.Bold, maxLines = 1)
       Select(worlds.map { it.name to it.name }, world.name, { chosen = it }, maxLabel = 260.dp)
     }
-    Column(Modifier.fillMaxWidth().card(p).padding(16.dp)) {
-      key(world) { SlotEditor(id, world, people, onInvited = { people += it }, onSaved = { load() }) }
+    // Not in a section: a selection of its own
+    Selectable {
+      Column(Modifier.fillMaxWidth().card(p).padding(16.dp)) {
+        key(world) { SlotEditor(id, world, people, onInvited = { people += it }, onSaved = { load() }) }
+      }
     }
   }
 }
@@ -81,7 +100,6 @@ fun SlotsSection(id: String) {
 private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onInvited: (UserRef) -> Unit, onSaved: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
   // The slot as saved, and as changed here
   val savedIds = world.userIds
   var ids by remember(world) { mutableStateOf(savedIds) }
@@ -89,25 +107,29 @@ private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onIn
   var asking by remember(world) { mutableStateOf(false) }
   // Hosted switched: on asked once (1), off twice (2, then 3)
   var hostedStep by remember(world) { mutableStateOf(0) }
-  var problem by remember(world) { mutableStateOf<String?>(null) }
+  // Saving, one at a time; its problem (an invitation's too)
+  val saving = rememberAction()
   val changed = open != world.open || ids.toSet() != savedIds.toSet()
   // Someone loses it: no longer open, or a player taken off
   val loses = (world.open && !open) || (!open && !world.open && (savedIds - ids.toSet()).isNotEmpty())
-  fun save(hosted: Boolean? = null) = scope.launch {
-    problem = post(
+  fun save(hosted: Boolean? = null) = saving.run {
+    if (dotSegment(world.name)) return@run null
+    post(
       "api/sessions/$id/manage/slots/${world.name.percentEncoded()}",
       ApiJson.encodeToString(SlotPlayersRequest.serializer(), SlotPlayersRequest(if (open) emptyList() else ids, open, hosted)),
-    )
-    if (problem == null) onSaved()
+    ).also { if (it == null) onSaved() }
   }
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       Column(Modifier.weight(1f)) {
         Txt(world.name, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
       }
-      if (changed) Button(t.sessionAdmin.slotSave, danger = loses) { if (loses) asking = true else save() }
-      Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip) { open = it }
-      Check(t.sessionAdmin.hostedCheck, world.hosted, t.sessionAdmin.hostedTip) { yes -> hostedStep = if (yes) 1 else 2 }
+      // A slot named `.` or `..` can't be named in a request's path (the browser resolves it away, encoded too): it
+      // isn't changed from here (the tracker takes no such names any more)
+      val pathSafe = !dotSegment(world.name)
+      if (changed) Button(t.sessionAdmin.slotSave, enabled = !saving.busy && pathSafe, danger = loses) { if (loses) asking = true else save() }
+      Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip, enabled = pathSafe) { open = it }
+      Check(t.sessionAdmin.hostedCheck, world.hosted, t.sessionAdmin.hostedTip, enabled = pathSafe) { yes -> hostedStep = if (yes) 1 else 2 }
     }
     if (asking) {
       Confirm(t.sessionAdmin.slotLosesQuestion, t.sessionAdmin.slotLosesYes, danger = true,
@@ -136,11 +158,11 @@ private fun SlotEditor(id: String, world: WorldPlan, people: List<UserRef>, onIn
         onInvite = { email ->
           when (val r = call("POST", "api/sessions/$id/manage/invite", ApiJson.encodeToString(InviteRequest.serializer(), InviteRequest(email.trim(), null)), UserRef.serializer())) {
             is Answer.Ok -> r.value.also { onInvited(it); ids = ids + it.id }
-            is Answer.Failed -> null.also { problem = r.message }
+            is Answer.Failed -> null.also { saving.problem = r.message }
           }
         },
       )
     }
-    problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+    saving.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   }
 }

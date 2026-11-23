@@ -8,8 +8,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
+import kotlin.random.Random
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.Connection
+import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Me
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.SessionEntry
@@ -73,6 +75,9 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   private var close: (() -> Unit)? = null
   private var checking: Job? = null
 
+  /** The stream's failures in a row: each waits longer before it is opened again ([retryDelay]). */
+  private var failures = 0
+
   init {
     // Any request finding the login ended: the same as at the start, the login form; once (while the form is open,
     // other requests answering the same don't open it again over what is typed)
@@ -87,23 +92,36 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     listing?.cancel()
   }
 
-  suspend fun logout() {
-    Platform.request("POST", "api/logout")
+  /**
+   * Logs out: whether the server took it. Only then is everything dropped and the login form shown; a logout that
+   * didn't reach the server (offline, the tracker restarting) leaves the login valid, so the page stays as it is.
+   */
+  suspend fun logout(): Boolean {
+    val result = Platform.request("POST", "api/logout")
+    // 401: the login had ended already
+    if (result == null || (result.status !in 200..299 && result.status != 401)) return false
     stop()
+    forget()
+    resetLocalSettings()
+    Platform.showLogin(null, ::checkLogin)
+    return true
+  }
+
+  /** Drops what the login loaded (the previous user's sessions, slot passwords and files); the next login loads it anew. */
+  private fun forget() {
     _summary.value = null
     _me.value = null
     _sessions.value = null
     _selected.value = null
     _connection.value = null
     _files.value = emptyList()
-    resetLocalSettings()
-    Platform.showLogin(null, ::checkLogin)
   }
 
   /** Shows session [id] instead; `null`: none. */
   fun select(id: String?) {
     if (id == _selected.value) return
     closeStream()
+    failures = 0
     _summary.value = null
     _connection.value = null
     _files.value = emptyList()
@@ -113,7 +131,7 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
 
   override suspend fun player(slot: Int): PlayerDetail? {
     val id = _selected.value ?: return null
-    return load("api/sessions/$id/player/$slot", PlayerDetail.serializer())
+    return load("api/sessions/${id.pathSegment()}/player/$slot", PlayerDetail.serializer())
   }
 
   override val pointHints: Boolean get() = summary.value?.hintSettings?.pointHints != false
@@ -127,6 +145,8 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
   /** The sessions again (one was created, finished or deleted); one that is gone stops being shown. */
   suspend fun refreshSessions() {
     val list = load("api/sessions", ListSerializer(SessionEntry.serializer())) ?: return
+    // One that arrives after the logout (or the login's end) isn't kept
+    if (_me.value == null) return
     _sessions.value = list
     val current = _selected.value
     if (current != null && list.none { it.id == current }) select(null)
@@ -138,66 +158,85 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     checking = scope.launch {
       while (true) {
         val result = Platform.request("GET", "api/me")
-        _unreachable.value = result == null || result.status >= 500
-        when (result?.status) {
-          200 -> {
-            _me.value = runCatching { ApiJson.decodeFromString(Me.serializer(), result.body) }.getOrNull()
-            Platform.hideLogin()
-            refreshSessions()
-            // New sessions, and how the others are doing
-            if (listing?.isActive != true) listing = scope.launch {
-              while (true) {
-                delay(30_000)
-                refreshSessions()
-              }
+        // An answer of another shape (a tracker of another version, while it is deployed) counts as unreachable: the
+        // page says so and asks again, instead of showing nothing
+        val me = result?.takeIf { it.status == 200 }
+          ?.let { runCatching { ApiJson.decodeFromString(Me.serializer(), it.body) }.getOrNull() }
+        _unreachable.value = result == null || result.status >= 500 || (result.status == 200 && me == null)
+        if (me != null) {
+          _me.value = me
+          Platform.hideLogin()
+          refreshSessions()
+          // New sessions, and how the others are doing
+          if (listing?.isActive != true) listing = scope.launch {
+            while (true) {
+              delay(30_000)
+              refreshSessions()
             }
-            return@launch
           }
-          401, 403 -> {
-            stop()
-            _summary.value = null
-            _me.value = null
-            // 403: logged in, but not part of any session; 401: the login ended
-            val message = if (result.status == 403) error(result.body) else null
-            if (result.status == 401) resetLocalSettings()
-            Platform.showLogin(message, ::checkLogin)
-            return@launch
-          }
-          // Server unreachable or restarting
-          else -> delay(5_000)
+          return@launch
         }
+        val status = result?.status
+        if (status == 401 || status == 403) {
+          stop()
+          // All of it, the selected session too: after the next login its route selects it again, and its stream opens
+          forget()
+          // 403: logged in, but not part of any session; 401: the login ended
+          val message = if (status == 403) error(result?.body.orEmpty()) else null
+          if (status == 401) resetLocalSettings()
+          Platform.showLogin(message, ::checkLogin)
+          return@launch
+        }
+        // Server unreachable or restarting
+        delay(5_000)
       }
     }
   }
 
-  private fun openStream(id: String) {
+  /**
+   * Opens session [id]'s live stream. The first time ([retry] false) its state, connection and files are fetched beside
+   * it; a [retry] opens only the stream (its first event is the state), and the connection and files are loaded again
+   * once it is open.
+   */
+  private fun openStream(id: String, retry: Boolean = false) {
     if (close != null) return
-    // The first state comes with the stream; fetching it too shows the page sooner on slow connections
-    scope.launch {
-      Platform.request("GET", "api/sessions/$id/state")?.takeIf { it.status == 200 }?.let { accept(id, it.body) }
+    val segment = id.pathSegment()
+    if (!retry) {
+      // The first state comes with the stream; fetching it too shows the page sooner on slow connections
+      scope.launch {
+        Platform.request("GET", "api/sessions/$segment/state")?.takeIf { it.status == 200 }?.let { accept(id, it.body) }
+      }
+      scope.launch { loadConnection(id) }
     }
-    scope.launch { loadConnection(id) }
-    close = Platform.stream("api/sessions/$id/stream", onState = { accept(id, it) }, onConnection = { open ->
+    close = Platform.stream("api/sessions/$segment/stream", onState = { accept(id, it) }, onConnection = { open ->
       _streamOpen.value = open
+      if (open && failures > 0) {
+        // Back after a failure (the tracker restarted, perhaps with the seed's slots now): what was loaded may be old
+        failures = 0
+        scope.launch { loadConnection(id) }
+      }
       // The browser gives up on a stream the server refused (an ended login, or a 502 while the tracker restarts), so
-      // the stream is reopened here instead, once the server answers and the login is still valid
+      // the stream is reopened here instead, once the server answers and the login is still valid; each failure in a
+      // row waits longer (every open dashboard asks at once while the tracker is away)
       if (!open) {
         closeStream()
         checkLogin()
+        failures++
+        val wait = retryDelay(failures)
         scope.launch {
-          delay(2_000)
-          if (_selected.value == id && close == null && _me.value != null) openStream(id)
+          delay(wait)
+          if (_selected.value == id && close == null && _me.value != null) openStream(id, retry = true)
         }
       }
     })
   }
 
   private suspend fun loadConnection(id: String) {
-    val connection = load("api/sessions/$id/connection", Connection.serializer())
+    val connection = load("api/sessions/${id.pathSegment()}/connection", Connection.serializer())
     if (_selected.value == id) _connection.value = connection
     // Only the user's own slots here, also for a Session-Manager (the panel has every slot's)
     val mine = connection?.slots.orEmpty().map { it.name }.toSet()
-    val files = load("api/sessions/$id/files", SlotFiles.serializer())?.files
+    val files = load("api/sessions/${id.pathSegment()}/files", SlotFiles.serializer())?.files
     if (_selected.value == id && files != null) _files.value = files.filter { it.slotName in mine }
   }
 
@@ -213,19 +252,29 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     if (_selected.value != id) return
     val summary = runCatching { ApiJson.decodeFromString(Summary.serializer(), json) }.getOrNull() ?: return
     val previous = _summary.value
-    // The initial fetch can arrive after a newer pushed state
-    if (summary.version >= (previous?.version ?: -1) || summary.finishedAt != previous?.finishedAt) {
-      _summary.value = summary
-    }
-    // The seed got its slots (or finished): the slot passwords and the list change with it
-    if (previous == null || summary.players.size != previous.players.size || summary.finishedAt != previous.finishedAt) {
+    if (summary.replaces(previous)) _summary.value = summary
+    // The seed got its slots (or finished): the slot passwords and the list change with it (the first summary needs
+    // nothing: the connection is loaded beside the stream when it opens)
+    if (previous != null && (summary.players.size != previous.players.size || summary.finishedAt != previous.finishedAt)) {
       scope.launch {
         loadConnection(id)
-        if (previous != null) refreshSessions()
+        refreshSessions()
       }
     }
   }
 }
+
+/**
+ * Whether [this] summary is shown instead of [previous]: not when it is an older one of the same tracker run (the
+ * initial fetch can arrive after a newer pushed state). A summary of another run ([Summary.startedAt]: the tracker
+ * restarted, its version counts from 0 again) or with another end always is.
+ */
+internal fun Summary.replaces(previous: Summary?): Boolean =
+  previous == null || startedAt != previous.startedAt || version >= previous.version || finishedAt != previous.finishedAt
+
+/** How long to wait before the [failures]th attempt in a row: 2 s, 4 s, 8 s … up to 30 s, and up to 1 s more by chance. */
+internal fun retryDelay(failures: Int): Long =
+  minOf(30_000L, 2_000L shl (failures - 1).coerceIn(0, 4)) + Random.nextLong(1_000)
 
 /** Not finished yet. */
 val SessionStatus.running: Boolean get() = this == SessionStatus.LIVE || this == SessionStatus.FINISHING
@@ -236,7 +285,10 @@ val SessionStatus.running: Boolean get() = this == SessionStatus.LIVE || this ==
  */
 internal fun resetLocalSettings() {
   Themes.apply(null, null)
+  Themes.applyFont(null, FontScope.AUTO)
   Languages.reset()
   FeedSettings.reset()
   BridgeFold.reset()
+  // The cheats' last way of picking a hint (the panel's `HINT_PICK_KEY`)
+  Platform.saveSetting("ap-hint-pick", null)
 }

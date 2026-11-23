@@ -15,27 +15,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.BRIDGE_SIGNING_KEY_FINGERPRINT
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeKey
@@ -66,7 +61,9 @@ import net.eratiem.randogeddon.webapp.ui.SmallHeading
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 import net.eratiem.randogeddon.webapp.ui.rememberCopying
 
 /**
@@ -217,13 +214,16 @@ private fun BridgePart() {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val c = t.connection
-  val scope = rememberCoroutineScope()
   var offered by remember { mutableStateOf<BridgeDownloads?>(null) }
+  var offeredProblem by remember { mutableStateOf<String?>(null) }
   var key by remember { mutableStateOf<BridgeKey?>(null) }
-  var problem by remember { mutableStateOf<String?>(null) }
+  // A key is made once a press, however often it is pressed meanwhile
+  val making = rememberAction()
   LaunchedEffect(Unit) {
-    (call("GET", "downloads/bridge", null, BridgeDownloads.serializer()) as? Answer.Ok)
-      ?.let { offered = it.value }
+    when (val answer = call("GET", "downloads/bridge", null, BridgeDownloads.serializer())) {
+      is Answer.Ok -> offered = answer.value
+      is Answer.Failed -> offeredProblem = answer.message
+    }
   }
   val open = BridgeFold.open
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -249,16 +249,18 @@ private fun BridgePart() {
   // A key: a row of its own
   Row(verticalAlignment = Alignment.CenterVertically) {
     SmallButton(c.makeKey, {
-      scope.launch {
+      making.run {
         when (val r = call("POST", "api/account/bridge-keys", null, BridgeKey.serializer())) {
-          is Answer.Ok -> { key = r.value; problem = null }
-          is Answer.Failed -> problem = r.message
+          is Answer.Ok -> { key = r.value; null }
+          is Answer.Failed -> r.message
         }
       }
     })
   }
   key?.let { made -> KeyField(made) { key = null } }
-  problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+  making.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+  // The downloads couldn't be had: said where they would be
+  offeredProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
   offered?.downloads?.takeIf { it.isNotEmpty() }?.let { downloads ->
     SmallHeading(c.downloads(offered?.version.orEmpty()), Modifier.padding(top = 2.dp))
     // Windows, macOS, Linux; each with its architectures, x86 first
@@ -295,7 +297,7 @@ private fun KeyField(made: BridgeKey, onClose: () -> Unit) {
       ShowButton(shown) { shown = !shown }
       CopyIconButton { made.key }
     }
-    IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp))
+    IconButton(onClose, Icon.CLOSE, Modifier.size(26.dp), label = t.dialogs.close)
   }
   Txt(c.keyMade(t.date(made.expiresAt)), size = 12.5.sp, color = LocalPalette.current.muted)
 }
@@ -312,7 +314,6 @@ private fun PasswordField(slot: MySlot) {
   }
 }
 
-/** How a slot's file is used: on the download's tip. */
 /** One of the slot's files from the seed: its name and size, and the download. */
 @Composable
 private fun FileField(sessionId: String, file: SlotFile) {
@@ -322,7 +323,10 @@ private fun FileField(sessionId: String, file: SlotFile) {
     Box(Modifier.weight(1f).padding(end = 2.dp)) { Tip(file.name) { Mono(file.name, size = 13.sp, oneLine = true) } }
     Txt(t.fileSize(file.size), size = 12.sp, color = LocalPalette.current.muted, maxLines = 1)
     InfoTip(LocalTexts.current.connection.patchHowTo)
-    SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
+    // A name the browser would resolve as a path (`..`) can't be asked for: no button
+    if (!dotSegment(file.name)) {
+      SmallButton(LocalTexts.current.connection.download, { Platform.download(slotFilePath(sessionId, file.name)) })
+    }
   }
 }
 
@@ -372,7 +376,8 @@ private fun ServerField(label: String, server: String) {
           Column(Modifier.card(p).padding(4.dp)) {
             listOf(c.copyAsShown to server, c.copyHost to parts.host, c.copyPort to parts.port, c.copyWss to parts.wss).forEach { (what, text) ->
               Row(
-                Modifier.clip(RoundedCornerShape(6.dp)).hand().clickable { copying.copy(text); menu = false }.padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.focusRing(RoundedCornerShape(6.dp), gap = (-2).dp).clip(RoundedCornerShape(6.dp)).hand()
+                  .clickable(role = Role.Button) { copying.copy(text); menu = false }.padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
               ) {
                 Txt(what, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.width(110.dp))

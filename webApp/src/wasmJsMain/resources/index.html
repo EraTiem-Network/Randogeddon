@@ -16,53 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="Randogeddon">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <script src="theme.js"></script>
-  <style>
-    :root { --bg: #f5f4fa; --panel: #ffffff; --border: #e7e4f0; --text: #1b1a2b; --muted: #6c6a80; --accent: #7c5cff;
-      --brand: #ff7a45; --on-brand: #ffffff; --error: #d92d20; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #07070c; --panel: #101118; --border: #22232f; --text: #e9e8f2;
-      --muted: #8d8ba3; --accent: #8e72ff; --brand: #ff7a4d; --error: #f97066; } }
-    html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
-    #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 14px; color: var(--muted); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 16px; }
-    #splash .ring { width: 44px; height: 44px; border-radius: 50%; border: 4px solid color-mix(in srgb, var(--accent) 25%, transparent);
-      border-top-color: var(--accent); animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #splash b { color: var(--text); }
-    /* Compose's own container: it attaches a shadow root there, which would hide everything else if it were <body> */
-    #app { position: fixed; inset: 0; }
-    /* The login: a real form (not Compose's canvas), so password managers can save and fill the generated password */
-    #login { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-      padding: 16px; background: var(--bg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    #login[hidden] { display: none; }
-    #login form { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px; padding: 24px;
-      border-radius: 20px; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
-    #login h1 { margin: 0 0 4px; font-size: 22px; }
-    #login label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12.5px; }
-    /* 16px: a phone (iOS) zooms into a smaller field it focuses, and over the app's canvas the zoom can't be pinched
-       back out (the canvas takes the touches). Compose's own text input is 20px already. */
-    #login input, #login select { font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
-      border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
-    #login input:focus, #login select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-    #login form[hidden] { display: none; }
-    #login .hint { margin: 0; color: var(--muted); font-size: 12.5px; }
-    #login button.secondary { color: var(--text); background: var(--bg); border: 1px solid var(--border); }
-    #login .qr { align-self: center; width: 200px; height: 200px; border-radius: 10px; overflow: hidden; }
-    #login .qr svg { width: 100%; height: 100%; display: block; }
-    #login code { font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; color: var(--text); }
-    #login .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin: 0; padding: 12px;
-      border-radius: 10px; background: var(--bg); border: 1px solid var(--border); list-style: none; }
-    #login button { font: inherit; font-weight: 600; color: var(--on-brand); border: 0; border-radius: 10px; padding: 10px;
-      background: linear-gradient(90deg, var(--brand), var(--accent)); cursor: pointer; }
-    #login button:disabled { opacity: 0.6; cursor: default; }
-    /* Single sign-on for Administrators: a link to the provider, styled like a secondary button */
-    #login a.sso { font-weight: 600; text-align: center; text-decoration: none; color: var(--text); background: var(--bg);
-      border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
-    #login a.sso[hidden] { display: none; }
-    #login .message { margin: 0; color: var(--error); min-height: 1.4em; }
-    #login .languages { margin: 0; text-align: center; color: var(--muted); font-size: 12.5px; }
-    #login .languages a { color: var(--muted); text-decoration: none; }
-    #login .languages a[aria-current] { color: var(--text); font-weight: 600; }
-  </style>
+  <link rel="stylesheet" href="page.css">
 </head>
 <body>
   <div id="splash">
@@ -72,7 +26,7 @@
   </div>
   <div id="app"></div>
   <div id="login" hidden>
-    <form id="login-form">
+    <form id="login-form" method="post">
       <h1>Randogeddon</h1>
       <label><span data-t="nameOrEmail">Name or e-mail</span><input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
@@ -84,7 +38,7 @@
       <p class="languages"><a href="#" data-language="en">English</a> · <a href="#" data-language="de">Deutsch</a></p>
     </form>
     <!-- After the password, with two-factor login: the authenticator's code (or a recovery code) -->
-    <form id="code-form" hidden>
+    <form id="code-form" method="post" hidden>
       <h1 data-t="yourCode">Your code</h1>
       <p class="hint" data-t="codeHint">The 6 digits your authenticator app shows for Randogeddon, or one of your recovery codes.</p>
       <label><span data-t="code">Code</span><input name="code" autocomplete="one-time-code" inputmode="text" autocapitalize="off" spellcheck="false"
@@ -93,9 +47,9 @@
       <button type="submit" data-t="logIn">Log in</button>
     </form>
     <!-- An admin without two-factor login sets it up before anything else -->
-    <form id="setup-form" hidden>
+    <form id="setup-form" method="post" hidden>
       <h1 data-t="twoFactor">Two-factor login</h1>
-      <p class="hint" data-t="setupHint">Admins log in with a second factor. Scan this with an authenticator app (any TOTP
+      <p class="hint" data-t="setupHint">Administrators log in with a second factor. Scan this with an authenticator app (any TOTP
         app), or type the key in, then enter the code it shows.</p>
       <div class="qr"></div>
       <code class="secret"></code>
@@ -104,7 +58,7 @@
       <button type="submit" data-t="turnItOn">Turn it on</button>
     </form>
     <!-- Its recovery codes, shown once -->
-    <form id="codes-form" hidden>
+    <form id="codes-form" method="post" hidden>
       <h1 data-t="recoveryCodes">Recovery codes</h1>
       <p class="hint" data-t="recoveryHint">Each works once, in place of a code, if you lose your authenticator. Keep them
         somewhere safe: they are shown only now.</p>
@@ -114,7 +68,7 @@
       <button type="submit" data-t="savedThem">I have saved them</button>
     </form>
     <!-- The invitation's link (#/invite/<token>): the new user chooses their name, password and deletion period -->
-    <form id="signup-form" hidden>
+    <form id="signup-form" method="post" hidden>
       <h1 data-t="welcome">Welcome to Randogeddon</h1>
       <p class="hint"></p>
       <!-- For the password manager: the account's address, entered by the admin -->
@@ -137,7 +91,7 @@
       <button type="submit" data-t="signUp">Sign up</button>
     </form>
     <!-- From the settings: a new password (the password manager saves it) -->
-    <form id="password-form" hidden>
+    <form id="password-form" method="post" hidden>
       <h1 data-t="newPassword">New password</h1>
       <input name="username" autocomplete="username" hidden>
       <label><span data-t="currentPassword">Current password</span><input name="current" type="password" autocomplete="current-password" required></label>

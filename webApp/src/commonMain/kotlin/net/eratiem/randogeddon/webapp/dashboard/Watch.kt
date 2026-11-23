@@ -28,6 +28,7 @@ import net.eratiem.randogeddon.webapp.ui.rememberNow
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.RandogeddonTheme
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.Themes
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
@@ -51,11 +52,12 @@ fun WatchApp(token: String) {
   val gone by repository.gone.collectAsState()
   val now = rememberNow(summary?.version)
   var detailSlot by remember { mutableStateOf<Int?>(null) }
+  var detailPerson by remember { mutableStateOf<String?>(null) }
 
   // No account here: the theme last used in this browser
   RandogeddonTheme(Themes.palette) {
     val p = LocalPalette.current
-  val t = LocalTexts.current
+    val t = LocalTexts.current
     PageFrame(16.dp) { _, contentWidth ->
       Headline()
       val s = summary
@@ -66,37 +68,45 @@ fun WatchApp(token: String) {
         )
         s == null -> Txt(t.dialogs.loading, color = p.muted, modifier = Modifier.padding(top = 40.dp).align(Alignment.CenterHorizontally))
         else -> {
-          Row(
-            Modifier.fillMaxWidth().card(p).padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Column(Modifier.weight(1f)) {
-              Txt(s.sessionId ?: s.title, size = 22.sp, weight = FontWeight.Bold)
-              Txt(
-                t.watch.progress(t.decimal(s.totals.percent), t.number(s.totals.total)),
-                size = 12.5.sp, color = p.muted,
+          Selectable(Modifier.fillMaxWidth()) {
+            Row(
+              Modifier.fillMaxWidth().card(p).padding(horizontal = 20.dp, vertical = 16.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Column(Modifier.weight(1f)) {
+                Txt(s.sessionId ?: s.title, size = 22.sp, weight = FontWeight.Bold)
+                Txt(
+                  t.watch.progress(t.decimal(s.totals.percent), t.number(s.totals.total)),
+                  size = 12.5.sp, color = p.muted,
+                )
+              }
+              Pill(
+                when {
+                  !streamOpen -> t.frame.reconnecting
+                  s.finishedAt != null -> t.frame.finished
+                  s.connected -> t.frame.live
+                  else -> t.frame.serverOffline
+                },
+                if (streamOpen && s.connected) p.ok else p.muted,
               )
             }
-            Pill(
-              when {
-                !streamOpen -> t.frame.reconnecting
-                s.finishedAt != null -> t.frame.finished
-                s.connected -> t.frame.live
-                else -> t.frame.serverOffline
-              },
-              if (streamOpen && s.connected) p.ok else p.muted,
-            )
           }
           Stats(s, now, contentWidth)
-          People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = {})
+          // A person's panel as on the dashboard: what the link shows already (their slots, hints, connections, events)
+          People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it })
           if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
           Feed(s, Modifier.fillMaxWidth(), FeedPosition.BELOW, fillHeight = false, onPosition = null, onHide = null)
         }
       }
     }
+    detailPerson?.let { name ->
+      summary?.let { s -> PersonDialog(name, s, now, repository, onClose = { detailPerson = null }) }
+    }
     detailSlot?.let { slot ->
-      PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null })
+      PlayerDialog(
+        slot, summary?.version ?: 0, repository, onClose = { detailSlot = null }, changed = summary?.slotChanges(slot),
+      )
     }
   }
 }

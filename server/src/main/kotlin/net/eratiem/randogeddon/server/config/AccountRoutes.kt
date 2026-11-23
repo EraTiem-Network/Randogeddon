@@ -91,7 +91,7 @@ fun Route.accountRoutes(
         post("/enable") {
           apiCall {
             // An Administrator's other logins end; this one, which passed the code, stays
-            val keep = call.request.cookies[SESSION_COOKIE]
+            val keep = call.sessionToken
             call.respond(RecoveryCodeList(twoFactor.enable(call.loggedIn.user, call.receive<CodeRequest>().code, keep = keep)))
           }
         }

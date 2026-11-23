@@ -45,7 +45,11 @@ data class Summary(
   val hintCost: Int? = null,
   /** Which hint systems are in play; the dashboard hides hints when neither is. */
   val hintSettings: HintSettings = HintSettings(),
-  /** When the tracker started, epoch milliseconds. */
+  /**
+   * When the tracker started following the session, epoch milliseconds: a new value with every start of the tracker.
+   * [version] counts from it (from 0 again after a restart), so two summaries are ordered by their versions only when
+   * their [startedAt] is the same; another [startedAt] is a new count, whatever its version.
+   */
   val startedAt: Long,
   /**
    * How long the game server has run for this seed since its first start, without the times it was stopped. Counted
@@ -67,7 +71,7 @@ data class Summary(
   val createdAt: Long? = null,
   /** Its release mode (`auto`, `goal`, …): with `auto`, a slot at its goal is released, so complete. */
   val releaseMode: String? = null,
-  /** Increases with every change of the session state. */
+  /** Increases with every change of the session state, from 0 at [startedAt]. */
   val version: Long,
   val totals: Totals,
   /** The people of `session.yaml` with their worlds; without that file, every world is its own person. */

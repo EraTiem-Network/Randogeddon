@@ -64,6 +64,9 @@ interface DialogTexts {
   /** No map known for the slot. */
   val mapNone: String
   val allDone: String
+  /** A dialog's buttons at its top right: closes it, or goes back to the view it was opened from (a page too). */
+  val close: String
+  val back: String
 }
 
 /** *Your connection* on the dashboard: where to connect, the user's slots, their passwords and files. */
@@ -184,6 +187,8 @@ internal object EnglishDialogs : DialogTexts {
   override val mapNone =
     "No map yet: it comes from the session's logic while that runs (not for a seed from elsewhere or a race)."
   override val allDone = "All done!"
+  override val close = "Close"
+  override val back = "Back"
 }
 
 internal object GermanDialogs : DialogTexts {
@@ -243,6 +248,8 @@ internal object GermanDialogs : DialogTexts {
   override val mapNone =
     "Noch keine Karte: Sie kommt von der Logik der Session, solange diese läuft (nicht bei einem Seed von anderswo oder einem Race)."
   override val allDone = "Alles erledigt!"
+  override val close = "Schließen"
+  override val back = "Zurück"
 }
 
 internal object EnglishConnection : ConnectionTexts {

@@ -11,14 +11,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.SpoilerProgress
@@ -33,9 +31,11 @@ import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.Working
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
-/** How often the section asks how far the spoiler log is. */
+/** How often the section asks how far the spoiler log is; once it is complete (or has no run), rarely. */
 private const val ASK_MS = 3_000L
+private const val ASK_DONE_MS = 60_000L
 
 /** How many lines of a run's log the page keeps. */
 private const val MAX_LINES = 20_000
@@ -53,20 +53,27 @@ fun SpoilerRunSection(id: String, base: String) {
   var known by remember(id) { mutableStateOf(false) }
   val log = remember(id) { mutableStateListOf<LogLine>() }
   var last by remember(id) { mutableStateOf(0L) }
-  val scope = rememberCoroutineScope()
+  val retry = rememberAction()
   LaunchedEffect(id) {
     while (true) {
       load("api/sessions/$id/$base/spoiler-run", SpoilerRunView.serializer())?.let { progress = it.progress; known = true }
       if (progress != null) {
         load("api/sessions/$id/$base/spoiler-run/log?since=$last", LogLines.serializer())?.let { part ->
-          // A new run's numbers start again
-          if (part.lines.isNotEmpty() && log.isNotEmpty() && part.lines.first().n <= log.last().n) log.clear()
+          // A new run's numbers start again: its lines from the start then (asked for next time when this asked
+          // beyond its end)
+          val behind = part.last < last
+          if (behind || (part.lines.isNotEmpty() && log.isNotEmpty() && part.lines.first().n <= log.last().n)) log.clear()
+          if (behind) {
+            last = 0L
+            return@let
+          }
           log.addAll(part.lines)
           if (log.size > MAX_LINES) log.removeRange(0, log.size - MAX_LINES)
           last = part.last
         }
       }
-      delay(ASK_MS)
+      // Complete (no run left), or none to be had: nothing changes any more
+      delay(if (progress == null) ASK_DONE_MS else ASK_MS)
     }
   }
   val now = progress
@@ -78,13 +85,16 @@ fun SpoilerRunSection(id: String, base: String) {
       when {
         stopped != null -> {
           Txt(t.spoilerStopped(now.level, stopped), size = 12.5.sp, color = p.trap)
-          // Support looks on; a Session-Manager or an Administrator tries it again (after a fix)
+          // Support looks on; a Session-Manager or an Administrator tries it again (after a fix; the tracker refuses
+          // it to support too)
           if (base == "manage") SmallButton(t.spoilerRetry, {
-            scope.launch {
-              post("api/sessions/$id/manage/spoiler-run/retry")
-              load("api/sessions/$id/$base/spoiler-run", SpoilerRunView.serializer())?.let { progress = it.progress }
+            retry.run {
+              post("api/sessions/$id/manage/spoiler-run/retry").also {
+                load("api/sessions/$id/$base/spoiler-run", SpoilerRunView.serializer())?.let { progress = it.progress }
+              }
             }
           })
+          retry.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
         }
         now.paused -> Txt(t.spoilerPaused, size = 12.5.sp, color = p.muted)
         now.running != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

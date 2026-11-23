@@ -69,7 +69,7 @@ val RequireLogin = createRouteScopedPlugin("RequireLogin", ::RequireLoginConfig)
   val logins = pluginConfig.logins
   onCall { call ->
     // A bridge key reaches only the bridge's routes ([RequireBridgeKey]), even if someone sets it as the cookie
-    val user = call.request.cookies[SESSION_COOKIE]?.let { logins.userOf(it) }?.takeIf { it.loginMethod != LoginMethods.BRIDGE }
+    val user = call.sessionToken?.let { logins.userOf(it) }?.takeIf { it.loginMethod != LoginMethods.BRIDGE }
     if (user == null) {
       call.refuse(HttpStatusCode.Unauthorized, Refusal(Problem.NOT_LOGGED_IN))
       return@onCall

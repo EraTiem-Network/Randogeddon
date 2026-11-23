@@ -61,11 +61,28 @@ actual object Platform {
 
   actual fun setPageLanguage(code: String) = jsSetPageLanguage(code)
 
-  actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) = jsPickFiles(accept, binary, onPicked)
+  // Its own kind for each ending (`.apworld`: `apworld`), so it remembers its folder too
+  actual fun pickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit) =
+    pickFiles(accept.filter { it.isLetterOrDigit() }.take(32), accept, binary, Long.MAX_VALUE, true, { _, _ -> }, onPicked)
+
+  actual fun pickFiles(
+    kind: String,
+    accept: String,
+    binary: Boolean,
+    maxBytes: Long,
+    multiple: Boolean,
+    onProblem: (fileName: String, problem: PickProblem) -> Unit,
+    onPicked: (String) -> Unit,
+  ) = jsPickFiles(
+    kind, accept, binary, if (maxBytes == Long.MAX_VALUE) Double.POSITIVE_INFINITY else maxBytes.toDouble(), multiple,
+    { name, code -> onProblem(name, PickProblem.of(code)) }, onPicked,
+  )
 
   actual fun copy(text: String, onDone: (Boolean) -> Unit) = jsCopy(text, onDone)
 
-  actual fun openLink(url: String) = jsOpenLink(url)
+  actual fun openLink(url: String) {
+    if (url.startsWith("https://", ignoreCase = true) || url.startsWith("http://", ignoreCase = true)) jsOpenLink(url)
+  }
 
   actual fun download(path: String) = jsDownload(path)
 
@@ -142,19 +159,47 @@ private fun jsHideLogin(): Unit = js("window.randogeddonLogin.hide()")
 private fun jsShowPasswordChange(name: String, onDone: (Boolean) -> Unit): Unit =
   js("window.randogeddonLogin.password(name, onDone)")
 
-// A hidden file input; every chosen file is read as text, or as base64 (from a data: URL)
-private fun jsPickFiles(accept: String, binary: Boolean, onPicked: (String) -> Unit): Unit = js(
-  """{ const input = document.createElement('input');
-       input.type = 'file'; input.multiple = true; input.accept = accept;
-       const read = f => binary
-         ? new Promise(done => { const r = new FileReader();
-             r.onload = () => done(r.result.substring(r.result.indexOf(',') + 1)); r.readAsDataURL(f); })
-         : f.text();
-       input.addEventListener('change', () => {
-         Promise.all(Array.from(input.files).map(f => read(f).then(t => ({ fileName: f.name, content: t }))))
-           .then(files => onPicked(JSON.stringify(files)));
+// The File System Access API's dialog where there is one (its `id` makes the browser remember each kind's folder),
+// else a hidden file input. Each chosen file's size is checked first; then it is read as text, or as base64 (from a
+// data: URL). A file too large or unreadable is reported and left out; nothing is kept (no object URLs, no handles)
+private fun jsPickFiles(
+  kind: String,
+  accept: String,
+  binary: Boolean,
+  maxBytes: Double,
+  multiple: Boolean,
+  onProblem: (String, String) -> Unit,
+  onPicked: (String) -> Unit,
+): Unit = js(
+  """{ const read = f => new Promise(done => {
+         const fail = () => { onProblem(f.name, 'unreadable'); done(null); };
+         if (f.size > maxBytes) { onProblem(f.name, 'too-large'); done(null); return; }
+         const r = new FileReader();
+         r.onload = () => done(binary ? r.result.substring(r.result.indexOf(',') + 1) : r.result);
+         r.onerror = fail; r.onabort = fail;
+         try { if (binary) r.readAsDataURL(f); else r.readAsText(f); } catch (e) { fail(); }
        });
-       input.click(); }"""
+       const deliver = files => {
+         if (!files.length) return;
+         Promise.all(files.map(f => read(f).then(t => t === null ? null : ({ fileName: f.name, content: t }))))
+           .then(all => { const ok = all.filter(x => x !== null); if (ok.length) onPicked(JSON.stringify(ok)); });
+       };
+       const input = () => {
+         const i = document.createElement('input');
+         i.type = 'file'; i.multiple = multiple; i.accept = accept;
+         i.addEventListener('change', () => { const files = Array.from(i.files || []); i.value = ''; deliver(files); });
+         i.click();
+       };
+       if (typeof window.showOpenFilePicker !== 'function') { input(); return; }
+       const id = kind.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+       const endings = accept.split(',').map(s => s.trim()).filter(s => /^\.[A-Za-z0-9]{1,16}$/.test(s));
+       const options = { multiple: multiple };
+       if (id) options.id = id;
+       if (endings.length) options.types = [{ description: endings.join(', '), accept: { 'application/octet-stream': endings } }];
+       window.showOpenFilePicker(options)
+         .then(handles => Promise.all(handles.map(h => h.getFile().catch(() => { onProblem(h.name, 'unreadable'); return null; }))))
+         .then(files => deliver(files.filter(f => f !== null)),
+               e => { if (!e || e.name !== 'AbortError') input(); }); }"""
 )
 
 // The browser's answer: taken, or refused (no clipboard on a page without HTTPS, no permission)

@@ -104,6 +104,11 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   install(ContentNegotiation) { json(ApiJson) }
   install(SecurityHeaders) { secure = trackerConfig.cookieSecure }
   install(RequestLimits)
+  // The login cookie's name; nothing changes from another site's page
+  install(CrossSiteGuard) {
+    publicUrl = trackerConfig.publicUrl
+    secure = trackerConfig.cookieSecure
+  }
   // Behind Traefik: how the client reached it comes from the X-Forwarded headers
   install(XForwardedHeaders) {
     // The last address is the one Traefik saw; earlier ones in the header come from the client and can be made up

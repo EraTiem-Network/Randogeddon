@@ -49,6 +49,7 @@ object English : Texts {
     override val nothingFound = "Nothing found"
     override val logOut = "Log out"
     override val allYourSessions = "All your sessions"
+    override val yourSession = "Your session"
     override val serverUnreachable = "The server can't be reached"
     override val unexpectedAnswer = "Unexpected answer"
     override fun failed(status: Int) = "Failed ($status)"
@@ -56,6 +57,7 @@ object English : Texts {
 
   override val frame = object : FrameTexts {
     override val cantReachServer = "Can't reach the server – trying again…"
+    override val notLoggedOut = "The server can't be reached, so you are still logged in. Please try again."
     override fun loggedInAs(name: String) =
       "You're logged in as $name. To sign up with this invitation, log out and open this link again."
     override fun noSuchSession(id: String) = "There is no session $id, or you aren't part of it."

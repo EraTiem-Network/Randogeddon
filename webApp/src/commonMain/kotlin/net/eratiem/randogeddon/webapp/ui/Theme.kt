@@ -130,16 +130,21 @@ object Themes {
     Platform.onSystemDarkModeChange { systemDark = it; tellPage() }
   }
 
+  // Each palette made once: the app reads [palette] on every recomposition of its frame (each push of the session)
+  private val made = mutableMapOf<Pair<Theme, Boolean>, Palette>()
+
   /** The palette that shows now. */
   val palette: Palette
     get() {
-      val (light, dark) = palettes(theme)
       val isDark = when (mode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
         ThemeMode.AUTO -> systemDark
       }
-      return (if (isDark) dark else light).palette()
+      return made.getOrPut(theme to isDark) {
+        val (light, dark) = palettes(theme)
+        (if (isDark) dark else light).palette()
+      }
     }
 
   /** The fonts that show now: the chosen one (or the theme's), once it is loaded. */

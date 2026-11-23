@@ -3,27 +3,20 @@ package net.eratiem.randogeddon.webapp.dashboard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import net.eratiem.randogeddon.shared.PlayerDetail
+import net.eratiem.randogeddon.shared.PlayerSummary
+import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.number
@@ -40,7 +35,6 @@ import net.eratiem.randogeddon.webapp.api.SessionSource
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.clock
-import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.DialogSection
 import net.eratiem.randogeddon.webapp.ui.Divider
@@ -51,7 +45,9 @@ import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
-import net.eratiem.randogeddon.webapp.ui.ProgressBar
+import net.eratiem.randogeddon.webapp.ui.PageButton
+import net.eratiem.randogeddon.webapp.ui.Paged
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.TwoColumns
 import net.eratiem.randogeddon.webapp.ui.Txt
@@ -60,30 +56,42 @@ import net.eratiem.randogeddon.webapp.ui.scrolling
 /** The slot panel's tabs: its checks (available, remaining), its map, its items (sent, received), its connections. */
 internal enum class WorldTab(val key: String) { CHECKS("checks"), MAP("map"), TRANSPORTED("transported"), CONNECTIONS("connections") }
 
-/** One world as a dialog; see [WorldDetail]. */
+/**
+ * One world as a dialog; see [WorldDetail]. [changed]: what of the slot, when it changes, has its detail loaded anew
+ * (its [PlayerSummary]); without it, every new [version] of the session.
+ */
 @Composable
-fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit) {
+fun PlayerDialog(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, changed: Any? = version) {
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     // A dialog is its own window: its text needs its own selection
-    SelectionContainer { WorldDetail(slot, version, repository, onClose, back = false) }
+    Selectable { WorldDetail(slot, version, repository, onClose, back = false, changed = changed) }
   }
 }
 
+/** The part of a summary whose change has [slot]'s detail loaded anew: its own numbers ([PlayerSummary]). */
+fun Summary.slotChanges(slot: Int): PlayerSummary? = players.firstOrNull { it.slot == slot }
+
 /**
  * One world: its progress and time, then in tabs its checks (available now, the rest remaining), its map, its items
- * (sent, received) and its connection log; reloaded when the session changes while it is shown. [back]: shown inside another view (a person), so the button goes back instead of closing.
+ * (sent, received) and its connection log; loaded again when [changed] changes while it is shown (the slot's numbers,
+ * [slotChanges]: a push about another slot doesn't download this one's whole detail). [back]: shown inside another
+ * view (a person), so the button goes back instead of closing.
  */
 @Composable
-fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean) {
+fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: () -> Unit, back: Boolean, changed: Any? = version) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   var detail by remember(slot) { mutableStateOf<PlayerDetail?>(null) }
   var chosen by remember(slot) { mutableStateOf(WorldTab.CHECKS) }
   var checksQuery by remember(slot) { mutableStateOf("") }
   var itemsQuery by remember(slot) { mutableStateOf("") }
-  LaunchedEffect(slot, version) {
+  LaunchedEffect(slot, changed) {
     repository.player(slot)?.let { detail = it }
   }
+  // Looked up for every location shown: made once a detail
+  val availableSet = remember(detail) { detail?.availableLocations?.toSet().orEmpty() }
+  val missingSet = remember(detail) { detail?.missing?.toSet().orEmpty() }
+  val rest = remember(detail, availableSet) { detail?.missing?.filter { it !in availableSet }.orEmpty() }
   // The map's size: larger than its panel it lies over the whole window, and at its largest the page is in full
   // screen. Esc leaves full screen past the page: the map stays over the window then
   var mapSize by remember(slot) { mutableStateOf(MapSize.PANEL) }
@@ -100,7 +108,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
   }
 
   val d = detail
-  val percent = if (d == null || d.total == 0) 0.0 else 100.0 * d.checked / d.total
+  val percent = if (d == null) 0.0 else percentOf(d.checked, d.total)
   // The map as wide as the window lets it be
   DialogCard(if (chosen == WorldTab.MAP) 1600.dp else 900.dp, header = {
     if (d != null) GameChip(d.game, size = 40.dp)
@@ -108,7 +116,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
       Txt(d?.name ?: "…", size = 17.sp, weight = FontWeight.SemiBold)
       if (d != null) Txt(t.dialogs.slotHeading(d.game, d.checked, d.total, t.decimal(percent)), size = 12.5.sp, color = p.muted)
     }
-    IconButton(onClose, if (back) Icon.BACK else Icon.CLOSE)
+    IconButton(onClose, if (back) Icon.BACK else Icon.CLOSE, label = if (back) t.dialogs.back else t.dialogs.close)
   }) { available ->
     val twoColumns = available >= 700.dp
     if (d == null) {
@@ -136,7 +144,6 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
       when (chosen) {
         WorldTab.CHECKS -> {
           FilterField(checksQuery, { checksQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth())
-          val available = d.availableLocations.toSet()
           val matches = { name: String -> checksQuery.isBlank() || name.contains(checksQuery, ignoreCase = true) }
           TwoColumns(twoColumns, 16.dp, {
             // What its logic reaches now
@@ -156,7 +163,6 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
             }
           }, {
             // The rest of its remaining checks
-            val rest = d.missing.filter { it !in available }
             val shown = rest.filter(matches)
             DialogSection(t.dialogs.remainingChecks(rest.size))
             if (d.missing.isEmpty()) Txt(t.dialogs.allDone, size = 13.sp, color = p.ok)
@@ -167,7 +173,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         WorldTab.MAP -> {
           val map = d.map
           if (map == null || map.regions.isEmpty()) Txt(t.dialogs.mapNone, size = 13.sp, color = p.muted)
-          else WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems, MapSize.PANEL, ::sizeMap)
+          else WorldMap(map, missingSet, availableSet, d.sentItems, MapSize.PANEL, ::sizeMap)
         }
         WorldTab.TRANSPORTED -> {
           FilterField(itemsQuery, { itemsQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth())
@@ -227,44 +233,16 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
   val map = d?.map
   if (mapSize != MapSize.PANEL && d != null && map != null && map.regions.isNotEmpty()) {
     Dialog(onDismissRequest = { sizeMap(MapSize.PANEL) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-      SelectionContainer {
+      Selectable {
         Column(Modifier.fillMaxSize().background(p.panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GameChip(d.game, size = 30.dp)
             Txt(d.name, size = 15.sp, weight = FontWeight.SemiBold, maxLines = 1)
             Txt(t.dialogs.slotHeading(d.game, d.checked, d.total, t.decimal(percent)), size = 12.5.sp, color = p.muted, maxLines = 1)
           }
-          WorldMap(map, d.missing.toSet(), d.availableLocations.toSet(), d.sentItems, mapSize, ::sizeMap)
+          WorldMap(map, missingSet, availableSet, d.sentItems, mapSize, ::sizeMap)
         }
       }
-    }
-  }
-}
-
-
-/**
- * [items] [pageSize] at a time, each as [row], with which of how many they are and arrows to the others below them
- * (none for a list that fits). A slot can have thousands of locations: drawn all at once, they stopped the browser.
- * [reset]: back to the first page when it changes (a filter's text).
- */
-@Composable
-internal fun <T> Paged(items: List<T>, pageSize: Int, reset: Any? = null, row: @Composable (T) -> Unit) {
-  val p = LocalPalette.current
-  val t = LocalTexts.current
-  var page by remember(reset) { mutableIntStateOf(0) }
-  val pages = (items.size + pageSize - 1) / pageSize
-  // A list that got shorter keeps a page that exists
-  val shown = page.coerceIn(0, (pages - 1).coerceAtLeast(0))
-  val from = shown * pageSize
-  items.subList(from, minOf(from + pageSize, items.size)).forEach { row(it) }
-  if (pages > 1) {
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt(
-        t.dialogs.rangeOf(t.number(from + 1), t.number(minOf(from + pageSize, items.size)), t.number(items.size)),
-        size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f),
-      )
-      if (shown > 0) Tip(t.dialogs.previousPage) { IconButton({ page = shown - 1 }, Icon.CHEVRON, Modifier.size(30.dp).rotate(90f)) }
-      if (shown < pages - 1) Tip(t.dialogs.nextPage) { IconButton({ page = shown + 1 }, Icon.CHEVRON, Modifier.size(30.dp).rotate(-90f)) }
     }
   }
 }

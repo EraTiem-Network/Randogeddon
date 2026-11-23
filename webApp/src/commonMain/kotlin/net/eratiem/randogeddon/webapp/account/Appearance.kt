@@ -32,6 +32,7 @@ import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
 import net.eratiem.randogeddon.webapp.ui.palette
 
@@ -42,7 +43,7 @@ internal fun ThemeCard(theme: Theme, name: String, chosen: Boolean, onPick: () -
   val t = palettes(theme).let { (light, dark) -> if (p.dark) dark else light }.palette()
   val shape = RoundedCornerShape(12.dp)
   Column(
-    Modifier.width(150.dp).clip(shape)
+    Modifier.width(150.dp).focusRing(shape).clip(shape)
       .border(if (chosen) 2.dp else 1.dp, if (chosen) p.accent else p.border, shape)
       .hand().selectable(chosen, role = Role.RadioButton, onClick = onPick)
       .background(t.background),

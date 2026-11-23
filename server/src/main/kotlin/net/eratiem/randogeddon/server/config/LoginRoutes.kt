@@ -52,16 +52,34 @@ import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.i18n.Language
 
 /**
- * HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from other sites. Secure
- * can be switched off for a local demo ([TrackerConfig.cookieSecure]).
+ * The login cookie: HttpOnly, Secure, SameSite=Strict: unreachable for scripts, never sent over plain HTTP or from
+ * other sites. Secure can be switched off for a local demo ([TrackerConfig.cookieSecure]): this is its name then (and
+ * was everywhere before 0.23.5); a Secure one is [SECURE_SESSION_COOKIE].
  */
 const val SESSION_COOKIE = "randogeddon_session"
 
-/** The `state` of a login through the provider, for its callback (only on those two paths, 10 minutes). */
+/**
+ * The login cookie's name where it is Secure. A browser takes a `__Host-` cookie only over HTTPS, from this host, with
+ * `Path=/` and without a `Domain`: no other host under the same domain can set it or put its own login in its place.
+ */
+const val SECURE_SESSION_COOKIE = "__Host-$SESSION_COOKIE"
+
+/** The `__Host-` prefix where a cookie is Secure (it requires that); a plain name over plain HTTP (a local demo). */
+internal fun cookieName(name: String, secure: Boolean) = if (secure) "__Host-$name" else name
+
+/** The login cookie's name: [SECURE_SESSION_COOKIE] where it is Secure, [SESSION_COOKIE] otherwise. */
+fun sessionCookieName(secure: Boolean) = cookieName(SESSION_COOKIE, secure)
+
+/** The `state` of a login through the provider, for its callback (10 minutes). */
 private const val OIDC_COOKIE = "randogeddon_oidc"
 
+/**
+ * [OIDC_COOKIE] by [cookieName]: with the prefix on every path (which the prefix requires), without it (a local demo)
+ * only on the provider's two paths.
+ */
 private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
-  OIDC_COOKIE, value, maxAge = maxAge, path = "/api/login/oidc", secure = secure, httpOnly = true,
+  cookieName(OIDC_COOKIE, secure), value, maxAge = maxAge, path = if (secure) "/" else "/api/login/oidc", secure = secure,
+  httpOnly = true,
   // Lax: the provider's redirect back is a top-level navigation from another site
   extensions = mapOf("SameSite" to "Lax"),
 )
@@ -69,11 +87,13 @@ private fun oidcCookie(value: String, maxAge: Int, secure: Boolean) = Cookie(
 /**
  * Why a login through the provider didn't work, for the login form: the page reads it at `#/login-problem` and takes
  * it away. In a cookie, because a link could carry anyone's words onto the form (only this server sets cookies here).
+ * Named by [cookieName] (`__Host-randogeddon_login_problem` where it is Secure), so no other host under the domain can
+ * set it either.
  */
 const val LOGIN_PROBLEM_COOKIE = "randogeddon_login_problem"
 
 internal fun problemCookie(text: String, secure: Boolean) = Cookie(
-  LOGIN_PROBLEM_COOKIE, text, maxAge = 60, path = "/", secure = secure, httpOnly = false,
+  cookieName(LOGIN_PROBLEM_COOKIE, secure), text, maxAge = 60, path = "/", secure = secure, httpOnly = false,
   extensions = mapOf("SameSite" to "Lax"),
 )
 
@@ -113,7 +133,7 @@ fun Route.loginRoutes(
     get("/api/login/oidc/callback") {
       val state = call.request.queryParameters["state"].orEmpty()
       val code = call.request.queryParameters["code"]
-      val cookie = call.request.cookies[OIDC_COOKIE]
+      val cookie = call.request.cookies[cookieName(OIDC_COOKIE, secure)]
       call.response.cookies.append(oidcCookie("", 0, secure))
       // The state must be this browser's (no logins slipped in from elsewhere)
       val problem = when {
@@ -246,7 +266,7 @@ fun Route.loginRoutes(
     }
   }
   post("/api/logout") {
-    call.request.cookies[SESSION_COOKIE]?.let { logins.logout(it) }
+    call.sessionToken?.let { logins.logout(it) }
     call.response.cookies.append(sessionCookie("", 0, secure))
     call.respond(HttpStatusCode.NoContent)
   }
@@ -274,7 +294,7 @@ fun Route.meRoute(list: SessionList, limit: SessionLimit? = null) {
 }
 
 internal fun sessionCookie(value: String, maxAgeSeconds: Long, secure: Boolean) = Cookie(
-  name = SESSION_COOKIE,
+  name = sessionCookieName(secure),
   value = value,
   maxAge = maxAgeSeconds.toInt(),
   path = "/",

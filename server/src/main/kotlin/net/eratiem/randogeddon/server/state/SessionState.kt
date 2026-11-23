@@ -19,6 +19,7 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.server.util.long
 import net.eratiem.randogeddon.server.util.longs
 import net.eratiem.randogeddon.server.util.obj
+import net.eratiem.randogeddon.server.util.playerText
 import net.eratiem.randogeddon.server.util.string
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
@@ -60,6 +61,13 @@ private fun nonGameLeft(packet: JsonObject): Boolean {
   return NON_GAME_TAGS.any { "'$it'" in tags }
 }
 const val MAX_EVENTS = 500
+
+/** The longest chat line and alias the feed shows ([playerText]); a longer one is cut. */
+const val MAX_CHAT = 500
+const val MAX_ALIAS = 32
+
+/** A slot's alias (`!alias`) as the feed and the dashboard show it ([playerText]); its name if none is left. */
+private fun aliasOf(alias: String?, name: String): String = alias?.let { playerText(it, MAX_ALIAS) } ?: name
 
 /** The links between games the feed shows: the tracker listens for their `Bounced` packets by these tags. */
 val LINK_TAGS = listOf("DeathLink", "TrapLink")
@@ -255,7 +263,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         SlotType.GROUP -> groups[s] = Group(name, game)
         SlotType.PLAYER -> {
           val player = player(s, name, game)
-          player.alias = aliases[s]?.string("alias") ?: name
+          player.alias = aliasOf(aliases[s]?.string("alias"), name)
         }
       }
     }
@@ -362,7 +370,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
     packet.array("players")?.forEach { p ->
       val o = p.jsonObject
-      o.int("slot")?.let { players[it] }?.let { it.alias = o.string("alias") ?: it.name }
+      o.int("slot")?.let { players[it] }?.let { it.alias = aliasOf(o.string("alias"), it.name) }
     }
     touch()
   }
@@ -545,9 +553,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
       "Chat" -> {
         packet.int("slot")?.let { players[it] }?.let { seenPlaying(it, now) }
-        event(now, EventType.CHAT, slot = packet.int("slot"), message = packet.string("message") ?: "")
+        event(now, EventType.CHAT, slot = packet.int("slot"), message = chatLine(packet))
       }
-      "ServerChat" -> event(now, EventType.CHAT, slot = 0, message = packet.string("message") ?: "")
+      "ServerChat" -> event(now, EventType.CHAT, slot = 0, message = chatLine(packet))
       "Countdown" -> if (packet.int("countdown") == 0) event(now, EventType.COUNTDOWN, message = "GO!") else null
       else -> return
     }
@@ -555,16 +563,20 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
+  /** A chat line as its player wrote it, made one line of at most [MAX_CHAT] characters ([playerText]). */
+  private fun chatLine(packet: JsonObject): String = packet.string("message")?.let { playerText(it, MAX_CHAT) }.orEmpty()
+
   /**
    * A link between games (a `Bounced` packet with one of [LINK_TAGS]): a death or a trap passed on to every game
-   * linked. Its texts are the sending client's own: cut, and without control characters.
+   * linked. Its texts are the sending client's own: cut, one line, without control or direction-changing characters
+   * ([playerText]).
    */
   fun onBounced(packet: JsonObject, now: Long = clock()) {
     val tags = packet.array("tags").orEmpty().mapNotNull { tag -> (tag as? JsonPrimitive)?.takeIf { it.isString }?.content }
     val link = LINK_TAGS.firstOrNull { it in tags } ?: return
     val data = packet["data"] as? JsonObject ?: return
     fun text(key: String, max: Int): String? = (data[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-      ?.filterNot { it.isISOControl() }?.trim()?.take(max)?.ifEmpty { null }
+      ?.let { playerText(it, max) }
     val source = text("source", 80)
     val slot = source?.let { name -> players.values.firstOrNull { it.alias == name || it.name == name }?.slot }
     val detail = if (link == "DeathLink") text("cause", 200) else text("trap_name", 80)
@@ -1032,7 +1044,15 @@ internal fun statusOf(p: Player, lock: LockInfo?): PlayerStatus {
   }
 }
 
-private fun percent(part: Int, total: Int): Double = if (total == 0) 0.0 else round(1000.0 * part / total) / 10
+/**
+ * [part] of [total] in percent, to a tenth. 100 only when nothing is left: 4 998 of 5 000 is 99.9, not a rounded 100.0
+ * (what is complete goes by it, [net.eratiem.randogeddon.server.session.completed]).
+ */
+internal fun percent(part: Int, total: Int): Double = when {
+  total == 0 -> 0.0
+  part >= total -> 100.0
+  else -> minOf(round(1000.0 * part / total) / 10, 99.9)
+}
 
 private fun formatVersion(v: JsonObject): String = "${v.int("major") ?: 0}.${v.int("minor") ?: 0}.${v.int("build") ?: 0}"
 

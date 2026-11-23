@@ -244,9 +244,14 @@ class RequireLoginTest {
     val cookie = sessionCookie("t", 60, secure = true)
     assertTrue(cookie.secure && cookie.httpOnly)
     assertEquals("Strict", cookie.extensions["SameSite"])
+    // Secure: with the __Host- prefix (only this host sets it, for every path, with no Domain)
+    assertEquals("__Host-randogeddon_session", cookie.name)
+    assertEquals("/", cookie.path)
+    assertEquals(null, cookie.domain)
     val demo = sessionCookie("t", 60, secure = false)
     assertFalse(demo.secure)
     assertTrue(demo.httpOnly)
+    assertEquals(SESSION_COOKIE, demo.name)
   }
 
   @Test

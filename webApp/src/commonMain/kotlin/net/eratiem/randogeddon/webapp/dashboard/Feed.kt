@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,10 +35,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,11 +53,14 @@ import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.i18n.FeedTexts
 import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.number
+import net.eratiem.randogeddon.webapp.app.LocalFontChange
+import net.eratiem.randogeddon.webapp.app.LocalFonts
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.appendTemplate
 import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.app.fill
+import net.eratiem.randogeddon.webapp.app.inChange
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
@@ -61,6 +68,7 @@ import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.PagerRow
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
 import net.eratiem.randogeddon.webapp.ui.Tip
@@ -168,6 +176,13 @@ private fun FeedEvent.says(q: String): Boolean = listOfNotNull(
   link, linkSource,
 ).any { it.contains(q, ignoreCase = true) }
 
+/** The events of the filters *Keys & goals* and *Connections & chat*. */
+private val KEY_EVENTS = setOf(EventType.UNLOCK, EventType.GOAL, EventType.RELEASE, EventType.COLLECT)
+private val OTHER_EVENTS = setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN, EventType.CHEAT)
+
+/** How many lines an event's text has at most: a chat line can be long, and every viewer's feed shows it. */
+private const val EVENT_LINES = 6
+
 private enum class FeedKind {
   ALL, PROGRESSION, ITEMS, KEYS, HINTS, LINKS, OTHER;
 
@@ -215,7 +230,7 @@ internal fun Feed(
         Modifier.onSizeChanged { pickerHeight = with(density) { it.height.toDp() } },
       )
     }
-    if (onHide != null) IconButton(onHide, Icon.CLOSE, Modifier.size(pickerHeight))
+    if (onHide != null) IconButton(onHide, Icon.CLOSE, Modifier.size(pickerHeight), label = t.feed.hide)
   }) {
     FeedBody(s, Modifier.fillMaxWidth().then(if (fillHeight) Modifier.weight(1f) else Modifier).card(p), position, fillHeight)
   }
@@ -226,23 +241,30 @@ internal fun Feed(
 internal fun FeedBody(s: Summary, modifier: Modifier, position: FeedPosition, fillHeight: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  var who by remember { mutableStateOf<Int?>(null) }
-  var kind by remember { mutableStateOf(FeedKind.ALL) }
-  var query by remember { mutableStateOf("") }
+  // The filters are the session's: another session starts without them (its slots have other numbers)
+  val session = s.sessionId
+  var who by remember(session) { mutableStateOf<Int?>(null) }
+  var kind by remember(session) { mutableStateOf(FeedKind.ALL) }
+  var query by remember(session) { mutableStateOf("") }
   val q = query.trim()
   // The id of the event on top; null: the newest (new ones come in on top). On another page the events stay put
-  var top by remember { mutableStateOf<Long?>(null) }
-  val events = s.events.asReversed().filter { e ->
-    (who == null || who in listOfNotNull(e.slot, e.sender, e.receiver, e.finder)) && (q.isEmpty() || e.says(q)) &&
-      when (kind) {
-        FeedKind.ALL -> true
-        FeedKind.PROGRESSION -> e.type == EventType.ITEM && e.flags and ItemFlags.PROGRESSION != 0
-        FeedKind.ITEMS -> e.type == EventType.ITEM
-        FeedKind.KEYS -> e.type in setOf(EventType.UNLOCK, EventType.GOAL, EventType.RELEASE, EventType.COLLECT)
-        FeedKind.HINTS -> e.type == EventType.HINT
-        FeedKind.LINKS -> e.type == EventType.LINK
-        FeedKind.OTHER -> e.type in setOf(EventType.CHAT, EventType.JOIN, EventType.PART, EventType.COUNTDOWN, EventType.CHEAT)
-      }
+  var top by remember(session) { mutableStateOf<Long?>(null) }
+  // Filtered when the events or the filters change, not on every recomposition
+  val events = remember(s.events, who, kind, q) {
+    val slot = who
+    s.events.asReversed().filter { e ->
+      (slot == null || e.slot == slot || e.sender == slot || e.receiver == slot || e.finder == slot) &&
+        (q.isEmpty() || e.says(q)) &&
+        when (kind) {
+          FeedKind.ALL -> true
+          FeedKind.PROGRESSION -> e.type == EventType.ITEM && e.flags and ItemFlags.PROGRESSION != 0
+          FeedKind.ITEMS -> e.type == EventType.ITEM
+          FeedKind.KEYS -> e.type in KEY_EVENTS
+          FeedKind.HINTS -> e.type == EventType.HINT
+          FeedKind.LINKS -> e.type == EventType.LINK
+          FeedKind.OTHER -> e.type in OTHER_EVENTS
+        }
+    }
   }
   val topIndex = top?.let { id -> events.indexOfFirst { it.id <= id }.coerceAtLeast(0) } ?: 0
   val page = events.drop(topIndex).take(FEED_PAGE)
@@ -272,24 +294,12 @@ internal fun FeedBody(s: Summary, modifier: Modifier, position: FeedPosition, fi
     // Which events these are, counted from the newest, and the pages above (newer) and below (older)
     if (events.size > FEED_PAGE) {
       Divider()
-      Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        Txt(
-          t.feed.eventsOf(t.number(topIndex + 1), t.number(topIndex + page.size), t.number(events.size)), size = 12.5.sp,
-          color = p.muted, modifier = Modifier.weight(1f),
-        )
-        if (topIndex > 0) Tip(t.feed.newer) {
-          IconButton(
-            { top = (topIndex - FEED_PAGE).let { if (it <= 0) null else events[it].id } },
-            Icon.CHEVRON, Modifier.size(30.dp).rotate(180f),
-          )
-        }
-        if (topIndex + FEED_PAGE < events.size) Tip(t.feed.older) {
-          IconButton({ top = events[topIndex + FEED_PAGE].id }, Icon.CHEVRON, Modifier.size(30.dp))
-        }
-      }
+      PagerRow(
+        t.feed.eventsOf(t.number(topIndex + 1), t.number(topIndex + page.size), t.number(events.size)), t.feed.newer, t.feed.older,
+        onEarlier = if (topIndex > 0) ({ top = (topIndex - FEED_PAGE).let { if (it <= 0) null else events[it].id } }) else null,
+        onLater = if (topIndex + FEED_PAGE < events.size) ({ top = events[topIndex + FEED_PAGE].id }) else null,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), upDown = true,
+      )
     }
   }
 }
@@ -386,7 +396,8 @@ private fun FeedLine(e: FeedEvent) {
   val system = SpanStyle(color = p.muted, fontStyle = FontStyle.Italic)
   val item = SpanStyle(fontWeight = FontWeight.SemiBold, color = p.item(e.flags))
   val player = mapOf("player" to (e.playerName.orEmpty() to bold))
-  Txt(buildAnnotatedString {
+  // Bounded: a long line (a chat line, a name) ends in an ellipsis instead of filling the feed
+  FeedText(buildAnnotatedString {
     when (e.type) {
       EventType.ITEM -> appendTemplate(
         if (e.sender == e.receiver) f.foundOwn else f.sent,
@@ -454,12 +465,34 @@ private fun FeedLine(e: FeedEvent) {
     }
     // An item a client took with !getitem: Archipelago marks it as a cheat
     if (e.cheat && e.type != EventType.CHEAT) withStyle(SpanStyle(color = p.trap, fontWeight = FontWeight.SemiBold)) { append(f.cheatMark) }
-  }, size = 13.5.sp)
+  }, EVENT_LINES)
   // A death's cause, in its game's words
   val cause = e.message
-  if (e.type == EventType.LINK && e.link == "DeathLink" && !cause.isNullOrEmpty()) Txt(cause, size = 11.5.sp, color = p.muted)
+  if (e.type == EventType.LINK && e.link == "DeathLink" && !cause.isNullOrEmpty()) Txt(cause, size = 11.5.sp, color = p.muted, maxLines = 2)
   val location = e.locationName
   if ((e.type == EventType.ITEM || e.type == EventType.UNLOCK) && !location.isNullOrEmpty()) {
-    Txt(location, size = 11.5.sp, color = p.muted)
+    Txt(location, size = 11.5.sp, color = p.muted, maxLines = 2)
   }
+}
+
+/** The feed's text size. */
+private val FEED_TEXT = 13.5.sp
+
+/**
+ * An event's [text] as [Txt] draws a styled text (the page's font, also while it changes), at most [maxLines] lines,
+ * the last one ending in an ellipsis where it is cut.
+ */
+@Composable
+private fun FeedText(text: AnnotatedString, maxLines: Int) {
+  val change = LocalFontChange.current
+  val fonts = LocalFonts.current
+  BasicText(
+    text = if (change != null) text.inChange(change, heading = false, FEED_TEXT) else text,
+    style = TextStyle(
+      color = LocalPalette.current.text, fontSize = FEED_TEXT * fonts.textScale, lineHeight = FEED_TEXT * 1.4f,
+      fontFamily = fonts.text,
+    ),
+    maxLines = maxLines,
+    overflow = TextOverflow.Ellipsis,
+  )
 }

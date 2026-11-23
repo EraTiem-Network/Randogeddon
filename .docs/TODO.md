@@ -63,9 +63,24 @@ The parts:
       still reach the database's port (D23); the tracker's refresh still reads `sessions` four times (D19, in
       part); not tried: the update on the live server (the database's container recreated, V29 on its data), a
       mail's time in an account's zone as it arrives
-- [ ] 0.23.5: the web app
+- [ ] Left from 0.23.5 (the web app's review):
+    - [ ] S2: no npm lock file is committed. Looked at: the project has no npm dependencies of its own (its lock
+          file is empty); webpack and the rest come with the Kotlin plugin. Whether the plugin pins them wasn't
+          confirmed: with 0.23.7 (the dependencies)
+    - [ ] The content policy still allows inline styles: the login page has none any more; to drop it once a
+          browser shows that Compose adds none of its own
+    - [ ] W32: the web app has no tests (no test source set; its new pure functions are ready for them:
+          `Summary.replaces`, `retryDelay`, `homeTarget`, `Route.parse`, `pathSegment`)
+    - [ ] Not done: a tip doesn't open when its button gets the focus by keyboard; the in-place confirmations
+          don't take Enter or Escape; polling doesn't pause while the tab is hidden; large uploads still go as
+          base64 (W11); `AdminUsers.kt` and `AdminApworlds.kt` aren't split (W29); chat lines from before the
+          update stay as they were; an old login cookie's login isn't ended on the server (it runs out)
+    - [ ] Not seen: the file pickers (their folders, their messages), a person's panel on a share-link page,
+          someone with one session, Enter in the forms, a text selection kept in its panel, the page on a phone,
+          whether Space presses a focused button and a phone keyboard's Go key sends a form
 - [ ] 0.23.6: Archipelago's wrappers and the World Locks APWorld
 - [ ] 0.23.7: the scripts, the containers and the dependencies (the images, compose files, `audit.sh`)
+- [ ] After 0.23.7: every "Left from" point above gone through with the user (the user on 2026-11-23)
 
 ## Later
 
@@ -75,6 +90,22 @@ The parts:
       (asked for on 2026-11-23)
 - [ ] Sent and received as two values each, all and progression, as the checks have them, with matching symbols;
       in the Overview's panel of the items transported too (asked for on 2026-11-23; can be one pull request)
+- [ ] The spoiler page's *Everything*: whether a check is checked (asked for on 2026-11-23; the placements carry a
+      mark since 0.23.2.8: to look at with the user what is missing), and for a World Key which slot it opens
+- [ ] Cheats, an item's hint: an option whether it names only the slot the item is on or its location too; only
+      the slot unless chosen otherwise (asked for on 2026-11-23)
+- [ ] Hosted Minecraft Dig (reported on 2026-11-23): a connected Minecraft Dig server doesn't seem to keep its
+      session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
+      should shut down after a number of minutes without players that an Administrator sets, 5 by default
+- [ ] The bridge's page: a copy option for the slot's name (asked for on 2026-11-23)
+- [ ] World Locks in the new session's form, reworked (asked for on 2026-11-23): the locks' drop-down goes, only the
+      mixed mode stays:
+    - a checkbox that turns locking on
+    - the mixed mode as it is (each world set locked, unlocked or random)
+    - a bar for the random ones: how many of them start unlocked at least. Its least: 1, or 0 if at least one world
+      is set unlocked; its most: the number of random worlds minus 1 (all of them open would make random pointless)
+    - an option to have that number itself picked by chance within the bar's range
+    - settings for the locks' progression balancing and accessibility (shown when locks are used)
 - [ ] One user per session for Archipelago's processes (left by the gateway's review, 0.23.2.1; the user on
       2026-11-23: later): they share one user, so a world's code can read and change another session's files and
       read another game server's memory. A redesign of the directories, with the existing sessions' moved

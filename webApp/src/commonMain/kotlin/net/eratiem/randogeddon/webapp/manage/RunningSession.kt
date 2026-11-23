@@ -44,7 +44,12 @@ import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.app.date
+import net.eratiem.randogeddon.webapp.dashboard.SpoilerConsent
+import net.eratiem.randogeddon.webapp.dashboard.allChecked
+import net.eratiem.randogeddon.webapp.dashboard.dotSegment
 import net.eratiem.randogeddon.webapp.dashboard.slotFilePath
+import net.eratiem.randogeddon.webapp.ui.Button
+import net.eratiem.randogeddon.webapp.ui.Check
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Mono
@@ -54,6 +59,7 @@ import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /**
  * Session [id] as the admin panel shows it: how it stands ([overview]: also how many game servers are in use), its
@@ -85,10 +91,13 @@ fun SessionSection(
     }
   }
   LaunchedEffect(Unit) { load() }
-  fun act(path: String, body: String? = null) = scope.launch {
-    problem = post("api/sessions/$id/manage/$path", body)
-    load()
-    onChanged()
+  // One action at a time: a second click while one is sent (finish, delete, …) is dropped
+  val action = rememberAction()
+  fun act(path: String, body: String? = null) = action.run {
+    post("api/sessions/$id/manage/$path", body).also {
+      load()
+      onChanged()
+    }
   }
 
   val session = view?.session
@@ -101,17 +110,18 @@ fun SessionSection(
             color = if (i == 0) p.text else p.muted)
         }
       }
-      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      (action.problem ?: problem)?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       when {
         gone -> Txt(t.sessionAdmin.deleted, color = p.muted)
         session == null -> Txt("…", color = p.muted)
         else -> SessionSummary(
           session,
+          busy = action.busy,
           onDelete = {
-            scope.launch {
+            action.run {
               when (val answer = call("DELETE", "api/sessions/$id/manage", null) { }) {
-                is Answer.Ok -> { gone = true; onChanged() }
-                is Answer.Failed -> problem = answer.message
+                is Answer.Ok -> { gone = true; onChanged(); null }
+                is Answer.Failed -> answer.message
               }
             }
           },
@@ -119,17 +129,15 @@ fun SessionSection(
           onCancelFinish = { act("finish/cancel") },
           onReopen = { act("reopen") },
           onKeep = { keep -> act("keep", ApiJson.encodeToString(KeepRequest.serializer(), KeepRequest(keep))) },
+          // Administrators' only: the tracker refuses `api/admin/…` to everyone else too
           onKeepRunning = if (!administrator) null else { keep ->
-            scope.launch {
+            action.run {
               val body = ApiJson.encodeToString(KeepRunningRequest.serializer(), KeepRunningRequest(keep))
-              problem = when (val r = call("PUT", "api/admin/sessions/$id/keep-running", body) { }) {
-                is Answer.Ok -> null
-                is Answer.Failed -> r.message
-              }
-              load()
+              post("api/admin/sessions/$id/keep-running", body, method = "PUT").also { load() }
             }
           },
-          onSpoiler = { onSpoiler(id) },
+          // Asked (a running session) and confirmed: the spoiler page doesn't ask again in this tab
+          onSpoiler = { confirmed -> if (confirmed) SpoilerConsent.give(id); onSpoiler(id) },
           onDashboard = { onDashboard(id) },
         )
       }
@@ -144,9 +152,12 @@ fun PatchFilesSection(id: String) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   var files by remember(id) { mutableStateOf<List<SlotFile>?>(null) }
+  var problem by remember(id) { mutableStateOf<String?>(null) }
   LaunchedEffect(id) {
-    (call("GET", "api/sessions/$id/files", null, SlotFiles.serializer()) as? Answer.Ok)
-      ?.let { files = it.value.files }
+    when (val answer = call("GET", "api/sessions/$id/files", null, SlotFiles.serializer())) {
+      is Answer.Ok -> { files = answer.value.files; problem = null }
+      is Answer.Failed -> problem = answer.message
+    }
   }
   val list = files.orEmpty()
   Section(
@@ -154,13 +165,15 @@ fun PatchFilesSection(id: String) {
     actions = { InfoTip("${t.sessionAdmin.filesTip} ${t.connection.patchHowTo}") },
   ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       if (files != null && list.isEmpty()) Txt(t.sessionAdmin.noPatchFiles, size = 13.sp, color = p.muted)
       list.forEach { file ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Pill(file.slotName ?: t.sessionAdmin.slotNumber(file.slot), p.hue(file.slotName ?: file.name))
           Mono(file.name, Modifier.weight(1f))
           Txt(t.fileSize(file.size), size = 12.sp, color = p.muted, maxLines = 1)
-          SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
+          // `.` or `..` would be resolved away in the path (encoded too): no download for such a name
+          if (!dotSegment(file.name)) SmallButton(t.connection.download, { Platform.download(slotFilePath(id, file.name)) })
         }
       }
     }
@@ -207,7 +220,8 @@ internal fun reopenable(until: Long?): Boolean = until != null && Platform.now()
 @Composable
 private fun SessionSummary(
   session: SessionInfo,
-  /** Its spoiler log has its playthrough: only then its button. */
+  /** An action is being sent: the buttons wait for it. */
+  busy: Boolean,
   onDelete: () -> Unit,
   onFinish: () -> Unit,
   onCancelFinish: () -> Unit,
@@ -215,7 +229,8 @@ private fun SessionSummary(
   onKeep: (Boolean) -> Unit,
   /** Administrators: its game server keeps running without players (or sleeps); `null`: not theirs to choose. */
   onKeepRunning: ((Boolean) -> Unit)?,
-  onSpoiler: () -> Unit,
+  /** Opens the spoiler log; `true`: after its question was answered yes (a running session). */
+  onSpoiler: (confirmed: Boolean) -> Unit,
   onDashboard: () -> Unit,
 ) {
   val p = LocalPalette.current
@@ -224,7 +239,8 @@ private fun SessionSummary(
   var pending by remember { mutableStateOf<String?>(null) }
   val finishedAt = session.finishedAt
   val finishesAt = session.finishesAt
-  val complete = session.percent >= 100.0
+  // By the counts: a big session's rounded percentage would say 100 with a check or two left
+  val complete = allChecked(session.checked, session.total)
   val until = session.reopenUntil
   when {
     finishedAt != null -> Txt(
@@ -249,7 +265,7 @@ private fun SessionSummary(
     )
     "spoiler" -> Confirm(
       t.sessionAdmin.confirmSpoiler, t.sessionAdmin.showIt, danger = true,
-      onYes = { pending = null; onSpoiler() }, onCancel = { pending = null },
+      onYes = { pending = null; onSpoiler(true) }, onCancel = { pending = null },
     )
     "delete" -> Confirm(
       if (finishedAt != null) t.sessionAdmin.confirmDeleteFinished else t.sessionAdmin.confirmDeleteRunning,
@@ -263,25 +279,25 @@ private fun SessionSummary(
     )
     else -> ActionsLine(actions = {
       when {
-        finishedAt != null -> if (reopenable(until)) Tip(t.tips.reopen) { Button(t.sessionAdmin.reopen) { onReopen() } }
+        finishedAt != null -> if (reopenable(until)) Tip(t.tips.reopen) { Button(t.sessionAdmin.reopen, enabled = !busy) { onReopen() } }
         finishesAt != null -> {
-          Tip(t.tips.end) { Button(t.finish.endNow) { onFinish() } }
-          Button(t.common.cancel) { onCancelFinish() }
+          Tip(t.tips.end) { Button(t.finish.endNow, enabled = !busy) { onFinish() } }
+          Button(t.common.cancel, enabled = !busy) { onCancelFinish() }
         }
         else -> Tip(if (complete) t.tips.end else t.tips.pause) {
-          Button(if (complete) t.sessionAdmin.endSession else t.sessionAdmin.pauseSession) { pending = "finish" }
+          Button(if (complete) t.sessionAdmin.endSession else t.sessionAdmin.pauseSession, enabled = !busy) { pending = "finish" }
         }
       }
-      Button(t.sessionAdmin.deleteSession, danger = true) { pending = "delete" }
+      Button(t.sessionAdmin.deleteSession, enabled = !busy, danger = true) { pending = "delete" }
       if (finishedAt == null && onKeepRunning != null) {
-        Check(t.sessionAdmin.keepRunning, session.keepRunning, t.sessionAdmin.keepRunningTip) { onKeepRunning(it) }
+        Check(t.sessionAdmin.keepRunning, session.keepRunning, t.sessionAdmin.keepRunningTip, enabled = !busy) { onKeepRunning(it) }
       }
     }, links = {
       if (finishedAt != null) {
         Tip(t.tips.keep) { SmallButton(if (session.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = "keep" }) }
       }
       Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, onDashboard) }
-      Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler() else pending = "spoiler" }) }
+      Tip(t.tips.spoiler) { SmallButton(t.sessionAdmin.spoilerLog, { if (finishedAt != null) onSpoiler(false) else pending = "spoiler" }) }
     })
   }
 }

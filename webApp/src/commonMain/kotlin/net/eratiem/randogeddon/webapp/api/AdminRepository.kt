@@ -2,7 +2,6 @@ package net.eratiem.randogeddon.webapp.api
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +20,7 @@ import net.eratiem.randogeddon.webapp.app.Platform
 private const val MAX_LOG_LINES = 10_000
 
 /** The admin panel's view of session [id]'s game server: its state and log over one stream, and the actions. */
-class AdminRepository(private val scope: CoroutineScope, private val id: String) {
+class AdminRepository(private val id: String) {
   private val _state = MutableStateFlow<GameServerState?>(null)
   val state: StateFlow<GameServerState?> = _state.asStateFlow()
 
@@ -76,7 +75,7 @@ class AdminCache(private val scope: CoroutineScope) {
   private val repositories = mutableMapOf<String, AdminRepository>()
 
   /** Session [id]'s game server; its stream runs while it is shown, its state and log stay after. */
-  fun repository(id: String): AdminRepository = repositories.getOrPut(id) { AdminRepository(scope, id) }
+  fun repository(id: String): AdminRepository = repositories.getOrPut(id) { AdminRepository(id) }
 
   /**
    * Loads what isn't there yet of the sessions [ids], and forgets the sessions that are gone: the ones not in [all]

@@ -139,7 +139,7 @@ fun Route.sessionRoutes(
     // a release) becomes one update.
     sse("/stream") {
       val live = sessions.get(call.parameters["id"].orEmpty()) ?: return@sse
-      val token = call.request.cookies[SESSION_COOKIE]
+      val token = call.sessionToken
       // Ends once its login does (the page's next request then finds it logged out), or their part in the session (an
       // Administrator's too, as the account is now)
       val stillAllowed: suspend () -> Boolean = {

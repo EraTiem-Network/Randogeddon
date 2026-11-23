@@ -2,7 +2,6 @@ package net.eratiem.randogeddon.webapp.manage
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -50,6 +49,8 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.StatusPill
+import net.eratiem.randogeddon.webapp.ui.Action
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.Icon
@@ -58,11 +59,12 @@ import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
-import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /**
  * The panel, for everyone: the sessions the user manages (an [administrator]: every session). In a frame on top, one
@@ -116,7 +118,7 @@ fun AdminView(
 
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      IconButton(onBack, Icon.BACK)
+      IconButton(onBack, Icon.BACK, label = LocalTexts.current.dialogs.back)
       Txt(if (administrator) LocalTexts.current.panel.titleAdministrator else LocalTexts.current.panel.title, size = 20.sp, weight = FontWeight.Bold)
     }
     loadProblem?.let { Txt(it, size = 12.5.sp, color = LocalPalette.current.trap) }
@@ -136,6 +138,7 @@ fun AdminView(
         NEW_PAGE -> NewSessionSection(overview, administrator, onCreated = { created -> scope.launch { load().join(); onPage(created.id) } })
         else -> key(page) {
           val entry = all.firstOrNull { it.id == page }
+          // Support's view and the manager's sections only for looks: the tracker keeps `…/manage` to the managers
           if (entry != null && supportOnly(entry, administrator)) {
             SupportedSession(entry, cache, onSpoiler = onSpoiler, onDashboard = onDashboard)
           } else {
@@ -148,6 +151,7 @@ fun AdminView(
     if (administrator) Txt(LocalTexts.current.panel.general, size = ADMIN_HEADING, weight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
     // Finished ones to reopen or delete: not the ones the user only supports
     PastSessionsAdmin(all.filter { !it.status.running && !supportOnly(it, administrator) }, onChanged = { load() }, onSpoiler = onSpoiler)
+    // Shown to Administrators only; the tracker refuses `api/admin/…` to everyone else too
     if (administrator) {
       UsersAdmin(onChanged = { load() }, onSession = onDashboard)
       ApworldsSection()
@@ -168,23 +172,30 @@ internal fun supportOnly(session: SessionEntry, administrator: Boolean): Boolean
 private fun SupportedSession(session: SessionEntry, cache: AdminCache, onSpoiler: (String) -> Unit, onDashboard: (String) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  Row(
-    Modifier.fillMaxWidth().card(p).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-        StatusPill(session.status)
-        Pill(t.people.role(SessionRole.SUPPORT), p.accent)
+  // Not in a section: a selection of its own
+  Selectable {
+    Row(
+      Modifier.fillMaxWidth().card(p).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+          StatusPill(session.status)
+          Pill(t.people.role(SessionRole.SUPPORT), p.accent)
+        }
+        Txt("${session.id} · ${t.decimal(session.percent)}% · ${t.sessions.slots(session.slots)}", size = 12.sp, color = p.muted, maxLines = 1)
       }
-      Txt("${session.id} · ${t.decimal(session.percent)}% · ${t.sessions.slots(session.slots)}", size = 12.sp, color = p.muted, maxLines = 1)
+      Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
     }
-    Tip(t.tips.dashboard) { SmallButton(t.sessionAdmin.dashboard, { onDashboard(session.id) }) }
   }
   SpoilerRunSection(session.id, "support")
-  // A hint's next copy only once the spoiler log has its playthrough
-  CheatSection(session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) }, playthrough = session.spoilerReady)
+  // A hint's next copy only once the spoiler log has its playthrough. The session runs (support's view is only for
+  // running ones): its spoiler log asks first, as the Session-Manager's button does
+  CheatSection(
+    session.id, server = null, cache, support = true, onSpoiler = { onSpoiler(session.id) }, playthrough = session.spoilerReady,
+    spoilerAsks = session.finishedAt == null,
+  )
   // Who watches, and the share link: support hands them out as the players do
   WatchersSection(session.id)
 }
@@ -201,7 +212,6 @@ private fun SelectedSession(
   onSpoiler: (String) -> Unit,
   onDashboard: (String) -> Unit,
 ) {
-  val scope = rememberCoroutineScope()
   val repository = remember(id) { cache.repository(id) }
   DisposableEffect(repository) {
     repository.start()
@@ -209,18 +219,17 @@ private fun SelectedSession(
   }
   val state by repository.state.collectAsState()
   val problem by repository.problem.collectAsState()
-  var message by remember { mutableStateOf<String?>(null) }
-  fun run(block: suspend () -> String?) {
-    scope.launch {
-      message = block()
-      onChanged()
-    }
-  }
+  // Start, stop, restart: one at a time (a second click while one is sent is dropped); the console's lines apart
+  val control = rememberAction()
+  val console = rememberAction()
+  fun send(action: Action, block: suspend () -> String?) = action.run { block().also { onChanged() } }
   // Until the stream's first state: the one of the sessions' list
   val server = state ?: overview?.sessions?.firstOrNull { it.id == id }?.server
   SessionSection(
-    id, overview, cache, administrator, onChanged = { message = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
-    server = { ServerControls(server, problem, now, message, onAction = { action -> run { repository.control(action) } }) },
+    id, overview, cache, administrator, onChanged = { control.problem = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
+    server = {
+      ServerControls(server, problem, now, control.problem, busy = control.busy, onAction = { action -> send(control) { repository.control(action) } })
+    },
   )
   // Every section's log in one place, as tabs (each only for whoever may read it)
   val logs = remember(id) { PanelLogs() }
@@ -233,7 +242,7 @@ private fun SelectedSession(
     PatchFilesSection(id)
     // A hint's next copy only once the spoiler log has its playthrough
     CheatSection(id, server, cache, playthrough = overview?.sessions?.firstOrNull { it.id == id }?.spoilerReady != false)
-    ConsoleSection(onSend = { line -> run { repository.command(line) } })
+    ConsoleSection(console.busy, console.problem, onSend = { line -> send(console) { repository.command(line) } })
     LogSection(repository.log, logs)
   }
 }
@@ -246,6 +255,8 @@ private fun ServerControls(
   problem: String?,
   now: Long,
   message: String?,
+  /** An action is being sent: the buttons wait for it. */
+  busy: Boolean,
   onAction: (String) -> Unit,
 ) {
   val p = LocalPalette.current
@@ -291,21 +302,20 @@ private fun ServerControls(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           val running = state?.status == GameServerStatus.RUNNING || state?.status == GameServerStatus.STARTING
           Tip(t.panel.startTip) {
-            ActionButton(t.panel.start, enabled = !running) { onAction("start") }
+            Button(t.panel.start, enabled = !running && !busy) { onAction("start") }
           }
           Tip(t.panel.stopTip) {
-            ActionButton(t.panel.stop, enabled = running) { confirm = "stop" }
+            Button(t.panel.stop, enabled = running && !busy) { confirm = "stop" }
           }
           Tip(t.panel.restartTip) {
-            ActionButton(t.panel.restart, enabled = running) { confirm = "restart" }
+            Button(t.panel.restart, enabled = running && !busy) { confirm = "restart" }
           }
         }
       } else {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Txt(t.panel.confirm(restart = pending == "restart"), size = 13.sp, modifier = Modifier.weight(1f))
-          ActionButton(t.panel.yes(restart = pending == "restart"), danger = true) { onAction(pending); confirm = null }
-          ActionButton(t.common.cancel) { confirm = null }
-        }
+        Confirm(
+          t.panel.confirm(restart = pending == "restart"), t.panel.yes(restart = pending == "restart"), danger = true,
+          onYes = { onAction(pending); confirm = null }, onCancel = { confirm = null },
+        )
       }
       if (message != null) Txt(message, size = 12.5.sp, color = p.trap)
     }
@@ -324,15 +334,16 @@ private fun LogSection(log: List<LogLine>, logs: PanelLogs) {
   }
 }
 
+/** The game server's console: a command at a time ([busy] while one is sent), and why the last one wasn't. */
 @Composable
-private fun ConsoleSection(onSend: (String) -> Unit) {
+private fun ConsoleSection(busy: Boolean, problem: String?, onSend: (String) -> Unit) {
   val p = LocalPalette.current
   var input by remember { mutableStateOf("") }
   val history = remember { mutableStateListOf<String>() }
   var back by remember { mutableStateOf(0) }
   fun send() {
     val line = input.trim()
-    if (line.isEmpty()) return
+    if (line.isEmpty() || busy) return
     onSend(line)
     history.remove(line)
     history.add(line)
@@ -345,45 +356,30 @@ private fun ConsoleSection(onSend: (String) -> Unit) {
       InfoTip(LocalTexts.current.panel.consoleTip)
     },
   ) {
-    Row(
-      Modifier.fillMaxWidth().card(p).padding(12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      FilterField(
-        input, { input = it }, "/players",
-        Modifier.weight(1f).onPreviewKeyEvent { event ->
-          if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-          when (event.key) {
-            Key.Enter, Key.NumPadEnter -> { send(); true }
-            // Up and down walk through the commands sent before
-            Key.DirectionUp -> {
-              if (back < history.size) { back++; input = history[history.size - back] }
-              true
+    Column(Modifier.fillMaxWidth().card(p).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterField(
+          input, { input = it }, "/players",
+          Modifier.weight(1f).onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+              Key.Enter, Key.NumPadEnter -> { send(); true }
+              // Up and down walk through the commands sent before
+              Key.DirectionUp -> {
+                if (back < history.size) { back++; input = history[history.size - back] }
+                true
+              }
+              Key.DirectionDown -> {
+                if (back > 0) { back--; input = if (back == 0) "" else history[history.size - back] }
+                true
+              }
+              else -> false
             }
-            Key.DirectionDown -> {
-              if (back > 0) { back--; input = if (back == 0) "" else history[history.size - back] }
-              true
-            }
-            else -> false
-          }
-        },
-      )
-      ActionButton(LocalTexts.current.panel.send) { send() }
+          },
+        )
+        Button(LocalTexts.current.panel.send, enabled = !busy) { send() }
+      }
+      problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
     }
   }
-}
-
-@Composable
-private fun ActionButton(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
-  val p = LocalPalette.current
-  val color = if (danger) p.trap else p.accent
-  Txt(
-    text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (enabled) LocalPalette.current.onBrand else p.muted,
-    modifier = Modifier.clip(RoundedCornerShape(10.dp))
-      .background(if (enabled) color else p.panelAlt)
-      .then(if (enabled) Modifier.hand().clickable(onClick = onClick) else Modifier)
-      .padding(horizontal = 14.dp, vertical = 8.dp),
-  )
 }
