@@ -392,8 +392,8 @@ fun main() {
     runBlocking {
       sessions.sleepAll()
       // Nobody is connected to a game server now; the stops a killed gateway didn't write (its players would show as
-      // connected until their session's next start)
-      sessions.all().forEach { session -> events.stopped(session.id) }
+      // connected until their session's next start); none for a folder whose session the database no longer has
+      events.stoppedAll(sessions.all().map { it.id }) { sessionStore.all().mapTo(HashSet()) { it.id } }
     }
   }.start(wait = true)
 }

@@ -88,4 +88,23 @@ class SessionEventsTest {
       http.close()
     }
   }
+
+  @Test
+  fun `the start's stops skip a folder whose session is gone, and are all tried when the database doesn't answer`() =
+    runBlocking<Unit> {
+      val rows = CopyOnWriteArrayList<String>()
+      val scope = CoroutineScope(SupervisorJob())
+      val http = HttpClient(CIO)
+      try {
+        val events = SessionEvents({ id, _, kind, _ -> rows += "$id $kind" }, http, scope)
+        events.stoppedAll(listOf("brave-otter", "gone-heron", "quiet-fox")) { setOf("brave-otter", "quiet-fox") }
+        assertEquals(listOf("brave-otter ${SessionEventStore.STOP}", "quiet-fox ${SessionEventStore.STOP}"), rows.toList())
+        rows.clear()
+        events.stoppedAll(listOf("brave-otter", "gone-heron")) { error("connection refused") }
+        assertEquals(listOf("brave-otter ${SessionEventStore.STOP}", "gone-heron ${SessionEventStore.STOP}"), rows.toList())
+      } finally {
+        scope.cancel()
+        http.close()
+      }
+    }
 }

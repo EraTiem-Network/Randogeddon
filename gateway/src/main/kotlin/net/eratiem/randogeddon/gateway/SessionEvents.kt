@@ -167,6 +167,21 @@ class SessionEvents(
   suspend fun stopped(id: String) = write(id, SessionEventStore.STOP, "")
 
   /**
+   * [stopped] for each of [ids] (the session folders, at the gateway's start) whose session the database has, asked
+   * once ([known]: the IDs it has). A folder whose session is gone from it gets none (the events' foreign key would
+   * refuse it), said in one line. [known] failing (the database doesn't answer at the moment): each one's is tried as
+   * before, so a real session's isn't lost for it.
+   */
+  suspend fun stoppedAll(ids: Collection<String>, known: suspend () -> Set<String>) {
+    val there = runCatching { known() }
+      .onFailure { logger.warn("Could not read which sessions there are, writing every folder's stop: {}", it.message) }
+      .getOrNull()
+    val gone = if (there == null) emptyList() else ids.filter { it !in there }
+    if (gone.isNotEmpty()) logger.info("No stop for session folders the database has no session of: {}", gone.joinToString())
+    ids.filter { it !in gone }.forEach { stopped(it) }
+  }
+
+  /**
    * Waits until the gateway listens to session [id]'s game server, [within] at most (it goes on without then: a
    * player isn't kept out for it).
    */
