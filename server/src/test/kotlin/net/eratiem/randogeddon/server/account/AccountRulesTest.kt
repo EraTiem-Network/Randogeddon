@@ -54,6 +54,51 @@ class AccountRulesTest {
     assertEquals(Problem.PASSWORD_TOO_SHORT, PasswordRules.problem("short")?.problem)
   }
 
+  /** [password] as Bob (bob.builder@example.org) sets it. */
+  private fun bobs(password: String) = PasswordRules.problem(password, "Bobby", "Bob.Builder@example.org")?.problem
+
+  @Test
+  fun `without a name or address only the length is checked, the pages' own check`() {
+    assertNull(PasswordRules.problem("password1234"))
+    assertNull(PasswordRules.problem("aaaaaaaaaaaa"))
+    assertEquals(Problem.PASSWORD_TOO_SHORT, PasswordRules.problem("Bobby", "Bobby", null)?.problem)
+  }
+
+  @Test
+  fun `a new password with the account's name or the address's first part in it is refused, in any case`() {
+    for (password in listOf("bobby-likes-trains", "ilove BOBBY so much", "my bob.builder thing", "xxBob.Builderxx")) {
+      assertEquals(Problem.PASSWORD_HAS_NAME, bobs(password), password)
+    }
+    // A part shorter than 4 characters is in too many words to count
+    assertNull(PasswordRules.problem("Alfred builds trains", "Al", "al@example.org"))
+    // Only what is given: the domain isn't the person's
+    assertNull(bobs("example-trains-and-boats"))
+  }
+
+  @Test
+  fun `a repeat, a run or a common word with digits around it is refused`() {
+    val simple = listOf(
+      // Repeats: one character, a unit of up to 4, the last time cut short
+      "aaaaaaaaaaaa", "abcabcabcabc", "121212121212", "abcdabcdabcdab", "XyXyXyXyXyXy",
+      // Runs: digits and letters either way, keyboards' rows (QWERTY, QWERTZ), round past the end
+      "123456789012", "987654321098", "abcdefghijkl", "zyxwvutsrqpo", "qwertzuiopas", "qwertyuiopasdf", "poiuytrewqmn",
+      "xyzabcdefghi",
+      // A common word with digits, symbols, spaces or itself again
+      "password1234", "Password1234!", "passwordpassword", "Welcome2026!!", "randogeddon123", "P@ssw0rd2026",
+      "123 archipelago 456", "Passw0rd-Passw0rd", "!!sommer2026!!", "L3tm31n123456",
+    )
+    for (password in simple) assertEquals(Problem.PASSWORD_TOO_SIMPLE, bobs(password), password)
+  }
+
+  @Test
+  fun `a long random password, a phrase of words, and a common word among other words pass`() {
+    val fine = listOf(
+      "Kx9#vQ2!mZ7pL4@w", "correct horse battery staple", "my-password-is-very-long-indeed", "sommer regen und tee",
+      "password manager forever", "abcabcabcabd", "1234567890ab", "trains2026boats", "qwerty is a keyboard",
+    )
+    for (password in fine) assertNull(bobs(password), password)
+  }
+
   @Test
   fun `deletion periods are stored by their code`() {
     assertEquals(listOf("2w", "4w", "3m", "6m", "1y", "never"), AutoDelete.entries.map { it.code })

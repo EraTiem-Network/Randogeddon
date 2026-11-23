@@ -15,6 +15,7 @@ import net.eratiem.randogeddon.database.EmailChangeStore
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.LoginSessionStore
+import net.eratiem.randogeddon.database.PasswordResetStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionFinishStore
@@ -32,6 +33,7 @@ import net.eratiem.randogeddon.server.account.LoginService
 import net.eratiem.randogeddon.server.account.Mail
 import net.eratiem.randogeddon.server.account.MailLimits
 import net.eratiem.randogeddon.server.account.Mailer
+import net.eratiem.randogeddon.server.account.PasswordResets
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SlotRenewal
 import net.eratiem.randogeddon.server.account.TwoFactor
@@ -39,6 +41,7 @@ import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.admin.GameServerLimit
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLimit
+import net.eratiem.randogeddon.server.config.MailConfig
 import net.eratiem.randogeddon.server.config.OidcConfig
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.Archives
@@ -84,6 +87,8 @@ class TrackerHarness(oidc: OidcConfig? = null, adminPasswordLogin: Boolean = fal
     internalToken = "internal-token",
     oidc = oidc,
     adminPasswordLogin = adminPasswordLogin,
+    // Set, so a forgotten password is offered; the mails go to [mailer] all the same
+    mail = MailConfig(host = "mail.example.org"),
   )
 
   val users = UserStore(db)
@@ -110,6 +115,8 @@ class TrackerHarness(oidc: OidcConfig? = null, adminPasswordLogin: Boolean = fal
   val accounts = AccountService(
     users, invitations, emailChanges, twoFactor, logins, mailer, sessions, config, mailLimits, setups, NoRenewals,
   )
+  val passwordResets = PasswordResetStore(db)
+  val resets = PasswordResets(users, passwordResets, logins, twoFactor, mailer, config)
   val singleSignOn by lazy { SingleSignOn(config, users, LoginLinkStore(db), accounts, loginStore, NoRenewals) }
   val admin by lazy {
     SessionAdmin(

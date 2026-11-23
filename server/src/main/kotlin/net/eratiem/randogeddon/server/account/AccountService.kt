@@ -165,7 +165,8 @@ class AccountService(
     if (!info.valid) throw AccountProblem(HttpStatusCode.Gone, Refusal(info.code ?: Problem.LINK_DOESNT_WORK))
     val name = request.name.trim()
     nameProblem(name)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
-    PasswordRules.problem(request.password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    // Not an obvious one: the name being chosen, the invitation's address
+    PasswordRules.problem(request.password, name, info.email)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     if (users.findActive(name) != null) throw AccountProblem(HttpStatusCode.Conflict, Problem.NAME_TAKEN, "name" to name)
     val hash = tokenHash(request.token)
     val invitation = invitations.find(hash) ?: throw AccountProblem(HttpStatusCode.Gone, Problem.LINK_DOESNT_WORK)
@@ -260,7 +261,7 @@ class AccountService(
     config.requireOwn(user)
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(current, user.passwordHash) }
     if (!valid) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_PASSWORD)
-    PasswordRules.problem(password)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
+    PasswordRules.problem(password, user.name, user.email)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     users.setPassword(user.id, withContext(Dispatchers.Default) { PasswordHasher.hash(password) })
     logger.info("{} has a new password", user.name)
     return logins.start(user)

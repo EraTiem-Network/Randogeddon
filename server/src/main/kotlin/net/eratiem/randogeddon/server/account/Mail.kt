@@ -205,4 +205,10 @@ object Mails {
 
   fun deletionWarning(to: String, name: String, deletesOn: String, settingsLink: String, texts: MailTexts) =
     Mail(to, texts.deletionSubject(deletesOn), texts.deletionWarning(name, deletesOn, settingsLink), about = name)
+
+  fun passwordReset(to: String, name: String, link: String, validMinutes: Int, until: String, texts: MailTexts) =
+    Mail(to, texts.passwordResetSubject, texts.passwordReset(name, link, validMinutes, until), about = name)
+
+  fun passwordChanged(to: String, name: String, at: String, texts: MailTexts) =
+    Mail(to, texts.passwordChangedSubject, texts.passwordChanged(name, at), about = name)
 }
