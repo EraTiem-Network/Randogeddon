@@ -32,6 +32,8 @@
       <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
       <p class="message" role="alert"></p>
       <button type="submit" data-t="logIn">Log in</button>
+      <!-- Shown when the server can send mails (GET api/login/options): a forgotten password's way back in -->
+      <a class="forgot" href="#" hidden data-t="forgot">Forgot your password?</a>
       <!-- Shown when the server names a provider (GET api/login/options): how Administrators log in -->
       <a class="sso" href="api/login/oidc" hidden></a>
       <!-- Before the login the browser's language applies, or the one last used here; this changes it -->
@@ -75,7 +77,10 @@
       <input name="email" type="email" autocomplete="email" hidden>
       <label><span data-t="name">Name</span><input name="username" autocomplete="username" autocapitalize="off"
         spellcheck="false" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
-      <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label><span data-t="password">Password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"
+        aria-describedby="signup-rules"></label>
+      <p class="hint" id="signup-rules" data-t="passwordRules">At least 12 characters; not your name, a repeated pattern or a
+        common password. A few unrelated words or a password manager's work best.</p>
       <label><span data-t="passwordAgain">Password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
       <label><span data-t="deleteByItself">Delete my account by itself</span>
         <select name="autoDelete">
@@ -95,12 +100,74 @@
       <h1 data-t="newPassword">New password</h1>
       <input name="username" autocomplete="username" hidden>
       <label><span data-t="currentPassword">Current password</span><input name="current" type="password" autocomplete="current-password" required></label>
-      <label><span data-t="newPassword">New password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"></label>
+      <label><span data-t="newPassword">New password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"
+        aria-describedby="password-rules"></label>
+      <p class="hint" id="password-rules" data-t="passwordRules">At least 12 characters; not your name, a repeated pattern or a
+        common password. A few unrelated words or a password manager's work best.</p>
       <label><span data-t="newPasswordAgain">New password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
       <p class="hint" data-t="otherLoginsEnd">Your other logins end; this one stays.</p>
       <p class="message" role="alert"></p>
       <button type="submit" data-t="changePassword">Change password</button>
       <button type="button" class="secondary" data-t="cancel">Cancel</button>
+    </form>
+    <!-- A forgotten password, step 1: the account by its name or address -->
+    <form id="forgot-form" method="post" hidden>
+      <h1 data-t="forgotTitle">Forgot your password?</h1>
+      <p class="hint" data-t="forgotHint">Your account's name or e-mail address. A link to set a new password goes to the
+        account's address.</p>
+      <label><span data-t="nameOrEmail">Name or e-mail</span><input name="account" autocomplete="username" autocapitalize="off"
+        spellcheck="false" required maxlength="254"></label>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="next">Next</button>
+      <button type="button" class="secondary back" data-t="backToLogin">Back to the login</button>
+    </form>
+    <!-- Step 2: the address, partly hidden, typed in full (a name alone never sends a mail) -->
+    <form id="verify-form" method="post" hidden>
+      <h1 data-t="verifyTitle">Your e-mail address</h1>
+      <p class="hint"></p>
+      <label><span data-t="email">E-mail address</span><input name="email" type="email" autocomplete="email"
+        autocapitalize="off" spellcheck="false" required maxlength="254"></label>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="sendLink">Send the link</button>
+      <button type="button" class="secondary back" data-t="backToLogin">Back to the login</button>
+    </form>
+    <!-- Step 2's answer: the same whatever was typed -->
+    <form id="sent-form" method="post" hidden>
+      <h1 data-t="sentTitle">Check your mail</h1>
+      <p class="hint" data-t="sentHint">If that is the account's address, a mail with a link is on its way. The link works
+        for 15 minutes, once. Nothing there after a few minutes? Look in the spam folder, or ask again.</p>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="backToLogin">Back to the login</button>
+    </form>
+    <!-- The mail's link (#/reset/<token>): the new password, twice (the password manager saves it) -->
+    <form id="reset-form" method="post" hidden>
+      <h1 data-t="newPassword">New password</h1>
+      <p class="hint"></p>
+      <input name="username" autocomplete="username" hidden>
+      <label><span data-t="newPassword">New password</span><input name="password" type="password" autocomplete="new-password" required minlength="12"
+        aria-describedby="reset-rules"></label>
+      <p class="hint" id="reset-rules" data-t="passwordRules">At least 12 characters; not your name, a repeated pattern or a
+        common password. A few unrelated words or a password manager's work best.</p>
+      <label><span data-t="newPasswordAgain">New password again</span><input name="repeat" type="password" autocomplete="new-password" required minlength="12"></label>
+      <p class="hint" data-t="allLoginsEnd">Every login of your account ends. Two-factor login stays as it is.</p>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="setPassword">Set the password</button>
+    </form>
+    <!-- The link is unknown, used or run out -->
+    <form id="gone-form" method="post" hidden>
+      <h1 data-t="goneTitle">This link no longer works</h1>
+      <p class="hint" data-t="goneHint">A link works for 15 minutes and once, and a newer mail replaces it. Ask for a new
+        one.</p>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="askAgain">Ask for a new link</button>
+      <button type="button" class="secondary back" data-t="backToLogin">Back to the login</button>
+    </form>
+    <!-- The new password is set: the login follows (with its code, for two-factor login) -->
+    <form id="reset-done-form" method="post" hidden>
+      <h1 data-t="passwordSet">Your password is set</h1>
+      <p class="hint" data-t="passwordSetHint">Every login of your account has ended. Log in with your new password.</p>
+      <p class="message" role="alert"></p>
+      <button type="submit" data-t="toLogin">To the login</button>
     </form>
   </div>
   <script src="page.js"></script>

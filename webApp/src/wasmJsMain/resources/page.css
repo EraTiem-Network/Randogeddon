@@ -41,6 +41,23 @@ html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
 #login a.sso { font-weight: 600; text-align: center; text-decoration: none; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
 #login a.sso[hidden] { display: none; }
+/* A password field with its eye inside it at the right (page.js adds it); the eye struck through while it shows */
+#login .reveal { position: relative; display: flex; }
+#login .reveal input { flex: 1; min-width: 0; padding-right: 44px; }
+#login button.eye { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 34px; height: 34px;
+  padding: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); background: transparent;
+  border-radius: 8px; }
+#login button.eye:hover { color: var(--text); }
+#login button.eye:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#login button.eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 9;
+  stroke-linejoin: round; stroke-linecap: round; }
+#login button.eye circle { fill: currentColor; stroke: none; }
+#login button.eye line { display: none; }
+#login button.eye.shown line { display: inline; }
+/* The way to a forgotten password: a quiet link under the login's button */
+#login a.forgot { text-align: center; color: var(--muted); font-size: 12.5px; text-decoration: none; }
+#login a.forgot:hover, #login a.forgot:focus-visible { color: var(--text); text-decoration: underline; }
+#login a.forgot[hidden] { display: none; }
 #login .message { margin: 0; color: var(--error); min-height: 1.4em; }
 #login .languages { margin: 0; text-align: center; color: var(--muted); font-size: 12.5px; }
 #login .languages a { color: var(--muted); text-decoration: none; }
