@@ -12,6 +12,61 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.7: The scripts, the containers and the dependencies reviewed
+53 findings in two reports (1 high, 21 medium, 31 low; many found by both), listed in `.docs/DONE.md`. The last
+part of the review.
+
+To know before updating:
+- With `docker-compose.proxy.yml` or `docker-compose.traefik.yml`, `.env` needs `TRUSTED_PROXIES` (Traefik's
+  address) and `BASE_DOMAIN`: compose refuses every command without them, the nightly dump too. The switch checks
+  it first and changes nothing if one is missing.
+- The database's container is made anew (postgres pinned at 18.7, with a memory limit of 1 GB: `POSTGRES_MEMORY`).
+- The minecraft service's folder is `minecraft/` beside `data/`; the switch moves `data/minecraft/` there once.
+- A compose override that publishes the local overlay's ports elsewhere than 127.0.0.1 has to say so itself.
+
+Fixed:
+- A rollback starts the version before with its own compose files (it started old images under the new files),
+  and goes to the last version that passed the check (after a failed deploy and its fix, "previous" was the
+  failed one, and the last good images were deleted).
+- The switch pulls first, then stops, dumps and only then writes its settings: a failed pull changes nothing, and
+  nothing done during the pull is missing from the dump. A database that is there but stopped is refused instead
+  of migrated without a dump.
+- The switch's check also needs the gateway and the minecraft service to accept connections and stay up; the
+  moving tag, the bridge and the GitHub release are published only after the server runs the version.
+- A checkout's `.env` or shell variables no longer change what a release is built from; an existing bridge file
+  in the registry is compared instead of taken for the same.
+- The demo stops with the logs when the tracker never comes up; `audit.sh` looks at exactly the images named,
+  and an empty list or a scan that couldn't run is a failure, not a pass.
+
+Security:
+- Everything a build takes is pinned by content: the base images, the Dockerfile's frontend, postgres and the
+  audit's scanner by digest; Archipelago's Python packages by a lock with hashes (the build fails if Archipelago's
+  own updater would install anything else); Gradle's libraries and plugins by verification metadata, its wrapper
+  by its checksum; the web build's npm tooling by its lock (about 490 packages were resolved anew at each build).
+  `scripts/base-images.sh` says when a pinned image has a newer digest.
+- A release's tag must be signed by a key the committed `release-signers` names (any key in the keyring passed).
+- A release is audited before it is pushed and stops on a finding in the project's own dependencies
+  (`osv-scanner.toml` holds what is accepted, with a reason and a date); the images' operating system packages
+  are reported.
+- Behind a proxy `TRUSTED_PROXIES` is required (unset, every peer's `X-Forwarded-For` was believed), and the ports
+  can be bound to one address (`PUBLISH_ADDRESS`). `BASE_DOMAIN` has no default any more (it was the project's own
+  domain).
+- The local overlay and the demo publish on 127.0.0.1 only (the mail catcher has no login and shows every
+  invitation link); the demo's password isn't on a command line.
+- The minecraft service's folder is out of `data/`, which the gateway's user could have swapped for a link to any
+  folder of the host; the switch refuses a link there.
+- The database has limits on memory and processes and fewer capabilities; the tracker's file system is read-only;
+  the gateway and the minecraft service have health checks.
+- The deploy's root commands on the server take their values as arguments (they were written into the script's
+  text), from a folder of its own instead of a fixed name in `/tmp`, one deploy at a time; the server's `.env` is
+  kept at mode 600.
+- Ignored files (`__pycache__`) can't reach an image: the build's context is an allow-list.
+
+New:
+- The image build runs `:shared:jvmTest` and `:database:test` and the wrappers' Python tests as well (the docs
+  said it did).
+- The deploy says how old the newest nightly dump is, and warns above 36 hours.
+
 ### 0.23.6: Archipelago's wrappers and World Locks reviewed
 45 findings (3 high, 17 medium, 25 low), listed in `.docs/DONE.md`. The gateway's and the minecraft service's images
 change (who owns Archipelago's files, limits, another user for the Minecraft servers): nothing has to be set; a

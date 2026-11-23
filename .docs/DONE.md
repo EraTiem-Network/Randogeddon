@@ -1501,3 +1501,68 @@ games' real map images moved to Later.*
       (9 spheres, no mismatch); Archipelago's code not replaceable by its user, a file added there not loaded
       for `json`; a game server with its limits, `--disable_item_cheat` and no token in its environment; a
       game server started over a cut save in the image: exit 3, its line, the save kept and copied
+- [x] 0.23.7: the scripts, the containers and the dependencies reviewed (0.23.7). Scanned on 2026-11-23:
+      1 high, 21 medium, 31 low (53 in two reports, several found by both; C: the review's, S: the security scan's)
+    - Decided by the user on 2026-11-23: the switch pulls first, stops, dumps, then writes `.env` and starts, and
+      refuses when the database isn't running (C2); everything pinned by content, with a script that shows what
+      is newer (C6 to C9); a release's tag must be signed by a key listed in the committed `release-signers`,
+      the server keeps pulling by tag (C5 yes, S6 no: "only the signer check"); the audit fixed and a release
+      gated on it (C11); `TRUSTED_PROXIES` required with the proxy overlays, and a `PUBLISH_ADDRESS` (C12); limits
+      for the database and a read-only tracker (C14); the demo on 127.0.0.1 (S8); the minecraft folder out of
+      `data/` (S7); the newest dump's age said at a deploy (C22)
+    - [x] C1 (high): a rollback keeps the new compose files; a deploy after a failed one forgets the last good version
+    - [x] C2 (medium): the switch writes `.env` before the pull, dumps minutes before the stop, and switches a
+          stopped database without a dump
+    - [x] C3 (medium): the deploy's check proves only that the tracker listens
+    - [x] C4 (medium): a `.env` in the checkout or shell variables change what a release is built from
+    - [x] C5, S11 (medium): a release's tag is accepted when any key in the keyring signed it; ignored files
+          (`__pycache__`) can reach the image
+    - [x] C6, S1 (medium): Archipelago's Python packages aren't pinned by hash (was S14 of 0.23.6)
+    - [x] C7, S2, S3, S10 (medium): the base images and the Dockerfile's frontend are moving tags, never pulled anew
+    - [x] C8, S4 (medium): no npm lock committed, the image build wouldn't use one (was S2 of 0.23.5)
+    - [x] C9, S5 (medium): Gradle verifies nothing it downloads (no dependency verification, no wrapper checksum)
+    - [x] C10 (medium): tests the docs say run in the image build don't; the Python tests run nowhere
+    - [x] C11, S9 (medium): `audit.sh` covers less than it says, with tools at `latest`, and gates nothing
+    - [x] C12, S18 (medium): with the proxy overlay both ports are open on every interface, and an empty
+          `TRUSTED_PROXIES` believes every peer
+    - [x] C13 (medium): a first set-up by the README ends with a gateway that can't write
+    - [x] C14, S19 (medium): what the compose file doesn't limit (the database, the file systems, mailpit)
+    - [x] S6, C19 (medium): the server runs images by tag, not by digest
+    - [x] S7 (medium): `data/minecraft` swapped for a link gives the minecraft container any host folder
+    - [x] S8 (medium): the local overlay and the demo publish everything on all interfaces, mailpit without a login
+    - [x] C15, S12: `/tmp/randogeddon-deploy` is a fixed name read by root; the root command built from strings
+    - [x] C16: a release that fails on the server is left half-published
+    - [x] C17: the minecraft service's third-party code reaches the internet and the tracker
+    - [x] C18: with the Traefik overlay the gateway's internal API is on Traefik's shared network
+    - [x] C20: `deploy.sh`'s smaller gaps
+    - [x] C21: `publish-bridge.sh`: an existing file isn't compared, a container can be left
+    - [x] C22: a failed nightly dump tells nobody
+    - [x] C23, S20: `demo.sh` goes on when the tracker never came up; a `DEMO_IMAGES` run leaves the checkout
+          changed; the demo's password files
+    - [x] C24: `measure.sh`: an old browser image, `--build` empties the machine's build cache
+    - [x] C25: `.env.example` against what the compose files read
+    - [x] C26: commands in the documents that don't match the files
+    - [x] C27, S17: the project's own domain is the default in seven places
+    - [x] C28: the same thing written several times across the scripts
+    - [x] C29: `.dockerignore`, `.gitattributes`, `.gitignore`
+    - [x] C30: what the final images carry that they don't need
+    - [x] C31: the Gradle build's smaller points
+    - [x] C32: versions to look at
+    - [x] C33: the Traefik overlay gives the dashboard's router nothing but the route
+    - [x] S13: the server's `.env` is never restricted to its owner
+    - [x] S14: build code can read the Maven login; the kept Gradle cache carries a bad build forward
+    - [x] S15: the bridge signing key must be without a passphrase
+    - [x] S16: the prompt before a build reads files outside the repository is switched off
+    - Decided later by the user (2026-11-23): the audit stops a release only on a finding in the project's own
+      dependencies, the images' are reported; the two findings in setuptools accepted until 2027-02-23
+    - Fixed by three Opus fixers (the deploy's scripts; the images and the build; compose, the audit and the
+      demo). Made by the main session: the Python locks, Gradle's checksum and verification metadata, the npm
+      tooling lock (the plugin ships none: found by building), `osv-scanner.toml`, the digests
+    - Tried: the image build with every pin (its unit tests, the 59 Python tests, Gradle's verification, the
+      tooling installed from its lock, Archipelago's updater finding nothing to install; the gateway's Python
+      packages the same as 0.23.6's); the demo on it (both sessions at the first attempt, all five services
+      healthy, the tracker read-only, postgres with its limits on the existing data, everything on 127.0.0.1);
+      each overlay's `docker compose config` with and without its required settings; `base-images.sh`; the
+      audit on the built images; the deploy's switch against a scratch folder in ten cases (a first deploy, a
+      missing version, a missing setting, a link, a stopped database, a switch with its dump and the folder's
+      move, a version that fails its check, two rollbacks each with its own compose files, none left)

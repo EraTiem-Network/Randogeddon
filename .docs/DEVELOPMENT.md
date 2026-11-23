@@ -44,7 +44,8 @@ Gradle 9.8.2 (wrapper), Kotlin 2.4, JDK 25; a Maven mirror as `randogeddon.maven
 `RANDOGEDDON_MAVEN`), its login from your init script.
 
 ```sh
-./gradlew :server:test :gateway:test :database:test  # unit tests (also in the Docker build)
+./gradlew :shared:jvmTest :server:test :gateway:test :database:test  # unit tests (also in the Docker build)
+python -m unittest discover -s archipelago/tests  # the wrappers' tests (also in the Docker build; Linux)
 ./gradlew :database:integrationTest             # against PostgreSQL (Testcontainers, Linux Docker)
 ./gradlew :server:integrationTest               # the tracker's classes on PostgreSQL, a fake gateway and mailer
 ./gradlew :server:run                           # tracker on :8000 (builds the web app first); DB_USER, DB_PASSWORD
@@ -56,10 +57,25 @@ AP_ROOT=<one Archipelago checkout per release> ./gradlew :gateway:run   # gatewa
   overrides it.
 - A new migration in `database/src/main/resources/db/migration` is also listed in its `index.txt` (a native image
   can't scan the classpath; a test checks it).
-- `./scripts/audit.sh`: the dependencies (Go, JVM, the gateway's Python) looked up in OSV (osv-scanner, in Docker),
-  and the bridge's code and Go's standard library by govulncheck (in the bridge's build image, pinned by digest;
-  `GOVULNCHECK_VERSION`);
-  before a release and when a dependency changes. `GRADLE_DEPENDENCIES=<file>` where Gradle and Docker are apart.
+- **A changed dependency** (a library, a plugin, Gradle itself) needs `gradle/verification-metadata.xml` made
+  again, or the build stops naming what it doesn't know: `./gradlew --write-verification-metadata sha256 <the tasks
+  that resolve it>` (for everything: the unit and integration tests and `:webApp:wasmJsBrowserDistribution`, in
+  WSL and once on Windows for its own downloads; for the image build's exact set, the Dockerfile's
+  `verification-metadata` stage with `--build-arg GRADLE_VERIFICATION=sha256 --output type=local,dest=gradle`).
+  Review the diff. Gradle itself: `./gradlew wrapper --gradle-version <x> --distribution-type bin
+  --gradle-distribution-sha256-sum <sum>`.
+- **A Kotlin update** changes the plugin's npm tooling (webpack and the rest), and the image build stops naming its
+  new hash: build the web app once, copy `~/.kotlin/kotlin-npm-tooling/yarn/<hash>/yarn.lock` to
+  `kotlin-js-store/kotlin-npm-tooling/<hash>/`, review it against the old one and delete the old folder. The
+  project has no npm dependencies of its own (`kotlin-js-store/wasm/yarn.lock` is empty); if it gets one, the
+  build stops until the changed lock is committed.
+- `./scripts/audit.sh [--images <tracker> <gateway> <minecraft>]` (without: the local build's images): the
+  project's dependencies (Go, the JVM and Kotlin libraries, the gateway's Python) looked up in OSV (osv-scanner,
+  in Docker, pinned), the bridge's code and Go's standard library by govulncheck (in the bridge's build image),
+  and the four images' operating system packages (reported only). Exit 0: nothing in the project's dependencies;
+  1: a finding there; 2: a part couldn't run. Accepted findings: `osv-scanner.toml`. A release runs it
+  (`deploy.sh`); by hand when a dependency changes. `GRADLE_DEPENDENCIES=<file>` where Gradle and Docker are apart.
+- `./scripts/base-images.sh`: each pinned image's digest beside its tag's current one (exit 1: one has moved).
 - `./scripts/measure.sh [viewers] [seconds]` (WSL, the demo running): the page's sizes, the images, memory and CPU
   idle and with viewers, answer times, the first screen; `--build` times a build. Results: `MEASUREMENTS.md`.
 

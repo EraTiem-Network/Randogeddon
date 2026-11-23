@@ -92,7 +92,28 @@ The parts:
           pattern against a real server's log: if it didn't match, a server would sleep while people play);
           `!getitem` refused by a real client; the warning on screen (no demo slot's rebuild differs); a
           broken save through the panel (tried with the script in the image: it stops with its line)
-- [ ] 0.23.7: the scripts, the containers and the dependencies (the images, compose files, `audit.sh`)
+- [ ] Left from 0.23.7 (the scripts, the containers and the dependencies):
+    - [ ] Not done, by the user's decision: the server pulls images by tag, not by digest (S6, C19)
+    - [ ] Not done: the hosted Minecraft servers' way out to the internet (C17: they check accounts with
+          Mojang); the gateway's internal API bound to one address (C18's second half: in the gateway); read-only
+          roots for the gateway and the minecraft service (they write into their image); pip, setuptools and
+          cython left in the gateway's image (C30); `FAIL_ON_PROJECT_REPOS` (the Kotlin plugin adds its own);
+          the Playwright image of `measure.sh` not pinned; a notice when the nightly dump fails beyond the
+          deploy's line (C22); the bridge's signing key without a passphrase (S15); the build's file prompt
+          switched off (S16); `release-signers` is read from the tagged commit itself (a trusted copy outside
+          the tree wasn't decided); a failure between the minecraft folder's move and the new settings starts
+          the version before without its folder in place
+    - [ ] Found on the way: at its start the gateway writes a stop event for every session folder, also for
+          one whose session is gone from the database (the foreign key of 0.23.4 refuses it: an error line each)
+    - [ ] Not tried: a real deploy with the new script (the upload, `sudo` over SSH, the systemd units, the real
+          images' checks: the switch itself was tried against a scratch folder with stub services); a release's
+          build (the release cache, the audit gate inside `deploy.sh`, the signer check against a tag that
+          carries `release-signers`); `publish-bridge.sh`'s comparison of an existing file (whether the
+          registry's address answers a GET with the file); `measure.sh`; the Traefik overlay's rule on a real
+          Traefik; the build's negative checks (a wrong hash in a lock, a wrong wrapper checksum)
+    - [ ] Standing chores from the pinning: `scripts/base-images.sh` and the audit before a phase's release;
+          `gradle/verification-metadata.xml` at each dependency change; the tooling lock at a Kotlin update; the
+          Python lock at an Archipelago update; `osv-scanner.toml`'s entries run out on 2027-02-23
 - [ ] After 0.23.7: every "Left from" point above gone through with the user (the user on 2026-11-23)
 
 ## Phase 24: what was noted for later (planned)

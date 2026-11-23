@@ -92,8 +92,8 @@ DNS needs `randogeddon.eratiem.net` and `*.randogeddon.eratiem.net`; Traefik rou
 | `AP_VERSION`, `AP_COMMIT` | The Archipelago release the gateway image brings |
 | `MINECRAFT_EULA` | `true`: the operator accepts Mojang's EULA, so hosted Minecraft Dig servers can run |
 
-A release is deployed from its signed tag with `scripts/deploy.sh` (build, push, dump, switch, check;
-`--rollback` goes back). The game servers save continuously; `docker compose down` and `up -d` keep the progress.
+A release is deployed from its signed tag with `scripts/deploy.sh` (build, audit, push, dump, switch, check;
+`--rollback` goes back to the last version that passed). The game servers save continuously; `docker compose down` and `up -d` keep the progress.
 Traefik, Authentik, the database logins, mail, the live server, backups and updating Archipelago:
 [running the server](.docs/OPERATIONS.md).
 
@@ -123,7 +123,7 @@ The command line, the Minecraft tunnel and how it stays safe: [the bridge](.docs
 
 ```sh
 ./scripts/demo.sh                                    # the stack locally, two sessions played by simulated players
-./gradlew :server:test :gateway:test :database:test  # unit tests (also run in the Docker build)
+./gradlew :shared:jvmTest :server:test :gateway:test :database:test  # unit tests (also run in the Docker build)
 ./gradlew :webApp:wasmJsBrowserDistribution          # the web app
 cd bridge && go test -race ./...                     # the bridge
 ```
