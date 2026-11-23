@@ -37,6 +37,8 @@ interface CheatTexts {
   /** The lock cheats: no locked slot; where its key lies (or that the spoiler log doesn't say). */
   val noLocked: String
   fun keyAt(location: String, world: String): String
+  /** A key's location as the cheat's line names it: `Location (in World)`. */
+  fun locationIn(location: String, world: String): String
   val keyUnknown: String
   /** After it was sent: `Done: gave Mantis Claw to Alice-HK`. */
   fun done(action: CheatAction, slot: String, value: String?): String
@@ -105,6 +107,7 @@ internal object EnglishCheats : CheatTexts {
   override val noPlacements = "The spoiler log doesn't say where items are"
   override val noLocked = "No slot is locked"
   override fun keyAt(location: String, world: String) = "Its key is at $location (in $world)"
+  override fun locationIn(location: String, world: String) = "$location (in $world)"
   override val keyUnknown = "The spoiler log doesn't say where its key is (or it was checked)"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "gave $value to $slot"
@@ -189,6 +192,7 @@ internal object GermanCheats : CheatTexts {
   override val noPlacements = "Das Spoiler-Log sagt nicht, wo die Items liegen"
   override val noLocked = "Kein Slot ist gesperrt"
   override fun keyAt(location: String, world: String) = "Sein Schlüssel liegt bei $location (in $world)"
+  override fun locationIn(location: String, world: String) = "$location (in $world)"
   override val keyUnknown = "Das Spoiler-Log sagt nicht, wo sein Schlüssel liegt (oder er wurde gecheckt)"
   private fun what(action: CheatAction, slot: String, value: String?) = when (action) {
     CheatAction.ITEM -> "$slot hat $value bekommen"

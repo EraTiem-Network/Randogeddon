@@ -68,6 +68,8 @@ interface CommonTexts {
   val nothingFound: String
   val logOut: String
   val allYourSessions: String
+  /** In place of [allYourSessions] for someone with one session: the sessions' page opens it. */
+  val yourSession: String
   val serverUnreachable: String
   val unexpectedAnswer: String
   fun failed(status: Int): String
@@ -76,6 +78,8 @@ interface CommonTexts {
 /** Around every page: the top card, and what the page says when there is nothing to show. */
 interface FrameTexts {
   val cantReachServer: String
+  /** A logout that didn't reach the server: the login is still valid. */
+  val notLoggedOut: String
   fun loggedInAs(name: String): String
   fun noSuchSession(id: String): String
   val allSessions: String

@@ -196,8 +196,6 @@ interface SessionAdminTexts {
   /** A hosted slot not open: the players named for it get it (its patch files, the bridge's tunnel). */
   val hostedPlayersLine: String
   /** A running session's slots: who plays each, changed; taking someone off one asks once more. */
-  val slotsSection: String
-  val slotsSectionSubtitle: String
   val slotSave: String
   val slotLosesQuestion: String
   val slotLosesYes: String
@@ -219,6 +217,15 @@ interface SessionAdminTexts {
   val lockOpen: String
   val lockChance: String
   val lockLocked: String
+  /** A picked file left out: larger than the [limit] (`8.0 MB`) the tracker takes for it, or unreadable. */
+  fun fileTooLarge(file: String, limit: String): String
+  fun fileUnreadable(file: String): String
+  /** YAMLs picked that, with the ones chosen already, would be more than a new session's request may bring. */
+  fun yamlsTooLarge(files: String, limit: String): String
+  /** The tracker no longer knows the generation the form waits for (it was restarted meanwhile). */
+  val generationLost: String
+  /** The label of a chip's ×: a YAML's, a player's. */
+  fun removeItem(name: String): String
 }
 
 internal object EnglishSessionAdmin : SessionAdminTexts {
@@ -449,8 +456,6 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val openLine = "Every player of the session plays it."
   override val openHostedLine = "Every player of the session joins its game's server."
   override val hostedPlayersLine = "Only these players join its game's server (no password: they don't play it):"
-  override val slotsSection = "Slots"
-  override val slotsSectionSubtitle = "who plays each one; someone new is invited by e-mail"
   override val slotSave = "Save"
   override val slotLosesQuestion = "Someone loses this slot: it gets a new password, and whoever is connected to it is " +
     "disconnected (its players connect again with the new one)."
@@ -477,6 +482,14 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val lockOpen = "open"
   override val lockChance = "random"
   override val lockLocked = "locked"
+  override fun fileTooLarge(file: String, limit: String) = "$file wasn't added: it is larger than $limit."
+  override fun fileUnreadable(file: String) =
+    "$file wasn't added: it couldn't be read (moved, deleted, or no permission to read it)."
+  override fun yamlsTooLarge(files: String, limit: String) =
+    "$files weren't added: together with the others the YAMLs would be larger than $limit, more than a session takes."
+  override val generationLost =
+    "The generation was lost: the tracker was restarted meanwhile and no longer knows it. Generate the session again."
+  override fun removeItem(name: String) = "Remove $name"
 }
 
 internal object GermanSessionAdmin : SessionAdminTexts {
@@ -710,8 +723,6 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val openLine = "Jeder Spieler der Session spielt ihn."
   override val openHostedLine = "Jeder Spieler der Session tritt dem Server seines Spiels bei."
   override val hostedPlayersLine = "Nur diese Spieler treten dem Server seines Spiels bei (ohne Passwort: Sie spielen ihn nicht):"
-  override val slotsSection = "Slots"
-  override val slotsSectionSubtitle = "wer jeden spielt; jemand Neues wird per E-Mail eingeladen"
   override val slotSave = "Speichern"
   override val slotLosesQuestion = "Jemand verliert diesen Slot: Er bekommt ein neues Passwort, und wer mit ihm verbunden " +
     "ist, wird getrennt (seine Spieler verbinden sich mit dem neuen wieder)."
@@ -740,4 +751,14 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val lockOpen = "offen"
   override val lockChance = "zufällig"
   override val lockLocked = "gesperrt"
+  override fun fileTooLarge(file: String, limit: String) = "$file wurde nicht hinzugefügt: Die Datei ist größer als $limit."
+  override fun fileUnreadable(file: String) =
+    "$file wurde nicht hinzugefügt: Die Datei konnte nicht gelesen werden (verschoben, gelöscht oder ohne Leserecht)."
+  override fun yamlsTooLarge(files: String, limit: String) =
+    "$files wurden nicht hinzugefügt: Zusammen mit den anderen wären die YAMLs größer als $limit, mehr als eine Session " +
+      "annimmt."
+  override val generationLost =
+    "Die Generierung ging verloren: Der Tracker wurde inzwischen neu gestartet und kennt sie nicht mehr. Generiere die " +
+      "Session noch einmal."
+  override fun removeItem(name: String) = "$name entfernen"
 }

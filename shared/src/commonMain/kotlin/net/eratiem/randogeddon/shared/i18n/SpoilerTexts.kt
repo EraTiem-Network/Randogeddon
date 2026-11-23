@@ -54,7 +54,9 @@ interface SpoilerTexts {
   fun linesOf(from: String, to: String, total: String): String
   val earlierLines: String
   val laterLines: String
-  val clearSearch: String
+  /** The log search's arrows: to the line found before, and after (Shift+Enter, Enter). */
+  val previousFinding: String
+  val nextFinding: String
 }
 
 internal object EnglishSpoiler : SpoilerTexts {
@@ -65,7 +67,8 @@ internal object EnglishSpoiler : SpoilerTexts {
   override fun linesOf(from: String, to: String, total: String) = "Lines $from–$to of $total"
   override val earlierLines = "Earlier lines"
   override val laterLines = "Later lines"
-  override val clearSearch = "Clear the search"
+  override val previousFinding = "Previous match"
+  override val nextFinding = "Next match"
   override val everySlot = "All slots"
   override val foldAll = "Collapse all"
   override val unfoldAll = "Expand all"
@@ -112,7 +115,8 @@ internal object GermanSpoiler : SpoilerTexts {
   override fun linesOf(from: String, to: String, total: String) = "Zeilen $from–$to von $total"
   override val earlierLines = "Frühere Zeilen"
   override val laterLines = "Spätere Zeilen"
-  override val clearSearch = "Suche leeren"
+  override val previousFinding = "Vorheriger Treffer"
+  override val nextFinding = "Nächster Treffer"
   override val everySlot = "Alle Slots"
   override val foldAll = "Alle einklappen"
   override val unfoldAll = "Alle aufklappen"
