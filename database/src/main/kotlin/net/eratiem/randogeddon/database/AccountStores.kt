@@ -610,7 +610,38 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
     now: Instant = Instant.now(),
     method: String = "password",
     providerSession: String? = null,
-  ) = db.query {
+  ) = db.query { insertLogin(tokenHash, userId, expiresAt, now, method, providerSession) }
+
+  /**
+   * As [create], unless [userId] has [most] logins of [method] already that haven't expired: `false` then, and none is
+   * made. Counted and made in one transaction with the user's row locked, so logins made at the same moment can't
+   * pass [most] together.
+   */
+  suspend fun createWithin(
+    most: Int,
+    tokenHash: String,
+    userId: Uuid,
+    expiresAt: Instant,
+    now: Instant = Instant.now(),
+    method: String = "password",
+  ): Boolean = db.query {
+    UsersTable.select(UsersTable.id).where { UsersTable.id eq userId }.forUpdate().singleOrNull()
+    val has = LoginSessionsTable.selectAll()
+      .where { (LoginSessionsTable.userId eq userId) and (LoginSessionsTable.method eq method) and (LoginSessionsTable.expiresAt greater now) }
+      .count()
+    if (has >= most) return@query false
+    insertLogin(tokenHash, userId, expiresAt, now, method, null)
+    true
+  }
+
+  private fun insertLogin(
+    tokenHash: String,
+    userId: Uuid,
+    expiresAt: Instant,
+    now: Instant,
+    method: String,
+    providerSession: String?,
+  ) {
     LoginSessionsTable.insert {
       it[LoginSessionsTable.tokenHash] = tokenHash
       it[LoginSessionsTable.userId] = userId
@@ -619,7 +650,6 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
       it[LoginSessionsTable.method] = method
       it[LoginSessionsTable.providerSession] = providerSession
     }
-    Unit
   }
 
   /**
