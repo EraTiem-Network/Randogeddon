@@ -64,10 +64,17 @@ x-logging: &logging
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
     restart: unless-stopped
     logging: *logging
+    # A runaway query or a flood of connections ends here, not with the VM's memory (each connection is a process)
+    mem_limit: ${POSTGRES_MEMORY:-1g}
+    pids_limit: 512
+    # The image's start runs as root only to give its data folder and socket folder to the postgres user (chown, and
+    # chmod and find in folders that are postgres' already), then becomes that user: these capabilities and no other
     security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     # Who may log in from where: pg_hba (below) in place of the one the image writes into the data folder
     command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
     configs:
@@ -93,7 +100,7 @@ services:
   # one-off service and the dumps. A setting that names the superuser for either, or one role for both, is refused here
   # (the tracker then doesn't start)
   database-roles:
-    image: postgres:18-alpine
+    image: postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
     restart: "no"
     logging: *logging
     user: postgres
@@ -153,6 +160,13 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, KILL]
+    # Healthy once it takes game clients' connections (no curl in the image: a plain TCP connection through bash). It
+    # waits for its database login from the tracker first; nothing restarts it for being unhealthy, docker ps shows it
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/38281"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
     environment:
       # Its own database role with only its rights (database-roles makes it, the tracker gives it its password and
       # rights at each start; until then the gateway waits). Archipelago's Python runs here, as another user that can't
@@ -162,7 +176,7 @@ services:
       DB_PASSWORD: *gateway-db-password
       INTERNAL_TOKEN: *internal-token
       # Whose X-Forwarded-For counts for a game client's address (its limit per address), as the tracker's; empty:
-      # every peer's
+      # every peer's (the proxy and the Traefik overlays require it)
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # How long a generation may take before it is stopped (minutes)
       GENERATION_MINUTES: ${GENERATION_MINUTES:-60}
@@ -199,7 +213,8 @@ services:
     init: true
     # Each server saves its world on `stop`
     stop_grace_period: 60s
-    # Each server at most 3 GB (its heap 2 GB; a watchdog ends one above that): MINECRAFT_SERVERS of them at once
+    # The service's memory in all: each server at most 3 GB (its heap 2 GB; a watchdog ends one above that), and
+    # MINECRAFT_SERVERS of them at once must fit in it (two: about 6500m)
     mem_limit: ${MINECRAFT_MEMORY:-3500m}
     # The Java servers' user has at most 1536 of them (java-as-server), the rest is minecraft_host.py's
     pids_limit: 2048
@@ -210,6 +225,12 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, KILL]
+    # Healthy once minecraft_host.py's API takes connections (a plain TCP connection, with the image's Python)
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8002), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
     environment:
       # Its own token (the gateway's INTERNAL_TOKEN stays with the gateway and the tracker): the servers run
       # third-party mod code as another user, which can't read it; with the token comes no more than this service's API
@@ -221,8 +242,9 @@ services:
       # servers/<session>-p<slot>/, each server's world and its notes; the seed's patch comes in the gateway's request
       DATA: /data/minecraft
     volumes:
-      # Only its own folder of the data folder (it belongs to uid 1000, as the rest), none of the sessions' files
-      - ./data/minecraft:/data/minecraft
+      # Its own folder (uid 1000's), beside the data folder, not in it: the gateway can write the data folder, so it
+      # could put a link to anywhere on the host in a folder there that this service mounts. None of the sessions' files
+      - ./minecraft:/data/minecraft
 
   tracker:
     image: ${TRACKER_IMAGE:-randogeddon-tracker}:${IMAGE_TAG:-latest}
@@ -235,6 +257,11 @@ services:
     pids_limit: 1024
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    # It writes only its state volume (and reads the data folder): the image itself stays as built. /tmp for whatever
+    # the native image or its libraries put there (Docker's defaults: no executables, no set-user-ID)
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
     depends_on:
       postgres:
         condition: service_healthy
@@ -260,9 +287,10 @@ services:
       SESSION_RETENTION_DAYS: ${SESSION_RETENTION_DAYS:-90}
       # The login cookie only over HTTPS; the local overlay can switch that off (see there)
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      # Where the dashboard is reached, for the links in mails
-      PUBLIC_URL: ${PUBLIC_URL:-https://${BASE_DOMAIN:-randogeddon.eratiem.net}}
-      # Whose X-Forwarded-For counts for the client's address (the rate limits); empty: every peer's
+      # Where the dashboard is reached, for the links in mails (the server overlays require BASE_DOMAIN)
+      PUBLIC_URL: ${PUBLIC_URL:-https://${BASE_DOMAIN:-localhost}}
+      # Whose X-Forwarded-For counts for the client's address (the rate limits); empty: every peer's (the proxy and
+      # the Traefik overlays require it)
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # The mails (invitations, address confirmations, deletion warnings); without MAIL_HOST only in the log
       MAIL_HOST: ${MAIL_HOST:-}
@@ -360,7 +388,8 @@ configs:
       SELECT format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET FALSE', :'gateway', :'tracker') \gexec
 
 secrets:
-  # Gradle init script with the login for the Maven mirror (RANDOGEDDON_MAVEN); only read when the images are built
+  # Gradle init script with the login for the Maven mirror (RANDOGEDDON_MAVEN); only read when the images are built.
+  # The file must exist: without a mirror, GRADLE_INIT_SCRIPT=/dev/null
   gradle_init:
     file: ${GRADLE_INIT_SCRIPT:-${HOME}/.gradle/init.gradle.kts}
   # The SSH key the bridge's checksums are signed with (scripts/deploy.sh names it); without one they aren't signed

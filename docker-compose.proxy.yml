@@ -1,17 +1,22 @@
 # Overlay for the server when Traefik runs on another machine (e.g. on the Proxmox host, Randogeddon in a VM) and
 # routes to this one through its file provider (see .docs/OPERATIONS.md): publish the ports, but keep the public addresses.
 #   Traefik: https://${BASE_DOMAIN} → http://<this machine>:8000, <session-id>.${BASE_DOMAIN} → http://<this machine>:38281
+# The ports are published on PUBLISH_ADDRESS (default every interface): the address Traefik reaches this machine at
+# keeps them off the others. Whoever reaches them past Traefik talks plain HTTP and names their own client address in
+# X-Forwarded-For unless TRUSTED_PROXIES names Traefik, so it is required here (and BASE_DOMAIN)
 services:
   gateway:
     ports:
-      - "38281:38281"
+      - "${PUBLISH_ADDRESS:-0.0.0.0}:38281:38281"
     environment:
       # Game clients connect to <session-id>.<BASE_DOMAIN>
-      BASE_DOMAIN: ${BASE_DOMAIN:-randogeddon.eratiem.net}
+      BASE_DOMAIN: ${BASE_DOMAIN:?set BASE_DOMAIN in .env (the dashboard's domain)}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?set TRUSTED_PROXIES in .env to Traefik's address (docker-compose.proxy.yml publishes the ports)}
 
   tracker:
     ports:
-      - "8000:8000"
+      - "${PUBLISH_ADDRESS:-0.0.0.0}:8000:8000"
     environment:
       # Shown to a session's players with their slot passwords ({id}: the session)
-      PUBLIC_ADDRESS: "{id}.${BASE_DOMAIN:-randogeddon.eratiem.net}:443"
+      PUBLIC_ADDRESS: "{id}.${BASE_DOMAIN:?set BASE_DOMAIN in .env (the dashboard's domain)}:443"
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?set TRUSTED_PROXIES in .env to Traefik's address (docker-compose.proxy.yml publishes the ports)}
