@@ -27,7 +27,7 @@ import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.i18n.decimal
-import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date

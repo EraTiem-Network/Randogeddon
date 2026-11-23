@@ -96,6 +96,12 @@ expect object Platform {
   /** Calls [onChange] whenever the device switches between light and dark. */
   fun onSystemDarkModeChange(onChange: (Boolean) -> Unit)
 
+  /** The page is shown: its tab is the one in front, and its window isn't minimised (`document.visibilityState`). */
+  fun pageVisible(): Boolean
+
+  /** Calls [onChange] whenever the page is shown or hidden ([pageVisible]). */
+  fun onVisibilityChange(onChange: (Boolean) -> Unit)
+
   /**
    * Gives the page around the app the theme's colours: [json] has the mode and the light and dark colours of
    * index.html's login form; it keeps them for the next visit (before the app has loaded).

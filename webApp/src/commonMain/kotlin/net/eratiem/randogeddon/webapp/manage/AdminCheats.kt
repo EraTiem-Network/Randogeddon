@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CheatAction
@@ -33,6 +32,7 @@ import net.eratiem.randogeddon.shared.LOCK_CHEATS
 import net.eratiem.randogeddon.webapp.api.AdminCache
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.clock
@@ -116,7 +116,7 @@ fun CheatSection(
     while (true) {
       load().join()
       if (cache.cheats[id]?.done == true) break
-      delay(10_000)
+      pollWait(10_000)
     }
   }
   // Another session, or a slot opened meanwhile: the slot may not be one to pick any more

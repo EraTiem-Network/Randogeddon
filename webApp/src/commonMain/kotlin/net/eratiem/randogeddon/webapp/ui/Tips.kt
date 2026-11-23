@@ -37,6 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.PointerType
@@ -59,7 +64,7 @@ import net.eratiem.randogeddon.webapp.app.Platform
 
 /**
  * A small "i" next to an option or button: what it does, on hover, or on tap on a phone (tap again or anywhere else
- * to close). [options]: the choices of the option (name, what it means), each below a divider.
+ * to close), or while the keyboard has put the focus on it (Tab; Enter or Space closes it). [options]: the choices of the option (name, what it means), each below a divider.
  */
 @Composable
 fun InfoTip(
@@ -77,22 +82,33 @@ fun InfoTip(
   val tipHovered by tipInteraction.collectIsHoveredAsState()
   val open = stayOpen(hovered || tipHovered)
   var tapped by remember { mutableStateOf(false) }
+  // The keyboard put the focus on it (Tab): open until the focus leaves
+  var keyFocus by remember { mutableStateOf(false) }
   var closedAt by remember { mutableLongStateOf(0L) }
+  val shown = open || tapped || keyFocus
   Box(
-    modifier.size(16.dp).focusRing(CircleShape, gap = 2.dp).clip(CircleShape)
-      .border(1.2.dp, if (open || tapped) p.accent else p.muted, CircleShape)
+    modifier.size(16.dp).focusRing(CircleShape, gap = 2.dp)
+      .onKeyboardFocus { focused ->
+        keyFocus = focused
+        if (!focused) tapped = false
+      }
+      .clip(CircleShape)
+      .border(1.2.dp, if (shown) p.accent else p.muted, CircleShape)
       .hoverable(interaction)
-      // Enter or Space opens it from the keyboard, as a tap does
+      // Enter or Space opens it from the keyboard, as a tap does; one opened by the focus closes
       .hand().clickable(interactionSource = interaction, indication = null, role = Role.Button) {
-        if (!justClosed(closedAt)) tapped = !tapped
+        if (!justClosed(closedAt)) {
+          tapped = !(tapped || keyFocus)
+          keyFocus = false
+        }
       },
     contentAlignment = Alignment.Center,
   ) {
-    Txt("i", size = 10.sp, color = if (open || tapped) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
-    if (open || tapped) {
+    Txt("i", size = 10.sp, color = if (shown) p.accent else p.muted, weight = FontWeight.Bold, maxLines = 1)
+    if (shown) {
       AppPopup(
         offset = IntOffset(0, with(LocalDensity.current) { 20.dp.roundToPx() }),
-        onDismissRequest = { tapped = false; closedAt = Platform.now() },
+        onDismissRequest = { tapped = false; keyFocus = false; closedAt = Platform.now() },
       ) {
         TipCard(text, options, sections, modifier = Modifier.hoverable(tipInteraction))
       }
@@ -194,7 +210,8 @@ internal val LocalTipLabel = compositionLocalOf<String?> { null }
  * A tip shown on [content] itself (a button, a dropdown): once the pointer rests on it for a moment, below it; it
  * stays while the pointer is on it or on the tip. A click hides it until the pointer comes back (a dropdown's list
  * opens there). Touch screens have no hover: there a long press shows it, instead of the click; a tap anywhere closes
- * it. [wide]: the tip as wide as the window allows (a long message). An [IconButton] in [content] takes [text] as its
+ * it. The keyboard's focus on [content] (Tab) shows it at once, until the focus leaves or Enter or Space presses it.
+ * [wide]: the tip as wide as the window allows (a long message). An [IconButton] in [content] takes [text] as its
  * label.
  */
 @Composable
@@ -209,6 +226,8 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: B
   var clicked by remember { mutableStateOf(false) }
   // Shown by a long press
   var held by remember { mutableStateOf(false) }
+  // Shown while the keyboard has put the focus on what is in it
+  var keyFocus by remember { mutableStateOf(false) }
   var height by remember { mutableStateOf(0) }
   LaunchedEffect(hovered, clicked) {
     if (hovered && !clicked) {
@@ -220,7 +239,14 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: B
     }
   }
   Box(
-    Modifier.hoverable(interaction).onSizeChanged { height = it.height }.pointerInput(Unit) {
+    Modifier.hoverable(interaction).onSizeChanged { height = it.height }
+      .onKeyboardFocus { keyFocus = it }
+      // Enter or Space presses the button (a dropdown's list opens below it): the tip goes, as after a click
+      .onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key in PRESS_KEYS) keyFocus = false
+        false
+      }
+      .pointerInput(Unit) {
       // Seen before the button or dropdown handles it, without taking it away from them
       awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -246,16 +272,19 @@ fun Tip(text: String, options: List<Pair<String, String>> = emptyList(), wide: B
     }
   ) {
     CompositionLocalProvider(LocalTipLabel provides text, content = content)
-    if (shown || held) {
+    if (shown || held || keyFocus) {
       AppPopup(
         offset = IntOffset(0, height + with(LocalDensity.current) { 6.dp.roundToPx() }),
-        onDismissRequest = { shown = false; held = false },
+        onDismissRequest = { shown = false; held = false; keyFocus = false },
       ) {
         TipCard(text, options, wide = wide, modifier = Modifier.hoverable(tipInteraction))
       }
     }
   }
 }
+
+/** The keys that press a focused button. */
+private val PRESS_KEYS = setOf(Key.Enter, Key.NumPadEnter, Key.Spacebar)
 
 /**
  * A popup (dropdown, tip) that stays out of the page's text selection: it is a window of its own, and selection

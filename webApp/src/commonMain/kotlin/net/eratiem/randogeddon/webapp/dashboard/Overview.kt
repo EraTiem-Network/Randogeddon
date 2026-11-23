@@ -32,7 +32,7 @@ import net.eratiem.randogeddon.shared.i18n.age
 import net.eratiem.randogeddon.shared.i18n.duration
 import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.webapp.app.date
-import net.eratiem.randogeddon.webapp.api.running
+import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon

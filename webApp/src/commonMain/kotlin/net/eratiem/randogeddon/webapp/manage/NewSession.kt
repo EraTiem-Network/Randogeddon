@@ -90,6 +90,7 @@ import net.eratiem.randogeddon.shared.i18n.text
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.load
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.PickLimits
@@ -350,7 +351,7 @@ private fun CreateSession(
     // Answers in a row that the tracker doesn't know the creation (204)
     var unknown = 0
     while (busy) {
-      delay(500)
+      pollWait(500)
       val creation = sentId ?: break
       val answer = call("GET", "api/sessions/new/creation/$creation", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
@@ -380,10 +381,12 @@ private fun CreateSession(
   val inviteProblems = remember { mutableStateMapOf<String, String>() }
   // The latest check: an answer to an earlier one (the YAMLs changed meanwhile) is dropped
   val checks = remember { Counter() }
+  // The session would use locks as the form is set (it gets the locks' slot then, whose name no YAML's slot may have)
+  var usesLocks by remember { mutableStateOf(false) }
 
   fun inspect(): Job = scope.launch {
     val round = ++checks.n
-    val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
+    val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version, usesLocks))
     val answer = call("POST", "api/sessions/new/inspect", body, InspectResult.serializer())
     if (round != checks.n) return@launch
     when (answer) {
@@ -587,7 +590,7 @@ private fun CreateSession(
     )
     LaunchedEffect(Unit) {
       while (true) {
-        delay(8_000)
+        pollWait(8_000)
         inspect().join()
       }
     }
@@ -636,6 +639,15 @@ private fun CreateSession(
     val open = openRange?.let { (openCount ?: (n / 2)).coerceIn(it) }
     // A slot can be locked while another one can still start open
     val canLock = n - lockedNow.size > 1
+    // With locks (one locked for sure, or some left to chance: the tracker locks at least one of them then), the YAMLs
+    // are checked again for a slot named like the locks' slot; without, again without that check
+    val locks = lockable && (pool > 0 || lockedNow.isNotEmpty())
+    LaunchedEffect(locks) {
+      if (locks != usesLocks) {
+        usesLocks = locks
+        inspect()
+      }
+    }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       Txt(t.sessionAdmin.stepPlayers, size = 13.sp, weight = FontWeight.SemiBold)
       InfoTip(t.tips.players)

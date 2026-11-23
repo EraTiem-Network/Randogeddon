@@ -38,14 +38,14 @@ import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WatcherRequest
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.web.Route
+import net.eratiem.randogeddon.shared.web.hash
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
-import net.eratiem.randogeddon.webapp.app.Route
 import net.eratiem.randogeddon.webapp.app.clock
 import net.eratiem.randogeddon.webapp.app.date
-import net.eratiem.randogeddon.webapp.app.hash
 import net.eratiem.randogeddon.webapp.dashboard.Fact
 import net.eratiem.randogeddon.webapp.dashboard.PersonName
 import net.eratiem.randogeddon.webapp.dashboard.playTime

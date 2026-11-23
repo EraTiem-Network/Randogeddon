@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.LogicProgress
@@ -24,6 +23,7 @@ import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.LogicView
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.webapp.api.load
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.WarningBanner
@@ -78,11 +78,11 @@ fun LogicSection(id: String, administrator: Boolean) {
           last = part.last
         }
       }
-      delay(if (progress == null) ASK_NONE_MS else ASK_MS)
+      pollWait(if (progress == null) ASK_NONE_MS else ASK_MS)
     }
   }
   // Its slots whose rebuild doesn't fit the seed (their numbers and maps may be wrong), from its dashboard's state:
-  // each one's name and the logic's reason
+  // each one's name and the logic's reason (empty: none to read)
   var mismatches by remember(id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
   val hasLogic = progress != null
   LaunchedEffect(id, hasLogic) {
@@ -90,7 +90,7 @@ fun LogicSection(id: String, administrator: Boolean) {
       load("api/sessions/$id/state", Summary.serializer())?.let { s ->
         mismatches = s.players.mapNotNull { w -> w.logicMismatch?.let { w.name to it } }
       }
-      delay(ASK_MISMATCHES_MS)
+      pollWait(ASK_MISMATCHES_MS)
     }
   }
   val now = progress ?: return
@@ -116,7 +116,8 @@ fun LogicSection(id: String, administrator: Boolean) {
       }
       rebuild.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       if (mismatches.isNotEmpty()) {
-        val lines = mismatches.map { (slot, reason) -> "• $slot: $reason" }
+        // A reason only where there is one (the tracker leaves it empty for whoever may not read it)
+        val lines = mismatches.map { (slot, reason) -> if (reason.isEmpty()) "• $slot" else "• $slot: $reason" }
         WarningBanner((listOf(t.logicMismatches(mismatches.size)) + lines).joinToString("\n"))
       }
       if (administrator && log.isNotEmpty()) SectionLog("logic", t.logicSection, LogOrder.LOGIC, log)

@@ -36,7 +36,7 @@ import net.eratiem.randogeddon.shared.SpoilerPlacements
 import net.eratiem.randogeddon.shared.SpoilerSettings
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
-import net.eratiem.randogeddon.webapp.api.pathSegment
+import net.eratiem.randogeddon.shared.web.pathSegment
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon

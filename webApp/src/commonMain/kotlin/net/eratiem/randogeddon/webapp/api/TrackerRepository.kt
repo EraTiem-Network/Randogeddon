@@ -8,18 +8,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
-import kotlin.random.Random
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.Connection
 import net.eratiem.randogeddon.shared.FontScope
 import net.eratiem.randogeddon.shared.Me
 import net.eratiem.randogeddon.shared.PlayerDetail
 import net.eratiem.randogeddon.shared.SessionEntry
-import net.eratiem.randogeddon.shared.SessionStatus
 import net.eratiem.randogeddon.shared.SlotFile
 import net.eratiem.randogeddon.shared.SlotFiles
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.i18n.texts
+import net.eratiem.randogeddon.shared.web.pathSegment
+import net.eratiem.randogeddon.shared.web.replaces
+import net.eratiem.randogeddon.shared.web.retryDelay
 import net.eratiem.randogeddon.webapp.app.Languages
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.wordError
@@ -167,10 +168,10 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
           _me.value = me
           Platform.hideLogin()
           refreshSessions()
-          // New sessions, and how the others are doing
+          // New sessions, and how the others are doing (not while the page is hidden)
           if (listing?.isActive != true) listing = scope.launch {
             while (true) {
-              delay(30_000)
+              pollWait(30_000)
               refreshSessions()
             }
           }
@@ -263,21 +264,6 @@ class TrackerRepository(private val scope: CoroutineScope) : SessionSource {
     }
   }
 }
-
-/**
- * Whether [this] summary is shown instead of [previous]: not when it is an older one of the same tracker run (the
- * initial fetch can arrive after a newer pushed state). A summary of another run ([Summary.startedAt]: the tracker
- * restarted, its version counts from 0 again) or with another end always is.
- */
-internal fun Summary.replaces(previous: Summary?): Boolean =
-  previous == null || startedAt != previous.startedAt || version >= previous.version || finishedAt != previous.finishedAt
-
-/** How long to wait before the [failures]th attempt in a row: 2 s, 4 s, 8 s … up to 30 s, and up to 1 s more by chance. */
-internal fun retryDelay(failures: Int): Long =
-  minOf(30_000L, 2_000L shl (failures - 1).coerceIn(0, 4)) + Random.nextLong(1_000)
-
-/** Not finished yet. */
-val SessionStatus.running: Boolean get() = this == SessionStatus.LIVE || this == SessionStatus.FINISHING
 
 /**
  * Without a login (logged out, or the login ended): the settings kept in this browser go back to the defaults, so the

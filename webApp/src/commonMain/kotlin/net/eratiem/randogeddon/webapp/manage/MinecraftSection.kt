@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.shared.MinecraftDirectRequest
@@ -24,6 +23,7 @@ import net.eratiem.randogeddon.shared.MinecraftLogs
 import net.eratiem.randogeddon.shared.MinecraftServers
 import net.eratiem.randogeddon.shared.MinecraftStatus
 import net.eratiem.randogeddon.webapp.api.load
+import net.eratiem.randogeddon.webapp.api.pollWait
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.dashboard.dotSegment
@@ -83,7 +83,7 @@ fun MinecraftSection(id: String, administrator: Boolean) {
           last[slot] = maxOf(from, part.last)
         }
       }
-      delay(if (slots.isEmpty()) ASK_NONE_MS else ASK_MS)
+      pollWait(if (slots.isEmpty()) ASK_NONE_MS else ASK_MS)
     }
   }
   val now = view?.takeIf { it.servers.isNotEmpty() } ?: return

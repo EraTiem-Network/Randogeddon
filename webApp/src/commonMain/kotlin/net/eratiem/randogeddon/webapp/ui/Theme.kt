@@ -22,7 +22,6 @@ import net.eratiem.randogeddon.shared.ThemeColors
 import net.eratiem.randogeddon.shared.ThemeMode
 import net.eratiem.randogeddon.shared.itemKind
 import net.eratiem.randogeddon.shared.palettes
-import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.FONT_CHANGE_TURNS
 import net.eratiem.randogeddon.webapp.app.FONT_CHANGE_TURN_MS
 import net.eratiem.randogeddon.webapp.app.FontChange
@@ -31,7 +30,6 @@ import net.eratiem.randogeddon.webapp.app.LocalFontChange
 import net.eratiem.randogeddon.webapp.app.LocalFonts
 import net.eratiem.randogeddon.webapp.app.PageFonts
 import net.eratiem.randogeddon.webapp.app.Platform
-import net.eratiem.randogeddon.webapp.app.hash
 
 /** The page's colours: one palette of a theme (`:shared`'s [ThemeColors], as Compose colours). */
 data class Palette(
