@@ -54,7 +54,8 @@ class StoresTest {
       postgres.createConnection("").use { c ->
         c.createStatement().use {
           it.execute("CREATE ROLE late_gateway LOGIN PASSWORD 'late-password'")
-          it.execute("GRANT SELECT ON sessions TO late_gateway")
+          // What the gateway reads: it waits for all of it
+          it.execute("GRANT SELECT ON sessions, session_hosted_slots, slot_passwords, app_settings TO late_gateway")
         }
       }
     }
@@ -115,10 +116,14 @@ class StoresTest {
     assertEquals(1, logins.deleteExpired(now))
   }
 
+  /** A bare session of [seedName] (`s-<seed>`), as the host's CLI makes one for a seed from before Phase 4. */
+  private suspend fun bare(seedName: String) = SlotPasswordStore(db).ensure(seedName, emptyList(), { "pw" }, create = true)
+
   @Test
   fun `the session time counts only while the game server runs`() = runBlocking {
     val times = SessionTimeStore(db)
     val t0 = Instant.parse("2026-11-11T10:00:00Z")
+    bare("seed1")
     times.started("seed1", t0)
     times.tick("seed1", t0.plusSeconds(30))
     times.stopped("seed1", t0.plusSeconds(45))
@@ -199,6 +204,7 @@ class StoresTest {
   @Test
   fun `a game server's events are kept in their order per session, added by the gateway's role, and go with the session`() = runBlocking {
     val events = SessionEventStore(db)
+    setUpSessions("loud-otter", "calm-heron")
     GatewayRole.ensure(db, "events_gateway", "events-password")
     RandogeddonDatabase.connect(DatabaseConfig(postgres.jdbcUrl, "events_gateway", "events-password"), migrate = false, poolSize = 1)
       .use { gateway ->
@@ -226,8 +232,24 @@ class StoresTest {
     events.delete("calm-heron")
   }
 
+  /** A session for each of [ids] (its seed: `seed-<id>`), set up as the panel does. */
+  private suspend fun setUpSessions(vararg ids: String) {
+    for (id in ids) assertTrue(SessionSetupStore(db).create(id, "seed-$id", "0.6.8", "{}", emptyMap()))
+  }
+
+  /** As on a server: the tracker logs in as [role], a role of its own, the tables' owner, no superuser (database-roles). */
+  private suspend fun trackerRole(role: String, password: String) = db.query {
+    exec("CREATE ROLE $role LOGIN NOSUPERUSER CREATEROLE PASSWORD '$password'")
+    exec("ALTER SCHEMA public OWNER TO $role")
+    exec(
+      "DO $$ DECLARE t text; BEGIN FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP " +
+        "EXECUTE format('ALTER TABLE public.%I OWNER TO $role', t); END LOOP; END $$",
+    )
+  }
+
   @Test
   fun `the gateway's role adds only the gateway's kinds of events, the tracker its cheats too`() = runBlocking {
+    setUpSessions("loud-otter", "calm-heron")
     // As on a server: the tracker logs in with a role of its own, the tables' owner, no superuser (database-roles)
     db.query {
       exec("CREATE ROLE kinds_tracker LOGIN NOSUPERUSER CREATEROLE PASSWORD 'tracker-password'")
@@ -272,6 +294,7 @@ class StoresTest {
   @Test
   fun `a session's snapshot is kept live, made final once it finished, reopened, and goes with the session`() = runBlocking {
     val snapshots = SessionSnapshotStore(db)
+    setUpSessions("kept-otter", "done-heron", "old-fox")
     assertNull(snapshots.of("kept-otter"))
     assertTrue(snapshots.saveLive("kept-otter", 1_000, "{\"live\":1}"))
     assertEquals(SessionSnapshot("{\"live\":1}", final = false, atMs = 1_000), snapshots.of("kept-otter"))
@@ -313,8 +336,8 @@ class StoresTest {
   fun `a session finishes, is listed as finished, and can be reopened`() = runBlocking {
     val finishes = SessionFinishStore(db)
     val t0 = Instant.parse("2026-11-13T20:00:00Z")
-    SessionTimeStore(db).started("111", t0)
-    SessionTimeStore(db).started("222", t0)
+    bare("111")
+    bare("222")
     assertEquals(FinishState(null, null, null, false), finishes.of("111"))
     assertNull(finishes.of("unknown"))
 
@@ -343,6 +366,8 @@ class StoresTest {
   fun `the cheats are kept per session, the newest first, and go with it`() = runBlocking {
     val log = CheatLogStore(db)
     val t0 = Instant.parse("2026-11-13T20:00:00Z")
+    bare("111")
+    bare("222")
     log.add("111", CheatEntry(t0, "Ada", "ITEM", "Alice-HK", "Mantis Claw"))
     log.add("111", CheatEntry(t0.plusSeconds(5), "Ada", "RELEASE", "Bob-Yacht", null))
     log.add("222", CheatEntry(t0, "Bea", "ITEM", "X", "Y"))
@@ -357,10 +382,10 @@ class StoresTest {
   fun `sessions have IDs, each one once, and a seed from before gets s-seed`() = runBlocking {
     val sessions = SessionStore(db)
     val t0 = Instant.parse("2026-11-13T20:00:00Z")
-    // Seen first by the gateway (a seed from before Phase 4)
-    SessionTimeStore(db).started("12345", t0)
+    // A seed from before Phase 4: its bare session, made by the host's CLI
+    SlotPasswordStore(db).ensure("12345", listOf("Alice-HK"), { "pw" }, now = t0, create = true)
     assertEquals("s-12345", sessions.idOf("12345"))
-    SessionSetupStore(db).create("brave-otter", "678", "0.6.8", "{}", emptyMap(), now = t0.plusSeconds(60))
+    assertTrue(SessionSetupStore(db).create("brave-otter", "678", "0.6.8", "{}", emptyMap(), now = t0.plusSeconds(60)))
     assertEquals(listOf("brave-otter", "s-12345"), sessions.all().map { it.id })
     assertEquals("0.6.8", sessions.byId("brave-otter")?.apVersion)
     assertNull(sessions.byId("nobody"))
@@ -375,15 +400,21 @@ class StoresTest {
     var n = 0
     val generate = { "pw${n++}" }
 
-    val first = slots.ensure("seed1", listOf("Alice-HK", "Bob-Yacht"), generate)
+    // No session of the seed: none, and none made
+    assertEquals(emptyMap(), slots.ensure("seed1", listOf("Alice-HK"), generate))
+    assertNull(SessionStore(db).idOf("seed1"))
+    val first = slots.ensure("seed1", listOf("Alice-HK", "Bob-Yacht"), generate, create = true)
     assertEquals(setOf("Alice-HK", "Bob-Yacht"), first.keys)
     // Again (e.g. after a restart): the same passwords, only new slots get one
     val again = slots.ensure("seed1", listOf("Alice-HK", "Bob-Yacht", "Carol-RoR2"), generate)
     assertEquals(first["Alice-HK"], again["Alice-HK"])
     assertEquals(3, again.size)
     assertEquals(again, slots.passwords("seed1"))
+    // Asked for at the same moment (the watcher and a player's page): one password each
+    val atOnce = (1..20).map { async(Dispatchers.IO) { slots.ensure("seed1", listOf("Dan-SM64"), { "pw-$it" }) } }.map { it.await() }
+    assertEquals(1, atOnce.map { it["Dan-SM64"] }.toSet().size)
 
-    val next = slots.ensure("seed2", listOf("Alice-HK"), generate)
+    val next = slots.ensure("seed2", listOf("Alice-HK"), generate, create = true)
     assertNotEquals(first["Alice-HK"], next["Alice-HK"])
     assertEquals(emptyMap(), slots.passwords("unknown"))
   }
@@ -427,6 +458,7 @@ class StoresTest {
     times.stopped("seed-busy", t0.plusSeconds(30))
     finishes.finish("seed-calm", by = "Ben", now = t0.plusSeconds(90))
     // A seed from before, without a setup of its own
+    bare("12345")
     times.started("12345", t0)
 
     val seeds = listOf("seed-busy", "seed-calm", "12345")

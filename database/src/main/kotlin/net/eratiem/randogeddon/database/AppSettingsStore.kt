@@ -1,7 +1,7 @@
 package net.eratiem.randogeddon.database
 
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 
@@ -45,14 +45,15 @@ class AppSettingsStore(private val db: RandogeddonDatabase) {
   suspend fun watchStreams(): Int =
     get(WATCH_STREAMS)?.toIntOrNull()?.takeIf { it in 0..MAX_WATCH_STREAMS } ?: DEFAULT_WATCH_STREAMS
 
+  /** Sets [key] to [value]; two at once for a new key: the later one's value stays, neither fails. */
   suspend fun set(key: String, value: String) = db.query {
-    val updated = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value }
-    if (updated == 0) {
-      AppSettingsTable.insert {
+    fun updated() = AppSettingsTable.update({ AppSettingsTable.key eq key }) { it[AppSettingsTable.value] = value } > 0
+    // None yet: made; made by another at the same moment: this value after all
+    if (!updated() && AppSettingsTable.insertIgnore {
         it[AppSettingsTable.key] = key
         it[AppSettingsTable.value] = value
-      }
-    }
+      }.insertedCount == 0
+    ) updated()
     Unit
   }
 }

@@ -7,7 +7,6 @@ import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.core.isNull
@@ -17,6 +16,7 @@ import org.jetbrains.exposed.v1.jdbc.Query
 import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
@@ -29,15 +29,19 @@ data class SessionTime(val runTimeMs: Long, val countedUntil: Instant?)
  * [tick] while it runs, [stopped] when it ends. Times it was stopped don't count.
  */
 class SessionTimeStore(private val db: RandogeddonDatabase) {
+  /** Nothing for a seed that is no session (any more): a session is made by the admin panel (or the host's CLI). */
   suspend fun started(seedName: String, now: Instant = Instant.now()) = db.query {
-    sessionId(seedName, now)
     SessionsTable.update({ SessionsTable.seedName eq seedName }) { it[countedUntil] = now }
     Unit
   }
 
-  /** Adds the time since the last count; [running] = false ends the count. */
+  /**
+   * Adds the time since the last count; [running] = false ends the count. With the session's row locked from the read
+   * to the write: a tick and the stop at the same moment count one after the other, and the stop is the last word.
+   */
   suspend fun tick(seedName: String, now: Instant = Instant.now(), running: Boolean = true) = db.query {
-    val row = SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull() ?: return@query
+    val row = SessionsTable.select(SessionsTable.runTimeMs, SessionsTable.countedUntil)
+      .where { SessionsTable.seedName eq seedName }.forUpdate().singleOrNull() ?: return@query
     val since = row[SessionsTable.countedUntil] ?: return@query
     val added = (now.toEpochMilli() - since.toEpochMilli()).coerceAtLeast(0)
     SessionsTable.update({ SessionsTable.seedName eq seedName }) {
@@ -59,12 +63,14 @@ class SessionTimeStore(private val db: RandogeddonDatabase) {
   }
 
   suspend fun of(seedName: String): SessionTime? = db.query {
-    SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.let(::time)
+    SessionsTable.select(SessionsTable.runTimeMs, SessionsTable.countedUntil).where { SessionsTable.seedName eq seedName }
+      .singleOrNull()?.let(::time)
   }
 
   /** Every seed's time, by its name, in one read (the tracker's refresh of all sessions). */
   suspend fun all(): Map<String, SessionTime> = db.query {
-    SessionsTable.selectAll().associate { it[SessionsTable.seedName] to time(it) }
+    SessionsTable.select(SessionsTable.seedName, SessionsTable.runTimeMs, SessionsTable.countedUntil)
+      .associate { it[SessionsTable.seedName] to time(it) }
   }
 
   private fun time(row: ResultRow) = SessionTime(row[SessionsTable.runTimeMs], row[SessionsTable.countedUntil])
@@ -122,7 +128,9 @@ fun invitedName(id: Uuid, suggested: String?): String =
 class SessionSetupStore(private val db: RandogeddonDatabase) {
   /**
    * Records [seedName]'s session as [publicId]; [worlds]: slot name -> the users who play it; [hosted]: its hosted
-   * slots, of them [direct] the ones whose Minecraft server Randogeddon runs.
+   * slots, of them [direct] the ones whose Minecraft server Randogeddon runs. `false`: the seed is another session's
+   * already (set up in the panel), which stays as it is; only the bare row of a seed from before Phase 4 (the host's
+   * CLI) is taken over. An ID that is another session's is refused by the database (an exception).
    */
   suspend fun create(
     publicId: String,
@@ -135,9 +143,13 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     createdBy: Uuid? = null,
     direct: Set<String> = emptySet(),
     open: Set<String> = emptySet(),
-  ) =
+  ): Boolean =
     db.query {
-      val id = sessionId(seedName, now, publicId)
+      val existing = SessionsTable.select(SessionsTable.id, SessionsTable.optionsJson)
+        .where { SessionsTable.seedName eq seedName }.forUpdate().singleOrNull()
+      if (existing != null && existing[SessionsTable.optionsJson] != null) return@query false
+      // Two creations of a new seed at once: the seed's unique index refuses the second, whose next try finds it
+      val id = existing?.get(SessionsTable.id) ?: insertSession(seedName, now, publicId)
       SessionsTable.update({ SessionsTable.id eq id }) {
         it[SessionsTable.publicId] = publicId
         it[SessionsTable.apVersion] = apVersion
@@ -168,6 +180,7 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
           it[slotName] = slot
         }
       }
+      true
     }
 
   /**
@@ -176,9 +189,10 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
    */
   private fun names(users: List<Uuid>): Map<Uuid, String> {
     if (users.isEmpty()) return emptyMap()
-    val suggested = InvitationsTable.selectAll().where { InvitationsTable.userId inList users }
+    val suggested = InvitationsTable.select(InvitationsTable.userId, InvitationsTable.suggestedName)
+      .where { InvitationsTable.userId inList users }
       .associate { it[InvitationsTable.userId] to it[InvitationsTable.suggestedName] }
-    return UsersTable.selectAll().where { UsersTable.id inList users }.associate { row ->
+    return UsersTable.select(UsersTable.id, UsersTable.name).where { UsersTable.id inList users }.associate { row ->
       val id = row[UsersTable.id]
       id to (row[UsersTable.name] ?: invitedName(id, suggested[id]))
     }
@@ -263,13 +277,13 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
 
   /** How many sessions that aren't finished each account created (for the limit per user); none: not in it. */
   suspend fun runningCreated(): Map<Uuid, Int> = db.query {
-    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNull() and SessionsTable.createdBy.isNotNull() }
+    SessionsTable.select(SessionsTable.createdBy).where { SessionsTable.finishedAt.isNull() and SessionsTable.createdBy.isNotNull() }
       .groupingBy { it[SessionsTable.createdBy]!! }.eachCount()
   }
 
   /** How many sessions that aren't finished [userId] created. */
   suspend fun runningCreatedBy(userId: Uuid): Int = db.query {
-    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNull() and (SessionsTable.createdBy eq userId) }.count().toInt()
+    SessionsTable.select(SessionsTable.id).where { SessionsTable.finishedAt.isNull() and (SessionsTable.createdBy eq userId) }.count().toInt()
   }
 
   suspend fun of(seedName: String): SessionSetup? = db.query {
@@ -291,10 +305,17 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     fun name(r: ResultRow) = r[SessionWorldsTable.userName] ?: r[UsersTable.name] ?: r[SessionWorldsTable.userId].toString().take(8)
     // The database gives the rows in no order of its own (it changed from one read to the next, and the dashboard's
     // slots with it): by slot, then by player
-    val worldRows = (SessionWorldsTable innerJoin UsersTable).selectAll().ofThese(SessionWorldsTable.sessionId)
+    // Of the accounts only what a session shows (never a password's hash or a second factor's secret)
+    val worldRows = (SessionWorldsTable innerJoin UsersTable).select(
+      SessionWorldsTable.sessionId, SessionWorldsTable.slotName, SessionWorldsTable.userId, SessionWorldsTable.userName,
+      UsersTable.name, UsersTable.deletedAt,
+    ).ofThese(SessionWorldsTable.sessionId)
       .sortedWith(compareBy({ it[SessionWorldsTable.slotName].lowercase() }, { it[SessionWorldsTable.slotName] }, { name(it).lowercase() }))
       .groupBy { it[SessionWorldsTable.sessionId] }
-    val roleRows = (SessionRolesTable innerJoin UsersTable).selectAll().ofThese(SessionRolesTable.sessionId)
+    val roleRows = (SessionRolesTable innerJoin UsersTable).select(
+      SessionRolesTable.sessionId, SessionRolesTable.userId, SessionRolesTable.role, SessionRolesTable.userName,
+      UsersTable.name, UsersTable.deletedAt, UsersTable.blockedAt, UsersTable.blockedUntil,
+    ).ofThese(SessionRolesTable.sessionId)
       .groupBy { it[SessionRolesTable.sessionId] }
     val hostedRows = SessionHostedSlotsTable.selectAll().ofThese(SessionHostedSlotsTable.sessionId)
       .groupBy { it[SessionHostedSlotsTable.sessionId] }
@@ -324,7 +345,10 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
     }
   }
 
-  /** Removes the session with its slot passwords, world assignments and session time; the users stay. */
+  /**
+   * Removes the session with its slot passwords, world assignments, session time, events and snapshot (one statement:
+   * the foreign keys take them along); the users stay.
+   */
   suspend fun delete(seedName: String): Boolean = db.query {
     SessionsTable.deleteWhere { SessionsTable.seedName eq seedName } > 0
   }
@@ -337,17 +361,19 @@ class SessionSetupStore(private val db: RandogeddonDatabase) {
 fun legacySessionId(seedName: String): String =
   "s-" + seedName.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(38)
 
-/** The id of [seedName]'s session, created as [publicId] if it doesn't exist yet (inside a transaction). */
-internal fun sessionId(seedName: String, now: Instant, publicId: String = legacySessionId(seedName)): Uuid =
-  SessionsTable.selectAll().where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
-    ?: Uuid.random().also { id ->
-      SessionsTable.insert {
-        it[SessionsTable.id] = id
-        it[SessionsTable.publicId] = publicId
-        it[SessionsTable.seedName] = seedName
-        it[createdAt] = now
-      }
-    }
+/** The id of [seedName]'s session; `null`: there is none (inside a transaction). */
+internal fun sessionId(seedName: String): Uuid? =
+  SessionsTable.select(SessionsTable.id).where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.id)
+
+/** A new, bare session of [seedName] as [publicId]; its id (inside a transaction). */
+private fun insertSession(seedName: String, now: Instant, publicId: String): Uuid = Uuid.random().also { id ->
+  SessionsTable.insert {
+    it[SessionsTable.id] = id
+    it[SessionsTable.publicId] = publicId
+    it[SessionsTable.seedName] = seedName
+    it[createdAt] = now
+  }
+}
 
 /** A session by its ID: its seed, when it was created and finished, its Archipelago release. */
 data class SessionRecord(
@@ -362,7 +388,9 @@ data class SessionRecord(
 class SessionStore(private val db: RandogeddonDatabase) {
   /** Every session, the newest first. */
   suspend fun all(): List<SessionRecord> = db.query {
-    SessionsTable.selectAll().orderBy(SessionsTable.createdAt, SortOrder.DESC).map(::record)
+    // Not the options (the widest text): read every 10 s
+    SessionsTable.select(SessionsTable.publicId, SessionsTable.seedName, SessionsTable.createdAt, SessionsTable.apVersion, SessionsTable.finishedAt)
+      .orderBy(SessionsTable.createdAt, SortOrder.DESC).map(::record)
   }
 
   suspend fun byId(id: String): SessionRecord? = db.query {
@@ -383,15 +411,23 @@ class SessionStore(private val db: RandogeddonDatabase) {
 /** The game passwords of each seed's slots. */
 class SlotPasswordStore(private val db: RandogeddonDatabase) {
   /**
-   * The passwords of [seedName], creating the session and a password for every slot of [slots] that has none yet.
-   * Slots keep their password across restarts; a new seed gets new ones.
+   * The passwords of [seedName], with a password for every slot of [slots] that has none yet. Slots keep their
+   * password across restarts; a new seed gets new ones. Without a session of the seed: empty, or with [create] (the
+   * host's CLI, for a seed from before Phase 4) a bare session `s-<seed>` ([legacySessionId]) made for it. Called for
+   * the same seed at once, each slot gets one password (the first one made).
    */
-  suspend fun ensure(seedName: String, slots: Collection<String>, generate: () -> String, now: Instant = Instant.now()):
-    Map<String, String> = db.query {
-    val sessionId = sessionId(seedName, now)
+  suspend fun ensure(
+    seedName: String,
+    slots: Collection<String>,
+    generate: () -> String,
+    now: Instant = Instant.now(),
+    create: Boolean = false,
+  ): Map<String, String> = db.query {
+    val sessionId = sessionId(seedName)
+      ?: if (create) insertSession(seedName, now, legacySessionId(seedName)) else return@query emptyMap()
     val existing = passwords(sessionId)
     for (slot in slots - existing.keys) {
-      SlotPasswordsTable.insert {
+      SlotPasswordsTable.insertIgnore {
         it[SlotPasswordsTable.sessionId] = sessionId
         it[slotName] = slot
         it[password] = generate()
@@ -471,7 +507,10 @@ class SessionFinishStore(private val db: RandogeddonDatabase) {
 
   /** Every seed's finish state, by its name, in one read (the tracker's refresh of all sessions). */
   suspend fun all(): Map<String, FinishState> = db.query {
-    SessionsTable.selectAll().associate { it[SessionsTable.seedName] to state(it) }
+    SessionsTable.select(
+      SessionsTable.seedName, SessionsTable.finishedAt, SessionsTable.finishedBy, SessionsTable.finishDueAt, SessionsTable.keep,
+      SessionsTable.retainedSince,
+    ).associate { it[SessionsTable.seedName] to state(it) }
   }
 
   private fun state(row: ResultRow) = FinishState(
@@ -485,23 +524,35 @@ class SessionFinishStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
-  suspend fun finish(seedName: String, by: String?, now: Instant = Instant.now()) = db.query {
+  /**
+   * The session is finished (by [by]; `null`: by itself), with its [archive] (the dashboard's JSON, its final snapshot)
+   * in the same transaction: a stop in between leaves neither half.
+   */
+  suspend fun finish(seedName: String, by: String?, now: Instant = Instant.now(), archive: String? = null) = db.query {
     SessionsTable.update({ SessionsTable.seedName eq seedName }) {
       it[finishedAt] = now
       it[finishedBy] = by
       it[finishDueAt] = null
     }
+    if (archive != null) publicIdOf(seedName)?.let { writeFinal(it, now.toEpochMilli(), archive) }
     Unit
   }
 
+  /** The session runs again; its archive is its live snapshot from now on (in the same transaction). */
   suspend fun reopen(seedName: String) = db.query {
     SessionsTable.update({ SessionsTable.seedName eq seedName }) {
       it[finishedAt] = null
       it[finishedBy] = null
       it[finishDueAt] = null
     }
+    publicIdOf(seedName)?.let { id ->
+      SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq id }) { it[SessionSnapshotsTable.final] = false }
+    }
     Unit
   }
+
+  private fun publicIdOf(seedName: String): String? =
+    SessionsTable.select(SessionsTable.publicId).where { SessionsTable.seedName eq seedName }.singleOrNull()?.get(SessionsTable.publicId)
 
   /** [keep]: its auto-deletion is disabled. Enabling it again starts its retention anew, at [now]. */
   suspend fun setKeep(seedName: String, keep: Boolean, now: Instant = Instant.now()): Boolean = db.query {
@@ -513,7 +564,10 @@ class SessionFinishStore(private val db: RandogeddonDatabase) {
 
   /** Every finished session, the newest first. */
   suspend fun finished(): List<FinishedSession> = db.query {
-    SessionsTable.selectAll().where { SessionsTable.finishedAt.isNotNull() }
+    SessionsTable.select(
+      SessionsTable.seedName, SessionsTable.createdAt, SessionsTable.finishedAt, SessionsTable.finishedBy, SessionsTable.keep,
+      SessionsTable.retainedSince,
+    ).where { SessionsTable.finishedAt.isNotNull() }
       .orderBy(SessionsTable.finishedAt, SortOrder.DESC)
       .map {
         FinishedSession(
@@ -537,8 +591,9 @@ data class CheatEntry(
 
 /** Every cheat from the admin panel, per session, with the admin's name at the time. */
 class CheatLogStore(private val db: RandogeddonDatabase) {
+  /** Nothing for a seed that is no session (any more). */
   suspend fun add(seedName: String, entry: CheatEntry) = db.query {
-    val id = sessionId(seedName, entry.at)
+    val id = sessionId(seedName) ?: return@query
     CheatLogTable.insert {
       it[sessionId] = id
       it[at] = entry.at
@@ -577,18 +632,15 @@ class SessionRoleStore(private val db: RandogeddonDatabase) {
     db.query {
       val session = SessionsTable.selectAll().where { SessionsTable.publicId eq publicId }.singleOrNull()?.get(SessionsTable.id)
         ?: return@query false
-      val exists = SessionRolesTable.selectAll()
-        .where { (SessionRolesTable.sessionId eq session) and (SessionRolesTable.userId eq userId) }.any()
-      if (exists) return@query false
-      SessionRolesTable.insert {
+      // The primary key decides (one role per person): two at once give one `true`
+      SessionRolesTable.insertIgnore {
         it[sessionId] = session
         it[SessionRolesTable.userId] = userId
         it[SessionRolesTable.role] = role
         it[userName] = name
         it[addedBy] = by
         it[addedAt] = now
-      }
-      true
+      }.insertedCount > 0
     }
 
   /** Gives [userId] [role] in place of the one they have in the session of [publicId]; `false` if they had none. */
@@ -642,14 +694,18 @@ class ShareLinkStore(private val db: RandogeddonDatabase) {
   /** A new link for the session of [publicId] (the old one stops working); `false` if there's no such session. */
   suspend fun replace(publicId: String, tokenHash: String, by: String?, now: Instant = Instant.now()): Boolean = db.query {
     val session = sessionOf(publicId) ?: return@query false
-    ShareLinksTable.deleteWhere { sessionId eq session }
-    ShareLinksTable.insert {
+    // One per session (its primary key): replaced, or made; made by another at the same moment, replaced after all
+    fun replaced() = ShareLinksTable.update({ ShareLinksTable.sessionId eq session }) {
+      it[ShareLinksTable.tokenHash] = tokenHash
+      it[createdBy] = by
+      it[createdAt] = now
+    } > 0
+    replaced() || ShareLinksTable.insertIgnore {
       it[sessionId] = session
       it[ShareLinksTable.tokenHash] = tokenHash
       it[createdBy] = by
       it[createdAt] = now
-    }
-    true
+    }.insertedCount > 0 || replaced()
   }
 
   /** Turns the session's link off; `false` if it had none. */
@@ -679,10 +735,17 @@ data class SessionEvent(val id: Long, val atMs: Long, val kind: String, val pack
 
 /**
  * What happens on the sessions' game servers: the gateway writes it as it hears it ([append]), the tracker reads it
- * in order ([after]) and so misses nothing while it isn't connected.
+ * in order ([after]) and so misses nothing while it isn't connected. Only for a session that is there (V29: its
+ * events go with it).
  */
 class SessionEventStore(private val db: RandogeddonDatabase) {
+  /**
+   * One writer of [session]'s events at a time, from before its ID is taken until it is committed: the IDs are taken
+   * in the order they become visible, so a reader that has seen one never misses an earlier one committed later.
+   */
   suspend fun append(session: String, atMs: Long, kind: String, packet: String = "") = db.query {
+    // A lock of the transaction, on a number of the session's ID (two sessions sharing one only wait for each other)
+    exec("SELECT pg_advisory_xact_lock($APPEND_LOCK, ${session.hashCode()})")
     // Without asking for the new row back: the gateway's role may add rows, not read them (an insert that returns
     // its row needs it readable)
     SessionEventsTable.batchInsert(listOf(packet), shouldReturnGeneratedValues = false) {
@@ -694,21 +757,32 @@ class SessionEventStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
-  /** [session]'s events after the one with ID [after], oldest first, [limit] at most. */
-  suspend fun after(session: String, after: Long, limit: Int = 1000): List<SessionEvent> = db.query {
-    SessionEventsTable.selectAll()
-      .where { (SessionEventsTable.session eq session) and (SessionEventsTable.id greater after) }
-      .orderBy(SessionEventsTable.id).limit(limit).map(::event)
+  /**
+   * [session]'s events after the one with ID [after], oldest first: [limit] at most, and no more than about [bytes] of
+   * packets (at least one event, however large): a batch fits into memory whatever was written.
+   */
+  suspend fun after(session: String, after: Long, limit: Int = 1000, bytes: Long = BATCH_BYTES): List<SessionEvent> = db.jdbc { c ->
+    c.prepareStatement(
+      "SELECT id, at_ms, kind, packet FROM (" +
+        "SELECT id, at_ms, kind, packet, sum(octet_length(packet)) OVER (ORDER BY id) - octet_length(packet) AS before " +
+        "FROM (SELECT id, at_ms, kind, packet FROM session_events WHERE session = ? AND id > ? ORDER BY id LIMIT ?) e" +
+        ") b WHERE before < ? ORDER BY id",
+    ).use { s ->
+      s.setString(1, session)
+      s.setLong(2, after)
+      s.setInt(3, limit)
+      s.setLong(4, bytes)
+      s.executeQuery().use { r ->
+        buildList { while (r.next()) add(SessionEvent(r.getLong(1), r.getLong(2), r.getString(3), r.getString(4))) }
+      }
+    }
   }
 
-  /** [session] is deleted (its ID may be given to a new one). */
+  /** [session]'s events go (they go with the session anyway: V29). */
   suspend fun delete(session: String) = db.query {
     SessionEventsTable.deleteWhere { SessionEventsTable.session eq session }
     Unit
   }
-
-  private fun event(row: ResultRow) =
-    SessionEvent(row[SessionEventsTable.id], row[SessionEventsTable.atMs], row[SessionEventsTable.kind], row[SessionEventsTable.packet])
 
   companion object {
     const val PACKET = "packet"
@@ -716,6 +790,12 @@ class SessionEventStore(private val db: RandogeddonDatabase) {
     const val STOP = "stop"
     /** A cheat from the admin panel, written by the tracker: its feed line's parts as JSON. */
     const val CHEAT = "cheat"
+
+    /** How many bytes of packets one read takes at most (a row is 2 MiB at most: V29). */
+    const val BATCH_BYTES = 16L * 1024 * 1024
+
+    /** The first key of [append]'s lock (the second: the session's ID's `hashCode`); no other lock of the programs' has it. */
+    const val APPEND_LOCK = 1_652_469
   }
 }
 
@@ -725,15 +805,16 @@ data class SessionSnapshot(val json: String, val final: Boolean, val atMs: Long)
 /**
  * What the sessions' dashboards show, kept by the tracker: while a session runs the last it knew ([saveLive]: shown
  * while its game server doesn't run), once it finished its archive ([saveFinal]). A live one never replaces an
- * archive; reopening a session makes its archive live again ([reopen]). Also, once, the tracker's history file from
- * before ([baseline]).
+ * archive; reopening a session makes its archive live again ([reopen]). Also the state the session's events are
+ * replayed onto ([baseline]): once the tracker's history file from before, then what [saveLive] kept with it.
  */
 class SessionSnapshotStore(private val db: RandogeddonDatabase) {
   /** [session]'s snapshot; `null`: none yet. */
   suspend fun of(session: String): SessionSnapshot? = db.query {
-    SessionSnapshotsTable.selectAll().where { SessionSnapshotsTable.session eq session }.singleOrNull()?.let { row ->
-      row[SessionSnapshotsTable.snapshot]?.let { SessionSnapshot(it, row[SessionSnapshotsTable.final], row[SessionSnapshotsTable.atMs]) }
-    }
+    SessionSnapshotsTable.select(SessionSnapshotsTable.snapshot, SessionSnapshotsTable.final, SessionSnapshotsTable.atMs)
+      .where { SessionSnapshotsTable.session eq session }.singleOrNull()?.let { row ->
+        row[SessionSnapshotsTable.snapshot]?.let { SessionSnapshot(it, row[SessionSnapshotsTable.final], row[SessionSnapshotsTable.atMs]) }
+      }
   }
 
   /** Every final snapshot (archive), by session. */
@@ -743,46 +824,34 @@ class SessionSnapshotStore(private val db: RandogeddonDatabase) {
       .mapNotNull { row -> row[SessionSnapshotsTable.snapshot]?.let { row[SessionSnapshotsTable.session] to it } }.toMap()
   }
 
-  /** [session]'s live snapshot; `false`: not written, it has its archive already. */
-  suspend fun saveLive(session: String, atMs: Long, json: String): Boolean = db.query {
-    val final = SessionSnapshotsTable.select(SessionSnapshotsTable.final).where { SessionSnapshotsTable.session eq session }
-      .singleOrNull()?.get(SessionSnapshotsTable.final)
-    when (final) {
-      true -> false
-      false -> {
-        SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) {
-          it[SessionSnapshotsTable.atMs] = atMs
-          it[SessionSnapshotsTable.snapshot] = json
+  /**
+   * [session]'s live snapshot; `false`: not written, it has its archive already. With [state]: the state its events
+   * are replayed onto from now on, heard up to the event [eventsUntil] (a restart replays only the ones after it).
+   * Decided by the database, in one statement each: an archive written at the same moment is never overwritten.
+   */
+  suspend fun saveLive(session: String, atMs: Long, json: String, state: String? = null, eventsUntil: Long? = null): Boolean =
+    db.query {
+      val updated = SessionSnapshotsTable.update({ (SessionSnapshotsTable.session eq session) and (SessionSnapshotsTable.final eq false) }) {
+        it[SessionSnapshotsTable.atMs] = atMs
+        it[SessionSnapshotsTable.snapshot] = json
+        if (state != null) {
+          it[SessionSnapshotsTable.baseline] = state
+          it[SessionSnapshotsTable.eventsUntil] = eventsUntil
         }
-        true
       }
-      null -> {
-        SessionSnapshotsTable.insert {
-          it[SessionSnapshotsTable.session] = session
-          it[SessionSnapshotsTable.atMs] = atMs
-          it[SessionSnapshotsTable.snapshot] = json
-        }
-        true
-      }
+      // None yet: made; one there now (an archive) stays
+      updated > 0 || SessionSnapshotsTable.insertIgnore {
+        it[SessionSnapshotsTable.session] = session
+        it[SessionSnapshotsTable.atMs] = atMs
+        it[SessionSnapshotsTable.snapshot] = json
+        it[SessionSnapshotsTable.baseline] = state
+        it[SessionSnapshotsTable.eventsUntil] = eventsUntil
+      }.insertedCount > 0
     }
-  }
 
   /** [session]'s archive: it finished. */
   suspend fun saveFinal(session: String, atMs: Long, json: String) = db.query {
-    val updated = SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) {
-      it[SessionSnapshotsTable.atMs] = atMs
-      it[SessionSnapshotsTable.final] = true
-      it[SessionSnapshotsTable.snapshot] = json
-    }
-    if (updated == 0) {
-      SessionSnapshotsTable.insert {
-        it[SessionSnapshotsTable.session] = session
-        it[SessionSnapshotsTable.atMs] = atMs
-        it[SessionSnapshotsTable.final] = true
-        it[SessionSnapshotsTable.snapshot] = json
-      }
-    }
-    Unit
+    writeFinal(session, atMs, json)
   }
 
   /** [session] is reopened: its archive is its live snapshot from now on. */
@@ -791,30 +860,53 @@ class SessionSnapshotStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
-  /** The tracker's history from before, imported once; `null`: none. */
+  /** The state [session]'s events are replayed onto; `null`: none. */
   suspend fun baseline(session: String): String? = db.query {
     SessionSnapshotsTable.select(SessionSnapshotsTable.baseline).where { SessionSnapshotsTable.session eq session }
       .singleOrNull()?.get(SessionSnapshotsTable.baseline)
   }
 
+  /** Up to which event the state of [baseline] was heard; `null`: not known (none, or the history file of before). */
+  suspend fun eventsUntil(session: String): Long? = db.query {
+    SessionSnapshotsTable.select(SessionSnapshotsTable.eventsUntil).where { SessionSnapshotsTable.session eq session }
+      .singleOrNull()?.get(SessionSnapshotsTable.eventsUntil)
+  }
+
   /** Keeps [json] as [session]'s history from before (once: one that is there stays). */
   suspend fun importBaseline(session: String, atMs: Long, json: String) = db.query {
-    val row = SessionSnapshotsTable.select(SessionSnapshotsTable.baseline).where { SessionSnapshotsTable.session eq session }.singleOrNull()
-    when {
-      row == null -> SessionSnapshotsTable.insert {
+    val updated = SessionSnapshotsTable.update({ (SessionSnapshotsTable.session eq session) and SessionSnapshotsTable.baseline.isNull() }) {
+      it[SessionSnapshotsTable.baseline] = json
+    }
+    if (updated == 0) {
+      SessionSnapshotsTable.insertIgnore {
         it[SessionSnapshotsTable.session] = session
         it[SessionSnapshotsTable.atMs] = atMs
         it[SessionSnapshotsTable.baseline] = json
       }
-      row[SessionSnapshotsTable.baseline] == null ->
-        SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) { it[SessionSnapshotsTable.baseline] = json }
     }
     Unit
   }
 
-  /** [session] is deleted. */
+  /** [session]'s snapshot goes (it goes with the session anyway: V29). */
   suspend fun delete(session: String) = db.query {
     SessionSnapshotsTable.deleteWhere { SessionSnapshotsTable.session eq session }
     Unit
   }
+}
+
+/** [session]'s archive, written over whatever it had, or made (inside a transaction). */
+internal fun writeFinal(session: String, atMs: Long, json: String) {
+  fun written() = SessionSnapshotsTable.update({ SessionSnapshotsTable.session eq session }) {
+    it[SessionSnapshotsTable.atMs] = atMs
+    it[SessionSnapshotsTable.final] = true
+    it[SessionSnapshotsTable.snapshot] = json
+  } > 0
+  // A live one made at the same moment: written over after all
+  if (!written() && SessionSnapshotsTable.insertIgnore {
+      it[SessionSnapshotsTable.session] = session
+      it[SessionSnapshotsTable.atMs] = atMs
+      it[SessionSnapshotsTable.final] = true
+      it[SessionSnapshotsTable.snapshot] = json
+    }.insertedCount == 0
+  ) written()
 }

@@ -3,7 +3,8 @@ package net.eratiem.randogeddon.database
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.javatime.timestamp
 
-// The tables of db/migration; Flyway creates them, Exposed only reads and writes
+// The tables of db/migration; Flyway creates them, Exposed only reads and writes. Every `timestamp` column holds UTC
+// (a time without a zone, written and read as UTC: RandogeddonDatabase.connect pins the zone)
 
 object UsersTable : Table("users") {
   val id = uuid("id")
@@ -47,10 +48,12 @@ object UsersTable : Table("users") {
   /** How many running sessions of their own they may have at once (V21); `null`: the default (a setting). */
   val sessionLimit = integer("session_limit").nullable()
   val emailVerifiedByProvider = bool("email_verified_by_provider").nullable()
+  /** Its time zone, an IANA name from its browser (V29): the mails give their times in it; `null`: not known, UTC. */
+  val timeZone = varchar("time_zone", 64).nullable()
   override val primaryKey = PrimaryKey(id)
 }
 
-/** One-time codes for a lost authenticator, by their SHA-256. */
+/** One-time codes for a lost authenticator, by their HMAC under the tracker's key (V29: none of before, unkeyed). */
 object RecoveryCodesTable : Table("recovery_codes") {
   val userId = uuid("user_id") references UsersTable.id
   val codeHash = varchar("code_hash", 64)
@@ -211,7 +214,8 @@ object CheatLogTable : Table("cheat_log") {
 
 /**
  * What happens on a session's game server, as the gateway hears it (V24): [kind] `packet` with the Archipelago
- * packet as JSON, or `start` and `stop` of the game server. In their order ([id]); by the session's public ID.
+ * packet as JSON, or `start` and `stop` of the game server. In their order ([id], always the table's own: V29); by the
+ * session's public ID, which must be a session's (V29: deleted with it), [packet] at most 2 MiB.
  */
 object SessionEventsTable : Table("session_events") {
   val id = long("id").autoIncrement()
@@ -224,7 +228,9 @@ object SessionEventsTable : Table("session_events") {
 
 /**
  * What a session's dashboard shows, kept by the tracker (V25): while it runs the last it knew, once it finished its
- * archive ([final]); and once the tracker's history file from before ([baseline]). By the session's public ID.
+ * archive ([final]); and the state its events are replayed onto ([baseline]: once the tracker's history file from
+ * before, then what it kept of a running session, up to the event [eventsUntil], V29). By the session's public ID,
+ * which must be a session's (V29: deleted with it).
  */
 object SessionSnapshotsTable : Table("session_snapshots") {
   val session = varchar("session", 40)
@@ -232,5 +238,6 @@ object SessionSnapshotsTable : Table("session_snapshots") {
   val final = bool("final").default(false)
   val snapshot = text("snapshot").nullable()
   val baseline = text("baseline").nullable()
+  val eventsUntil = long("events_until").nullable()
   override val primaryKey = PrimaryKey(session)
 }

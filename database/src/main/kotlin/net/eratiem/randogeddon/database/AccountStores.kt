@@ -57,6 +57,8 @@ data class User(
   val block: Block? = null,
   /** How many running sessions of their own they may have at once; `null`: the default. */
   val sessionLimit: Int? = null,
+  /** Their time zone (an IANA name, from their browser): the mails' times are in it; `null`: not known, UTC. */
+  val timeZone: String? = null,
 ) {
   /** They can't log in at [now]: timed out or suspended. */
   fun keptOut(now: Instant = Instant.now()): Boolean = block?.holds(now) == true
@@ -84,6 +86,8 @@ data class Account(
   val sessionLimit: Int? = null,
   /** Whether the single sign-on provider calls their address verified; `null`: not its address, or it didn't say. */
   val emailVerifiedByProvider: Boolean? = null,
+  /** Their time zone (an IANA name): the mails' times are in it; `null`: not known, UTC. */
+  val timeZone: String? = null,
 )
 
 /** What the automatic deletion of [user]'s account goes by. */
@@ -126,12 +130,18 @@ class UserStore(private val db: RandogeddonDatabase) {
     UsersTable.selectAll().where { (UsersTable.oidcSubject eq subject) and signedUp() }.singleOrNull()?.let(::user)
   }
 
-  /** Links [id] to the Authentik user [subject]; `false` if another account has it, or [id] is linked to another. */
-  suspend fun linkSubject(id: Uuid, subject: String): Boolean = db.query {
-    val taken = UsersTable.selectAll().where { (UsersTable.oidcSubject eq subject) and (UsersTable.id neq id) }.any()
-    !taken && UsersTable.update({ (UsersTable.id eq id) and (UsersTable.oidcSubject.isNull() or (UsersTable.oidcSubject eq subject)) }) {
-      it[oidcSubject] = subject
-    } == 1
+  /**
+   * Links [id] to the Authentik user [subject]; `false` if another account has it (the column's unique index decides,
+   * also for two at once), or [id] is linked to another.
+   */
+  suspend fun linkSubject(id: Uuid, subject: String): Boolean = try {
+    db.query {
+      UsersTable.update({ (UsersTable.id eq id) and (UsersTable.oidcSubject.isNull() or (UsersTable.oidcSubject eq subject)) }) {
+        it[oidcSubject] = subject
+      } == 1
+    }
+  } catch (e: SQLException) {
+    if (e.uniqueViolation()) false else throw e
   }
 
   /** A signed-up user right away (the host's commands, tests); the others are [invite]d. */
@@ -220,8 +230,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     }
   } catch (e: SQLException) {
     // Only the name's unique index (the transaction was rolled back, the link with it); anything else goes on
-    val taken = generateSequence<Throwable>(e) { it.cause }.any { (it as? SQLException)?.sqlState == UNIQUE_VIOLATION }
-    if (taken) SignUp.NAME_TAKEN else throw e
+    if (e.uniqueViolation()) SignUp.NAME_TAKEN else throw e
   }
 
   /** A new name: it shows in the sessions that aren't finished; finished ones keep the old one. */
@@ -270,6 +279,12 @@ class UserStore(private val db: RandogeddonDatabase) {
     Unit
   }
 
+  /** The time zone [id]'s mails give their times in (an IANA name, checked by the caller); `null`: not known, UTC. */
+  suspend fun setTimeZone(id: Uuid, zone: String?) = db.query {
+    UsersTable.update({ UsersTable.id eq id }) { it[timeZone] = zone }
+    Unit
+  }
+
   suspend fun setAutoDelete(id: Uuid, autoDelete: String) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
       it[UsersTable.autoDelete] = autoDelete
@@ -284,12 +299,22 @@ class UserStore(private val db: RandogeddonDatabase) {
   }
 
   /**
-   * Deletes the account: its password, e-mail address, settings and link to Authentik go, its logins, invitations and
-   * pending addresses too. The row stays (marked deleted), so the sessions keep its UUID, with the name it had in each of them; the name
-   * is free again.
+   * Deletes the account: its name, password, e-mail address, settings and link to Authentik go, its logins,
+   * invitations, pending addresses and login links too. The row stays (marked deleted) while a session names it (as a
+   * player, in a role, as its creator), so the sessions keep its UUID, with the name it had in each of them; one no
+   * session ever named goes for good. The name is free again.
    */
   suspend fun delete(id: Uuid, now: Instant = Instant.now()) = db.query {
     UsersTable.update({ UsersTable.id eq id }) {
+      it[name] = null
+      it[language] = null
+      it[theme] = null
+      it[themeMode] = null
+      it[font] = null
+      it[fontScope] = null
+      it[sessionLimit] = null
+      it[emailVerifiedByProvider] = null
+      it[timeZone] = null
       it[passwordHash] = null
       it[email] = null
       it[isAdmin] = false
@@ -309,6 +334,11 @@ class UserStore(private val db: RandogeddonDatabase) {
     RecoveryCodesTable.deleteWhere { userId eq id }
     InvitationsTable.deleteWhere { userId eq id }
     EmailChangesTable.deleteWhere { userId eq id }
+    LoginLinksTable.deleteWhere { userId eq id }
+    val named = SessionWorldsTable.select(SessionWorldsTable.userId).where { SessionWorldsTable.userId eq id }.limit(1).any() ||
+      SessionRolesTable.select(SessionRolesTable.userId).where { SessionRolesTable.userId eq id }.limit(1).any() ||
+      SessionsTable.select(SessionsTable.id).where { SessionsTable.createdBy eq id }.limit(1).any()
+    if (!named) UsersTable.deleteWhere { UsersTable.id eq id }
     Unit
   }
 
@@ -358,10 +388,10 @@ class UserStore(private val db: RandogeddonDatabase) {
     }.toList()
     if (users.isEmpty()) return emptyList()
     val ids = users.map { it[UsersTable.id] }
-    val played = (SessionWorldsTable innerJoin SessionsTable).selectAll()
+    val played = (SessionWorldsTable innerJoin SessionsTable).select(SessionWorldsTable.userId, SessionsTable.finishedAt)
       .where { SessionWorldsTable.userId inList ids }
       .map { it[SessionWorldsTable.userId] to it[SessionsTable.finishedAt] } +
-      (SessionRolesTable innerJoin SessionsTable).selectAll()
+      (SessionRolesTable innerJoin SessionsTable).select(SessionRolesTable.userId, SessionsTable.finishedAt)
         .where { SessionRolesTable.userId inList ids }
         .map { it[SessionRolesTable.userId] to it[SessionsTable.finishedAt] }
     val byUser = played.groupBy({ it.first }, { it.second })
@@ -403,7 +433,7 @@ class UserStore(private val db: RandogeddonDatabase) {
       twoFactor = row[UsersTable.totpEnabledAt] != null, language = row[UsersTable.language],
       theme = row[UsersTable.theme], themeMode = row[UsersTable.themeMode],
       font = row[UsersTable.font], fontScope = row[UsersTable.fontScope], block = block(row),
-      sessionLimit = row[UsersTable.sessionLimit],
+      sessionLimit = row[UsersTable.sessionLimit], timeZone = row[UsersTable.timeZone],
     )
   }
 
@@ -416,7 +446,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     row[UsersTable.signedUpAt], row[UsersTable.autoDelete], language = row[UsersTable.language],
     hasPassword = row[UsersTable.passwordHash] != null, linked = row[UsersTable.oidcSubject] != null,
     twoFactor = row[UsersTable.totpEnabledAt] != null, block = block(row), sessionLimit = row[UsersTable.sessionLimit],
-    emailVerifiedByProvider = row[UsersTable.emailVerifiedByProvider],
+    emailVerifiedByProvider = row[UsersTable.emailVerifiedByProvider], timeZone = row[UsersTable.timeZone],
   )
 }
 
@@ -432,6 +462,10 @@ enum class SignUp {
 
 /** PostgreSQL's SQLSTATE for a unique index that refused a row. */
 private const val UNIQUE_VIOLATION = "23505"
+
+/** A unique index refused a row (here, or in a cause). */
+internal fun SQLException.uniqueViolation(): Boolean =
+  generateSequence<Throwable>(this) { it.cause }.any { (it as? SQLException)?.sqlState == UNIQUE_VIOLATION }
 
 /** A user's TOTP: the encrypted secret, since when it counts (`null`: being set up), the newest step used. */
 data class TotpState(val secret: String, val enabledAt: Instant?, val lastStep: Long?)
@@ -526,6 +560,8 @@ class InvitationStore(private val db: RandogeddonDatabase) {
     expiresAt: Instant,
     now: Instant = Instant.now(),
   ) = db.query {
+    // One at a time per user (and at most one row: V29's unique index)
+    lockUser(userId)
     InvitationsTable.deleteWhere { InvitationsTable.userId eq userId }
     InvitationsTable.insert {
       it[InvitationsTable.tokenHash] = tokenHash
@@ -573,6 +609,8 @@ data class EmailChange(val userId: Uuid, val email: String, val expiresAt: Insta
 class EmailChangeStore(private val db: RandogeddonDatabase) {
   suspend fun create(tokenHash: String, userId: Uuid, email: String, expiresAt: Instant, now: Instant = Instant.now()) =
     db.query {
+      // One at a time per user (and at most one row: V29's unique index)
+      lockUser(userId)
       EmailChangesTable.deleteWhere { EmailChangesTable.userId eq userId }
       EmailChangesTable.insert {
         it[EmailChangesTable.tokenHash] = tokenHash
@@ -584,13 +622,16 @@ class EmailChangeStore(private val db: RandogeddonDatabase) {
       Unit
     }
 
-  /** The change of [tokenHash] if it hasn't expired; it's gone afterwards (a link works once). */
+  /**
+   * The change of [tokenHash] if it hasn't expired; it's gone afterwards (a link works once: of two takes at once, the
+   * one whose delete removed the row gets it).
+   */
   suspend fun take(tokenHash: String, now: Instant = Instant.now()): EmailChange? = db.query {
     val row = EmailChangesTable.selectAll().where { EmailChangesTable.tokenHash eq tokenHash }.singleOrNull()
       ?: return@query null
-    EmailChangesTable.deleteWhere { EmailChangesTable.tokenHash eq tokenHash }
+    val taken = EmailChangesTable.deleteWhere { EmailChangesTable.tokenHash eq tokenHash } > 0
     EmailChange(row[EmailChangesTable.userId], row[EmailChangesTable.email], row[EmailChangesTable.expiresAt])
-      .takeIf { it.expiresAt > now }
+      .takeIf { taken && it.expiresAt > now }
   }
 
   /** [userId]'s address waiting for confirmation. */
@@ -740,9 +781,13 @@ class LoginSessionStore(private val db: RandogeddonDatabase) {
 /** A login as a list shows it: by the hash of its token. */
 data class LoginRow(val tokenHash: String, val createdAt: Instant, val expiresAt: Instant, val lastUsedAt: Instant?)
 
-/** One-time login links (`randogeddon admins --login`), by the SHA-256 of their token. */
+/**
+ * One-time login links (`randogeddon admins --login`), by the SHA-256 of their token. A used one is gone at once, the
+ * expired ones go when the next is made.
+ */
 class LoginLinkStore(private val db: RandogeddonDatabase) {
   suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now()) = db.query {
+    LoginLinksTable.deleteWhere { (LoginLinksTable.expiresAt less now) or LoginLinksTable.usedAt.isNotNull() }
     LoginLinksTable.insert {
       it[LoginLinksTable.tokenHash] = tokenHash
       it[LoginLinksTable.userId] = userId
@@ -757,9 +802,13 @@ class LoginLinkStore(private val db: RandogeddonDatabase) {
     val row = LoginLinksTable.selectAll()
       .where { (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() and (LoginLinksTable.expiresAt greater now) }
       .singleOrNull() ?: return@query null
-    val used = LoginLinksTable.update({ (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() }) {
-      it[usedAt] = now
-    }
+    // The delete decides: of two uses at once, only one removes it
+    val used = LoginLinksTable.deleteWhere { (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() }
     row[LoginLinksTable.userId].takeIf { used == 1 }
   }
+}
+
+/** Locks [userId]'s row until the transaction ends (inside one): what is done for one user is done one at a time. */
+private fun lockUser(userId: Uuid) {
+  UsersTable.select(UsersTable.id).where { UsersTable.id eq userId }.forUpdate().singleOrNull()
 }
