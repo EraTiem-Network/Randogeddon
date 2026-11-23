@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import net.eratiem.randogeddon.shared.BRIDGE_SIGNING_KEY_FINGERPRINT
 import net.eratiem.randogeddon.shared.BridgeDownloads
 import net.eratiem.randogeddon.shared.BridgeKey
 import net.eratiem.randogeddon.shared.Connection
@@ -208,7 +209,8 @@ internal object BridgeFold {
 /**
  * Randogeddon Bridge: its heading with its ⓘ (what it is, what it does, how to use it, starting it on each system),
  * *Create key* and the fold button; open, the new key (shown once, like a password, until it is closed) and the
- * downloads (once the dashboard offers them), a row per system.
+ * downloads (once the dashboard offers them), a row per system, with what to check them by: the checksums, their
+ * signature and key, and the key's fingerprint as this build knows it.
  */
 @Composable
 private fun BridgePart() {
@@ -276,6 +278,9 @@ private fun BridgePart() {
         SmallButton(c.signingKey, { Platform.download("downloads/bridge/signing-key.pub") })
       }
     }
+    // The key's fingerprint from this build, not from the tracker that serves the key: what a download's key must have
+    Field(c.signingKey, BRIDGE_SIGNING_KEY_FINGERPRINT)
+    Txt(c.fingerprintHint, size = 12.5.sp, color = p.muted)
   }
 }
 
