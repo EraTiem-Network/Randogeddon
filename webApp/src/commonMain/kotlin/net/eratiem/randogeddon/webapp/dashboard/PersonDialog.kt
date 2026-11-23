@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import net.eratiem.randogeddon.shared.ConnectionSession
 import net.eratiem.randogeddon.shared.PlayerStatus
+import net.eratiem.randogeddon.shared.PlayerSummary
 import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
@@ -47,8 +47,9 @@ import net.eratiem.randogeddon.webapp.ui.HoverRow
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.Paged
 import net.eratiem.randogeddon.webapp.ui.Pill
-import net.eratiem.randogeddon.webapp.ui.ProgressBar
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.TwoColumns
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.scrolling
@@ -76,27 +77,43 @@ fun PersonDialog(
   val worlds = person.slots.mapNotNull { slot -> s.players.firstOrNull { it.slot == slot } }
   val worldNames = worlds.map { it.name }.toSet()
 
-  // Connection logs come with the world details; reloaded when the session changes
-  var sessions by remember(name) { mutableStateOf<List<Pair<String, ConnectionSession>>>(emptyList()) }
-  LaunchedEffect(name, s.version) {
-    sessions = worlds.flatMap { w -> repository.player(w.slot)?.sessions.orEmpty().map { w.name to it } }
-      .sortedByDescending { it.second.start }
+  // Connection logs come with the world details: each world's loaded again only when that world changed (its numbers
+  // in the summary), not on every push of the session
+  var logs by remember(name) { mutableStateOf<Map<Int, Pair<PlayerSummary, List<ConnectionSession>>>>(emptyMap()) }
+  LaunchedEffect(name, worlds) {
+    val next = mutableMapOf<Int, Pair<PlayerSummary, List<ConnectionSession>>>()
+    for (w in worlds) {
+      val known = logs[w.slot]
+      next[w.slot] = when {
+        known != null && known.first == w -> known
+        // Not had: kept as it was, and asked again with the next change
+        else -> repository.player(w.slot)?.let { w to it.sessions } ?: (known ?: continue)
+      }
+    }
+    logs = next
+  }
+  val sessions = remember(logs, worlds) {
+    worlds.flatMap { w -> logs[w.slot]?.second.orEmpty().map { w.name to it } }.sortedByDescending { it.second.start }
   }
 
   val played = worlds.sumOf { playTime(it, now) }
   val openHints = s.hints.filter { !it.found && it.receiverName in worldNames }
-  val activity = s.events.asReversed().filter { e ->
-    listOfNotNull(e.playerName, e.senderName, e.receiverName, e.finderName).any { it in worldNames }
+  val activity = remember(s.events, worldNames) {
+    s.events.asReversed().filter { e ->
+      listOfNotNull(e.playerName, e.senderName, e.receiverName, e.finderName).any { it in worldNames }
+    }
   }
 
   // A world opens inside this dialog (with a back button): two dialogs on top of each other don't work on the web
   var openWorld by remember(name) { mutableStateOf<Int?>(null) }
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     openWorld?.let { slot ->
-      SelectionContainer { WorldDetail(slot, s.version, repository, onClose = { openWorld = null }, back = true) }
+      Selectable {
+        WorldDetail(slot, s.version, repository, onClose = { openWorld = null }, back = true, changed = s.slotChanges(slot))
+      }
       return@Dialog
     }
-    SelectionContainer {
+    Selectable {
       DialogCard(960.dp, header = {
         Avatar(person.name, 44.dp)
         Column(Modifier.weight(1f)) {
@@ -107,7 +124,7 @@ fun PersonDialog(
           )
         }
         Txt("${t.decimal(person.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
-        IconButton(onClose, Icon.CLOSE)
+        IconButton(onClose, Icon.CLOSE, label = t.dialogs.close)
       }) { available ->
         val twoColumns = available >= 760.dp
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

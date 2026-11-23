@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -53,16 +55,22 @@ import net.eratiem.randogeddon.webapp.app.inChange
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
+import net.eratiem.randogeddon.webapp.ui.LocalFocusColor
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.Themes
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.Working
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
 
-/** "Randogeddon" above the top card, centred, in the brand's gradient. [onHome]: a click goes to the main page. */
+/**
+ * "Randogeddon" above the top card, centred, in the brand's gradient. [onHome]: a click (or Enter) goes to the main
+ * page.
+ */
 @Composable
 internal fun Headline(onHome: (() -> Unit)? = null) {
   val p = LocalPalette.current
@@ -72,7 +80,10 @@ internal fun Headline(onHome: (() -> Unit)? = null) {
     BasicText(
       // Its letters change with the page's when the font does
       if (change != null) AnnotatedString("RANDOGEDDON").inChange(change, heading = true, 34.sp) else AnnotatedString("RANDOGEDDON"),
-      modifier = if (onHome != null) Modifier.hand().clickable(interaction, indication = null, onClick = onHome) else Modifier,
+      modifier = if (onHome != null) {
+        Modifier.focusRing(RoundedCornerShape(10.dp)).hand()
+          .clickable(interaction, indication = null, role = Role.Button, onClick = onHome)
+      } else Modifier,
       style = TextStyle(
         brush = Brush.linearGradient(listOf(p.brandStart, p.brandEnd)),
         fontSize = 34.sp * LocalFonts.current.headingScale, fontWeight = FontWeight.Black, letterSpacing = 6.sp, textAlign = TextAlign.Center,
@@ -123,147 +134,155 @@ internal fun Hero(
   } else {
     Brush.linearGradient(listOf(p.brandStart, p.brandEnd))
   }
-  Column(
-    Modifier.fillMaxWidth().card(p, RoundedCornerShape(20.dp), color = if (p.dark) p.panel else Color.Transparent)
-      .background(heroBackground)
-      .padding(horizontal = 20.dp, vertical = 18.dp)
-  ) {
-    val heading: @Composable (Modifier) -> Unit = { modifier ->
-      Column(modifier) {
-        if (sessions.isNotEmpty()) {
-          // The session's ID is the heading and its switch; "All sessions" goes to the sessions' page
-          SearchableSelect(
-            listOf(Triple<String?, String, String>(null, t.frame.allSessions, "")) +
-              sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(t, it)) },
-            shown, { id -> if (id == null) onAllSessions() else onSession(id) },
-            chip = false, heading = 24.sp, headingColor = onHero, placeholder = t.frame.pickASession,
-          )
-        } else {
-          Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = onHero)
-        }
-        val meta = listOfNotNull(
-          summary?.seedName?.let { t.frame.seed(it) },
-          summary?.serverVersion?.let { t.frame.archipelago(it) },
-          summary?.let { t.frame.hintMode(it.hintSettings.pointHints, it.hintSettings.costPercent, it.hintSettings.autoHints) },
-        ).ifEmpty {
+  // A text selection begun in it stays in it; the focus ring in the colour of its texts: the accent is its background
+  Selectable(Modifier.fillMaxWidth()) {
+    CompositionLocalProvider(LocalFocusColor provides onHero) {
+    Column(
+      Modifier.fillMaxWidth().card(p, RoundedCornerShape(20.dp), color = if (p.dark) p.panel else Color.Transparent)
+        .background(heroBackground)
+        .padding(horizontal = 20.dp, vertical = 18.dp)
+    ) {
+      val heading: @Composable (Modifier) -> Unit = { modifier ->
+        Column(modifier) {
           when {
-            shown != null -> listOf(t.frame.connecting)
-            // No session at all: the heading says it, nothing more
-            sessions.isEmpty() -> emptyList()
-            else -> listOf(t.frame.pickOneOfYourSessions)
+            // The session's ID is the heading and its switch; "All sessions" goes to the sessions' page. Someone with
+            // a single session of their own (besides one an Administrator only watches) has none: its ID alone
+            sessions.count { it.myRole != null } > 1 -> SearchableSelect(
+              listOf(Triple<String?, String, String>(null, t.frame.allSessions, "")) +
+                sessions.map { Triple<String?, String, String>(it.id, it.id, sessionLine(t, it)) },
+              shown, { id -> if (id == null) onAllSessions() else onSession(id) },
+              chip = false, heading = 24.sp, headingColor = onHero, placeholder = t.frame.pickASession,
+            )
+            sessions.isNotEmpty() -> Txt(shown ?: t.frame.pickASession, size = 24.sp, weight = FontWeight.Bold, color = onHero)
+            else -> Txt(shown ?: t.frame.noSession, size = 24.sp, weight = FontWeight.Bold, color = onHero)
+          }
+          val meta = listOfNotNull(
+            summary?.seedName?.let { t.frame.seed(it) },
+            summary?.serverVersion?.let { t.frame.archipelago(it) },
+            summary?.let { t.frame.hintMode(it.hintSettings.pointHints, it.hintSettings.costPercent, it.hintSettings.autoHints) },
+          ).ifEmpty {
+            when {
+              shown != null -> listOf(t.frame.connecting)
+              // No session at all: the heading says it, nothing more
+              sessions.isEmpty() -> emptyList()
+              else -> listOf(t.frame.pickOneOfYourSessions)
+            }
+          }
+          // A phone: one line each
+          (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
+            Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
           }
         }
-        // A phone: one line each
-        (if (stacked) meta else listOf(meta.joinToString("  ·  "))).forEach {
-          Txt(it, size = 12.5.sp, color = onHero.copy(alpha = 0.85f))
-        }
       }
-    }
-    val controls: @Composable () -> Unit = {
-      // Its spoiler log still being completed after the seed: a pill with a working symbol, what that means on hover
-      if (summary != null && summary.finishedAt == null && summary.spoilerCompleting) Tip(t.frame.spoilerCompletingTip) {
-        Row(
+      val controls: @Composable () -> Unit = {
+        // Its spoiler log still being completed after the seed: a pill with a working symbol, what that means on hover
+        if (summary != null && summary.finishedAt == null && summary.spoilerCompleting) Tip(t.frame.spoilerCompletingTip) {
+          Row(
+            Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            Working(onHero)
+            Txt(t.frame.spoilerCompleting, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+          }
+        }
+        // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
+        if (summary != null && summary.finishedAt == null) Row(
           Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-          Working(onHero)
-          Txt(t.frame.spoilerCompleting, size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
-        }
-      }
-      // The game server's state, as tall as the buttons next to it: only with a session that has one (not finished)
-      if (summary != null && summary.finishedAt == null) Row(
-        Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        Dot(if (live) p.liveDot else p.offlineDot)
-        // What it is and its state: the dot alone doesn't say which of the two pills this is
-        val state = when {
-          !streamOpen -> t.dashboard.pillReconnecting
-          summary.connected -> t.dashboard.pillLive
-          summary.serverAsleep -> t.dashboard.pillAsleep
-          else -> t.dashboard.pillOffline
-        }
-        Txt(t.dashboard.statusPill(t.dashboard.gameServer, state), size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
-      }
-      // Its logic (the available checks), beside it: its state as a dot (a working symbol while it is built)
-      val logic = summary?.logic
-      if (summary != null && summary.finishedAt == null && logic != null) Tip(t.dashboard.logicTip(logic.status)) {
-        Row(
-          Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-          when (logic.status) {
-            LogicStatus.STARTING -> Working(onHero)
-            LogicStatus.RUNNING -> Dot(p.liveDot)
-            LogicStatus.STOPPED -> Dot(p.offlineDot)
-            LogicStatus.FAILED -> Dot(p.trap)
+          Dot(if (live) p.liveDot else p.offlineDot)
+          // What it is and its state: the dot alone doesn't say which of the two pills this is
+          val state = when {
+            !streamOpen -> t.dashboard.pillReconnecting
+            summary.connected -> t.dashboard.pillLive
+            summary.serverAsleep -> t.dashboard.pillAsleep
+            else -> t.dashboard.pillOffline
           }
+          Txt(t.dashboard.statusPill(t.dashboard.gameServer, state), size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1)
+        }
+        // Its logic (the available checks), beside it: its state as a dot (a working symbol while it is built)
+        val logic = summary?.logic
+        if (summary != null && summary.finishedAt == null && logic != null) Tip(t.dashboard.logicTip(logic.status)) {
+          Row(
+            Modifier.height(34.dp).clip(CircleShape).background(onHero.copy(alpha = 0.2f)).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            when (logic.status) {
+              LogicStatus.STARTING -> Working(onHero)
+              LogicStatus.RUNNING -> Dot(p.liveDot)
+              LogicStatus.STOPPED -> Dot(p.offlineDot)
+              LogicStatus.FAILED -> Dot(p.trap)
+            }
+            Txt(
+              t.dashboard.statusPill(t.dashboard.logic, t.dashboard.logicShort(logic.status)),
+              size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1,
+            )
+          }
+        }
+        // Shows / hides the live feed; brighter while it is shown
+        if (onToggleFeed != null) IconButton(onToggleFeed, Icon.FEED, tint = onHero,
+          background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f), label = if (feedVisible) t.feed.hide else t.feed.show)
+        // The mode it is in: light, dark, automatic
+        val modeIcon = when (Themes.mode) {
+          ThemeMode.LIGHT -> Icon.SUN
+          ThemeMode.DARK -> Icon.MOON
+          ThemeMode.AUTO -> Icon.THEME
+        }
+        IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f),
+          label = "${t.account.modeLabel}: ${t.account.mode(Themes.mode)}")
+        // Brighter while the admin panel is open
+        if (onAdmin != null) Box {
+          IconButton(onAdmin, Icon.ADMIN, tint = onHero, background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f),
+            label = t.panel.title)
+          // Below the card, pointing up at the button; a window of its own, so it lies over the page there
+          if (newSessionHint) Popup(
+            alignment = Alignment.TopCenter, offset = IntOffset(0, with(LocalDensity.current) { 56.dp.roundToPx() }),
+          ) {
+            DisableSelection { Bubble(t.frame.newSessionQuestion, onAdmin) }
+          }
+        }
+        // The user's account; brighter while it is open
+        IconButton(onSettings, Icon.USER, tint = onHero,
+          background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f), label = t.account.yourAccount)
+        IconButton(onLogout, Icon.LOGOUT, tint = onHero, background = onHero.copy(alpha = 0.2f), label = t.common.logOut)
+      }
+      if (stacked) {
+        heading(Modifier)
+        Spacer(Modifier.height(12.dp))
+        // Onto a second line where they don't fit (a phone)
+        FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+          itemVerticalAlignment = Alignment.CenterVertically,
+        ) { controls() }
+      } else {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+          heading(Modifier.weight(1f))
+          controls()
+        }
+      }
+      if (summary != null) {
+        val totals = summary.totals
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+          Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
           Txt(
-            t.dashboard.statusPill(t.dashboard.logic, t.dashboard.logicShort(logic.status)),
-            size = 12.5.sp, color = onHero, weight = FontWeight.SemiBold, maxLines = 1,
+            "  " + t.frame.ofChecksDone(t.number(totals.checked), t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
+            modifier = Modifier.padding(bottom = 7.dp),
           )
         }
-      }
-      // Shows / hides the live feed; brighter while it is shown
-      if (onToggleFeed != null) IconButton(onToggleFeed, Icon.FEED, tint = onHero,
-        background = onHero.copy(alpha = if (feedVisible) 0.32f else 0.12f))
-      // The mode it is in: light, dark, automatic
-      val modeIcon = when (Themes.mode) {
-        ThemeMode.LIGHT -> Icon.SUN
-        ThemeMode.DARK -> Icon.MOON
-        ThemeMode.AUTO -> Icon.THEME
-      }
-      IconButton(onToggleTheme, modeIcon, tint = onHero, background = onHero.copy(alpha = 0.2f))
-      // Brighter while the admin panel is open
-      if (onAdmin != null) Box {
-        IconButton(onAdmin, Icon.ADMIN, tint = onHero, background = onHero.copy(alpha = if (adminOpen) 0.32f else 0.12f))
-        // Below the card, pointing up at the button; a window of its own, so it lies over the page there
-        if (newSessionHint) Popup(
-          alignment = Alignment.TopCenter, offset = IntOffset(0, with(LocalDensity.current) { 56.dp.roundToPx() }),
-        ) {
-          DisableSelection { Bubble(t.frame.newSessionQuestion, onAdmin) }
+        Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(onHero.copy(alpha = 0.25f))) {
+          if (totals.percent > 0) {
+            Box(
+              Modifier.fillMaxWidth((totals.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
+                .background(if (p.dark) p.brand else SolidColor(onHero))
+            )
+          }
         }
       }
-      // The user's account; brighter while it is open
-      IconButton(onSettings, Icon.USER, tint = onHero,
-        background = onHero.copy(alpha = if (settingsOpen) 0.32f else 0.12f))
-      IconButton(onLogout, Icon.LOGOUT, tint = onHero, background = onHero.copy(alpha = 0.2f))
     }
-    if (stacked) {
-      heading(Modifier)
-      Spacer(Modifier.height(12.dp))
-      // Onto a second line where they don't fit (a phone)
-      FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
-      ) { controls() }
-    } else {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        heading(Modifier.weight(1f))
-        controls()
-      }
-    }
-    if (summary != null) {
-      val totals = summary.totals
-      Spacer(Modifier.height(16.dp))
-      Row(verticalAlignment = Alignment.Bottom) {
-        Txt("${t.decimal(totals.percent)}%", size = 34.sp, weight = FontWeight.Bold, color = onHero)
-        Txt(
-          "  " + t.frame.ofChecksDone(t.number(totals.checked), t.number(totals.total)), size = 13.sp, color = onHero.copy(alpha = 0.85f),
-          modifier = Modifier.padding(bottom = 7.dp),
-        )
-      }
-      Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(onHero.copy(alpha = 0.25f))) {
-        if (totals.percent > 0) {
-          Box(
-            Modifier.fillMaxWidth((totals.percent / 100).toFloat()).height(10.dp).clip(CircleShape)
-              .background(if (p.dark) p.brand else SolidColor(onHero))
-          )
-        }
-      }
     }
   }
 }
@@ -272,7 +291,10 @@ internal fun Hero(
 @Composable
 private fun Bubble(text: String, onClick: () -> Unit) {
   val p = LocalPalette.current
-  Column(Modifier.hand().clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+  Column(
+    Modifier.focusRing(RoundedCornerShape(10.dp)).hand().clickable(role = Role.Button, onClick = onClick),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
     Canvas(Modifier.size(16.dp, 8.dp)) {
       drawPath(
         Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() },
@@ -293,12 +315,15 @@ private fun sessionLine(t: Texts, session: SessionEntry): String = listOfNotNull
   session.mySlots.takeIf { it.isNotEmpty() }?.joinToString(", "),
 ).joinToString(" · ")
 
+/** A notice under the top card; a text selection begun in it stays in it. */
 @Composable
 internal fun Banner(text: String) {
   val p = LocalPalette.current
-  Txt(
-    text, size = 13.sp,
-    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.warn.copy(alpha = 0.15f))
-      .padding(horizontal = 14.dp, vertical = 10.dp),
-  )
+  Selectable(Modifier.fillMaxWidth()) {
+    Txt(
+      text, size = 13.sp,
+      modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.warn.copy(alpha = 0.15f))
+        .padding(horizontal = 14.dp, vertical = 10.dp),
+    )
+  }
 }

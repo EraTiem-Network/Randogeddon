@@ -1,13 +1,13 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,24 +34,25 @@ import net.eratiem.randogeddon.shared.SpoilerOption
 import net.eratiem.randogeddon.shared.SpoilerPaths
 import net.eratiem.randogeddon.shared.SpoilerPlacements
 import net.eratiem.randogeddon.shared.SpoilerSettings
-import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.pathSegment
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
-import net.eratiem.randogeddon.webapp.ui.FilterField
+import net.eratiem.randogeddon.webapp.ui.FoldRow
 import net.eratiem.randogeddon.webapp.ui.Icon
-import net.eratiem.randogeddon.webapp.ui.IconButton
+import net.eratiem.randogeddon.webapp.ui.ListingState
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Mono
 import net.eratiem.randogeddon.webapp.ui.Pill
+import net.eratiem.randogeddon.webapp.ui.RangePager
+import net.eratiem.randogeddon.webapp.ui.SearchAndFilter
 import net.eratiem.randogeddon.webapp.ui.Section
-import net.eratiem.randogeddon.webapp.ui.Select
-import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
-import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberListingState
+import net.eratiem.randogeddon.webapp.ui.slotFilters
 
 /** How many placements show at once, and how many paths. */
 private const val PLACEMENTS = 100
@@ -59,18 +60,10 @@ private const val PATHS = 50
 
 /**
  * A list of the spoiler log that the tracker filters and pages (a big seed's is too long for a browser): which slot
- * and what text it is narrowed to, and the page shown ([page]: `null` while the first one loads).
+ * and what text it is narrowed to, and which rows ([state]), and the page shown ([page]: `null` while the first one
+ * loads).
  */
-private class Listing<T>(
-  val page: T?,
-  val problem: String?,
-  val slot: String?,
-  val onSlot: (String?) -> Unit,
-  val query: String,
-  val onQuery: (String) -> Unit,
-  val from: Int,
-  val onFrom: (Int) -> Unit,
-)
+private class Listing<T>(val state: ListingState<String?>, val page: T?, val problem: String?)
 
 /**
  * The [path] list of session [id]'s spoiler log, [count] at a time: asked for again when the slot, the search (a
@@ -78,67 +71,32 @@ private class Listing<T>(
  */
 @Composable
 private fun <T> rememberListing(id: String, path: String, count: Int, decode: (String) -> T): Listing<T> {
-  var slot by remember(id) { mutableStateOf<String?>(null) }
-  var query by remember(id) { mutableStateOf("") }
-  var from by remember(id) { mutableStateOf(0) }
+  val state = rememberListingState(id, null as String?, SpoilerFindings.MAX_QUERY)
   var page by remember(id) { mutableStateOf<T?>(null) }
   var problem by remember(id) { mutableStateOf<String?>(null) }
-  val q = query.trim()
-  LaunchedEffect(id, slot, q) { from = 0 }
+  val q = state.needle
+  val slot = state.filter
+  val from = state.from
   LaunchedEffect(id, slot, q, from) {
     // Typing on restarts this: only what stays for a moment is asked for
     if (q.isNotEmpty()) delay(SEARCH_DELAY_MS)
-    val url = "api/sessions/$id/spoiler/$path?from=$from&count=$count" +
-      (slot?.let { "&slot=${urlEncoded(it)}" } ?: "") + (if (q.isEmpty()) "" else "&q=${urlEncoded(q)}")
+    val url = "api/sessions/${id.pathSegment()}/spoiler/$path?from=$from&count=$count" +
+      (slot?.let { "&slot=${it.percentEncoded()}" } ?: "") + (if (q.isEmpty()) "" else "&q=${q.percentEncoded()}")
     when (val answer = call("GET", url, null, decode)) {
       is Answer.Ok -> { page = answer.value; problem = null }
       is Answer.Failed -> problem = answer.message
     }
   }
-  return Listing(page, problem, slot, { slot = it }, query, { query = it.take(SpoilerFindings.MAX_QUERY) }, from, { from = it })
+  return Listing(state, page, problem)
 }
 
-/** A listing's search and its slot. */
+/** A listing's search and its slot ([search]: the search field's width, or the whole line's on a phone). */
 @Composable
-private fun ListingControls(listing: Listing<*>, slots: List<String>, placeholder: String, search: Modifier) {
+private fun ListingSearch(listing: Listing<*>, slots: List<String>, placeholder: String, search: Modifier) {
   val t = LocalTexts.current
-  FilterField(listing.query, listing.onQuery, placeholder, search, clearable = true)
-  Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, listing.slot, listing.onSlot)
-}
-
-/** Which rows of a listing show, and the pages before and after. */
-@Composable
-private fun Pager(from: Int, shown: Int, total: Int, onFrom: (Int) -> Unit, step: Int) {
-  if (from == 0 && shown >= total) return
-  val p = LocalPalette.current
-  val t = LocalTexts.current
-  Divider()
-  Row(
-    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Txt(t.spoiler.rowsOf(t.number(from + 1), t.number(from + shown), t.number(total)), size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f))
-    if (from > 0) Tip(t.spoiler.earlierRows) {
-      IconButton({ onFrom((from - step).coerceAtLeast(0)) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(90f))
-    }
-    if (from + shown < total) Tip(t.spoiler.laterRows) {
-      IconButton({ onFrom(from + shown) }, Icon.CHEVRON, Modifier.size(30.dp).rotate(-90f))
-    }
-  }
-}
-
-/** The line of a row that folds: an arrow, what it is, and what stands at its right. */
-@Composable
-private fun FoldRow(open: Boolean, onToggle: () -> Unit, narrow: Boolean, content: @Composable () -> Unit) {
-  val p = LocalPalette.current
-  Row(
-    Modifier.fillMaxWidth().hand().clickable(onClick = onToggle).padding(horizontal = if (narrow) 12.dp else 16.dp, vertical = 10.dp),
-    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    // Drawn: the themes' fonts don't all have arrows
-    Box(Modifier.size(14.dp).rotate(if (open) 0f else -90f)) { DrawnIcon(Icon.CHEVRON, p.muted, 14.dp) }
-    content()
-  }
+  val state = listing.state
+  val filters = remember(slots, t) { slotFilters(slots, t.spoiler.everySlot) }
+  SearchAndFilter(state.query, { state.search(it) }, placeholder, state.filter, filters, { state.pick(it) }, searchModifier = search)
 }
 
 /** Options as a list: each one's name, then what it is set to. */
@@ -173,20 +131,28 @@ internal fun SpoilerSettingsView(id: String, narrow: Boolean) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   var settings by remember(id) { mutableStateOf<SpoilerSettings?>(null) }
+  var problem by remember(id) { mutableStateOf<String?>(null) }
   LaunchedEffect(id) {
-    val answer = call("GET", "api/sessions/$id/spoiler/settings", null) { ApiJson.decodeFromString(SpoilerSettings.serializer(), it) }
-    if (answer is Answer.Ok) settings = answer.value
+    when (val answer = call("GET", "api/sessions/${id.pathSegment()}/spoiler/settings", null, SpoilerSettings.serializer())) {
+      is Answer.Ok -> { settings = answer.value; problem = null }
+      is Answer.Failed -> problem = answer.message
+    }
   }
-  val s = settings ?: return
+  val s = settings
+  if (s == null) {
+    // Its failure where the settings would be
+    problem?.let { Section(t.spoiler.settings, subtitle = t.spoiler.settingsSubtitle) { Txt(it, size = 12.5.sp, color = p.trap) } }
+    return
+  }
   if (s.general.isEmpty() && s.slots.isEmpty() && s.sections.isEmpty()) return
   var open by remember(id) { mutableStateOf(emptySet<String>()) }
   fun toggle(key: String) { open = if (key in open) open - key else open + key }
   Section(t.spoiler.settings, subtitle = t.spoiler.settingsSubtitle) {
     Column(Modifier.fillMaxWidth().card(p)) {
       // [line]: a line above it (every one but the first)
-      val fold: @Composable (String, Boolean, @Composable () -> Unit, @Composable () -> Unit) -> Unit = { key, line, head, body ->
+      val fold: @Composable (String, Boolean, @Composable RowScope.() -> Unit, @Composable () -> Unit) -> Unit = { key, line, head, body ->
         if (line) Divider()
-        FoldRow(key in open, { toggle(key) }, narrow, head)
+        FoldRow(key in open, { toggle(key) }, narrow, content = head)
         if (key in open) body()
       }
       val general = s.general.isNotEmpty()
@@ -226,12 +192,9 @@ internal fun SpoilerPlacementsView(id: String, slots: List<String>, narrow: Bool
   val t = LocalTexts.current
   val listing = rememberListing(id, "placements", PLACEMENTS) { ApiJson.decodeFromString(SpoilerPlacements.serializer(), it) }
   Section(t.spoiler.placements, subtitle = t.spoiler.placementsSubtitle, actions = {
-    if (!narrow) ListingControls(listing, slots, t.spoiler.searchSteps, Modifier.width(220.dp))
+    if (!narrow) ListingSearch(listing, slots, t.spoiler.searchSteps, Modifier.width(220.dp))
   }) {
-    if (narrow) {
-      FilterField(listing.query, listing.onQuery, t.spoiler.searchSteps, Modifier.fillMaxWidth(), clearable = true)
-      Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, listing.slot, listing.onSlot)
-    }
+    if (narrow) ListingSearch(listing, slots, t.spoiler.searchSteps, Modifier.fillMaxWidth())
     listing.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
     Column(Modifier.fillMaxWidth().card(p)) {
       val page = listing.page
@@ -246,7 +209,7 @@ internal fun SpoilerPlacementsView(id: String, slots: List<String>, narrow: Bool
               if (narrow) StepCard(step, odd = j % 2 == 1) else StepRow(step, odd = j % 2 == 1)
             }
           }
-          Pager(page.from, page.placements.size, page.total, listing.onFrom, PLACEMENTS)
+          RangePager(page.from, page.placements.size, page.total, PLACEMENTS) { listing.state.go(it) }
         }
       }
     }
@@ -267,12 +230,9 @@ internal fun SpoilerPathsView(id: String, slots: List<String>, narrow: Boolean) 
   // Folded at first; which ones are unfolded is forgotten with the page
   var open by remember(page) { mutableStateOf(emptySet<Int>()) }
   Section(t.spoiler.paths, subtitle = t.spoiler.pathsSubtitle, actions = {
-    if (!narrow) ListingControls(listing, slots, t.spoiler.searchPaths, Modifier.width(220.dp))
+    if (!narrow) ListingSearch(listing, slots, t.spoiler.searchPaths, Modifier.width(220.dp))
   }) {
-    if (narrow) {
-      FilterField(listing.query, listing.onQuery, t.spoiler.searchPaths, Modifier.fillMaxWidth(), clearable = true)
-      Select(listOf<Pair<String?, String>>(null to t.spoiler.everySlot) + slots.map { it to it }, listing.slot, listing.onSlot)
-    }
+    if (narrow) ListingSearch(listing, slots, t.spoiler.searchPaths, Modifier.fillMaxWidth())
     listing.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
     Column(Modifier.fillMaxWidth().card(p)) {
       when {
@@ -302,7 +262,7 @@ internal fun SpoilerPathsView(id: String, slots: List<String>, narrow: Boolean) 
               }
             }
           }
-          Pager(page.from, page.paths.size, page.total, listing.onFrom, PATHS)
+          RangePager(page.from, page.paths.size, page.total, PATHS) { listing.state.go(it) }
         }
       }
     }

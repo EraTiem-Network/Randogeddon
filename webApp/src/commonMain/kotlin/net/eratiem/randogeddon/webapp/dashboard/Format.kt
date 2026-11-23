@@ -1,14 +1,32 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
-/** For a URL's path or query: letters and digits as they are, everything else percent-encoded (UTF-8). */
-fun String.percentEncoded(): String = encodeToByteArray().joinToString("") { b ->
-  val c = b.toInt() and 0xff
-  if (c < 128 && (c.toChar().isLetterOrDigit() || c.toChar() in "-_.~")) c.toChar().toString()
-  else "%" + c.toString(16).uppercase().padStart(2, '0')
+import kotlin.math.round
+import net.eratiem.randogeddon.webapp.api.pathSegment
+
+/**
+ * For a URL's path or query: letters, digits, `-`, `_` and `~` as they are, everything else percent-encoded (UTF-8),
+ * dots too ([pathSegment]). A name that is only `.` or `..` is resolved by the browser even so ([dotSegment]).
+ */
+fun String.percentEncoded(): String = pathSegment()
+
+/** [name] is `.` or `..`: as a path's segment the browser resolves it (encoded too), so it can't be sent as one. */
+fun dotSegment(name: String): Boolean = name == "." || name == ".."
+
+/**
+ * [checked] of [total] in percent, to a tenth as the tracker gives it: 100 only once every one is checked (at most
+ * 99.9 before, where rounding would make it 100).
+ */
+fun percentOf(checked: Int, total: Int): Double = when {
+  total <= 0 -> 0.0
+  checked >= total -> 100.0
+  else -> (round(1000.0 * checked / total) / 10).coerceAtMost(99.9)
 }
 
-/** The API path to download one of session [id]'s slot files. */
-fun slotFilePath(id: String, name: String): String = "api/sessions/$id/files/${name.percentEncoded()}"
+/** Every one of [total] is checked: a session, a slot or a person is complete (decided by the counts, not a percentage). */
+fun allChecked(checked: Int, total: Int): Boolean = total > 0 && checked >= total
+
+/** The API path to download one of session [id]'s slot files; a name that is a [dotSegment] can't be asked for so. */
+fun slotFilePath(id: String, name: String): String = "api/sessions/${id.pathSegment()}/files/${name.percentEncoded()}"
 
 /**
  * A slot name without its person's name in front, where the person is clear anyway: "Alice-HK" of Alice is "HK".

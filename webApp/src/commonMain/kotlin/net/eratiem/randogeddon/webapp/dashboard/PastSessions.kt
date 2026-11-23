@@ -37,9 +37,11 @@ import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /**
  * The page after the login, unless exactly one running session is the user's (it opens then): the user's sessions as
@@ -77,31 +79,34 @@ fun SessionPicker(sessions: List<SessionEntry>, onOpen: (String) -> Unit) {
 private fun SessionCard(session: SessionEntry, modifier: Modifier, onOpen: (String) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  Column(modifier.card(p)) {
-    HoverRow(onClick = { onOpen(session.id) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
-      Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-          StatusPill(session.status)
+  // A text selection begun in a card stays in it
+  Selectable(modifier) {
+    Column(Modifier.fillMaxWidth().card(p)) {
+      HoverRow(onClick = { onOpen(session.id) }, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+        Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Txt(session.title, size = 15.sp, weight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+            StatusPill(session.status)
+          }
+          Txt(
+            listOfNotNull(
+              session.id,
+              session.finishedAt?.let { t.sessions.finishedOn(t.date(it)) } ?: session.createdAt?.let { t.sessions.since(t.date(it)) },
+            ).joinToString(" · "),
+            size = 12.sp, color = p.muted, maxLines = 1,
+          )
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ProgressBar((session.percent / 100).toFloat(), Modifier.weight(1f), height = 6.dp)
+            Txt("${t.decimal(session.percent)}%", size = 13.sp, weight = FontWeight.Bold, brush = p.brand)
+          }
+          Txt(
+            listOfNotNull(
+              session.mySlots.takeIf { it.isNotEmpty() }?.let { t.sessions.yourSlots(it.joinToString(", ")) },
+              session.online.takeIf { it > 0 && session.status.running }?.let { t.sessions.online(it) },
+            ).joinToString(" · ").ifEmpty { t.sessions.slots(session.slots) },
+            size = 12.sp, color = p.muted, maxLines = 2,
+          )
         }
-        Txt(
-          listOfNotNull(
-            session.id,
-            session.finishedAt?.let { t.sessions.finishedOn(t.date(it)) } ?: session.createdAt?.let { t.sessions.since(t.date(it)) },
-          ).joinToString(" · "),
-          size = 12.sp, color = p.muted, maxLines = 1,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-          ProgressBar((session.percent / 100).toFloat(), Modifier.weight(1f), height = 6.dp)
-          Txt("${t.decimal(session.percent)}%", size = 13.sp, weight = FontWeight.Bold, brush = p.brand)
-        }
-        Txt(
-          listOfNotNull(
-            session.mySlots.takeIf { it.isNotEmpty() }?.let { t.sessions.yourSlots(it.joinToString(", ")) },
-            session.online.takeIf { it > 0 && session.status.running }?.let { t.sessions.online(it) },
-          ).joinToString(" · ").ifEmpty { t.sessions.slots(session.slots) },
-          size = 12.sp, color = p.muted, maxLines = 2,
-        )
       }
     }
   }
@@ -122,7 +127,10 @@ fun StatusPill(status: SessionStatus) {
 
 /**
  * Under the header, while the session finishes or once it has: every slot is done and it finishes in m:ss (admins can
- * finish now or cancel), or it is finished (everyone can read the spoiler log now; admins can reopen it).
+ * finish now or cancel), or it is finished (everyone can read the spoiler log now; admins can reopen it). Ended or
+ * paused by the counts: ended only with every check done. [finishNow] and [cancelFinish]: the admins' two as requests
+ * that answer what went wrong (`null`: nothing), said here; given, they take the place of [onFinishNow] and [onCancel],
+ * and a second press while one runs does nothing.
  */
 @Composable
 fun FinishBanner(
@@ -131,11 +139,14 @@ fun FinishBanner(
   onFinishNow: () -> Unit,
   onCancel: () -> Unit,
   onSpoiler: () -> Unit,
+  finishNow: (suspend () -> String?)? = null,
+  cancelFinish: (suspend () -> String?)? = null,
 ) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val finishesAt = s.finishesAt
   val finishedAt = s.finishedAt
+  val action = rememberAction()
   if (finishesAt == null && finishedAt == null) return
   // Its own clock: the countdown moves every second
   var now by remember { mutableLongStateOf(Platform.now()) }
@@ -147,29 +158,33 @@ fun FinishBanner(
   }
   val color = if (finishedAt != null) p.ok else p.key
   val f = t.finish
-  Row(
-    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.14f))
-      .padding(horizontal = 16.dp, vertical = 12.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    Column(Modifier.weight(1f)) {
-      if (finishedAt != null) {
-        val ended = s.totals.percent >= 100.0
-        Txt(if (ended) f.ended else f.paused, size = 14.sp, weight = FontWeight.SemiBold)
-        Txt(f.finishedAt(ended, t.date(finishedAt)), size = 12.5.sp, color = p.muted)
-      } else {
-        val left = ((finishesAt!! - now) / 1000).coerceAtLeast(0)
-        Txt(f.everySlotDone, size = 14.sp, weight = FontWeight.SemiBold)
-        Txt(f.endsIn("${left / 60}:${(left % 60).toString().padStart(2, '0')}"), size = 12.5.sp, color = p.muted)
+  // A text selection begun in it stays in it
+  Selectable(Modifier.fillMaxWidth()) {
+    Row(
+      Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = 0.14f))
+        .padding(horizontal = 16.dp, vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      Column(Modifier.weight(1f)) {
+        if (finishedAt != null) {
+          val ended = allChecked(s.totals.checked, s.totals.total)
+          Txt(if (ended) f.ended else f.paused, size = 14.sp, weight = FontWeight.SemiBold)
+          Txt(f.finishedAt(ended, t.date(finishedAt)), size = 12.5.sp, color = p.muted)
+        } else {
+          val left = ((finishesAt!! - now) / 1000).coerceAtLeast(0)
+          Txt(f.everySlotDone, size = 14.sp, weight = FontWeight.SemiBold)
+          Txt(f.endsIn("${left / 60}:${(left % 60).toString().padStart(2, '0')}"), size = 12.5.sp, color = p.muted)
+          action.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+        }
       }
+      if (finishedAt != null) {
+        SmallButton(f.spoilerLog, onSpoiler)
+      } else if (admin) {
+        SmallButton(f.endNow, { if (finishNow != null) action.run(finishNow) else onFinishNow() })
+        SmallButton(t.common.cancel, { if (cancelFinish != null) action.run(cancelFinish) else onCancel() })
+      }
+      InfoTip(f.tip, Modifier.width(16.dp))
     }
-    if (finishedAt != null) {
-      SmallButton(f.spoilerLog, onSpoiler)
-    } else if (admin) {
-      SmallButton(f.endNow, onFinishNow)
-      SmallButton(t.common.cancel, onCancel)
-    }
-    InfoTip(f.tip, Modifier.width(16.dp))
   }
 }

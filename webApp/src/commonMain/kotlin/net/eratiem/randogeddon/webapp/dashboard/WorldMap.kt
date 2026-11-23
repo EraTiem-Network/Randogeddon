@@ -34,11 +34,14 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,12 +52,12 @@ import net.eratiem.randogeddon.shared.SentItemView
 import net.eratiem.randogeddon.shared.i18n.number
 import net.eratiem.randogeddon.webapp.app.LocalFonts
 import net.eratiem.randogeddon.webapp.app.LocalTexts
-import net.eratiem.randogeddon.webapp.manage.PageButton
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
+import net.eratiem.randogeddon.webapp.ui.PageButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.scrollingBoth
@@ -241,14 +244,20 @@ internal fun layoutMap(map: MapView): MapLayout {
 /** Around the map, inside its panel. */
 private const val MARGIN = 8f
 
-/** What the pointer is over: a location (its name, its state) or a box (its name). */
-private data class Hovered(val name: String, val state: MapState?, val at: Offset, val node: MapNode)
+/**
+ * What the pointer is over: a box ([node], its index in the layout), and in it a location ([location], its index in the
+ * box) or none (the box's name). Only this, so it changes when the pointer moves to another thing, not with every move.
+ */
+private data class Hovered(val node: Int, val location: Int?)
+
+/** A box's name and its count, laid out once (drawing them is all a frame does with them). */
+private class NodeTexts(val name: TextLayoutResult, val count: TextLayoutResult?)
 
 /**
  * A slot's map: its regions as boxes, a tree from its start (a line from each box branching off to the ones first
  * reached from it; a box's other connections on hover), each location a dot in its box (checked, open, available
- * now), its name on hover; filtered by state. Drawn on one canvas: a slot can
- * have a thousand locations.
+ * now), its name on hover; filtered by state. Drawn on one canvas: a slot can have a thousand locations. The map itself
+ * is drawn again only when it or its filter changes; the pointer moves only the hover's outlines and its text.
  */
 @Composable
 internal fun WorldMap(
@@ -265,21 +274,28 @@ internal fun WorldMap(
   val fonts = LocalFonts.current
   val layout = remember(map) { layoutMap(map) }
   val found = remember(sent) { sent.associateBy { it.location } }
-  fun stateOf(location: String) = when {
-    location !in missing -> MapState.CHECKED
-    location in available -> MapState.AVAILABLE
-    else -> MapState.OPEN
+  // Each box's locations' states, worked out once for the checks known (also what the hover says)
+  val states = remember(layout, missing, available) {
+    layout.nodes.map { node ->
+      node.locations.map { location ->
+        when {
+          location !in missing -> MapState.CHECKED
+          location in available -> MapState.AVAILABLE
+          else -> MapState.OPEN
+        }
+      }
+    }
   }
   var filter by remember(map) { mutableStateOf(MapFilter.ALL) }
   var hovered by remember(map) { mutableStateOf<Hovered?>(null) }
+  // Where the pointer is (dp): read only where the hover's text is placed
+  var pointer by remember(map) { mutableStateOf(Offset.Zero) }
   fun shown(state: MapState) = when (filter) {
     MapFilter.ALL -> true
     MapFilter.OPEN -> state != MapState.CHECKED
     MapFilter.AVAILABLE -> state == MapState.AVAILABLE
   }
-  val counts = remember(layout, missing, available) {
-    layout.nodes.flatMap { it.locations }.groupingBy { stateOf(it) }.eachCount()
-  }
+  val counts = remember(states) { states.flatten().groupingBy { it }.eachCount() }
   val blocked = map.blocked.size
   val stateText = { state: MapState ->
     when (state) {
@@ -295,9 +311,27 @@ internal fun WorldMap(
       MapState.AVAILABLE -> p.ok
     }
   }
-  val measurer = rememberTextMeasurer()
+  // The boxes' texts are laid out once below (with its default cache of a few, every label was laid out again each
+  // frame): the measurer keeps none of its own
+  val measurer = rememberTextMeasurer(cacheSize = 0)
   val nameStyle = TextStyle(color = p.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = fonts.text)
   val countStyle = TextStyle(color = p.muted, fontSize = 10.5.sp, fontFamily = fonts.text)
+  val pixels = LocalDensity.current.density
+  val texts = remember(layout, states, nameStyle, countStyle, pixels) {
+    layout.nodes.mapIndexed { i, node ->
+      val done = states[i].count { it == MapState.CHECKED }
+      val count = if (node.locations.isEmpty()) null else measurer.measure("$done/${node.locations.size}", countStyle)
+      val countWidth = count?.size?.width?.toFloat() ?: 0f
+      // A lock before its name: not reached now
+      val lock = if (node.blocked) 11f else 0f
+      val width = max(1f, (NODE_WIDTH - 2 * SIDE - lock) * pixels - countWidth - 6 * pixels)
+      val name = measurer.measure(
+        node.name, nameStyle, TextOverflow.Ellipsis, softWrap = false, maxLines = 1,
+        constraints = Constraints(maxWidth = ceil(width).toInt(), maxHeight = ceil(17 * pixels).toInt()),
+      )
+      NodeTexts(name, count)
+    }
+  }
 
   val large = size != MapSize.PANEL
   Column(if (large) Modifier.fillMaxSize() else Modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -341,26 +375,8 @@ internal fun WorldMap(
         .clip(RoundedCornerShape(12.dp)).background(p.panelAlt).scrollingBoth(),
     ) {
       Box(Modifier.size((layout.width + SCROLL_BAR).dp, (layout.height + SCROLL_BAR).dp)) {
-        Canvas(
-          Modifier.size(layout.width.dp, layout.height.dp).pointerInput(layout) {
-            awaitPointerEventScope {
-              while (true) {
-                val event = awaitPointerEvent()
-                if (event.type == PointerEventType.Exit) { hovered = null; continue }
-                val at = event.changes.firstOrNull()?.position ?: continue
-                val x = at.x / density
-                val y = at.y / density
-                val node = layout.nodes.firstOrNull { x in it.x..(it.x + NODE_WIDTH) && y in it.y..(it.y + it.height) }
-                hovered = node?.let { n ->
-                  val i = ((y - n.y - HEADER) / DOT_STEP).toInt() * DOTS_PER_ROW + ((x - n.x - SIDE) / DOT_STEP).toInt()
-                  val inDots = y >= n.y + HEADER && x >= n.x + SIDE && x < n.x + SIDE + DOTS_PER_ROW * DOT_STEP
-                  val location = n.locations.getOrNull(i)?.takeIf { inDots }
-                  if (location != null) Hovered(location, stateOf(location), Offset(x, y), n) else Hovered(n.name, null, Offset(x, y), n)
-                }
-              }
-            }
-          },
-        ) {
+        // The map: it doesn't read the hover, so the pointer doesn't draw it again
+        Canvas(Modifier.size(layout.width.dp, layout.height.dp)) {
           val d = density
           // One line from each box to what it leads to: out of its right edge into the gap, down the gap's middle,
           // and off to each target's left edge (its first target stands at its own height: straight across)
@@ -390,27 +406,21 @@ internal fun WorldMap(
               )
             }
           }
-          // What the box under the pointer connects to besides: their edges say so
-          val also = hovered?.node?.also.orEmpty()
-          for (node in layout.nodes) {
-            val states = node.locations.map { stateOf(it) }
-            val anyShown = states.any { shown(it) } || filter == MapFilter.ALL
+          layout.nodes.forEachIndexed { n, node ->
+            val nodeStates = states[n]
+            val anyShown = nodeStates.any { shown(it) } || filter == MapFilter.ALL
             val dim = (if (anyShown) 1f else 0.35f) * if (node.blocked) 0.6f else 1f
             val topLeft = Offset(node.x * d, node.y * d)
             val size = Size(NODE_WIDTH * d, node.height * d)
             drawRoundRect(p.panel.copy(alpha = dim), topLeft, size, CornerRadius(8 * d))
             // Something available in it: its edge says so; not reached by the logic now: a dashed one
-            val edge = if (MapState.AVAILABLE in states) p.ok else if (node.blocked) p.muted else p.border
+            val edge = if (MapState.AVAILABLE in nodeStates) p.ok else if (node.blocked) p.muted else p.border
             drawRoundRect(
               edge.copy(alpha = dim), topLeft, size, CornerRadius(8 * d),
               style = Stroke(1.2f * d, pathEffect = if (node.blocked) dashes else null),
             )
-            if (layout.nodes.indexOf(node) in also) {
-              drawRoundRect(p.accent, topLeft, size, CornerRadius(8 * d), style = Stroke(2f * d))
-            }
-            val done = states.count { it == MapState.CHECKED }
-            val count = if (node.locations.isEmpty()) "" else "$done/${node.locations.size}"
-            val countWidth = if (count.isEmpty()) 0f else measurer.measure(count, countStyle).size.width.toFloat()
+            val text = texts[n]
+            val countWidth = text.count?.size?.width?.toFloat() ?: 0f
             // A lock before its name: not reached now (its body, and its shackle above)
             val lock = if (node.blocked) 11f else 0f
             if (node.blocked) {
@@ -420,13 +430,9 @@ internal fun WorldMap(
               drawRoundRect(c, Offset(left, top + 4f * d), Size(8f * d, 6f * d), CornerRadius(1.5f * d))
               drawArc(c, 180f, 180f, false, Offset(left + 1.5f * d, top), Size(5f * d, 7f * d), style = Stroke(1.3f * d))
             }
-            drawText(
-              measurer, node.name, Offset((node.x + SIDE + lock) * d, (node.y + 3f) * d),
-              nameStyle.copy(color = p.text.copy(alpha = dim)), TextOverflow.Ellipsis, softWrap = false, maxLines = 1,
-              size = Size(max(1f, (NODE_WIDTH - 2 * SIDE - lock) * d - countWidth - 6 * d), 17 * d),
-            )
-            if (count.isNotEmpty()) drawText(measurer, count, Offset((node.x + NODE_WIDTH - SIDE) * d - countWidth, (node.y + 4f) * d), countStyle)
-            states.forEachIndexed { i, state ->
+            drawText(text.name, color = p.text.copy(alpha = dim), topLeft = Offset((node.x + SIDE + lock) * d, (node.y + 3f) * d))
+            text.count?.let { drawText(it, topLeft = Offset((node.x + NODE_WIDTH - SIDE) * d - countWidth, (node.y + 4f) * d)) }
+            nodeStates.forEachIndexed { i, state ->
               val cx = node.x + SIDE + (i % DOTS_PER_ROW) * DOT_STEP + DOT / 2
               val cy = node.y + HEADER + (i / DOTS_PER_ROW) * DOT_STEP + DOT / 2
               val c = colour(state).copy(alpha = if (shown(state)) 1f else 0.15f)
@@ -435,25 +441,63 @@ internal fun WorldMap(
             }
           }
         }
-        // The name on hover, beside the pointer (kept inside the map)
+        // Over it, what the hover changes: the outlines of what the box under the pointer connects to besides
+        Canvas(
+          Modifier.size(layout.width.dp, layout.height.dp).pointerInput(layout) {
+            awaitPointerEventScope {
+              while (true) {
+                val event = awaitPointerEvent()
+                if (event.type == PointerEventType.Exit) { hovered = null; continue }
+                val at = event.changes.firstOrNull()?.position ?: continue
+                val x = at.x / density
+                val y = at.y / density
+                pointer = Offset(x, y)
+                val n = layout.nodes.indexOfFirst { x in it.x..(it.x + NODE_WIDTH) && y in it.y..(it.y + it.height) }
+                val next = if (n < 0) null else layout.nodes[n].let { node ->
+                  val i = ((y - node.y - HEADER) / DOT_STEP).toInt() * DOTS_PER_ROW + ((x - node.x - SIDE) / DOT_STEP).toInt()
+                  val inDots = y >= node.y + HEADER && x >= node.x + SIDE && x < node.x + SIDE + DOTS_PER_ROW * DOT_STEP
+                  Hovered(n, i.takeIf { inDots && it in node.locations.indices })
+                }
+                // Set only when it is something else: the same box or dot again draws nothing anew
+                if (next != hovered) hovered = next
+              }
+            }
+          },
+        ) {
+          val d = density
+          val also = hovered?.let { layout.nodes[it.node].also }.orEmpty()
+          for (i in also) {
+            val node = layout.nodes[i]
+            drawRoundRect(
+              p.accent, Offset(node.x * d, node.y * d), Size(NODE_WIDTH * d, node.height * d), CornerRadius(8 * d),
+              style = Stroke(2f * d),
+            )
+          }
+        }
+        // The name on hover, beside the pointer (kept inside the map); its states the current ones
         hovered?.let { h ->
-          val x = (h.at.x + 14f).coerceAtMost(layout.width - 260f).coerceAtLeast(4f)
+          val node = layout.nodes[h.node]
+          val location = h.location?.let { node.locations[it] }
+          val state = h.location?.let { states[h.node].getOrNull(it) }
           Column(
-            Modifier.offset { IntOffset((x * density).toInt(), ((h.at.y + 14f) * density).toInt()) }
+            Modifier.offset {
+              val x = (pointer.x + 14f).coerceAtMost(layout.width - 260f).coerceAtLeast(4f)
+              IntOffset((x * density).toInt(), ((pointer.y + 14f) * density).toInt())
+            }
               .widthIn(max = 260.dp).clip(RoundedCornerShape(8.dp)).background(p.panel).border(1.dp, p.border, RoundedCornerShape(8.dp))
               .padding(horizontal = 10.dp, vertical = 6.dp),
           ) {
-            Txt(h.name, size = 12.5.sp, weight = FontWeight.SemiBold)
-            val detail = when (h.state) {
-              null -> t.dialogs.mapRegion(h.node.locations.count { it !in missing }, h.node.locations.size)
-              MapState.CHECKED -> found[h.name]?.let { t.dialogs.mapFound(it.item, it.to) } ?: stateText(MapState.CHECKED)
-              else -> stateText(h.state)
+            Txt(location ?: node.name, size = 12.5.sp, weight = FontWeight.SemiBold)
+            val detail = when (state) {
+              null -> t.dialogs.mapRegion(node.locations.count { it !in missing }, node.locations.size)
+              MapState.CHECKED -> location?.let { found[it] }?.let { t.dialogs.mapFound(it.item, it.to) } ?: stateText(MapState.CHECKED)
+              else -> stateText(state)
             }
-            Txt(detail, size = 12.sp, color = if (h.state == MapState.AVAILABLE) p.ok else p.muted)
-            if (h.node.blocked) Txt(t.dialogs.mapBlocked, size = 12.sp, color = p.warn)
+            Txt(detail, size = 12.sp, color = if (state == MapState.AVAILABLE) p.ok else p.muted)
+            if (node.blocked) Txt(t.dialogs.mapBlocked, size = 12.sp, color = p.warn)
             // A box's other connections, which have no line
-            if (h.state == null && h.node.also.isNotEmpty()) {
-              Txt(t.dialogs.mapAlso(h.node.also.joinToString(", ") { layout.nodes[it].name }), size = 12.sp, color = p.accent)
+            if (location == null && node.also.isNotEmpty()) {
+              Txt(t.dialogs.mapAlso(node.also.joinToString(", ") { layout.nodes[it].name }), size = 12.sp, color = p.accent)
             }
           }
         }
