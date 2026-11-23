@@ -1,6 +1,7 @@
 package net.eratiem.randogeddon.webapp.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -337,16 +338,23 @@ internal data class Progress(
   /** The deaths and traps it passed on (DeathLink, TrapLink). */
   val deaths: Int = 0,
   val trapLinks: Int = 0,
+  /**
+   * Why its logic's rebuild doesn't fit the seed (its available checks may be wrong); for several slots together, each
+   * one that doesn't by its name, one a line. `null`: they fit.
+   */
+  val logicMismatch: String? = null,
 ) {
   companion object {
     fun of(w: PlayerSummary) =
       Progress(
         w.checked, w.total, w.progressionChecked, w.progressionChecks, w.itemsReceived, w.itemsSent, w.available, w.deaths, w.trapLinks,
+        w.logicMismatch,
       )
 
     fun of(d: PlayerDetail) =
       Progress(
         d.checked, d.total, d.progressionChecked, d.progressionChecks, d.items.size, d.sentItems.size, d.available, d.deaths, d.trapLinks,
+        d.logicMismatch,
       )
 
     /** Summed over [worlds]; what is known only once for each of them (a slot not scouted yet). */
@@ -358,6 +366,7 @@ internal data class Progress(
         // Those of its slots that are known (a slot the logic has no answer for adds none)
         worlds.mapNotNull { it.available }.takeIf { it.isNotEmpty() }?.sum(),
         worlds.sumOf { it.deaths }, worlds.sumOf { it.trapLinks },
+        worlds.filter { it.logicMismatch != null }.joinToString("\n") { "${it.name}: ${it.logicMismatch}" }.ifEmpty { null },
       )
     }
   }
@@ -396,8 +405,9 @@ internal fun TipPill(icon: Icon, text: String, tip: String, color: Color) = Tip(
 
 /**
  * The items received, and those its locations held, as pills: counts only. Then the checks available now (once
- * the logic counted them), greyed out with the last known count while it doesn't run; the deaths and traps it passed
- * on, from the first one.
+ * the logic counted them), greyed out with the last known count while it doesn't run; in the warning's colour, with a
+ * warning sign and the reason as its tip, where the logic's rebuild doesn't fit the seed (the count may be wrong). The
+ * deaths and traps it passed on, from the first one.
  */
 @Composable
 internal fun ProgressPills(progress: Progress) {
@@ -408,10 +418,51 @@ internal fun ProgressPills(progress: Progress) {
   TipPill(Icon.SENT, t.number(progress.sent), d.tipSent, p.useful)
   progress.available?.let { available ->
     val running = LocalLogicRunning.current
-    TipPill(Icon.SIGNPOST, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
+    val mismatch = progress.logicMismatch
+    if (mismatch != null) MismatchPill(t.number(available), d.availableMismatch(mismatch))
+    else TipPill(Icon.SIGNPOST, t.number(available), if (running) d.availableTip else d.availableLastKnown, if (running) p.ok else p.muted)
   }
   if (progress.deaths > 0) TipPill(Icon.SKULL, t.number(progress.deaths), d.tipDeaths, p.trap)
   if (progress.trapLinks > 0) TipPill(Icon.TRAP, t.number(progress.trapLinks), d.tipTraps, p.warn)
+}
+
+/**
+ * The available pill of a slot whose logic's rebuild doesn't fit its seed: framed in the warning's colour, a warning
+ * sign before the signpost, what it means and why as its tip ([tip], wide: the logic's reason can be long).
+ */
+@Composable
+private fun MismatchPill(text: String, tip: String) {
+  val p = LocalPalette.current
+  Tip(tip, wide = true) {
+    Row(
+      Modifier.clip(CircleShape).background(p.warn.copy(alpha = 0.22f)).border(1.dp, p.warn, CircleShape)
+        .padding(horizontal = 9.dp, vertical = 3.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+      DrawnIcon(Icon.TRAP, p.warn, 11.dp)
+      DrawnIcon(Icon.SIGNPOST, p.warn, 11.dp)
+      Txt(text, size = 11.5.sp, color = p.warn, weight = FontWeight.SemiBold, maxLines = 1)
+    }
+  }
+}
+
+/**
+ * A warning nobody overlooks, in the warning's colour with its sign: [text] (several lines if need be), e.g. that a
+ * slot's available checks and its map may be wrong, above them.
+ */
+@Composable
+internal fun WarningBanner(text: String, modifier: Modifier = Modifier) {
+  val p = LocalPalette.current
+  val shape = RoundedCornerShape(12.dp)
+  Row(
+    modifier.fillMaxWidth().clip(shape).background(p.warn.copy(alpha = 0.18f)).border(1.dp, p.warn, shape)
+      .padding(horizontal = 14.dp, vertical = 10.dp),
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    DrawnIcon(Icon.TRAP, p.warn, 18.dp)
+    Txt(text, size = 13.sp, modifier = Modifier.weight(1f))
+  }
 }
 
 /** Connected time of [world] so far, including the running session. */

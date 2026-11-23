@@ -141,8 +141,11 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         WorldTab.entries.forEach { tab -> PageButton(t.dialogs.tab(tab.key), tab == chosen) { chosen = tab } }
       }
+      // Its logic's rebuild doesn't fit its seed: above its checks and its map, the warning and why
+      val mismatch = d.logicMismatch?.let { t.dashboard.mismatchBanner(it) }
       when (chosen) {
         WorldTab.CHECKS -> {
+          mismatch?.let { WarningBanner(it) }
           FilterField(checksQuery, { checksQuery = it }, t.dialogs.filter, Modifier.fillMaxWidth())
           val matches = { name: String -> checksQuery.isBlank() || name.contains(checksQuery, ignoreCase = true) }
           TwoColumns(twoColumns, 16.dp, {
@@ -172,6 +175,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
         }
         WorldTab.MAP -> {
           val map = d.map
+          mismatch?.let { WarningBanner(it) }
           if (map == null || map.regions.isEmpty()) Txt(t.dialogs.mapNone, size = 13.sp, color = p.muted)
           else WorldMap(map, missingSet, availableSet, d.sentItems, MapSize.PANEL, ::sizeMap)
         }
@@ -240,6 +244,7 @@ fun WorldDetail(slot: Int, version: Long, repository: SessionSource, onClose: ()
             Txt(d.name, size = 15.sp, weight = FontWeight.SemiBold, maxLines = 1)
             Txt(t.dialogs.slotHeading(d.game, d.checked, d.total, t.decimal(percent)), size = 12.5.sp, color = p.muted, maxLines = 1)
           }
+          d.logicMismatch?.let { WarningBanner(t.dashboard.mismatchBanner(it)) }
           WorldMap(map, missingSet, availableSet, d.sentItems, mapSize, ::sizeMap)
         }
       }
