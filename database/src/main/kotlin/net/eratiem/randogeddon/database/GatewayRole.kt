@@ -30,8 +30,12 @@ object GatewayRole {
   /** The policy on `session_events` (row-level security, V28) that lets the role add [EVENT_KINDS]. */
   private const val EVENT_POLICY = "gateway_event_kinds"
 
-  /** Its pool has 3; the rest is room for a restart, whose old connections may linger a moment. */
-  internal const val CONNECTION_LIMIT = 10
+  /**
+   * Its pool has 3 (the gateway opens no other); as many again are room for a restart, whose old connections may
+   * linger a moment. Temporary tables it can't make either: neither program uses one, and the compose service
+   * database-roles takes that right from everyone but the superuser (only the database's owner can).
+   */
+  internal const val CONNECTION_LIMIT = 6
 
   /** What the role reads whole, and what it may write column by column (table -> columns). */
   private val READS = listOf("sessions", "session_hosted_slots", "slot_passwords", "app_settings")

@@ -369,7 +369,9 @@ configs:
         DO 'BEGIN RAISE EXCEPTION ''GATEWAY_DB_USER names a superuser: the gateway needs a role of its own''; END';
       \endif
       SELECT format('CREATE ROLE %I', :'tracker') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'tracker') \gexec
-      SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', :'tracker', :'password') \gexec
+      -- At most 12 connections at once, made or there already: its pool's 5, a command line's or its migrations' 2, and
+      -- room for a restart's that linger a moment
+      SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 12 PASSWORD %L', :'tracker', :'password') \gexec
       -- Everything of the schema is the tracker's (it migrates it); what a table owns (its sequences) goes with it
       SELECT format('ALTER SCHEMA public OWNER TO %I', :'tracker') \gexec
       SELECT format('ALTER TABLE public.%I OWNER TO %I', c.relname, :'tracker') FROM pg_class c
@@ -386,6 +388,9 @@ configs:
       SELECT format('CREATE ROLE %I', :'gateway') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'gateway') \gexec
       SELECT format('ALTER ROLE %I NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', :'gateway') \gexec
       SELECT format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET FALSE', :'gateway', :'tracker') \gexec
+      -- Neither program makes temporary tables: nobody but the superuser may (everyone has the right by PUBLIC, and a
+      -- restore's dump doesn't bring the database's rights, so it is taken at every run). Both roles are there by now
+      SELECT format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC, %I, %I', current_database(), :'tracker', :'gateway') \gexec
 
 secrets:
   # Gradle init script with the login for the Maven mirror (RANDOGEDDON_MAVEN); only read when the images are built.

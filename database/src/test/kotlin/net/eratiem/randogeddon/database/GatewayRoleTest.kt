@@ -66,7 +66,7 @@ class GatewayRoleTest {
 
   @Test
   fun `at a start where everything is as it should be, only the login is set again`() {
-    assertEquals(listOf("ALTER ROLE randogeddon_gateway LOGIN CONNECTION LIMIT 10 PASSWORD '$verifier'"), GatewayRole.statements(role, verifier, done))
+    assertEquals(listOf("ALTER ROLE randogeddon_gateway LOGIN CONNECTION LIMIT 6 PASSWORD '$verifier'"), GatewayRole.statements(role, verifier, done))
     // The policy made for another role (or V28's): made again, the rights left alone
     val other = GatewayRole.statements(role, verifier, done.copy(policy = GatewayRole.policyMark("old_gateway")))
     assertTrue(other.any { it.startsWith("CREATE POLICY") })
