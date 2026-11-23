@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +57,9 @@ import net.eratiem.randogeddon.shared.i18n.fileSize
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
+import net.eratiem.randogeddon.webapp.app.PickLimits
 import net.eratiem.randogeddon.webapp.app.Platform
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
 import net.eratiem.randogeddon.webapp.ui.FilterField
@@ -69,6 +73,7 @@ import net.eratiem.randogeddon.webapp.ui.SmallHeading
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
 
 /**
@@ -78,7 +83,8 @@ import net.eratiem.randogeddon.webapp.ui.hand
 @Composable
 fun ApworldsSection() {
   val p = LocalPalette.current
-  val texts = LocalTexts.current.apworlds
+  val t = LocalTexts.current
+  val texts = t.apworlds
   val scope = rememberCoroutineScope()
   var info by remember { mutableStateOf<ArchipelagoInfo?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
@@ -129,10 +135,27 @@ fun ApworldsSection() {
   }
 
   fun upload(release: String) {
-    Platform.pickFiles(".apworld", binary = true) { json ->
-      val files = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
-      if (files.isEmpty()) return@pickFiles
+    if (busy != null) return
+    // The last upload's lines go once this one brings something (a file, or one left out)
+    var fresh = true
+    fun startOver() {
+      if (!fresh) return
+      fresh = false
       outcome = emptyList()
+      pills = emptyList()
+    }
+    Platform.pickFiles(
+      "apworld", ".apworld", binary = true, PickLimits.APWORLD_BYTES, multiple = true,
+      // What the picker left out (too large, unreadable): a line each
+      onProblem = { file, problem ->
+        startOver()
+        outcome = outcome + (false to pickProblem(t, file, problem, PickLimits.APWORLD_BYTES))
+      },
+    ) { json ->
+      val files = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
+      // One upload at a time (a second pick while one goes is dropped)
+      if (files.isEmpty() || busy != null) return@pickFiles
+      startOver()
       pills = files.map { UploadPill(it.fileName, UploadState.WAITING) }
       // As few requests as the size allows; then the ones that would replace something, once they may
       val parts = files.fold(mutableListOf<MutableList<UploadedYaml>>()) { parts, file ->
@@ -187,12 +210,16 @@ fun ApworldsSection() {
   }
 
   fun tryWith(release: String, file: ApworldFile) {
+    // One at a time: busy at once, so a second click before the request goes is dropped
+    if (busy != null) return
+    val label = texts.trying(file.file, release)
+    busy = label
     outcome = emptyList()
     pills = emptyList()
     scope.launch {
       val body = ApiJson.encodeToString(ApworldTry.serializer(), ApworldTry(release, file.release, file.file))
       outcome = listOf(
-        when (val answer = change(texts.trying(file.file, release), "api/admin/apworlds/try", body)) {
+        when (val answer = change(label, "api/admin/apworlds/try", body)) {
           is Answer.Ok -> line(answer.value)
           is Answer.Failed -> false to answer.message
         },
@@ -204,6 +231,7 @@ fun ApworldsSection() {
 
   /** [files] of [release] out of its library, together. */
   fun remove(release: String, files: List<ApworldFile>) {
+    if (busy != null) return
     val names = files.map { it.file }
     busy = texts.removing(names.joinToString(", "))
     outcome = emptyList()
@@ -378,8 +406,8 @@ private fun ReleaseBlock(
       Txt(
         r.version, size = 12.5.sp, weight = FontWeight.SemiBold, maxLines = 1,
         color = if (on) p.onBrand else p.accent,
-        modifier = Modifier.clip(CircleShape).background(if (on) p.accent else p.accent.copy(alpha = 0.15f))
-          .then(if (releases.size > 1) Modifier.hand().clickable { onShow(r.version) } else Modifier)
+        modifier = Modifier.focusRing(CircleShape).clip(CircleShape).background(if (on) p.accent else p.accent.copy(alpha = 0.15f))
+          .then(if (releases.size > 1) Modifier.hand().clickable(role = Role.Tab) { onShow(r.version) } else Modifier)
           .padding(horizontal = 10.dp, vertical = 3.dp),
       )
     }
@@ -490,8 +518,8 @@ private fun SourceFilter(text: String, color: Color, selected: Boolean, onClick:
   Txt(
     text, size = 11.5.sp, weight = FontWeight.SemiBold, maxLines = 1,
     color = if (selected) LocalPalette.current.onBrand else color,
-    modifier = Modifier.clip(CircleShape).background(if (selected) color else color.copy(alpha = 0.15f))
-      .hand().clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 3.dp),
+    modifier = Modifier.focusRing(CircleShape).clip(CircleShape).background(if (selected) color else color.copy(alpha = 0.15f))
+      .hand().toggleable(selected, role = Role.Checkbox) { onClick() }.padding(horizontal = 9.dp, vertical = 3.dp),
   )
 }
 
@@ -519,9 +547,10 @@ private fun ApworldChip(file: ApworldFile, games: List<String>, picked: Boolean?
   ).joinToString("\n")
   Tip(about) {
     Row(
-      Modifier.clip(CircleShape).background(color.copy(alpha = if (picked == true) 0.32f else 0.15f))
+      Modifier.then(if (onClick != null) Modifier.focusRing(CircleShape) else Modifier).clip(CircleShape)
+        .background(color.copy(alpha = if (picked == true) 0.32f else 0.15f))
         .then(if (picked == true) Modifier.border(1.5.dp, color, CircleShape) else Modifier)
-        .then(if (onClick != null) Modifier.hand().clickable(onClick = onClick) else Modifier)
+        .then(if (onClick != null) Modifier.hand().toggleable(picked == true, role = Role.Checkbox) { onClick() } else Modifier)
         .then(if (picked == false) Modifier.border(1.dp, color.copy(alpha = 0.4f), CircleShape) else Modifier)
         .padding(horizontal = 10.dp, vertical = 3.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -534,8 +563,8 @@ private fun ApworldChip(file: ApworldFile, games: List<String>, picked: Boolean?
   }
 }
 
-/** Several picked files go up in one request, up to this much base64 together (the tracker's limit for one). */
 /** How long the pills of an upload without trouble stay. */
 private const val CLEAR_AFTER_MS = 10_000L
 
+/** Several picked files go up in one request, up to this much base64 together (the tracker's limit for one). */
 private const val BATCH_BASE64 = 64 * 1024 * 1024 / 3 * 4

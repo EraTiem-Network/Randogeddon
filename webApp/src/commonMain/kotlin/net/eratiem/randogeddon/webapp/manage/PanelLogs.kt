@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import net.eratiem.randogeddon.shared.LogLine
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.ui.LogView
+import net.eratiem.randogeddon.webapp.ui.PageButton
 
 /** One log of the Management panel's *Logs*: its tab's [title], its [lines] (kept by its section), its colours. */
 internal class PanelLog(val title: String, val order: Int, val lines: List<LogLine>, val color: ((LogLine) -> Color?)? = null)

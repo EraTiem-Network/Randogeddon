@@ -45,8 +45,8 @@ import net.eratiem.randogeddon.webapp.app.Languages
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
-import net.eratiem.randogeddon.webapp.manage.Button
 import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.Choice
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.IconButton
@@ -84,7 +84,7 @@ fun SettingsView(onBack: () -> Unit, onRenamed: () -> Unit) {
 
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      IconButton(onBack, Icon.BACK)
+      IconButton(onBack, Icon.BACK, label = t.dialogs.back)
       Txt(acc.title, size = 20.sp, weight = FontWeight.Bold)
     }
     problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }

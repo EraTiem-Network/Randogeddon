@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +53,7 @@ import net.eratiem.randogeddon.webapp.dashboard.statusColor
 import net.eratiem.randogeddon.webapp.dashboard.statusLabel
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
@@ -68,10 +68,12 @@ import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.SearchableSelect
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /** The parts a Session-Manager gives (players come with the slots). */
@@ -108,7 +110,8 @@ fun PeopleSection(id: String) {
     val managers = list.count { it.role == SessionRole.MANAGER }
     PersonPanel(
       id, person,
-      // Their own Session-Manager part isn't theirs to take (unless an Administrator), the last one's nobody's
+      // Their own Session-Manager part isn't theirs to take (unless an Administrator), the last one's nobody's (only
+      // greyed here: the tracker refuses both too)
       mayLeave = person.role != SessionRole.MANAGER || (managers > 1 && (person.id != you?.you || you?.mayLeave == true)),
       lastManager = person.role == SessionRole.MANAGER && managers <= 1,
       onChange = { role ->
@@ -216,6 +219,7 @@ private fun AddPerson(
   val address = EmailAddresses.normalize(email)
   val byAddress = email.isNotBlank()
   fun add() {
+    if (busy) return
     busy = true
     scope.launch {
       val name = choices.firstOrNull { it.id == user }?.label ?: address
@@ -238,9 +242,13 @@ private fun AddPerson(
       placeholder = if (choices.isEmpty()) texts.nobodyLeft else texts.someone,
     )
     Txt(texts.or, size = 12.5.sp, color = p.muted)
-    FilterField(email, { email = it; user = null; state = null }, texts.newAddress, Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+    val ready = !busy && (if (byAddress) EmailAddresses.valid(address) else user != null)
+    FilterField(
+      email, { email = it; user = null; state = null }, texts.newAddress, Modifier.width(220.dp), minHeight = FIELD_HEIGHT,
+      onSubmit = { if (ready) add() },
+    )
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      Button(if (busy) texts.adding else if (byAddress) texts.invite else texts.add, enabled = !busy && (if (byAddress) EmailAddresses.valid(address) else user != null)) { add() }
+      Button(if (busy) texts.adding else if (byAddress) texts.invite else texts.add, enabled = ready) { add() }
       InfoTip(texts.inviteTip)
     }
   }
@@ -300,6 +308,7 @@ private fun PersonPanel(
   val stats = summary?.people?.firstOrNull { it.userId == person.id || (it.userId == null && it.name == person.name) }
   val worlds = summary?.players.orEmpty().filter { it.name in person.slots }
   fun change(role: SessionRole?) {
+    if (busy) return
     busy = true
     scope.launch {
       problem = onChange(role)
@@ -308,7 +317,7 @@ private fun PersonPanel(
     }
   }
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-    SelectionContainer {
+    Selectable {
       DialogCard(560.dp, header = {
         Avatar(person.name, 40.dp)
         Column(Modifier.weight(1f)) {
@@ -316,7 +325,7 @@ private fun PersonPanel(
           Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Pill(texts.role(person.role), roleColor(person.role)) }
         }
         stats?.let { Txt("${t.decimal(it.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand) }
-        IconButton(onClose, Icon.CLOSE)
+        IconButton(onClose, Icon.CLOSE, label = t.dialogs.close)
       }) {
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           if (stats != null) {
@@ -415,11 +424,12 @@ private fun PersonRow(person: SessionPerson, removable: Boolean, onRemove: () ->
 private fun ShareLinkPart(id: String) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
   var view by remember { mutableStateOf<ShareLinkView?>(null) }
   var link by remember { mutableStateOf<String?>(null) }
   var problem by remember { mutableStateOf<String?>(null) }
   var confirm by remember { mutableStateOf(false) }
+  // A new link or turning it off, one at a time: two clicks would make two links (the first one shown already dead)
+  val action = rememberAction()
   suspend fun load() {
     when (val r = call("GET", "api/sessions/$id/share", null, ShareLinkView.serializer())) {
       is Answer.Ok -> view = r.value
@@ -440,22 +450,24 @@ private fun ShareLinkPart(id: String) {
         },
         size = 12.5.sp, color = p.muted, modifier = Modifier.weight(1f),
       )
-      Button(if (current?.on == true) t.people.newLink else t.people.makeLink) {
-        scope.launch {
+      Button(if (current?.on == true) t.people.newLink else t.people.makeLink, enabled = !action.busy) {
+        action.run {
           when (val r = call("POST", "api/sessions/$id/share", null, ShareLinkView.serializer())) {
             is Answer.Ok -> { view = r.value; link = r.value.token?.let { Platform.pageUrl() + Route.Watch(it).hash }; problem = null }
             is Answer.Failed -> problem = r.message
           }
+          null
         }
       }
       if (current?.on == true) {
         if (confirm) {
-          Button(t.people.yesOff, danger = true) {
+          Button(t.people.yesOff, enabled = !action.busy, danger = true) {
             confirm = false
-            scope.launch {
+            action.run {
               problem = (call("DELETE", "api/sessions/$id/share", null) { } as? Answer.Failed)?.message
               link = null
               load()
+              null
             }
           }
           Button(t.common.cancel) { confirm = false }

@@ -11,17 +11,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import net.eratiem.randogeddon.shared.BridgeKeyView
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.pathSegment
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -29,6 +28,7 @@ import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /** Randogeddon Bridge's keys (made under *Your connection*), each with *End*; only shown if there are any. */
 @Composable
@@ -36,7 +36,7 @@ internal fun BridgeKeysSection() {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val acc = t.account
-  val scope = rememberCoroutineScope()
+  val ending = rememberAction()
   var keys by remember { mutableStateOf<List<BridgeKeyView>>(emptyList()) }
   var problem by remember { mutableStateOf<String?>(null) }
   suspend fun load() {
@@ -55,12 +55,14 @@ internal fun BridgeKeysSection() {
             acc.bridgeKey(t.date(key.createdAt), key.lastUsedAt?.let { t.date(it) }, t.date(key.expiresAt)),
             size = 13.sp, modifier = Modifier.weight(1f),
           )
+          // One at a time: a second click while one goes is dropped (it would answer "no such key")
           SmallButton(acc.endKey, {
-            scope.launch {
-              when (val r = call("DELETE", "api/account/bridge-keys/${key.id}", null) { }) {
+            ending.run {
+              when (val r = call("DELETE", "api/account/bridge-keys/${key.id.pathSegment()}", null) { }) {
                 is Answer.Ok -> load()
                 is Answer.Failed -> problem = r.message
               }
+              null
             }
           })
         }

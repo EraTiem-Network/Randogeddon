@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.AccountView
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.CodeRequest
@@ -37,8 +35,8 @@ import net.eratiem.randogeddon.shared.i18n.text
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
-import net.eratiem.randogeddon.webapp.manage.Button
 import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -47,6 +45,7 @@ import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /**
  * Two-factor login: off, set it up (a QR code and the key, confirmed with a first code); on, new recovery codes or turn
@@ -59,12 +58,13 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val acc = t.account
-  val scope = rememberCoroutineScope()
   var setup by remember { mutableStateOf<TotpSetup?>(null) }
   var code by remember { mutableStateOf("") }
   var codes by remember { mutableStateOf<List<String>?>(null) }
   var state by remember { mutableStateOf<String?>(null) }
-  fun request(path: String, onCodes: Boolean) = scope.launch {
+  // One request at a time: a second click (or Enter) while one goes is dropped (a code works once)
+  val action = rememberAction()
+  fun request(path: String, onCodes: Boolean) = action.run {
     val answer = call("POST", path, body(CodeRequest(code.trim()))) { body ->
       if (onCodes) ApiJson.decodeFromString(RecoveryCodeList.serializer(), body).codes else emptyList()
     }
@@ -78,6 +78,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
       }
       is Answer.Failed -> state = answer.message
     }
+    null
   }
   val subtitle = if (a.administrator) acc.twoFactorSubtitleAdministrator else acc.twoFactorSubtitle
   Section(acc.twoFactor, subtitle = subtitle) {
@@ -103,18 +104,19 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
           Txt(acc.scanThis, size = 12.5.sp)
           QrCode(current.rows, Modifier.size(200.dp))
           Mono(current.secret.chunked(4).joinToString(" "))
-          CodeRow(code, { code = it; state = null }, acc.turnItOn) { request("api/account/2fa/enable", onCodes = true) }
+          CodeRow(code, { code = it; state = null }, acc.turnItOn, action.busy) { request("api/account/2fa/enable", onCodes = true) }
           SmallButton(t.common.cancel, { setup = null; code = "" })
         }
         !a.twoFactor -> {
           Txt(acc.off, size = 13.sp)
           Row {
-            Button(acc.setItUp) {
-              scope.launch {
+            Button(acc.setItUp, enabled = !action.busy) {
+              action.run {
                 when (val r = call("POST", "api/account/2fa/setup", null, TotpSetup.serializer())) {
                   is Answer.Ok -> { setup = r.value; state = null }
                   is Answer.Failed -> state = r.message
                 }
+                null
               }
             }
           }
@@ -122,7 +124,7 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
         else -> {
           Txt(acc.on(a.recoveryCodesLeft), size = 13.sp, weight = FontWeight.SemiBold)
           Txt(acc.codeFor, size = 12.5.sp, color = p.muted)
-          CodeRow(code, { code = it; state = null }, acc.newRecoveryCodes) { request("api/account/2fa/codes", onCodes = true) }
+          CodeRow(code, { code = it; state = null }, acc.newRecoveryCodes, action.busy) { request("api/account/2fa/codes", onCodes = true) }
           if (!a.administrator) Row { SmallButton(acc.turnItOff, { request("api/account/2fa/disable", onCodes = false) }) }
         }
       }
@@ -131,12 +133,16 @@ internal fun TwoFactorSection(a: AccountView, onChanged: () -> Unit) {
   }
 }
 
-/** A code field with its button. */
+/** A code field with its button (Enter in the field presses it); [busy]: a request goes, the button waits. */
 @Composable
-private fun CodeRow(code: String, onCode: (String) -> Unit, action: String, onAction: () -> Unit) {
+private fun CodeRow(code: String, onCode: (String) -> Unit, action: String, busy: Boolean, onAction: () -> Unit) {
+  val ready = code.isNotBlank() && !busy
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    FilterField(code, onCode, LocalTexts.current.account.code, Modifier.width(140.dp), minHeight = FIELD_HEIGHT)
-    Button(action, enabled = code.isNotBlank(), onClick = onAction)
+    FilterField(
+      code, onCode, LocalTexts.current.account.code, Modifier.width(140.dp), minHeight = FIELD_HEIGHT,
+      onSubmit = { if (ready) onAction() },
+    )
+    Button(action, enabled = ready, onClick = onAction)
   }
 }
 

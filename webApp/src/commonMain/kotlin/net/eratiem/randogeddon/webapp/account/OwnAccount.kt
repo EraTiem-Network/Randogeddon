@@ -31,15 +31,17 @@ import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
-import net.eratiem.randogeddon.webapp.manage.Button
 import net.eratiem.randogeddon.webapp.manage.FIELD_HEIGHT
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.FilterField
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 
 /** Name, password, two-factor login and address: the account's own (not the provider's). */
 @Composable
@@ -52,19 +54,25 @@ internal fun OwnAccount(a: AccountView, load: suspend () -> Unit, onRenamed: () 
   // The name
   var name by remember(a.name) { mutableStateOf(a.name) }
   var nameState by remember { mutableStateOf<String?>(null) }
+  // Each form sends one request at a time: a second click (or Enter) while one goes is dropped
+  val naming = rememberAction()
   Section(acc.name, subtitle = acc.nameSubtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       val nameProblem = UserNames.problem(name.trim())?.let { t.problems.text(it) }.takeIf { name != a.name }
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        Button(t.common.save, enabled = name.trim() != a.name && nameProblem == null) {
-          scope.launch {
-            nameState = when (val r = call("PUT", "api/account/name", body(NameRequest(name.trim()))) { }) {
-              is Answer.Ok -> { load(); onRenamed(); acc.nameSaved }
-              is Answer.Failed -> r.message
-            }
-          }
+      val ready = name.trim() != a.name && nameProblem == null && !naming.busy
+      fun save() = naming.run {
+        nameState = when (val r = call("PUT", "api/account/name", body(NameRequest(name.trim()))) { }) {
+          is Answer.Ok -> { load(); onRenamed(); acc.nameSaved }
+          is Answer.Failed -> r.message
         }
+        null
+      }
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterField(
+          name, { name = it; nameState = null }, acc.yourName, Modifier.width(240.dp), minHeight = FIELD_HEIGHT,
+          onSubmit = { if (ready) save() },
+        )
+        Button(t.common.save, enabled = ready) { save() }
       }
       (nameProblem ?: nameState)?.let { Txt(it, size = 12.5.sp, color = if (nameProblem != null) p.trap else p.muted) }
       Tip(acc.idTip) {
@@ -91,20 +99,25 @@ internal fun OwnAccount(a: AccountView, load: suspend () -> Unit, onRenamed: () 
   // The e-mail address
   var email by remember { mutableStateOf("") }
   var emailState by remember { mutableStateOf<String?>(null) }
+  val mailing = rememberAction()
   Section(acc.email, subtitle = acc.emailSubtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Txt(a.email ?: acc.noAddress, size = 13.5.sp, weight = FontWeight.SemiBold, color = if (a.email == null) p.muted else p.text)
       a.pendingEmail?.let { Txt(acc.waitingForConfirmation(it), size = 12.5.sp, color = p.muted) }
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(email, { email = it; emailState = null }, acc.newAddress, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        Button(acc.sendConfirmation, enabled = EmailAddresses.valid(EmailAddresses.normalize(email))) {
-          scope.launch {
-            emailState = when (val r = call("POST", "api/account/email", body(EmailRequest(email.trim()))) { }) {
-              is Answer.Ok -> { load(); email = ""; acc.confirmationSent }
-              is Answer.Failed -> r.message
-            }
-          }
+      val ready = EmailAddresses.valid(EmailAddresses.normalize(email)) && !mailing.busy
+      fun send() = mailing.run {
+        emailState = when (val r = call("POST", "api/account/email", body(EmailRequest(email.trim()))) { }) {
+          is Answer.Ok -> { load(); email = ""; acc.confirmationSent }
+          is Answer.Failed -> r.message
         }
+        null
+      }
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterField(
+          email, { email = it; emailState = null }, acc.newAddress, Modifier.width(240.dp), minHeight = FIELD_HEIGHT,
+          onSubmit = { if (ready) send() },
+        )
+        Button(acc.sendConfirmation, enabled = ready) { send() }
       }
       emailState?.let { Txt(it, size = 12.5.sp, color = p.muted) }
     }
@@ -125,7 +138,8 @@ fun ConfirmEmailView(token: String, onSettings: () -> Unit) {
     }
   }
   Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Txt(result ?: acc.confirmingAddress, color = if (ok || result == null) p.text else p.trap)
+    // Not in a section: a selection of its own
+    Selectable { Txt(result ?: acc.confirmingAddress, color = if (ok || result == null) p.text else p.trap) }
     if (result != null) Row { SmallButton(acc.yourAccount, onSettings) }
   }
 }

@@ -36,7 +36,9 @@ import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.clock
+import net.eratiem.randogeddon.webapp.dashboard.SpoilerConsent
 import net.eratiem.randogeddon.webapp.dashboard.percentEncoded
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.Divider
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
@@ -78,6 +80,8 @@ fun CheatSection(
   onSpoiler: (() -> Unit)? = null,
   /** The spoiler log has its playthrough: an item hint can name the next copy in it (else only one by chance). */
   playthrough: Boolean = true,
+  /** The session runs: [onSpoiler] asks first, as the Session-Manager's button does (a finished one opens at once). */
+  spoilerAsks: Boolean = true,
 ) {
   val path = if (support) "api/sessions/$id/support" else "api/sessions/$id/manage/cheat"
   val p = LocalPalette.current
@@ -93,19 +97,25 @@ fun CheatSection(
   var toSlot by remember { mutableStateOf(false) }
   var from by remember { mutableStateOf<String?>(null) }
   var outcome by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+  // Why the list couldn't be loaded (apart from the last cheat's outcome, which it doesn't replace)
+  var loadProblem by remember { mutableStateOf<String?>(null) }
   var hintPick by remember { mutableStateOf(HintPick.entries.firstOrNull { it.name == Platform.loadSetting(HINT_PICK_KEY) } ?: HintPick.RANDOM) }
   var busy by remember { mutableStateOf(false) }
+  // The spoiler log of a running session, asked once more
+  var askingSpoiler by remember { mutableStateOf(false) }
 
   fun load() = scope.launch {
     when (val answer = call("GET", path, null, CheatView.serializer())) {
-      is Answer.Ok -> cache.cheats[id] = answer.value
-      is Answer.Failed -> outcome = false to answer.message
+      is Answer.Ok -> { cache.cheats[id] = answer.value; loadProblem = null }
+      is Answer.Failed -> loadProblem = answer.message
     }
   }
-  // Also every 10 s: the tracker learns a new seed's slots a moment after the game server runs
+  // Also every 10 s: the tracker learns a new seed's slots a moment after the game server runs. Once every check is
+  // done there is nothing left to cheat, and nothing to ask about
   LaunchedEffect(server?.status, server?.seed) {
     while (true) {
-      load()
+      load().join()
+      if (cache.cheats[id]?.done == true) break
       delay(10_000)
     }
   }
@@ -138,10 +148,18 @@ fun CheatSection(
     subtitle = t.cheats.subtitle(support),
     actions = {
       InfoTip(if (support) t.cheats.supportTip else t.cheats.cheatsTip)
-      onSpoiler?.let { SmallButton(t.finish.spoilerLog, it) }
+      onSpoiler?.let { open -> SmallButton(t.finish.spoilerLog, { if (spoilerAsks) askingSpoiler = true else open() }) }
     },
   ) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      if (askingSpoiler && onSpoiler != null) {
+        Confirm(
+          t.sessionAdmin.confirmSpoiler, t.sessionAdmin.showIt, danger = true,
+          // Confirmed: the spoiler page doesn't ask again in this tab
+          onYes = { askingSpoiler = false; SpoilerConsent.give(id); onSpoiler() }, onCancel = { askingSpoiler = false },
+        )
+      }
+      loadProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
       when {
         current == null -> Txt("…", color = p.muted)
         // Once every check is done there is nothing to cheat either
@@ -243,7 +261,7 @@ fun CheatSection(
                   // A key's location as the log says it: "Location (in World)"
                   is Answer.Ok -> true to t.cheats.done(
                     action, world ?: slot.orEmpty(),
-                    if (action in LOCK_CHEATS) lock?.keyLocation?.let { "$it (in ${lock.keyWorld})" } else value,
+                    if (action in LOCK_CHEATS) lock?.keyLocation?.let { at -> lock.keyWorld?.let { t.cheats.locationIn(at, it) } ?: at } else value,
                   )
                   is Answer.Failed -> false to answer.message
                 }

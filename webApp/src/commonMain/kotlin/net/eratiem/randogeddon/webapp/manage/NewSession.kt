@@ -4,7 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -29,9 +29,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,19 +42,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,7 +68,6 @@ import net.eratiem.randogeddon.shared.CreateSessionRequest
 import net.eratiem.randogeddon.shared.CreateSessionResult
 import net.eratiem.randogeddon.shared.Creation
 import net.eratiem.randogeddon.shared.CreationState
-import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.GenerationProgress
 import net.eratiem.randogeddon.shared.GenerationStage
 import net.eratiem.randogeddon.shared.GenerationStep
@@ -86,28 +85,23 @@ import net.eratiem.randogeddon.shared.UploadedYaml
 import net.eratiem.randogeddon.shared.UserRef
 import net.eratiem.randogeddon.shared.WorldPlan
 import net.eratiem.randogeddon.shared.YamlWorld
+import net.eratiem.randogeddon.shared.i18n.fileSize
 import net.eratiem.randogeddon.shared.i18n.text
-import net.eratiem.randogeddon.shared.i18n.texts
 import net.eratiem.randogeddon.webapp.api.Answer
 import net.eratiem.randogeddon.webapp.api.call
 import net.eratiem.randogeddon.webapp.api.load
 import net.eratiem.randogeddon.webapp.api.post
-import net.eratiem.randogeddon.webapp.api.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
+import net.eratiem.randogeddon.webapp.app.PickLimits
 import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.word
-import net.eratiem.randogeddon.webapp.ui.AppPopup
-import net.eratiem.randogeddon.webapp.ui.Divider
+import net.eratiem.randogeddon.webapp.ui.Button
+import net.eratiem.randogeddon.webapp.ui.Check
 import net.eratiem.randogeddon.webapp.ui.DrawnIcon
-import net.eratiem.randogeddon.webapp.ui.DropdownSearch
 import net.eratiem.randogeddon.webapp.ui.FilterField
-import net.eratiem.randogeddon.webapp.ui.GameChip
 import net.eratiem.randogeddon.webapp.ui.Icon
 import net.eratiem.randogeddon.webapp.ui.InfoTip
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
-import net.eratiem.randogeddon.webapp.ui.LogView
-import net.eratiem.randogeddon.webapp.ui.Mono
-import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
@@ -115,13 +109,15 @@ import net.eratiem.randogeddon.webapp.ui.StepSlider
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
-import net.eratiem.randogeddon.webapp.ui.justClosed
-import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /** Archipelago's choices for release and collect (see .env.example). */
 private val RELEASE_MODES = listOf("auto", "enabled", "disabled", "goal", "auto-enabled")
 private val REMAINING_MODES = listOf("enabled", "disabled", "goal")
+
+/** After this many answers in a row (half a second apart) that the tracker doesn't know a creation, it is lost. */
+private const val LOST_AFTER = 3
 
 /** How the locks of a new session are chosen. */
 private enum class LockMode { CHOOSE, RANDOM, MIXED }
@@ -173,6 +169,8 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   val full = overview != null && overview.capacity > 0 && overview.inUse >= overview.capacity
   // The user manages as many running sessions as the Administrators allow
   val atLimit = overview?.left == 0
+  // Enter in the ID's field generates, as the form's button does (while it may)
+  val submit = remember { Submit() }
   Section(t.sessionAdmin.newSession, subtitle = overview?.capacity?.let(t.sessionAdmin::newSessionSubtitle) ?: "…") {
     Column(
       Modifier.fillMaxWidth().bringIntoViewRequester(card).card(p).padding(16.dp),
@@ -189,7 +187,10 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
           Txt(t.sessionAdmin.sessionId, size = 13.sp, weight = FontWeight.SemiBold)
           InfoTip(t.tips.sessionId)
           // Only the start trimmed: a space typed at the end becomes its hyphen at once
-          FilterField(shown, { id = SessionIds.typed(it.trimStart()) }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT)
+          FilterField(
+            shown, { id = SessionIds.typed(it.trimStart()) }, "friday-chaos", Modifier.width(220.dp), minHeight = FIELD_HEIGHT,
+            onSubmit = { submit.action?.invoke() },
+          )
           idProblem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
         }
       }
@@ -198,6 +199,7 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
           AdminSessionView(apVersions = overview.apVersions, users = overview.users, people = overview.people), chosen,
           administrator = administrator,
           ready = idProblem == null && chosen.isNotEmpty() && !full && !atLimit,
+          submit = submit,
           onBusy = { generating = it },
           onCreated = { result ->
             created = result
@@ -211,6 +213,16 @@ fun NewSessionSection(overview: AdminOverview?, administrator: Boolean, onCreate
   }
 }
 
+/** What Enter in the new session's ID does: generate, while the form may (`null`: nothing). */
+private class Submit {
+  var action: (() -> Unit)? = null
+}
+
+/** A number counted up, not a state: nothing is drawn from it. */
+private class Counter {
+  var n = 0
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreateSession(
@@ -219,6 +231,8 @@ private fun CreateSession(
   ready: Boolean,
   onCreated: (CreateSessionResult) -> Unit,
   administrator: Boolean,
+  /** Where the form leaves its *Generate*, for Enter in the ID's field. */
+  submit: Submit,
   /** It generates (or stopped): the form around this hides what it shows besides. */
   onBusy: (Boolean) -> Unit = {},
 ) {
@@ -270,10 +284,23 @@ private fun CreateSession(
   }
   var cancelledNote by remember { mutableStateOf(false) }
   var cancelling by remember { mutableStateOf(false) }
+  // The tracker answered the creation (it knows it); one it no longer knows afterwards was lost (a restart), and the
+  // form says so
+  var accepted by remember { mutableStateOf(false) }
+  var lostNote by remember { mutableStateOf(false) }
+  // Nothing of the form until the first check: Enter in the ID's field does nothing either
+  SideEffect { submit.action = null }
 
   suspend fun loadLog(creation: String) {
     while (true) {
       val part = load("api/sessions/new/creation/$creation/log?since=$logLast", LogLines.serializer()) ?: return
+      // Its numbers started again (below what was had): from the start
+      if (part.last < logLast) {
+        log.clear()
+        logLast = 0
+        continue
+      }
+      if (part.lines.isNotEmpty() && log.isNotEmpty() && part.lines.first().n <= log.last().n) log.clear()
       log.addAll(part.lines)
       if (log.size > MAX_GENERATION_LOG) log.removeRange(0, log.size - MAX_GENERATION_LOG)
       logLast = part.last
@@ -311,6 +338,7 @@ private fun CreateSession(
     } as? Answer.Ok)?.value ?: return@LaunchedEffect
     if (busy || failedId != null) return@LaunchedEffect
     sentId = own.id
+    accepted = true
     progress = own.progress
     startedAt = own.startedAt.takeIf { it > 0 }
     loadLog(own.id)
@@ -319,12 +347,23 @@ private fun CreateSession(
 
   LaunchedEffect(busy) {
     onBusy(busy)
+    // Answers in a row that the tracker doesn't know the creation (204)
+    var unknown = 0
     while (busy) {
       delay(500)
       val creation = sentId ?: break
-      val now = (call("GET", "api/sessions/new/creation/$creation", null) {
+      val answer = call("GET", "api/sessions/new/creation/$creation", null) {
         if (it.isBlank()) null else ApiJson.decodeFromString(Creation.serializer(), it)
-      } as? Answer.Ok)?.value
+      }
+      val now = (answer as? Answer.Ok)?.value
+      // Known once, then gone: the tracker was restarted, and the creation (kept in its memory) with it
+      unknown = if (answer is Answer.Ok && now == null && accepted) unknown + 1 else 0
+      if (unknown >= LOST_AFTER) {
+        busy = false
+        cancelling = false
+        lostNote = true
+        break
+      }
       now?.progress?.let { progress = it; seen(it) }
       now?.startedAt?.takeIf { it > 0 }?.let { startedAt = it }
       loadLog(creation)
@@ -335,10 +374,19 @@ private fun CreateSession(
   var removing by remember { mutableStateOf<String?>(null) }
   // Why the files just picked that aren't player YAMLs weren't taken
   var refused by remember { mutableStateOf<List<String>>(emptyList()) }
+  // Why picked files weren't read at all (too large, unreadable), until the next pick
+  var pickProblems by remember { mutableStateOf<List<String>>(emptyList()) }
+  // Slot -> why an invitation from its picker failed
+  val inviteProblems = remember { mutableStateMapOf<String, String>() }
+  // The latest check: an answer to an earlier one (the YAMLs changed meanwhile) is dropped
+  val checks = remember { Counter() }
 
   fun inspect(): Job = scope.launch {
+    val round = ++checks.n
     val body = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(yamls.toList(), version))
-    when (val answer = call("POST", "api/sessions/new/inspect", body, InspectResult.serializer())) {
+    val answer = call("POST", "api/sessions/new/inspect", body, InspectResult.serializer())
+    if (round != checks.n) return@launch
+    when (answer) {
       is Answer.Ok -> {
         val invalid = answer.value.invalid.toSet()
         if (invalid.isNotEmpty()) {
@@ -412,6 +460,7 @@ private fun CreateSession(
   // How the last generation ended, above the form (after a reload the form is empty): cancelled, or failed with why
   // and its whole output, to read here or download (with the command that ran)
   if (cancelledNote) Txt(t.sessionAdmin.generationCancelled, size = 12.5.sp, color = p.muted)
+  if (lostNote) Txt(t.sessionAdmin.generationLost, size = 12.5.sp, color = p.trap)
   failedId?.let { failed ->
     error?.let { GenerationError(it.message, it.detail) }
     if (log.isNotEmpty()) GenerationLog(log)
@@ -430,20 +479,38 @@ private fun CreateSession(
   Txt(if (seed != null) t.sessionAdmin.stepSeed else t.sessionAdmin.stepYamls, size = 13.sp, weight = FontWeight.SemiBold)
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     if (seed == null) Button(t.sessionAdmin.addYamls) {
-      Platform.pickFiles(".yaml,.yml") { json ->
+      pickProblems = emptyList()
+      Platform.pickFiles(
+        "yaml", ".yaml,.yml", binary = false, PickLimits.YAML_BYTES, multiple = true,
+        onProblem = { file, problem -> pickProblems = pickProblems + pickProblem(t, file, problem, PickLimits.YAML_BYTES) },
+      ) { json ->
         val picked = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
         // Choosing again adds files; one with the same name replaces the earlier one
+        val all = yamls.filter { have -> picked.none { it.fileName == have.fileName } } + picked
+        // Together they go in one request (the check's, the generation's), which the tracker takes up to its limit
+        val size = ApiJson.encodeToString(InspectRequest.serializer(), InspectRequest(all, version)).encodeToByteArray().size
+        if (size > PickLimits.YAML_BYTES) {
+          pickProblems = pickProblems +
+            t.sessionAdmin.yamlsTooLarge(picked.joinToString(", ") { it.fileName }, t.fileSize(PickLimits.YAML_BYTES))
+          return@pickFiles
+        }
         picked.forEach { file -> yamls.removeAll { it.fileName == file.fileName }; yamls += file }
         refused = emptyList()
         inspect()
       }
     }
     if (yamls.isNotEmpty() && removing == null) Button(t.sessionAdmin.clearAll, danger = true) { removing = "" }
-    // Or the zip Archipelago made elsewhere: checked by the gateway, which keeps it for the session
+    // Or the zip Archipelago made elsewhere: checked by the gateway, which keeps it for the session. Administrators'
+    // only: the tracker refuses the upload to anyone else too
     if (administrator && yamls.isEmpty() && seed == null) Button(t.sessionAdmin.useSeed, enabled = !seedChecking) {
-      Platform.pickFiles(".zip", binary = true) { json ->
+      pickProblems = emptyList()
+      Platform.pickFiles(
+        "seed", ".zip", binary = true, PickLimits.SEED_BYTES, multiple = false,
+        onProblem = { file, problem -> pickProblems = pickProblems + pickProblem(t, file, problem, PickLimits.SEED_BYTES) },
+      ) { json ->
         val file = runCatching { ApiJson.decodeFromString(ListSerializer(UploadedYaml.serializer()), json) }.getOrDefault(emptyList())
           .firstOrNull() ?: return@pickFiles
+        if (seedChecking) return@pickFiles
         seedChecking = true
         refused = emptyList()
         problems = emptyList()
@@ -464,6 +531,7 @@ private fun CreateSession(
       }
     }
   }
+  pickProblems.forEach { Txt(it, size = 12.5.sp, color = p.trap) }
   if (seedChecking) Txt(t.sessionAdmin.seedChecking, size = 12.5.sp, color = p.muted)
   seed?.let { info ->
     YamlChip(seedFile, emptyList()) {
@@ -484,6 +552,8 @@ private fun CreateSession(
       removing = null
       if (file.isEmpty()) yamls.clear() else yamls.removeAll { it.fileName == file }
       if (yamls.isEmpty()) {
+        // A check still under way is of no interest now
+        checks.n++
         worlds = emptyList(); problems = emptyList(); users.clear(); locked.clear(); choices.clear()
       } else {
         inspect()
@@ -615,12 +685,15 @@ private fun CreateSession(
         open = openToAll[world.name] == true,
         onOpen = { yes -> openToAll[world.name] = yes },
         hostedLabel = t.sessionAdmin.hostedCheck,
+        // Administrators' only: the tracker refuses a direct server to anyone else too
         direct = (direct[world.name] == true).takeIf { administrator && world.game == MINECRAFT_DIG },
         onDirect = { yes -> direct[world.name] = yes },
+        // A failed invitation shows below its slot's picker, where it was asked for
+        inviteProblem = inviteProblems[world.name],
         onInvite = { email ->
           when (val r = inviteForSession(email)) {
-            is Answer.Ok -> r.value.also { people += it }
-            is Answer.Failed -> { error = r; null }
+            is Answer.Ok -> r.value.also { people += it; inviteProblems.remove(world.name) }
+            is Answer.Failed -> { inviteProblems[world.name] = r.message; null }
           }
         },
         lock = {
@@ -696,287 +769,62 @@ private fun CreateSession(
     val unplayed = usable.filter { hosted[it.name] != true && openToAll[it.name] != true && users[it.name].isNullOrEmpty() }.map { it.name }
     if (unplayed.isNotEmpty()) Txt(t.sessionAdmin.slotsWithoutPlayer(unplayed.joinToString(", ")), size = 12.5.sp, color = p.warn)
 
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      Button(
-        if (seed != null) t.sessionAdmin.startWithSeed else t.sessionAdmin.generateAndStart,
-        enabled = ready && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
-          unplayed.isEmpty(),
-      ) {
-        busy = true
-        sentId = id
-        error = null
-        failedId = null
-        cancelledNote = false
-        log.clear()
-        logLast = 0
-        progress = null
-        startedAt = Platform.now()
-        quietSince = null
-        scope.launch {
-          val request = CreateSessionRequest(
-            id = id,
-            yamls = if (seed != null) emptyList() else yamls.filter { it.fileName !in waitingFiles },
-            worlds = usable.map {
-              WorldPlan(
-                it.name, userIds = if (openToAll[it.name] == true) emptyList() else users[it.name].orEmpty(),
-                locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
-                hosted = hosted[it.name] == true,
-                direct = hosted[it.name] == true && direct[it.name] == true,
-                open = openToAll[it.name] == true,
-              )
-            },
-            options = options.copy(openSlots = open),
-            apVersion = version,
-            seed = seed?.token,
-          )
-          val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
-          // Answered at once: it generates in the background, and the page asks how far it is
-          when (val answer = call("POST", "api/sessions", body, Creation.serializer())) {
-            is Answer.Ok -> progress = answer.value.progress
-            is Answer.Failed -> {
-              error = answer
-              busy = false
-            }
+    val canGenerate = ready && problems.none { it.code != Problem.NO_APWORLD } && view.apVersions.isNotEmpty() && openOk &&
+      unplayed.isEmpty()
+    fun generate() {
+      if (busy) return
+      busy = true
+      sentId = id
+      accepted = false
+      lostNote = false
+      error = null
+      failedId = null
+      cancelledNote = false
+      log.clear()
+      logLast = 0
+      progress = null
+      startedAt = Platform.now()
+      quietSince = null
+      scope.launch {
+        val request = CreateSessionRequest(
+          id = id,
+          yamls = if (seed != null) emptyList() else yamls.filter { it.fileName !in waitingFiles },
+          worlds = usable.map {
+            WorldPlan(
+              it.name, userIds = if (openToAll[it.name] == true) emptyList() else users[it.name].orEmpty(),
+              locked = it.name in lockedNow, random = mode == LockMode.MIXED && choice(it) == LockChoice.RANDOM,
+              hosted = hosted[it.name] == true,
+              direct = hosted[it.name] == true && direct[it.name] == true,
+              open = openToAll[it.name] == true,
+            )
+          },
+          options = options.copy(openSlots = open),
+          apVersion = version,
+          seed = seed?.token,
+        )
+        val body = ApiJson.encodeToString(CreateSessionRequest.serializer(), request)
+        // Answered at once: it generates in the background, and the page asks how far it is
+        when (val answer = call("POST", "api/sessions", body, Creation.serializer())) {
+          is Answer.Ok -> {
+            progress = answer.value.progress
+            accepted = true
+          }
+          is Answer.Failed -> {
+            error = answer
+            busy = false
           }
         }
+      }
+    }
+    // Enter in the session's ID does the same, while the button may
+    SideEffect { submit.action = if (canGenerate) ({ generate() }) else null }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Button(if (seed != null) t.sessionAdmin.startWithSeed else t.sessionAdmin.generateAndStart, enabled = canGenerate) {
+        generate()
       }
     }
     // A refusal of the form: below it, where it was sent
     if (failedId == null) error?.let { GenerationError(it.message, it.detail) }
-  }
-}
-
-/** Below this share of one core, Generate.py does nothing; that long of it ([QUIET_FOR_MS]) is no response. */
-private const val QUIET_CPU = 5
-private const val QUIET_FOR_MS = 60_000L
-
-/** [ms] as a clock: `4:05`, `1:02:03`. */
-private fun clock(ms: Long): String {
-  val s = (ms / 1000).coerceAtLeast(0)
-  val (h, m, sec) = Triple(s / 3600, s / 60 % 60, s % 60)
-  fun two(n: Long) = n.toString().padStart(2, '0')
-  return if (h > 0) "$h:${two(m)}:${two(sec)}" else "$m:${two(sec)}"
-}
-
-/**
- * That it isn't stuck, in two pills under the bar: how long it has run since its start (each second), and what it
- * does: working (with Generate.py's share of one core: a working fill or playthrough keeps one busy), waiting for its
- * turn, or no response once Generate.py has used next to no CPU for a minute.
- */
-@Composable
-private fun GenerationLiveness(progress: GenerationProgress, startedAt: Long?, quietSince: Long?) {
-  val p = LocalPalette.current
-  val t = LocalTexts.current.sessionAdmin
-  var now by remember { mutableLongStateOf(Platform.now()) }
-  LaunchedEffect(Unit) {
-    while (true) {
-      delay(1000)
-      now = Platform.now()
-    }
-  }
-  val quiet = quietSince?.let { now - it }?.takeIf { it >= QUIET_FOR_MS }
-  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    startedAt?.let { Pill(t.generationTime(clock(now - it)), p.muted) }
-    when {
-      progress.stage == GenerationStage.WAITING -> Pill(t.generationWaitingTurn, p.muted)
-      quiet != null -> Pill(t.generationQuiet((quiet / 60_000).toInt()), p.trap)
-      else -> Pill(progress.cpu?.let(t::generationWorkingCpu) ?: t.generationWorking, p.ok)
-    }
-  }
-}
-
-/** How many lines of a generation's output the page keeps (as many as the gateway). */
-private const val MAX_GENERATION_LOG = 20_000
-
-/** Generate.py's output, newest on top, a page at a time. */
-@Composable
-private fun GenerationLog(log: List<LogLine>) {
-  val t = LocalTexts.current
-  val p = LocalPalette.current
-  Txt(t.sessionAdmin.generationLog, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.muted)
-  // What ran and the gateway's own notes stand out from Generate.py's output
-  LogView(log, t.panel.nothingYet, height = 320.dp, color = { line ->
-    if (line.text.startsWith("[gateway]") || line.text.startsWith("$ ")) p.accent else null
-  })
-}
-
-/** A failed generation: why (the suspected games), Generate.py's output ([detail]) below in monospace. */
-@Composable
-private fun GenerationError(message: String, detail: String?) {
-  val p = LocalPalette.current
-  if (detail == null) {
-    Mono(message, color = p.trap)
-  } else {
-    Txt(message, size = 12.5.sp, color = p.trap)
-    Mono(detail)
-  }
-}
-
-/**
- * One slot of the new session: its players (chips; type to search the accounts, Enter or a click picks one) and its
- * [lock] control (nothing with random locks, or a single slot). [users] are account IDs.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WorldRow(
-  world: YamlWorld,
-  users: List<String>,
-  known: List<UserRef>,
-  /** Hosted (its checkbox, asked once more): no players, and no picker to add them. */
-  hosted: Boolean,
-  onHosted: (Boolean) -> Unit,
-  hostedLabel: String,
-  /** A hosted Minecraft Dig slot's server run here (its checkbox, for Administrators); `null`: not offered. */
-  direct: Boolean?,
-  onDirect: (Boolean) -> Unit,
-  /** Open to all of the session's players (its checkbox): no players named. */
-  open: Boolean,
-  onOpen: (Boolean) -> Unit,
-  /** Invites an address from here: the new account, or `null` (the form shows why). */
-  onInvite: suspend (String) -> UserRef?,
-  lock: @Composable () -> Unit,
-  onUsers: (List<String>) -> Unit,
-) {
-  val p = LocalPalette.current
-  val t = LocalTexts.current
-  var asking by remember { mutableStateOf(false) }
-  Divider()
-  Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-    GameChip(world.game)
-    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.weight(1f)) {
-          Txt(world.name, size = 13.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
-          Txt("${world.game} · ${world.fileName}", size = 11.5.sp, color = p.muted, maxLines = 1)
-        }
-        lock()
-        Check(t.sessionAdmin.openCheck, open, t.sessionAdmin.openTip) { onOpen(it) }
-        Check(hostedLabel, hosted, t.sessionAdmin.hostedTip) { yes -> if (yes) asking = true else onHosted(false) }
-      }
-      if (asking) {
-        Confirm(t.sessionAdmin.hostedQuestion, t.sessionAdmin.yesHosted, danger = false,
-          onYes = { asking = false; onHosted(true) }, onCancel = { asking = false })
-      }
-      if (hosted && direct != null) Check(t.sessionAdmin.hostDirectly, direct) { onDirect(it) }
-      if (hosted) Txt(t.sessionAdmin.hostedLine, size = 12.sp, color = p.muted)
-      if (open) Txt(if (hosted) t.sessionAdmin.openHostedLine else t.sessionAdmin.openLine, size = 12.sp, color = p.muted)
-      else if (hosted) Txt(t.sessionAdmin.hostedPlayersLine, size = 12.sp, color = p.muted)
-      if (!open) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        users.forEach { id ->
-          val user = known.firstOrNull { it.id == id }
-          UserChip(user?.label ?: id, invited = user?.name == null, onRemove = { onUsers(users - id) })
-        }
-        PlayerPicker(
-          known.filter { it.id !in users }, if (users.isEmpty()) t.sessionAdmin.addPlayer else t.sessionAdmin.addAnother,
-          onPick = { if (it.id !in users) onUsers(users + it.id) }, onInvite = onInvite,
-        )
-      }
-    }
-  }
-}
-
-/**
- * Adds a player: a dropdown of the accounts ([choices]) with a search field on top; a typed e-mail address that no
- * account has offers its invitation instead ([onInvite]: the new account, or `null`).
- */
-@Composable
-internal fun PlayerPicker(
-  choices: List<UserRef>,
-  placeholder: String,
-  onPick: (UserRef) -> Unit,
-  onInvite: suspend (String) -> UserRef?,
-) {
-  val p = LocalPalette.current
-  val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
-  var open by remember { mutableStateOf(false) }
-  var closedAt by remember { mutableLongStateOf(0L) }
-  var query by remember { mutableStateOf("") }
-  var inviting by remember { mutableStateOf(false) }
-  var anchorHeight by remember { mutableStateOf(0) }
-  Box(Modifier.width(190.dp).onSizeChanged { anchorHeight = it.height }) {
-    Row(
-      Modifier.fillMaxWidth().heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp)).background(p.panelAlt)
-        .border(1.dp, p.border, RoundedCornerShape(10.dp))
-        .hand().clickable { if (!justClosed(closedAt)) { open = !open; query = "" } }
-        .padding(start = 10.dp, end = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Txt(placeholder, size = 12.5.sp, color = p.muted, maxLines = 1, modifier = Modifier.weight(1f))
-      DrawnIcon(Icon.CHEVRON, p.muted, 14.dp)
-    }
-    if (open) AppPopup(
-      offset = IntOffset(0, anchorHeight + 6),
-      onDismissRequest = { open = false; closedAt = Platform.now() },
-      properties = PopupProperties(focusable = true),
-    ) {
-      Column(
-        Modifier.widthIn(min = 240.dp, max = 320.dp).card(p, RoundedCornerShape(12.dp)).padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-      ) {
-        DropdownSearch(query) { query = it }
-        val matches = choices.filter { query.isBlank() || it.label.contains(query.trim(), ignoreCase = true) }.take(200)
-        val address = EmailAddresses.normalize(query)
-        Column(Modifier.heightIn(max = 260.dp).scrolling()) {
-          matches.forEach { user ->
-            Txt(
-              user.label, size = 13.sp, maxLines = 1, color = if (user.name == null) p.muted else p.text,
-              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hand()
-                .clickable { onPick(user); open = false; query = "" }.padding(horizontal = 8.dp, vertical = 7.dp),
-            )
-          }
-          when {
-            matches.isNotEmpty() -> {}
-            EmailAddresses.valid(address) -> Txt(
-              if (inviting) t.sessionAdmin.inviting else t.sessionAdmin.inviteAddress(address), size = 13.sp, color = p.accent,
-              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).hand().clickable {
-                if (!inviting) scope.launch {
-                  inviting = true
-                  onInvite(address)?.let(onPick)
-                  inviting = false
-                  open = false
-                  query = ""
-                }
-              }.padding(horizontal = 8.dp, vertical = 7.dp),
-            )
-            else -> Txt(t.sessionAdmin.noAccountMatches, size = 12.sp, color = p.muted, modifier = Modifier.padding(8.dp))
-          }
-        }
-      }
-    }
-  }
-}
-
-/** A chosen YAML: its file and its game(s), × to remove it. */
-@Composable
-private fun YamlChip(fileName: String, games: List<String>, onRemove: () -> Unit) {
-  val p = LocalPalette.current
-  Row(
-    Modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.12f)).padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Txt(fileName, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1)
-    if (games.isNotEmpty()) Txt(games.joinToString(", "), size = 11.5.sp, color = p.accent.copy(alpha = 0.8f), maxLines = 1)
-    Box(Modifier.size(18.dp).clip(CircleShape).hand().clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-      DrawnIcon(Icon.CLOSE, p.accent, 10.dp)
-    }
-  }
-}
-
-@Composable
-internal fun UserChip(name: String, invited: Boolean, onRemove: () -> Unit) {
-  val p = LocalPalette.current
-  Row(
-    Modifier.heightIn(min = FIELD_HEIGHT).clip(CircleShape).background(p.hue(name).copy(alpha = 0.15f))
-      .padding(start = 12.dp, end = 6.dp, top = 3.dp, bottom = 3.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(4.dp),
-  ) {
-    Txt(if (invited) LocalTexts.current.sessionAdmin.invitedName(name) else name, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.hue(name), maxLines = 1)
-    Box(Modifier.size(18.dp).clip(CircleShape).hand().clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-      DrawnIcon(Icon.CLOSE, p.hue(name), 10.dp)
-    }
   }
 }
 
@@ -1011,19 +859,31 @@ private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (Lock
     LockChoice.LOCKED -> p.locked
   }
   val position by animateFloatAsState(choice.ordinal / 2f, tween(160))
+  val label = when (choice) {
+    LockChoice.OPEN -> t.sessionAdmin.lockOpen
+    LockChoice.RANDOM -> t.sessionAdmin.lockChance
+    LockChoice.LOCKED -> t.sessionAdmin.lockLocked
+  }
   Tip(t.tips.lockSwitch) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Txt(
-        when (choice) {
-          LockChoice.OPEN -> t.sessionAdmin.lockOpen
-          LockChoice.RANDOM -> t.sessionAdmin.lockChance
-          LockChoice.LOCKED -> t.sessionAdmin.lockLocked
-        },
-        size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1,
-      )
+      Txt(label, size = 12.5.sp, weight = FontWeight.SemiBold, color = color, maxLines = 1)
       BoxWithConstraints(
-        Modifier.width(78.dp).height(28.dp).clip(CircleShape).background(color.copy(alpha = 0.16f))
+        Modifier.width(78.dp).height(28.dp).focusRing(CircleShape).clip(CircleShape).background(color.copy(alpha = 0.16f))
           .border(1.dp, color.copy(alpha = 0.5f), CircleShape).hand()
+          // The keyboard's (a stop of Tab): Left and Right move it a stop
+          .onKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+            val by = when (event.key) {
+              Key.DirectionLeft -> -1
+              Key.DirectionRight -> 1
+              else -> return@onKeyEvent false
+            }
+            val picked = LockChoice.entries[(current.ordinal + by).coerceIn(0, 2)]
+            if (picked != current && (picked != LockChoice.LOCKED || lockAllowed)) change(picked)
+            true
+          }
+          .focusable()
+          .semantics { stateDescription = label }
           .pointerInput(lockAllowed) {
             awaitEachGesture {
               val down = awaitFirstDown()
@@ -1063,30 +923,5 @@ private fun LockSwitch(choice: LockChoice, lockAllowed: Boolean, onChange: (Lock
         }
       }
     }
-  }
-}
-
-@Composable
-internal fun Check(label: String, checked: Boolean, tip: String? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-  val p = LocalPalette.current
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-    Row(
-      Modifier.clip(RoundedCornerShape(8.dp))
-        .then(if (enabled) Modifier.hand().clickable { onChange(!checked) } else Modifier.alpha(0.45f))
-        .padding(vertical = 2.dp, horizontal = 2.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      Box(
-        Modifier.size(16.dp).clip(RoundedCornerShape(4.dp))
-          .background(if (checked) p.accent else Color.Transparent)
-          .border(1.5.dp, if (checked) p.accent else p.muted, RoundedCornerShape(4.dp)),
-        contentAlignment = Alignment.Center,
-      ) {
-        if (checked) DrawnIcon(Icon.CHECK, p.onBrand, 12.dp)
-      }
-      Txt(label, size = 12.5.sp, maxLines = 1)
-    }
-    if (tip != null) InfoTip(tip)
   }
 }

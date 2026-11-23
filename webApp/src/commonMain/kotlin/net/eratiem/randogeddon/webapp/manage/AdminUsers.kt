@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +59,7 @@ import net.eratiem.randogeddon.webapp.app.Platform
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.ui.Avatar
 import net.eratiem.randogeddon.webapp.ui.AvatarPill
+import net.eratiem.randogeddon.webapp.ui.Button
 import net.eratiem.randogeddon.webapp.ui.CopyTextButton
 import net.eratiem.randogeddon.webapp.ui.DialogCard
 import net.eratiem.randogeddon.webapp.ui.Divider
@@ -71,10 +72,13 @@ import net.eratiem.randogeddon.webapp.ui.NumberField
 import net.eratiem.randogeddon.webapp.ui.Pill
 import net.eratiem.randogeddon.webapp.ui.Section
 import net.eratiem.randogeddon.webapp.ui.Select
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
+import net.eratiem.randogeddon.webapp.ui.focusRing
 import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /** Invites [email] (with a [suggestedName] for the sign-up page); the new account, or why not. */
@@ -120,19 +124,28 @@ fun UsersAdmin(onChanged: () -> Unit, onSession: (String) -> Unit) {
       var email by remember { mutableStateOf("") }
       var name by remember { mutableStateOf("") }
       var state by remember { mutableStateOf<String?>(null) }
+      // One invitation at a time: a second click while one is sent is dropped
+      val inviting = rememberAction()
       val nameProblem = name.trim().takeIf { it.isNotEmpty() }?.let(UserNames::problem)?.let { LocalTexts.current.problems.text(it) }
+      val ready = EmailAddresses.valid(EmailAddresses.normalize(email)) && nameProblem == null && !inviting.busy
+      fun send() = inviting.run {
+        state = when (val r = invite(email, name)) {
+          is Answer.Ok -> { email = ""; name = ""; load(); onChanged(); texts.invited(r.value.email.orEmpty()) }
+          is Answer.Failed -> r.message
+        }
+        null
+      }
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterField(email, { email = it; state = null }, texts.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-        FilterField(name, { name = it; state = null }, texts.suggestedName, Modifier.width(200.dp), minHeight = FIELD_HEIGHT)
+        FilterField(
+          email, { email = it; state = null }, texts.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT,
+          onSubmit = { if (ready) send() },
+        )
+        FilterField(
+          name, { name = it; state = null }, texts.suggestedName, Modifier.width(200.dp), minHeight = FIELD_HEIGHT,
+          onSubmit = { if (ready) send() },
+        )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-          Button(texts.invite, enabled = EmailAddresses.valid(EmailAddresses.normalize(email)) && nameProblem == null) {
-            scope.launch {
-              state = when (val r = invite(email, name)) {
-                is Answer.Ok -> { email = ""; name = ""; load(); onChanged(); texts.invited(r.value.email.orEmpty()) }
-                is Answer.Failed -> r.message
-              }
-            }
-          }
+          Button(texts.invite, enabled = ready) { send() }
           InfoTip(LocalTexts.current.tips.invite)
         }
       }
@@ -183,13 +196,24 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
   val p = LocalPalette.current
   val t = LocalTexts.current
   val u = t.users
-  val scope = rememberCoroutineScope()
   var editing by remember { mutableStateOf(false) }
   var address by remember { mutableStateOf(user.email.orEmpty()) }
   var state by remember { mutableStateOf<String?>(null) }
   val invited = user.state == AccountState.INVITED
+  // Sending the link (again, or to another address), one at a time
+  val sending = rememberAction()
+  val sendThere: () -> Unit = {
+    sending.run {
+      val body = ApiJson.encodeToString(EmailRequest.serializer(), EmailRequest(address.trim()))
+      state = when (val r = call("PUT", "api/admin/users/${user.id}/email", body) { }) {
+        is Answer.Ok -> { editing = false; onChanged(); u.linkWentTo(address.trim()) }
+        is Answer.Failed -> r.message
+      }
+      null
+    }
+  }
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-    SelectionContainer {
+    Selectable {
       DialogCard(560.dp, header = {
         Avatar(user.name ?: user.email.orEmpty(), 40.dp)
         Column(Modifier.weight(1f)) {
@@ -200,7 +224,7 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
             user.block?.let { Pill(if (it.until != null) u.timedOutPill else u.suspendedPill, if (it.until != null) p.warn else p.trap) }
           }
         }
-        IconButton(onClose, Icon.CLOSE)
+        IconButton(onClose, Icon.CLOSE, label = t.dialogs.close)
       }) {
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           val none = u.notAvailable
@@ -256,8 +280,8 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
               user.sessions.forEach { id ->
                 Txt(
                   id, size = 12.5.sp, weight = FontWeight.SemiBold, color = p.accent, maxLines = 1,
-                  modifier = Modifier.clip(CircleShape).background(p.accent.copy(alpha = 0.12f)).hand()
-                    .clickable { onClose(); onSession(id) }.padding(horizontal = 10.dp, vertical = 3.dp),
+                  modifier = Modifier.focusRing(CircleShape).clip(CircleShape).background(p.accent.copy(alpha = 0.12f)).hand()
+                    .clickable(role = Role.Button) { onClose(); onSession(id) }.padding(horizontal = 10.dp, vertical = 3.dp),
                 )
               }
             }
@@ -266,26 +290,23 @@ private fun UserPanel(user: AdminUser, default: Int?, onChanged: () -> Unit, onS
             Divider()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               SmallButton(u.sendAgain, {
-                scope.launch {
+                sending.run {
                   state = (call("POST", "api/admin/users/${user.id}/invite", null) { } as? Answer.Failed)?.message
                     ?: u.newLinkWent(user.email.orEmpty())
                   onChanged()
+                  null
                 }
               })
               SmallButton(if (editing) t.common.cancel else u.otherAddress, { editing = !editing; address = user.email.orEmpty() })
             }
             if (editing) {
+              val ready = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email && !sending.busy
               FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterField(address, { address = it }, u.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT)
-                Button(u.sendThere, enabled = EmailAddresses.valid(EmailAddresses.normalize(address)) && address.trim() != user.email) {
-                  scope.launch {
-                    val body = ApiJson.encodeToString(EmailRequest.serializer(), EmailRequest(address.trim()))
-                    state = when (val r = call("PUT", "api/admin/users/${user.id}/email", body) { }) {
-                      is Answer.Ok -> { editing = false; onChanged(); u.linkWentTo(address.trim()) }
-                      is Answer.Failed -> r.message
-                    }
-                  }
-                }
+                FilterField(
+                  address, { address = it }, u.email, Modifier.width(240.dp), minHeight = FIELD_HEIGHT,
+                  onSubmit = { if (ready) sendThere() },
+                )
+                Button(u.sendThere, enabled = ready) { sendThere() }
               }
             }
           }
@@ -314,17 +335,16 @@ private fun OwnLimit(user: AdminUser, default: Int?, onDone: (String) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   val u = t.users
-  val scope = rememberCoroutineScope()
   var text by remember(user.id, user.sessionLimit) { mutableStateOf(user.sessionLimit?.toString().orEmpty()) }
-  var problem by remember(user.id) { mutableStateOf<String?>(null) }
+  // Saving, one at a time; its problem
+  val saving = rememberAction()
   val value = text.trim().toIntOrNull()?.takeIf { it in 0..20 }
-  fun save(limit: Int?) {
-    scope.launch {
-      val body = ApiJson.encodeToString(SessionLimitRequest.serializer(), SessionLimitRequest(limit))
-      when (val r = call("PUT", "api/admin/users/${user.id}/session-limit", body) { }) {
-        is Answer.Ok -> { problem = null; onDone(u.limitSaved(user.name.orEmpty())) }
-        is Answer.Failed -> problem = r.message
-      }
+  val ready = value != null && value != user.sessionLimit && !saving.busy
+  fun save(limit: Int?) = saving.run {
+    val body = ApiJson.encodeToString(SessionLimitRequest.serializer(), SessionLimitRequest(limit))
+    when (val r = call("PUT", "api/admin/users/${user.id}/session-limit", body) { }) {
+      is Answer.Ok -> { onDone(u.limitSaved(user.name.orEmpty())); null }
+      is Answer.Failed -> r.message
     }
   }
   FlowRow(
@@ -332,13 +352,16 @@ private fun OwnLimit(user: AdminUser, default: Int?, onDone: (String) -> Unit) {
     itemVerticalAlignment = Alignment.CenterVertically,
   ) {
     Txt(u.ownLimit, size = 13.sp, weight = FontWeight.SemiBold)
-    NumberField(text, { text = it; problem = null }, default?.toString().orEmpty(), 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
-    Button(t.common.save, enabled = value != null && value != user.sessionLimit) { save(value) }
+    NumberField(
+      text, { text = it; saving.problem = null }, default?.toString().orEmpty(), 0..20, Modifier.width(76.dp), minHeight = FIELD_HEIGHT,
+      onSubmit = { if (ready) save(value) },
+    )
+    Button(t.common.save, enabled = ready) { save(value) }
     if (user.sessionLimit != null) SmallButton(u.useDefault, { save(null) })
     InfoTip(u.sessionsPerUserTip)
   }
   if (value == null && text.isNotBlank()) Txt(u.zeroToTwenty, size = 12.5.sp, color = p.trap)
-  problem?.let { Txt(it, size = 12.sp, color = p.trap) }
+  saving.problem?.let { Txt(it, size = 12.sp, color = p.trap) }
 }
 
 /**
@@ -351,19 +374,17 @@ private fun AccountActions(user: AdminUser, onDone: (String) -> Unit, onDeleted:
   val p = LocalPalette.current
   val t = LocalTexts.current
   val u = t.users
-  val scope = rememberCoroutineScope()
   val name = user.name ?: user.email.orEmpty()
   var reason by remember(user.id) { mutableStateOf("") }
   var time by remember(user.id) { mutableStateOf(TimeOut.DAY) }
   var deleting by remember(user.id) { mutableStateOf(false) }
-  var problem by remember(user.id) { mutableStateOf<String?>(null) }
-  fun act(method: String, path: String, request: AccountActionRequest?, done: () -> Unit) {
-    scope.launch {
-      val body = request?.let { ApiJson.encodeToString(AccountActionRequest.serializer(), it) }
-      when (val r = call(method, "api/admin/users/${user.id}/$path", body) { }) {
-        is Answer.Ok -> { problem = null; reason = ""; done() }
-        is Answer.Failed -> problem = r.message
-      }
+  // One action at a time (a second click on *Delete now* would be "no such account"); its problem
+  val action = rememberAction()
+  fun act(method: String, path: String, request: AccountActionRequest?, done: () -> Unit) = action.run {
+    val body = request?.let { ApiJson.encodeToString(AccountActionRequest.serializer(), it) }
+    when (val r = call(method, "api/admin/users/${user.id}/$path", body) { }) {
+      is Answer.Ok -> { reason = ""; done(); null }
+      is Answer.Failed -> r.message
     }
   }
   val invited = user.state == AccountState.INVITED
@@ -373,16 +394,16 @@ private fun AccountActions(user: AdminUser, onDone: (String) -> Unit, onDeleted:
       if (user.block != null) {
         Row { SmallButton(u.letInButton, { act("DELETE", "block", null) { onDone(u.letInDone(name)) } }) }
       } else {
-        FilterField(reason, { reason = it; problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
+        FilterField(reason, { reason = it; action.problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
         FlowRow(
           horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           Select(TimeOut.entries.map { it to u.timeOut(it) }, time, { time = it }, minHeight = FIELD_HEIGHT)
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Button(u.timeOutButton, enabled = !tooLong) {
+            Button(u.timeOutButton, enabled = !tooLong && !action.busy) {
               act("POST", "block", AccountActionRequest(time, reason.trim().ifEmpty { null })) { onDone(u.timedOutDone(name)) }
             }
-            Button(u.suspendButton, enabled = !tooLong) {
+            Button(u.suspendButton, enabled = !tooLong && !action.busy) {
               act("POST", "block", AccountActionRequest(null, reason.trim().ifEmpty { null })) { onDone(u.suspendedDone(name)) }
             }
             InfoTip(u.keptOutTip)
@@ -396,17 +417,17 @@ private fun AccountActions(user: AdminUser, onDone: (String) -> Unit, onDeleted:
     } else {
       Txt(u.reallyDelete(name), size = 12.5.sp, color = p.trap)
       if (!invited && user.block != null) {
-        FilterField(reason, { reason = it; problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
+        FilterField(reason, { reason = it; action.problem = null }, u.reason, Modifier.fillMaxWidth(), minHeight = FIELD_HEIGHT)
       }
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(u.deleteNow, enabled = !tooLong) {
+        Button(u.deleteNow, enabled = !tooLong && !action.busy) {
           act("POST", "delete", AccountActionRequest(null, reason.trim().ifEmpty { null })) { onDeleted() }
         }
         SmallButton(t.common.cancel, { deleting = false })
       }
     }
     if (tooLong) Txt(t.problems.text(Refusal.of(Problem.REASON_TOO_LONG, "max" to AccountActionRequest.MAX_REASON)), size = 12.sp, color = p.trap)
-    problem?.let { Txt(it, size = 12.sp, color = p.trap) }
+    action.problem?.let { Txt(it, size = 12.sp, color = p.trap) }
   }
 }
 
@@ -432,7 +453,8 @@ private fun InfoLine(label: String, value: String, after: @Composable () -> Unit
 private fun SessionsDefault(onLoaded: (Int) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
+  // Saving, one at a time
+  val saving = rememberAction()
   var saved by remember { mutableStateOf<AppSettings?>(null) }
   var perUser by remember { mutableStateOf("") }
   var servers by remember { mutableStateOf("") }
@@ -484,13 +506,14 @@ private fun SessionsDefault(onLoaded: (Int) -> Unit) {
       InfoTip(t.users.watchStreamsTip)
       NumberField(watch, { watch = it; state = null }, "∞", 1..1000, Modifier.width(76.dp), minHeight = FIELD_HEIGHT)
     }
-    Button(t.common.save, enabled = settings != null && settings != saved) {
-      scope.launch {
-        val changed = settings!!
+    Button(t.common.save, enabled = settings != null && settings != saved && !saving.busy) {
+      val changed = settings ?: return@Button
+      saving.run {
         state = when (val r = call("PUT", "api/admin/settings", ApiJson.encodeToString(AppSettings.serializer(), changed)) { }) {
           is Answer.Ok -> { saved = changed; onLoaded(changed.sessionsPerUser); true to t.users.saved }
           is Answer.Failed -> false to r.message
         }
+        null
       }
     }
   }

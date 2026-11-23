@@ -1,12 +1,5 @@
 package net.eratiem.randogeddon.webapp.manage
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,38 +8,28 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.KeepRequest
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.i18n.decimal
-import net.eratiem.randogeddon.shared.i18n.text
-import net.eratiem.randogeddon.webapp.api.Answer
-import net.eratiem.randogeddon.webapp.api.call
+import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.date
 import net.eratiem.randogeddon.webapp.dashboard.Fact
@@ -62,11 +45,12 @@ import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.NARROW
 import net.eratiem.randogeddon.webapp.ui.ProgressBar
 import net.eratiem.randogeddon.webapp.ui.Section
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Tip
 import net.eratiem.randogeddon.webapp.ui.Txt
 import net.eratiem.randogeddon.webapp.ui.card
-import net.eratiem.randogeddon.webapp.ui.hand
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
 /**
@@ -78,11 +62,10 @@ import net.eratiem.randogeddon.webapp.ui.scrolling
 fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpoiler: (String) -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
-  val scope = rememberCoroutineScope()
-  var problem by remember { mutableStateOf<String?>(null) }
-  fun act(method: String, path: String, body: String? = null) = scope.launch {
-    problem = (call(method, path, body) { } as? Answer.Failed)?.message
-    onChanged()
+  // One action at a time: a second click while one is sent is dropped
+  val action = rememberAction()
+  fun act(method: String, path: String, body: String? = null) = action.run {
+    post(path, body, method).also { onChanged() }
   }
   val onReopen: (String) -> Unit = { act("POST", "api/sessions/$it/manage/reopen") }
   val onKeep: (String, Boolean) -> Unit = { id, keep ->
@@ -100,7 +83,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
       // A phone: the title, the details and the buttons one below the other
       val stacked = maxWidth < NARROW
       Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+        action.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
         if (sessions.isEmpty()) Txt(t.sessionAdmin.noneYet, size = 13.sp, color = p.muted)
         sessions.forEachIndexed { i, past ->
           if (i > 0) Divider()
@@ -128,6 +111,7 @@ fun PastSessionsAdmin(sessions: List<SessionEntry>, onChanged: () -> Unit, onSpo
           val buttons: @Composable () -> Unit = {
             if (pending?.first != seed) {
               if (reopenable(past.reopenUntil)) Tip(t.tips.reopen) { SmallButton(t.sessionAdmin.reopen, { onReopen(seed) }) }
+              // Finished (paused or ended): its spoiler log opens at once, as the session's own button does then
               Tip(t.tips.spoiler) { SmallButton(t.finish.spoilerLog, { onSpoiler(seed) }) }
               Tip(t.tips.keep) {
                 SmallButton(if (past.keep) t.sessionAdmin.enableAutoDeletion else t.sessionAdmin.disableAutoDeletion, { pending = seed to "keep" })
@@ -168,7 +152,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
   val p = LocalPalette.current
   val t = LocalTexts.current
   Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-    SelectionContainer {
+    Selectable {
       Column(
         Modifier.padding(16.dp).widthIn(max = 520.dp).fillMaxWidth().card(p, RoundedCornerShape(20.dp)),
       ) {
@@ -181,7 +165,7 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
             Txt(t.frame.seed(past.seedName), size = 12.5.sp, color = p.muted, maxLines = 1)
           }
           Txt("${t.decimal(past.percent)}%", size = 22.sp, weight = FontWeight.Bold, brush = p.brand)
-          IconButton(onClose, Icon.CLOSE)
+          IconButton(onClose, Icon.CLOSE, label = t.dialogs.close)
         }
         Divider()
         Column(Modifier.scrolling().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -221,24 +205,4 @@ private fun PastSessionOverview(past: SessionEntry, onClose: () -> Unit) {
       }
     }
   }
-}
-
-/** A button of the switch; the page that is shown is filled. */
-@Composable
-internal fun PageButton(text: String, active: Boolean, attention: Boolean = false, onClick: () -> Unit) {
-  val p = LocalPalette.current
-  // [attention]: it breathes (a little bigger and brighter, and back), while it is the one thing to do here
-  val pulse = if (attention) {
-    val beat by rememberInfiniteTransition().animateFloat(0f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse))
-    beat
-  } else 0f
-  Txt(
-    text, size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1,
-    color = if (active) p.onBrand else p.accent,
-    modifier = Modifier.graphicsLayer { scaleX = 1f + 0.07f * pulse; scaleY = 1f + 0.07f * pulse }
-      .heightIn(min = FIELD_HEIGHT).clip(RoundedCornerShape(10.dp))
-      .background(if (active) p.accent else p.accent.copy(alpha = 0.1f + 0.22f * pulse))
-      .hand().clickable(onClick = onClick)
-      .padding(horizontal = 14.dp, vertical = 8.dp),
-  )
 }
