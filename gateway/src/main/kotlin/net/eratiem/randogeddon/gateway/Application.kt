@@ -148,6 +148,9 @@ fun main() {
   // Only reads (and counts the session time); the tracker migrates and makes this login. On a new database that
   // happens a moment after both started: wait for it instead of failing and starting again
   val database = RandogeddonDatabase.connect(config.database, migrate = false, poolSize = 3, waitFor = DATABASE_WAIT)
+  if (runBlocking { runCatching { database.superuser() }.getOrDefault(false) }) {
+    logger.warn("The gateway logs in as a superuser of the database ({}): give it its own role (GATEWAY_DB_USER)", config.database.user)
+  }
   val passwordStore = SlotPasswordStore(database)
   val http = HttpClient(CIO) {
     install(ClientWebSockets) {
