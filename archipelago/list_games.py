@@ -13,6 +13,9 @@ from worlds.AutoWorld import AutoWorldRegister
 
 
 def main() -> None:
+    # Depends on (Archipelago 0.6.8): importing worlds loading every world (bundled ones and custom_worlds/);
+    # AutoWorldRegister.world_types (game -> world class), a world's zip_path (set for an .apworld), and
+    # worlds.failed_world_loads mapping a failed world's name to its reason
     games = []
     for name, world in AutoWorldRegister.world_types.items():
         zip_path = getattr(world, "zip_path", None)
