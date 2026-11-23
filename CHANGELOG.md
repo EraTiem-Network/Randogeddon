@@ -12,6 +12,48 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.6: Archipelago's wrappers and World Locks reviewed
+45 findings (3 high, 17 medium, 25 low), listed in `.docs/DONE.md`. The gateway's and the minecraft service's images
+change (who owns Archipelago's files, limits, another user for the Minecraft servers): nothing has to be set; a
+compose override that sets `user:` for the minecraft service must go.
+
+Fixed:
+- A world that started locked shows its real available checks and map once it is opened: the logic never had its
+  World Key, so such a world stayed at 0 and blocked for the whole session.
+- World Locks removes exactly the filler it chose to make room for a key (it could take a progression item of the
+  same name instead, as Celeste 64's Strawberries: the generation then ended as "unbeatable", about one in three in
+  the demo). It is only mended: its successor, Lockageddon, comes in Phase 24.
+- The available checks are closer to the seed: an item counts as the seed classed it, an item its world can't make
+  no longer ends the slot's answers, starting items the rebuild lacks are added, the seed's items lie on the rebuilt
+  locations.
+- A save that can't be read no longer makes the game server start a new game over it: it stops with its reason
+  (shown in the panel), the save kept and copied aside; the last readable save is copied at each start, and a save
+  is written whole or not at all.
+- A spoiler log's fallback playthrough no longer has holes; an answer of the logic can't be lost behind something a
+  world printed; a generation whose place was freed doesn't keep running.
+
+Security:
+- The gateway follows no symbolic link in the folders it shares with Archipelago's processes (a world's code could
+  have had it copy its own environment, with its tokens, to where that code reads).
+- Archipelago's code in the image can't be replaced by its own processes any more, nothing they add is loaded in
+  its place, and they have limits on processes and file size. The hosted Minecraft servers run as a user of their
+  own, apart from the script that hosts them.
+- A YAML that could become a World Locks slot in any way (a weighted `game:`, a trigger) is refused, and World
+  Locks refuses a second slot of its kind: a player could have locked others' worlds.
+- The room password and a slot's password are masked in Archipelago's and the Minecraft servers' own logs; a chat
+  line no longer counts as a player joining or leaving a hosted Minecraft server; an uploaded seed is bounded
+  while it is looked at.
+- `!getitem` is off for everyone: items by cheat come only through the panel, logged with who gave them.
+
+New, as the user decided:
+- At its build the logic checks its rebuilt rules against the seed's own order. A slot that doesn't fit keeps its
+  numbers and map, with a warning: its available pill framed, a banner above its checks and map, its reason in
+  the panel.
+- A slot's name Archipelago would change is refused in the form (over 16 characters; with `%`, `{` or `}`).
+- The form says how many filler items the keys take; "not enough fillers" and "no world would stay open" are said
+  in plain words when a generation ends on them.
+- A session records which World Locks built it, and every run for one seed builds its worlds in the same order.
+
 ### 0.23.5: The web app reviewed
 44 findings (1 high, 15 medium, 28 low), listed in `.docs/DONE.md`.
 

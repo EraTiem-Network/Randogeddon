@@ -228,7 +228,13 @@ private fun SelectedSession(
   SessionSection(
     id, overview, cache, administrator, onChanged = { control.problem = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = {
-      ServerControls(server, problem, now, control.problem, busy = control.busy, onAction = { action -> send(control) { repository.control(action) } })
+      // Failed (ended again and again): its own last line says why, e.g. a save it can't read
+      val lastLine = if (server?.status != GameServerStatus.FAILED) null
+      else repository.log.lastOrNull { !it.text.startsWith("[gateway]") }?.text
+      ServerControls(
+        server, problem, now, control.problem, busy = control.busy, lastLine = lastLine,
+        onAction = { action -> send(control) { repository.control(action) } },
+      )
     },
   )
   // Every section's log in one place, as tabs (each only for whoever may read it)
@@ -257,6 +263,8 @@ private fun ServerControls(
   message: String?,
   /** An action is being sent: the buttons wait for it. */
   busy: Boolean,
+  /** While it has failed: its own last line (why), from its output. */
+  lastLine: String? = null,
   onAction: (String) -> Unit,
 ) {
   val p = LocalPalette.current
@@ -297,6 +305,7 @@ private fun ServerControls(
       )
       Txt(details.joinToString(" · "), size = 12.sp, color = p.muted, maxLines = 2)
       if (problem != null) Txt(problem, size = 12.5.sp, color = p.trap)
+      if (lastLine != null) Txt(t.panel.failedBecause(lastLine), size = 12.5.sp, color = p.trap)
       val pending = confirm
       if (pending == null) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

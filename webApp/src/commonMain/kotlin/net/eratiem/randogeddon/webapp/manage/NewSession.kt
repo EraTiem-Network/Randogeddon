@@ -672,6 +672,9 @@ private fun CreateSession(
           Txt(t.sessionAdmin.openOf(open, n), size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
         }
       }
+      // What the keys cost the other worlds: one filler item each (World Locks puts a key in its place)
+      val keys = if (open != null) n - open else lockedNow.size
+      if (keys > 0) Txt(t.sessionAdmin.fillersTaken(keys), size = 12.sp, color = p.muted)
     }
     usable.forEach { world ->
       val isLocked = world.name in lockedNow

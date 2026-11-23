@@ -56,8 +56,10 @@ def tolerant(reduced):
     def create_playthrough(spoiler, create_paths: bool = True) -> None:
         global gave_up
         multiworld = spoiler.multiworld
-        # It takes starting items out while it works and gives them back only at its end
+        # It takes starting items out and empties the locations whose items the goals don't need while it works, and
+        # gives both back only at its end
         before = {player: list(items) for player, items in multiworld.precollected_items.items()}
+        placed = [(location, location.item) for location in multiworld.get_filled_locations()]
         try:
             reduced(spoiler, create_paths)
             return
@@ -65,6 +67,9 @@ def tolerant(reduced):
             if "Not all required items reachable" not in str(error):
                 raise
             gave_up = str(error)
+        for location, item in placed:
+            if location.item is not item:
+                location.item = item
         for player, items in before.items():
             there = {id(item) for item in multiworld.precollected_items[player]}
             for item in items:
@@ -78,6 +83,13 @@ def tolerant(reduced):
 
 
 def main() -> None:
+    # Depends on (Archipelago 0.6.8): Generate.main() returning (args, seed), Main.main(args, seed) writing
+    # <outputpath>/AP_<seed>_Spoiler.txt; Spoiler.create_playthrough(self, create_paths) taking starting items out
+    # and emptying locations (location.item = None) while it reduces, giving them back at its end, and raising a
+    # RuntimeError that says "Not all required items reachable" when it can't (another wording: the run fails as
+    # before 0.19.7); spoiler.multiworld, .playthrough ({"0": [...], "1": {location: item}}), .unreachables,
+    # .create_paths(state, spheres); multiworld.get_filled_locations(), precollected_items, push_precollected(),
+    # get_name_string_for_object()
     from Generate import main as arguments
     args, seed = arguments()
     import BaseClasses

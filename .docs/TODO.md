@@ -78,13 +78,38 @@ The parts:
     - [ ] Not seen: the file pickers (their folders, their messages), a person's panel on a share-link page,
           someone with one session, Enter in the forms, a text selection kept in its panel, the page on a phone,
           whether Space presses a focused button and a phone keyboard's Go key sends a form
-- [ ] 0.23.6: Archipelago's wrappers and the World Locks APWorld
+- [ ] Left from 0.23.6 (the wrappers' review):
+    - [ ] To ask the user: a slot's name with `%`, `{` or `}` is refused altogether (stricter than Archipelago's
+          own placeholders); the warning's reason is shown on share links too (it may name a location); a slot
+          named like the locks' slot ("Locks") isn't refused (A29)
+    - [ ] Three narrow races left in the gateway's handling of links (S1): a file swapped for a pipe between
+          check and open, a seed's zip opened by its path after the check, a folder made through a link put
+          there in that moment
+    - [ ] Not done: the lock as a region of its own (A17: it would change how existing seeds rebuild); a size
+          limit for a hosted server's folder (A25); what Archipelago's user reaches on the network (S13);
+          pinning by hash (S14: with 0.23.7); `host.yaml` stays writable by Archipelago's user (settings only)
+    - [ ] Not tried: a hosted Minecraft server on the new image (its own user, the join and leave lines'
+          pattern against a real server's log: if it didn't match, a server would sleep while people play);
+          `!getitem` refused by a real client; the warning on screen (no demo slot's rebuild differs); a
+          broken save through the panel (tried with the script in the image: it stops with its line)
 - [ ] 0.23.7: the scripts, the containers and the dependencies (the images, compose files, `audit.sh`)
 - [ ] After 0.23.7: every "Left from" point above gone through with the user (the user on 2026-11-23)
 
-## Later
+## Phase 24: what was noted for later (planned)
 
-*Points without a phase yet.*
+*The user on 2026-11-23: the new locks' APWorld "done in Phase 24 as all the currently Later will be as well".*
+
+- [ ] **Lockageddon**, the locks' new APWorld (the name chosen by the user; World Locks stays as it is for the
+      sessions made with it, a new session uses Lockageddon):
+    - the keys take no other game's fillers: the Lockageddon slot has locations of its own that hold ordinary
+      items of the pool, handed out by the game server when a key is found (its console's `/send_location`, sent
+      by the gateway: no client that has to run; to try first against a slot nobody is connected to). What is
+      handed out that way is no cheat: a line of its own kind in the feed
+    - a key is `Key to {slot}`; a known game may have its own word (`Boat to {slot}` for The Wind Waker), which
+      then needs its plural too: one key for worlds that open together is `Keys to {A} and {B}` (or, with the
+      games' own words, `{X}, {Y} and {Z} for {slot names}`: each game's word, then the slots)
+    - a YAML that could roll its game is refused, and a second slot of it (as for World Locks since 0.23.6)
+    - the form's rework, the SyncLocks and several keys a world: the next point
 
 - [ ] How the available checks are worked out, looked at again: they should be more precise than they are now
       (asked for on 2026-11-23)
@@ -98,7 +123,7 @@ The parts:
       session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
       should shut down after a number of minutes without players that an Administrator sets, 5 by default
 - [ ] The bridge's page: a copy option for the slot's name (asked for on 2026-11-23)
-- [ ] World Locks in the new session's form, reworked (asked for on 2026-11-23): the locks' drop-down goes, only the
+- [ ] The locks in the new session's form, reworked for Lockageddon (asked for on 2026-11-23): the locks' drop-down goes, only the
       mixed mode stays:
     - a checkbox that turns locking on
     - the mixed mode as it is (each world set locked, unlocked or random)
@@ -106,6 +131,19 @@ The parts:
       is set unlocked; its most: the number of random worlds minus 1 (all of them open would make random pointless)
     - an option to have that number itself picked by chance within the bar's range
     - settings for the locks' progression balancing and accessibility (shown when locks are used)
+    - (added on 2026-11-23, after a look at SlotLock, which is not used:) the keys without removing other games'
+      fillers: the Locks slot with locations of its own that hold ordinary pool items, handed out by the game
+      server itself (its console's `/send_location`, which the gateway can send: no client that has to run); until
+      then the form says how many fillers the keys take, and a generation without enough of them is refused with
+      that reason
+    - worlds that open together, a SyncLock: a drop-down *SyncLock 1*, *SyncLock 2*, … per slot, which grows by
+      itself. Once *SyncLock 1* is set on two slots, *SyncLock 2* is offered, to the other slots only (not to the
+      two that make up *SyncLock 1*). With a third slot in it, all of its slots are offered every other SyncLock
+      there is (one of them switching still leaves two). A SyncLock with a single slot can't be generated: taking
+      one of a SyncLock's last two slots out of it blocks *Generate* until it has two again or none. A SyncLock
+      that loses all its slots is gone, and every higher one moves down a number (*SyncLock 2* becomes
+      *SyncLock 1*): no gaps in the numbers (the user, 2026-11-23)
+    - several keys a world: a fixed number or a range picked by chance, for all worlds or per slot
 - [ ] One user per session for Archipelago's processes (left by the gateway's review, 0.23.2.1; the user on
       2026-11-23: later): they share one user, so a world's code can read and change another session's files and
       read another game server's memory. A redesign of the directories, with the existing sessions' moved

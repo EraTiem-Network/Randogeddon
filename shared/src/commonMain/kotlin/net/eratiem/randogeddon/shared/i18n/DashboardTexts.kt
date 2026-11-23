@@ -67,6 +67,13 @@ interface DashboardTexts {
   /** The checks a slot can make now (its logic's count), as a pill; its tooltip, and while the logic doesn't run. */
   val availableTip: String
   val availableLastKnown: String
+  /**
+   * A slot whose logic couldn't be rebuilt exactly as its seed was made (its numbers are still shown): the available
+   * pill's tip, and the banner above its checks and its map in its panel; [reason]: the logic's own words (for several
+   * slots, one line each, by name).
+   */
+  fun availableMismatch(reason: String): String
+  fun mismatchBanner(reason: String): String
   /** The session's logic in the top panel: its name, and its state as the tooltip. */
   val logic: String
   fun logicTip(status: LogicStatus): String
@@ -263,6 +270,12 @@ internal object EnglishDashboard : DashboardTexts {
   override val availableTip = "Available"
   override val availableLastKnown =
     "Available, the last known count: the logic isn't running. It starts with the game server; the counts come once it runs completely."
+  override fun availableMismatch(reason: String) =
+    "Available, but this count and the map may be wrong: the logic couldn't rebuild this world exactly as the seed " +
+      "was made.\nThe logic says: $reason"
+  override fun mismatchBanner(reason: String) =
+    "The available checks and the map of this slot may be wrong: the logic couldn't rebuild this world exactly as " +
+      "the seed was made. The logic says: $reason"
   override val logic = "Logic"
   override fun statusPill(what: String, state: String) = "$what: $state"
   override val gameServer = "Game server"
@@ -383,6 +396,12 @@ internal object GermanDashboard : DashboardTexts {
   override val availableTip = "Verfügbar"
   override val availableLastKnown =
     "Verfügbar, die zuletzt bekannte Zahl: Die Logik läuft nicht. Sie startet mit dem Spielserver; die Zahlen kommen, sobald sie vollständig läuft."
+  override fun availableMismatch(reason: String) =
+    "Verfügbar, aber diese Zahl und die Karte können falsch sein: Die Logik konnte diese Welt nicht genau so " +
+      "nachbauen, wie der Seed erstellt wurde.\nDie Logik sagt: $reason"
+  override fun mismatchBanner(reason: String) =
+    "Die verfügbaren Checks und die Karte dieses Slots können falsch sein: Die Logik konnte diese Welt nicht genau " +
+      "so nachbauen, wie der Seed erstellt wurde. Die Logik sagt: $reason"
   override val logic = "Logik"
   override fun statusPill(what: String, state: String) = "$what: $state"
   override val gameServer = "Spielserver"

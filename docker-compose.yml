@@ -201,13 +201,18 @@ services:
     stop_grace_period: 60s
     # Each server at most 3 GB (its heap 2 GB; a watchdog ends one above that): MINECRAFT_SERVERS of them at once
     mem_limit: ${MINECRAFT_MEMORY:-3500m}
+    # The Java servers' user has at most 1536 of them (java-as-server), the rest is minecraft_host.py's
     pids_limit: 2048
+    # Its start (gateway/minecraft-entrypoint.sh) runs as root with only these three capabilities and at once becomes
+    # uid 1000 (the data folder's owner), keeping just them: to start each server's Java as a user of its own (uid 1200)
+    # without any capability, which can't read minecraft_host.py's environment (the token) or signal it, and to end
+    # those servers. Nothing gains a privilege through an executable (no-new-privileges)
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
-    user: "1000"
+    cap_add: [SETUID, SETGID, KILL]
     environment:
       # Its own token (the gateway's INTERNAL_TOKEN stays with the gateway and the tracker): the servers run
-      # third-party mod code, and whatever reads this container's environment gets no more than this service's API
+      # third-party mod code as another user, which can't read it; with the token comes no more than this service's API
       MINECRAFT_TOKEN: ${MINECRAFT_TOKEN:-}
       MINECRAFT_SERVERS: ${MINECRAFT_SERVERS:-1}
       MINECRAFT_HEAP: 2G

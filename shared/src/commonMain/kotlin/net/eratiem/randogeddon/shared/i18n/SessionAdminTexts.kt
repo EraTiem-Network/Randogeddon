@@ -104,6 +104,8 @@ interface SessionAdminTexts {
   val lockMixed: String
   val startOpen: String
   fun openOf(open: Int, n: Int): String
+  /** Where locks are chosen: the [keys] filler items the keys take from the other worlds (one a locked world). */
+  fun fillersTaken(keys: Int): String
   val startsLocked: String
   val stepOptions: String
   val pointHintsCheck: String
@@ -140,6 +142,11 @@ interface SessionAdminTexts {
   val logicSectionSubtitle: String
   fun logicState(status: LogicStatus, problem: String?): String
   val logicRebuild: String
+  /**
+   * Its [n] slots whose logic couldn't be rebuilt exactly as the seed was made: what that means (their numbers are
+   * shown, but may be wrong), above one line for each, its name and the logic's reason.
+   */
+  fun logicMismatches(n: Int): String
   /** The session's hosted Minecraft servers (Minecraft Dig): each one's state, start and stop, its log (Administrators). */
   val minecraftSection: String
   val minecraftSectionSubtitle: String
@@ -331,6 +338,9 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
   override val lockMixed = "Mixed"
   override val startOpen = "Start open"
   override fun openOf(open: Int, n: Int) = "$open of $n slots"
+  override fun fillersTaken(keys: Int) =
+    if (keys == 1) "The key takes the place of 1 filler item of the other worlds (one for each locked world)."
+    else "The keys take the place of $keys filler items of the other worlds (one for each locked world)."
   override val startsLocked = "starts locked"
   override val stepOptions = "3. Options"
   override val pointHintsCheck = "Point hints"
@@ -382,6 +392,10 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     LogicStatus.FAILED -> "Couldn't be built: ${problem ?: "see its log"}"
   }
   override val logicRebuild = "Build again"
+  override fun logicMismatches(n: Int) =
+    (if (n == 1) "The available checks and the map of 1 slot may be wrong: its logic couldn't be rebuilt "
+    else "The available checks and the maps of $n slots may be wrong: their logic couldn't be rebuilt ") +
+      "exactly as the seed was made. They are shown with a warning. Why, as the logic says:"
   override val minecraftSection = "Minecraft"
   override val minecraftSectionSubtitle = "the Minecraft Dig slots' servers, reached through Randogeddon Bridge"
   override fun minecraftState(status: MinecraftStatus, players: String) = when (status) {
@@ -598,6 +612,9 @@ internal object GermanSessionAdmin : SessionAdminTexts {
   override val lockMixed = "Gemischt"
   override val startOpen = "Offen starten"
   override fun openOf(open: Int, n: Int) = "$open von $n Slots"
+  override fun fillersTaken(keys: Int) =
+    if (keys == 1) "Der Schlüssel nimmt den Platz von 1 Füll-Item der anderen Welten ein (eines je gesperrter Welt)."
+    else "Die Schlüssel nehmen den Platz von $keys Füll-Items der anderen Welten ein (eines je gesperrter Welt)."
   override val startsLocked = "startet gesperrt"
   override val stepOptions = "3. Optionen"
   override val pointHintsCheck = "Punkte-Hinweise"
@@ -649,6 +666,11 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     LogicStatus.FAILED -> "Konnte nicht aufgebaut werden: ${problem ?: "siehe ihr Log"}"
   }
   override val logicRebuild = "Neu aufbauen"
+  override fun logicMismatches(n: Int) =
+    (if (n == 1) "Die verfügbaren Checks und die Karte von 1 Slot können falsch sein: Seine Logik konnte nicht "
+    else "Die verfügbaren Checks und die Karten von $n Slots können falsch sein: Ihre Logik konnte nicht ") +
+      "genau so nachgebaut werden, wie der Seed erstellt wurde. Sie werden mit einer Warnung gezeigt. Warum, wie die " +
+      "Logik sagt:"
   override val minecraftSection = "Minecraft"
   override val minecraftSectionSubtitle = "die Server der Minecraft-Dig-Slots, erreichbar über Randogeddon Bridge"
   override fun minecraftState(status: MinecraftStatus, players: String) = when (status) {

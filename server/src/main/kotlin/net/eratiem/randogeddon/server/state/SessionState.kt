@@ -33,6 +33,7 @@ import net.eratiem.randogeddon.shared.HintSettings
 import net.eratiem.randogeddon.shared.HintView
 import net.eratiem.randogeddon.shared.ItemFlags
 import net.eratiem.randogeddon.shared.LockInfo
+import net.eratiem.randogeddon.shared.LocksFound
 import net.eratiem.randogeddon.shared.MapRegionView
 import net.eratiem.randogeddon.shared.MapView
 import net.eratiem.randogeddon.shared.PersonSummary
@@ -320,14 +321,28 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
 
   /**
    * The slots to ask the session's logic about: those whose items or checks changed since it was last asked about
-   * them, with what they received (without the starting inventory: the logic has it) and checked.
+   * them, with what they received (without the starting inventory: the logic has it) and checked. Every slot is asked
+   * again when the World Locks slot received another key ([locksFound]): a key opens a world the logic had locked.
    */
   fun availableAsks(): List<AvailableSlot> {
     val lockSlots = lockSlots()
+    val keys = locksFound()?.items?.size ?: 0
     return players.values.filter { it.slot !in lockSlots && it.game != WORLD_LOCKS_GAME }.mapNotNull { p ->
       val received = p.items.filter { it.location != STARTING_INVENTORY }.map { it.item }
-      AvailableSlot(p.slot, received, p.checked.toList()).takeIf { p.availableAsked != received.size to p.checked.size }
+      AvailableSlot(p.slot, received, p.checked.toList())
+        .takeIf { p.availableAsked != Triple(received.size, p.checked.size, keys) }
     }
+  }
+
+  /**
+   * The keys found, given with every question to the logic so that a world whose key was found is open there: the
+   * World Locks slot and the item IDs it received (without its starting inventory: the logic has it); `null`: the
+   * session has no locks. A seed with more than one World Locks slot (refused since 0.23.6): the first.
+   */
+  fun locksFound(): LocksFound? {
+    val slot = lockSlots().minOrNull() ?: return null
+    val items = players[slot]?.items.orEmpty().filter { it.location != STARTING_INVENTORY }.map { it.item }
+    return LocksFound(slot, items)
   }
 
   /** The slots whose map the logic wasn't asked for since it was built (a game it has none for isn't asked again). */
@@ -339,16 +354,22 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   }
 
   /**
-   * The logic's [answer] to [asked]: each slot's available checks (`null`: it has no answer for that slot), and the
-   * maps of the slots in [maps].
+   * The logic's [answer] to [asked] (with the keys found, [locks]): each slot's available checks (`null`: it has no
+   * answer for that slot), whether its rebuild fits the seed, and the maps of the slots in [maps].
    */
-  fun onAvailable(asked: List<AvailableSlot>, answer: AvailableAnswer, maps: List<Int> = emptyList()) {
+  fun onAvailable(
+    asked: List<AvailableSlot>,
+    answer: AvailableAnswer,
+    maps: List<Int> = emptyList(),
+    locks: LocksFound? = null,
+  ) {
     asked.forEach { a ->
       val p = players[a.slot] ?: return@forEach
       p.available = answer.available[a.slot]
       answer.locations[a.slot]?.let { p.availableLocations = it.toSet() }
       answer.regions[a.slot]?.let { p.reachedRegions = it.toSet() }
-      p.availableAsked = a.items.size to a.checked.size
+      p.logicMismatch = answer.mismatches[a.slot]
+      p.availableAsked = Triple(a.items.size, a.checked.size, locks?.items?.size ?: 0)
     }
     maps.forEach { slot -> players[slot]?.mapAsked = true }
     answer.maps.forEach { (slot, map) -> players[slot]?.map = map }
@@ -769,6 +790,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         lastCheckAt = p.lastCheckAt,
         completedAt = p.lastCheckAt?.takeIf { p.complete },
         lock = lock,
+        logicMismatch = p.logicMismatch,
       )
     }
     val checked = list.sumOf { it.checked }
@@ -855,6 +877,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
           blocked = p.reachedRegions?.let { reached -> map.regions.indices.filter { it !in reached } }.orEmpty(),
         )
       },
+      logicMismatch = p.logicMismatch,
     )
   }
 

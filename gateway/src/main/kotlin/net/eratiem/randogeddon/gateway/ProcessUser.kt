@@ -4,11 +4,11 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.GroupPrincipal
 import java.nio.file.attribute.PosixFileAttributeView
 import kotlin.io.path.createDirectories
 import kotlin.io.path.isDirectory
-import kotlin.io.path.isSymbolicLink
 import kotlin.io.path.listDirectoryEntries
 import org.slf4j.LoggerFactory
 
@@ -22,6 +22,20 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Pr
  */
 const val OOM_FIRST = 1000
 const val OOM_GAME_SERVER = 800
+
+/**
+ * How many processes and threads Archipelago's user may have at once, all of its processes together (the kernel counts
+ * them by user): fewer than the container's `pids_limit` (4096), so a fork loop in an APWorld's code leaves the gateway
+ * its threads. A game server has a few dozen threads, a generation one more for each slot while it writes the output
+ * (250 slots at most): far below this for any real load.
+ */
+const val PROCESSES = 3072
+
+/**
+ * The largest file one of Archipelago's processes may write (bytes; more ends it): far more than a seed, its spoiler
+ * log or a save of any real multiworld (an uploaded seed may unpack to 512 MB), and no full disk from one file.
+ */
+const val FILE_SIZE = 4L * 1024 * 1024 * 1024
 
 /** A file mode in octal, as `chmod` takes it (`"2770"`: the group's setgid bit, owner and group everything). */
 private fun mode(octal: String) = octal.toInt(8)
@@ -59,13 +73,15 @@ class ProcessUser(val name: String, private val groupName: String = name) {
   /**
    * [command] as this user: `setpriv` switches to it with no other group and no capability left to keep or pass on
    * (none inheritable, none ambient, no new ones through an executable: `no_new_privs`, as the whole container has
-   * it), then `choom` raises its out-of-memory score to [oomScore] (raising needs no privilege; it stays through the
-   * exec). Neither takes an option from [command]: it follows `--`.
+   * it), `prlimit` bounds what it may take ([PROCESSES] of this user's at once, [FILE_SIZE] a file, and [memory] bytes
+   * of address space where given; lowering needs no privilege, and they stay through the exec), then `choom` raises its
+   * out-of-memory score to [oomScore] (raising needs no privilege either). None takes an option from [command]: it
+   * follows `--`.
    */
-  fun command(command: List<String>, oomScore: Int): List<String> = listOf(
+  fun command(command: List<String>, oomScore: Int, memory: Long? = null): List<String> = listOf(
     "setpriv", "--reuid=$name", "--regid=$groupName", "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all",
-    "--no-new-privs", "--", "choom", "-n", oomScore.toString(), "--",
-  ) + command
+    "--no-new-privs", "--", "prlimit", "--nproc=$PROCESSES", "--fsize=$FILE_SIZE",
+  ) + listOfNotNull(memory?.let { "--as=$it" }) + listOf("--", "choom", "-n", oomScore.toString(), "--") + command
 
   private val group: GroupPrincipal by lazy {
     FileSystems.getDefault().userPrincipalLookupService.lookupPrincipalByGroupName(groupName)
@@ -73,10 +89,12 @@ class ProcessUser(val name: String, private val groupName: String = name) {
 
   /**
    * [path] in the processes' group with [mode] (setgid included), only where it isn't so already; `false`: it can't be
-   * (not the gateway's own, or gone). A symbolic link is left as it is.
+   * (not the gateway's own, or gone). A symbolic link is left as it is, and so is anything but a file or a directory
+   * (a FIFO the processes made: changing its mode without following a link opens it, which would wait for a writer).
    */
   internal fun give(path: Path, mode: Int): Boolean = runCatching {
-    if (path.isSymbolicLink()) return@runCatching
+    val kind = Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    if (!kind.isRegularFile && !kind.isDirectory) return@runCatching
     val view = Files.getFileAttributeView(path, PosixFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
     if (view.readAttributes().group() != group) view.setGroup(group)
     if (modeOf(path) != mode) Files.setAttribute(path, "unix:mode", mode, LinkOption.NOFOLLOW_LINKS)
@@ -84,7 +102,8 @@ class ProcessUser(val name: String, private val groupName: String = name) {
 
   /** [path] closed to the processes: nobody else's bits, nor the group's where the group is theirs. */
   private fun close(path: Path): Boolean = runCatching {
-    if (path.isSymbolicLink()) return@runCatching
+    val kind = Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    if (!kind.isRegularFile && !kind.isDirectory) return@runCatching
     val view = Files.getFileAttributeView(path, PosixFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
     val current = modeOf(path)
     val kept = if (view.readAttributes().group() == group) mode("0700") else mode("0770")

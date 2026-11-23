@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.AvailableAnswer
 import net.eratiem.randogeddon.shared.EventType
+import net.eratiem.randogeddon.shared.LocksFound
 import net.eratiem.randogeddon.shared.MapRegion
 import net.eratiem.randogeddon.shared.MapRegionView
 import net.eratiem.randogeddon.shared.MapView
@@ -559,6 +560,47 @@ class SessionStateTest {
     assertEquals(EventType.UNLOCK, unlock.type)
     assertEquals(listOf("Alice-Locked", "Bob", "Key to Alice-Locked"), listOf(unlock.playerName, unlock.senderName, unlock.itemName))
     assertEquals(2, unlock.slot)
+  }
+
+  @Test
+  fun `the logic gets the keys found, and every slot is asked again when another one was found`() {
+    val s = lockedSession()
+    // Its starting inventory isn't sent (the logic has it)
+    s.onReceivedItems(4, json("""{"index":0,"items":[${item(7400000, -2, 0, 1)}]}"""))
+    assertEquals(LocksFound(4, emptyList()), s.locksFound())
+    val asked = s.availableAsks()
+    assertEquals(listOf(1, 2, 3), asked.map { it.slot })
+    s.onAvailable(
+      asked, AvailableAnswer(mapOf(1 to 2, 2 to 0, 3 to 2), mismatches = mapOf(3 to "Chest B: not reachable in sphere 1")),
+      locks = s.locksFound(),
+    )
+    assertEquals(emptyList(), s.availableAsks())
+    // Bob finds Alice-Locked's key: every slot is asked again, with the key
+    s.onReceivedItems(4, json("""{"index":0,"items":[${item(7400000, -2, 0, 1)},${item(7400000, 11, 3, 1)}]}"""))
+    val locks = s.locksFound()
+    assertEquals(LocksFound(4, listOf(7400000L)), locks)
+    val again = s.availableAsks()
+    assertEquals(listOf(1, 2, 3), again.map { it.slot })
+    s.onAvailable(again, AvailableAnswer(mapOf(1 to 2, 2 to 2, 3 to 2)), locks = locks)
+    assertEquals(emptyList(), s.availableAsks())
+    assertEquals(2, s.summary("t", null).players.first { it.slot == 2 }.available)
+    // A session without locks has none to send
+    assertEquals(null, makeState().locksFound())
+  }
+
+  @Test
+  fun `a slot whose rebuild doesn't fit its seed keeps its numbers, with the reason`() {
+    val s = lockedSession()
+    val asked = s.availableAsks()
+    s.onAvailable(asked, AvailableAnswer(mapOf(1 to 2, 2 to 0, 3 to 1), mismatches = mapOf(3 to "Chest B: not reachable in sphere 1")))
+    val bob = s.summary("t", null).players.first { it.slot == 3 }
+    assertEquals(1 to "Chest B: not reachable in sphere 1", bob.available to bob.logicMismatch)
+    assertEquals("Chest B: not reachable in sphere 1", s.playerDetail(3)!!.logicMismatch)
+    assertEquals(null, s.summary("t", null).players.first { it.slot == 1 }.logicMismatch)
+    // Asked again (a check), it fits now: no warning
+    s.onRoomUpdate(3, json("""{"checked_locations":[10]}"""))
+    s.onAvailable(s.availableAsks(), AvailableAnswer(mapOf(3 to 1)))
+    assertEquals(null, s.playerDetail(3)!!.logicMismatch)
   }
 
   @Test

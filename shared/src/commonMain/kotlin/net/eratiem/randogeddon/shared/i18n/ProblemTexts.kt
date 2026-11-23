@@ -136,6 +136,11 @@ internal object EnglishProblems : ProblemTexts {
       GENERATION_FAILED -> "Generation failed. Perhaps a game isn't supported by this Archipelago release, or a YAML has an " +
         "option it doesn't know. Generate.py said:"
       GENERATION_SUSPECTS -> "Generation failed, possibly because of:\n${a("suspects")}\n\nGenerate.py said:"
+      GENERATION_LOCK_FILLERS -> "Generation failed: the other worlds have too few filler items for the keys. Each " +
+        "locked world's key takes the place of one filler item of another world. Lock fewer worlds, or add worlds " +
+        "with more filler items. Generate.py said:"
+      GENERATION_ALL_LOCKED -> "Generation failed: no world would start open. At least one world has to start open, " +
+        "where the first keys can be found. Generate.py said:"
       SESSION_FINISHED -> "The session is finished"
       NO_CHEAT_HINTS -> "This session doesn't allow cheat hints"
       NO_SLOT -> "No slot ${a("slot")}"
@@ -196,9 +201,15 @@ internal object EnglishProblems : ProblemTexts {
       YAML_NO_NAME -> "${a("file")}: no name"
       YAML_NAME_CHARACTERS -> "${a("file")}: a slot's name can't be . or .., nor have line breaks or control characters"
       YAML_NO_GAME -> "${a("file")}: no game for ${a("name")}"
-      YAML_WORLD_LOCKS -> "${a("file")}: ${a("name")} is a World Locks YAML; tick \"starts locked\" instead"
+      YAML_WORLD_LOCKS -> "${a("file")}: ${a("name")} is or could become a World Locks slot (its game, or a trigger " +
+        "of it, names World Locks); tick \"starts locked\" instead"
       YAML_DUPLICATE -> "${a("n")} slots are called ${a("name")} (${a("files")}); names must be unique"
       NO_APWORLD -> "No APWorld for ${a("game")} in Archipelago ${a("version")}: upload it under APWorlds"
+      YAML_NAME_TOO_LONG -> "${a("file")}: the name ${a("name")} is longer than ${a("max")} characters; Archipelago " +
+        "would cut it, and the slot would no longer be found by its name. Shorten it"
+      YAML_NAME_PLACEHOLDER -> "${a("file")}: the name ${a("name")} has %, { or }; Archipelago would fill in its " +
+        "placeholders (such as {player} or {number}), and the slot would no longer be found by its name. Write the " +
+        "name out in full"
     }
   }
 }
@@ -310,6 +321,11 @@ internal object GermanProblems : ProblemTexts {
       GENERATION_FAILED -> "Das Generieren ist fehlgeschlagen. Vielleicht unterstützt dieses Archipelago-Release ein Spiel " +
         "nicht, oder eine YAML hat eine Option, die es nicht kennt. Generate.py sagte:"
       GENERATION_SUSPECTS -> "Das Generieren ist fehlgeschlagen, möglicherweise wegen:\n${a("suspects")}\n\nGenerate.py sagte:"
+      GENERATION_LOCK_FILLERS -> "Das Generieren ist fehlgeschlagen: Die anderen Welten haben zu wenige Füll-Items für " +
+        "die Schlüssel. Der Schlüssel jeder gesperrten Welt nimmt den Platz eines Füll-Items einer anderen Welt ein. " +
+        "Sperre weniger Welten oder nimm Welten mit mehr Füll-Items dazu. Generate.py sagte:"
+      GENERATION_ALL_LOCKED -> "Das Generieren ist fehlgeschlagen: Keine Welt würde offen starten. Mindestens eine " +
+        "Welt muss offen starten, damit die ersten Schlüssel gefunden werden können. Generate.py sagte:"
       SESSION_FINISHED -> "Die Session ist beendet"
       NO_CHEAT_HINTS -> "Diese Session erlaubt keine Cheat-Hinweise"
       NO_SLOT -> "Kein Slot ${a("slot")}"
@@ -371,9 +387,15 @@ internal object GermanProblems : ProblemTexts {
       YAML_NO_NAME -> "${a("file")}: kein Name"
       YAML_NAME_CHARACTERS -> "${a("file")}: Der Name eines Slots kann nicht . oder .. sein und keine Zeilenumbrüche oder Steuerzeichen enthalten"
       YAML_NO_GAME -> "${a("file")}: kein Spiel für ${a("name")}"
-      YAML_WORLD_LOCKS -> "${a("file")}: ${a("name")} ist eine World-Locks-YAML; hake stattdessen \"startet gesperrt\" an"
+      YAML_WORLD_LOCKS -> "${a("file")}: ${a("name")} ist ein World-Locks-Slot oder könnte einer werden (sein Spiel " +
+        "oder einer seiner Trigger nennt World Locks); hake stattdessen \"startet gesperrt\" an"
       YAML_DUPLICATE -> "${a("n")} Slots heißen ${a("name")} (${a("files")}); Namen müssen eindeutig sein"
       NO_APWORLD -> "Keine APWorld für ${a("game")} in Archipelago ${a("version")}: Lade sie unter APWorlds hoch"
+      YAML_NAME_TOO_LONG -> "${a("file")}: Der Name ${a("name")} ist länger als ${a("max")} Zeichen; Archipelago würde " +
+        "ihn kürzen, und der Slot wäre unter seinem Namen nicht mehr zu finden. Kürze ihn"
+      YAML_NAME_PLACEHOLDER -> "${a("file")}: Der Name ${a("name")} enthält %, { oder }; Archipelago würde seine " +
+        "Platzhalter (wie {player} oder {number}) ausfüllen, und der Slot wäre unter seinem Namen nicht mehr zu " +
+        "finden. Schreib den Namen voll aus"
     }
   }
 }

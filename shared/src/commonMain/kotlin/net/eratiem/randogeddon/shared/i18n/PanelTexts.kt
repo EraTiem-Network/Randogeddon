@@ -14,6 +14,8 @@ interface PanelTexts {
   fun seedFile(name: String): String
   val runByGateway: String
   fun lastExitCode(code: Int): String
+  /** A game server that stays stopped after failing again and again: its own last line, which says why (`line`). */
+  fun failedBecause(line: String): String
   fun restarts(n: Int): String
   val startTip: String
   val start: String
@@ -54,6 +56,7 @@ internal object EnglishPanel : PanelTexts {
   override fun seedFile(name: String) = "seed file $name"
   override val runByGateway = "MultiServer, run by the gateway"
   override fun lastExitCode(code: Int) = "last exit code $code"
+  override fun failedBecause(line: String) = "It stays stopped until it is started again. Its last line says why: $line"
   override fun restarts(n: Int) = "$n ${if (n == 1) "restart" else "restarts"} after crashes"
   override val startTip =
     "It serves the session's seed (not a paused or ended one: reopen that first). The gateway restarts a crashed one by itself."
@@ -98,6 +101,7 @@ internal object GermanPanel : PanelTexts {
   override fun seedFile(name: String) = "Seed-Datei $name"
   override val runByGateway = "MultiServer, vom Gateway betrieben"
   override fun lastExitCode(code: Int) = "letzter Exit-Code $code"
+  override fun failedBecause(line: String) = "Er bleibt gestoppt, bis er wieder gestartet wird. Seine letzte Zeile sagt, warum: $line"
   override fun restarts(n: Int) = "$n ${if (n == 1) "Neustart" else "Neustarts"} nach Abstürzen"
   override val startTip =
     "Er stellt den Seed der Session bereit (nicht den einer pausierten oder beendeten: Öffne diese zuerst wieder). Einen " +

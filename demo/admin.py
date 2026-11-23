@@ -1,9 +1,10 @@
 """The demo's admin, through the admin API like the admin panel (scripts/demo.sh runs it in the gateway image).
 
     admin.py create <id> <group>   creates session <id> from demo/<group>/ (its YAMLs and session.json); its players
-                                   need a login already (scripts/demo.sh makes them). About one in three random demo
-                                   seeds can't be generated ("Game appears as unbeatable"): up to 5 attempts, then
-                                   exit 3
+                                   need a login already (scripts/demo.sh makes them). A random seed may still fail to
+                                   generate (before 0.23.6 about one in three did, "Game appears as unbeatable": World
+                                   Locks took a progression copy instead of the filler it chose): up to 5 attempts,
+                                   each failure's reason printed and their number in the last line, then exit 3
     admin.py prune <id>...         deletes the demo sessions (demo-...) other than these, finished or not (one left
                                    running by an earlier demo has no players any more)
     admin.py check                 only logs in (exit 1 if that fails)
@@ -131,6 +132,7 @@ def create(id_: str, group: str):
     worlds = [{**{k: v for k, v in w.items() if k != "users"}, "userIds": [ids[n.lower()] for n in w.get("users", [])]}
               for w in setup["worlds"]]
     request = {"id": id_, "yamls": yamls, "worlds": worlds, "options": setup.get("options", {})}
+    failed = 0
     for attempt in range(1, 6):
         status, answer = call("POST", "/api/sessions", request)
         if status != 202:
@@ -144,12 +146,15 @@ def create(id_: str, group: str):
         call("DELETE", f"/api/sessions/new/creation/{id_}")
         if answer["state"] == "done":
             break
+        failed += 1
         message = (answer.get("error") or {}).get("message", answer["state"])
-        print(f"{id_}: no seed (attempt {attempt}): {message.splitlines()[0]}", file=sys.stderr)
+        print(f"{id_}: no seed (attempt {attempt}): {message.splitlines()[0]}", flush=True)
     else:
+        print(f"{id_}: no seed in {failed} attempts", flush=True)
         sys.exit(3)
     created = answer["created"]
-    print(f"Session {id_} (seed {created['seedName']}); locked: {', '.join(created['locked']) or 'none'}")
+    print(f"Session {id_} (seed {created['seedName']}); locked: {', '.join(created['locked']) or 'none'}; "
+          f"failed attempts before: {failed}")
 
 
 def prune(keep: list[str]):

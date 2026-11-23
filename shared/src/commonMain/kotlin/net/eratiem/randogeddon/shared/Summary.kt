@@ -231,6 +231,11 @@ data class PlayerSummary(
   val completedAt: Long? = null,
   /** For worlds that start locked: the key and what is known about it. */
   val lock: LockInfo? = null,
+  /**
+   * Why its logic's rebuild doesn't fit the seed (the logic's own words, one line): its [available] checks and its map
+   * may be wrong; `null`: it fits (or isn't known to differ).
+   */
+  val logicMismatch: String? = null,
 )
 
 @Serializable
@@ -357,6 +362,8 @@ data class PlayerDetail(
   val sentItems: List<SentItemView> = emptyList(),
   /** Its map from the session's logic (the last known while it doesn't run); `null`: none known. */
   val map: MapView? = null,
+  /** As [PlayerSummary.logicMismatch]: its available checks and its map may be wrong, and why. */
+  val logicMismatch: String? = null,
 )
 
 /**

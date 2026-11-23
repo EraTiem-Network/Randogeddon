@@ -67,6 +67,11 @@ class WorldLocksWorld(World):
     location_name_to_id: ClassVar[dict[str, int]] = {}
 
     def generate_early(self) -> None:
+        lock_slots = self.multiworld.get_game_players(GAME)
+        if len(lock_slots) > 1:
+            # Their keys would have the same names: which world a key opens couldn't be told
+            raise OptionError(f"{self.player_name}: a multiworld can have only one World Locks slot, this one has "
+                              f"{len(lock_slots)}")
         names = {self.multiworld.player_name[p]: p for p in self.multiworld.player_ids}
         locked = sorted(self.options.locked_worlds.value)
         unknown = [name for name in locked if name not in names]
@@ -76,6 +81,11 @@ class WorldLocksWorld(World):
             raise OptionError(f"{self.player_name}: a World Locks slot can't be locked itself")
         if len(locked) > MAX_KEYS:
             raise OptionError(f"{self.player_name}: at most {MAX_KEYS} worlds can be locked")
+        open_worlds = [n for n, p in names.items() if n not in locked and self.multiworld.worlds[p].game != GAME]
+        if locked and not open_worlds:
+            # The keys need a world that can be played before them
+            raise OptionError(f"{self.player_name}: every other world is locked, so no key could ever be found: at "
+                              "least one world must stay open")
         # key name -> (slot name, player)
         self.locks: dict[str, tuple[str, int]] = {KEY_NAMES[i]: (name, names[name]) for i, name in enumerate(locked)}
 
@@ -107,10 +117,13 @@ class WorldLocksWorld(World):
         if needed:
             fillers = [i for i in multiworld.itempool if i.classification == ItemClassification.filler and i.game != GAME]
             if len(fillers) < needed:
-                raise OptionError(f"Not enough filler items in the multiworld to make room for {needed} world keys")
+                raise OptionError(f"Not enough filler items in the multiworld to make room for {needed} world keys: "
+                                  f"each locked world takes one filler item of the other worlds, and they have "
+                                  f"{len(fillers)}. Lock fewer worlds, or add worlds (or options) with more filler")
             multiworld.random.shuffle(fillers)
-            for item in fillers[:needed]:
-                multiworld.itempool.remove(item)
+            # The very items chosen: an item equals any other of its name and slot, which may be a progression copy
+            chosen = {id(item) for item in fillers[:needed]}
+            multiworld.itempool[:] = [item for item in multiworld.itempool if id(item) not in chosen]
 
     @classmethod
     def stage_pre_fill(cls, multiworld: MultiWorld) -> None:
@@ -133,17 +146,26 @@ class WorldLocksWorld(World):
     # The key rules sit on the locked world's entrances, but the generator only recomputes which regions a player can
     # reach when that player's own items change. A key belongs to this slot, so collecting it must also mark the locked
     # world as changed, or its regions would stay unreachable even with the key.
+    # (Depends on Archipelago's CollectionState: stale, reachable_regions and blocked_connections per player, as 0.6.8
+    # has them. A world made without generate_early has no locks.)
     def collect(self, state: CollectionState, item: Item) -> bool:
         changed = super().collect(state, item)
-        if changed and item.name in self.locks:
-            state.stale[self.locks[item.name][1]] = True
+        locks = getattr(self, "locks", {})
+        if changed and item.name in locks:
+            state.stale[locks[item.name][1]] = True
         return changed
 
+    # A key taken out of a state closes its world again: what the state reached of it can't be trusted any more (as
+    # Archipelago does for the item's own player's regions when it removes an item)
     def remove(self, state: CollectionState, item: Item) -> bool:
         changed = super().remove(state, item)
-        if changed and item.name in self.locks:
-            state.stale[self.locks[item.name][1]] = True
+        locks = getattr(self, "locks", {})
+        if changed and item.name in locks:
+            player = locks[item.name][1]
+            state.reachable_regions[player] = set()
+            state.blocked_connections[player] = set()
+            state.stale[player] = True
         return changed
 
     def fill_slot_data(self) -> Mapping[str, Any]:
-        return {"locks": {key: name for key, (name, _) in self.locks.items()}}
+        return {"locks": {key: name for key, (name, _) in getattr(self, "locks", {}).items()}}

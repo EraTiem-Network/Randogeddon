@@ -20,7 +20,14 @@ The mod connects to Archipelago by `/connect <address> <port> "<password>"` and 
 server has a relay on 127.0.0.1: the mod connects there, and the relay passes the connection on to the gateway with
 the session's path in its WebSocket request.
 
-No server takes more than LIMIT_MB: a watchdog ends one that does (`-Xmx` bounds only its heap).
+No server takes more than LIMIT_MB: a watchdog ends one that does (`-Xmx` bounds only its heap). One server's
+requests are done one at a time (its files aren't changed under it, it isn't started twice); its files can't be
+changed while it runs (a PUT for its own seed then changes nothing). The API takes at most MAX_CONNECTIONS at once,
+each for at most REQUEST_SECONDS of silence.
+
+The Java servers run as this service's user: the token is kept out of their environment, but a mod's code could still
+read it in this process's (/proc/<pid>/environ of the same user). Only a second user for the servers would keep it
+from them (the image's and docker-compose.yml's matter).
 """
 import base64
 import collections
@@ -60,11 +67,22 @@ KEY = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 SESSION = re.compile(r"^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
 # Control characters: none in a slot's name (a file name, a line of server.properties)
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
-JOINED = re.compile(r"\]: (\S+) joined the game$")
-LEFT = re.compile(r"\]: (\S+) left the game$")
+# A player joins or leaves: the server's own line ("[12:00:00] [Server thread/INFO] [minecraft/MinecraftServer]: Steve
+# joined the game"), from its start; a chat line has "<Name> " right after the first "]: ", so its text can't match
+JOINED = re.compile(r"^\[[^\]]*\] \[[^\]]*/INFO\](?: \[[^\]]*\])*: ([A-Za-z0-9_]{1,16}) joined the game$")
+LEFT = re.compile(r"^\[[^\]]*\] \[[^\]]*/INFO\](?: \[[^\]]*\])*: ([A-Za-z0-9_]{1,16}) left the game$")
+# The gateway's console line that connects the mod to Archipelago, with the slot's password in double quotes
+CONNECT = re.compile(r'^\s*/?connect\s+\S+\s+\d+\s+"([^"]+)"\s*$')
+# The API: how many requests at once (one more is answered 503), and how long a connection may be silent
+MAX_CONNECTIONS = 64
+REQUEST_SECONDS = 30
+# How long a relay waits for the mod's first bytes
+RELAY_FIRST_SECONDS = 30
 
 servers = {}
 lock = threading.Lock()
+# Held while a server is started: how many run is counted and the new one started at once
+starts = threading.Lock()
 
 
 class Server:
@@ -84,6 +102,10 @@ class Server:
         self.lines = collections.deque(maxlen=LOG_LINES)
         self.last = 0
         self.stopping = False
+        # The slot's password it was last given (the `connect` line): never in its log, whatever echoes it
+        self.secret = None
+        # One request of this server's at a time (prepare, start, delete)
+        self.guard = threading.RLock()
         self.read_meta()
 
     @property
@@ -95,6 +117,8 @@ class Server:
         return FIRST_RELAY + self.number
 
     def note(self, text: str) -> None:
+        if self.secret:
+            text = text.replace(self.secret, "***")
         with lock:
             self.last += 1
             self.lines.append({"n": self.last, "ts": int(time.time() * 1000), "text": text[:2000]})
@@ -107,6 +131,9 @@ class Server:
             return
         # It goes into the relay's request line: only a session's ID
         self.session = session if isinstance(session, str) and SESSION.fullmatch(session) else None
+
+    def running(self) -> bool:
+        return bool(self.process and self.process.poll() is None)
 
     def view(self) -> dict:
         return {"key": self.key, "status": self.status, "since": self.since, "port": self.port, "relay": self.relay,
@@ -181,47 +208,62 @@ def prepare(s: Server, body: dict) -> None:
     s.session = body["session"]
 
 
+def same_files(s: Server, body: dict) -> bool:
+    """Whether [s]'s files are those of [body] already (its session, slot and seed)."""
+    try:
+        with open(os.path.join(s.dir, "randogeddon.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return False
+    return isinstance(meta, dict) and all(meta.get(k) == body[k] for k in ("session", "slot", "seed"))
+
+
 def start(s: Server) -> str:
     """Started; an empty answer, or why not."""
-    if s.process and s.process.poll() is None:
+    with s.guard:
+        if s.running():
+            return ""
+        if not os.path.isfile(os.path.join(s.dir, "randogeddon.json")):
+            return "it has no files yet"
+        with open(os.path.join(s.dir, "eula.txt"), encoding="utf-8") as f:
+            if "eula=true" not in f.read():
+                return "Mojang's EULA isn't accepted (an Administrator's setting)"
+        with starts:
+            with lock:
+                others = list(servers.values())
+            running = sum(1 for o in others if o.running())
+            if running >= AT_ONCE:
+                return f"{AT_ONCE} Minecraft server(s) run already, the most at once"
+            args = f"@libraries/net/minecraftforge/forge/{FORGE_VERSION}/unix_args.txt"
+            s.stopping = False
+            s.players = set()
+            s.exit_code = None
+            s.status = "starting"
+            s.since = int(time.time() * 1000)
+            s.last_player = s.since
+            s.note(f"[host] Starting: {JAVA} -Xmx{HEAP} {args} -nogui")
+            # Without the tokens in its environment (see the module's description: that doesn't hide them from it)
+            s.process = subprocess.Popen(
+                [JAVA, f"-Xmx{HEAP}", args, "-nogui"], cwd=s.dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, bufsize=1,
+                env={k: v for k, v in os.environ.items() if k not in ("MINECRAFT_TOKEN", "INTERNAL_TOKEN")},
+            )
+        threading.Thread(target=read_output, args=(s, s.process), daemon=True).start()
         return ""
-    if not os.path.isfile(os.path.join(s.dir, "randogeddon.json")):
-        return "it has no files yet"
-    with open(os.path.join(s.dir, "eula.txt"), encoding="utf-8") as f:
-        if "eula=true" not in f.read():
-            return "Mojang's EULA isn't accepted (an Administrator's setting)"
-    running = sum(1 for o in servers.values() if o.process and o.process.poll() is None)
-    if running >= AT_ONCE:
-        return f"{AT_ONCE} Minecraft server(s) run already, the most at once"
-    args = f"@libraries/net/minecraftforge/forge/{FORGE_VERSION}/unix_args.txt"
-    s.stopping = False
-    s.players = set()
-    s.exit_code = None
-    s.status = "starting"
-    s.since = int(time.time() * 1000)
-    s.last_player = s.since
-    s.note(f"[host] Starting: {JAVA} -Xmx{HEAP} {args} -nogui")
-    s.process = subprocess.Popen(
-        [JAVA, f"-Xmx{HEAP}", args, "-nogui"], cwd=s.dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, bufsize=1,
-        env={k: v for k, v in os.environ.items() if k not in ("MINECRAFT_TOKEN", "INTERNAL_TOKEN")},
-    )
-    threading.Thread(target=read_output, args=(s, s.process), daemon=True).start()
-    return ""
 
 
 def read_output(s: Server, process) -> None:
     for line in process.stdout:
-        line = line.rstrip("\n")
+        line = line.rstrip("\r\n")
         s.note(line)
         if s.status == "starting" and "Done (" in line:
             s.status = "running"
             s.since = int(time.time() * 1000)
-        joined = JOINED.search(line)
+        joined = JOINED.match(line)
         if joined:
             s.players.add(joined.group(1))
             s.last_player = int(time.time() * 1000)
-        left = LEFT.search(line)
+        left = LEFT.match(line)
         if left:
             s.players.discard(left.group(1))
             s.last_player = int(time.time() * 1000)
@@ -247,11 +289,17 @@ def stop(s: Server, wait: float = 45) -> None:
 
 
 def command(s: Server, line: str) -> bool:
+    """[line] into [s]'s console, as one line (Java ends a line at "\\r" too); whether it runs. A slot's password it
+    gives (`connect`) is kept out of its log from now on."""
     process = s.process
     if not process or process.poll() is not None:
         return False
+    line = CONTROL.sub(" ", line)
+    connect = CONNECT.match(line)
+    if connect:
+        s.secret = connect.group(1)
     try:
-        process.stdin.write(line.replace("\n", " ") + "\n")
+        process.stdin.write(line + "\n")
         process.stdin.flush()
         return True
     except OSError:
@@ -262,7 +310,9 @@ def watchdog() -> None:
     """Ends a server that takes more than LIMIT_MB."""
     while True:
         time.sleep(5)
-        for s in list(servers.values()):
+        with lock:
+            all_servers = list(servers.values())
+        for s in all_servers:
             process = s.process
             if not process or process.poll() is not None:
                 continue
@@ -288,6 +338,8 @@ def relay(s: Server, listener) -> None:
 
 def relay_one(s: Server, client) -> None:
     try:
+        # A connection that sends nothing doesn't hold its thread for good
+        client.settimeout(RELAY_FIRST_SECONDS)
         first = client.recv(65536)
         # Only a WebSocket request (the mod may try TLS first: that is refused, and it tries without)
         if not first.startswith(b"GET ") or not s.session:
@@ -297,8 +349,11 @@ def relay_one(s: Server, client) -> None:
         method, _, rest = first[:line_end].split(b" ", 2)
         first = method + b" /" + s.session.encode() + b" " + rest + first[line_end:]
         host, port = GATEWAY.rsplit(":", 1)
-        upstream = socket.create_connection((host, int(port)))
+        upstream = socket.create_connection((host, int(port)), timeout=RELAY_FIRST_SECONDS)
         upstream.sendall(first)
+        # From now on a WebSocket, which may be quiet for long
+        client.settimeout(None)
+        upstream.settimeout(None)
     except (OSError, ValueError):
         client.close()
         return
@@ -357,6 +412,9 @@ def close_relay(key: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
+    # A connection silent this long is closed (its socket's timeout)
+    timeout = REQUEST_SECONDS
+
     def log_message(self, *_):
         pass
 
@@ -397,12 +455,17 @@ class Handler(BaseHTTPRequestHandler):
         if parts is None:
             return
         if key is None:
-            return self.answer(200, {"servers": [s.view() for s in servers.values()]})
+            with lock:
+                all_servers = list(servers.values())
+            return self.answer(200, {"servers": [s.view() for s in all_servers]})
         s = server(key)
         if s is None:
             return self.answer(404)
         if action == "log":
-            since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
+            try:
+                since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
+            except ValueError:
+                return self.answer(400, {"message": "since isn't a number"})
             with lock:
                 lines = [l for l in s.lines if l["n"] > since][:1000]
             return self.answer(200, {"lines": lines, "last": lines[-1]["n"] if lines else max(since, s.last)})
@@ -419,7 +482,13 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self.answer(400, {"message": str(e)})
         s = server(key, create=True)
-        prepare(s, body)
+        with s.guard:
+            if s.running():
+                # Its files aren't changed under it: for its own seed there is nothing to change
+                if same_files(s, body):
+                    return self.answer(200, s.view())
+                return self.answer(409, {"message": "it runs: its files can't be changed now"})
+            prepare(s, body)
         ensure_relay(s)
         self.answer(200, s.view())
 
@@ -458,12 +527,41 @@ class Handler(BaseHTTPRequestHandler):
         s = server(key)
         if s is None:
             return self.answer(404)
-        stop(s)
-        close_relay(key)
-        shutil.rmtree(s.dir, ignore_errors=True)
-        with lock:
-            servers.pop(key, None)
+        with s.guard:
+            stop(s)
+            close_relay(key)
+            shutil.rmtree(s.dir, ignore_errors=True)
+            with lock:
+                servers.pop(key, None)
         self.answer(204)
+
+
+class ApiServer(ThreadingHTTPServer):
+    """The API's server: at most MAX_CONNECTIONS requests at once; one more is answered 503 and closed at once."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.places = threading.BoundedSemaphore(MAX_CONNECTIONS)
+
+    def process_request(self, request, client_address):
+        if not self.places.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.places.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.places.release()
 
 
 def main() -> None:
@@ -495,7 +593,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop_all)
     print(f"Minecraft host on port {API_PORT}: {len(servers)} server folder(s), {AT_ONCE} at once, -Xmx{HEAP}, "
           f"{LIMIT_MB} MB each", flush=True)
-    ThreadingHTTPServer(("0.0.0.0", API_PORT), Handler).serve_forever()
+    ApiServer(("0.0.0.0", API_PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

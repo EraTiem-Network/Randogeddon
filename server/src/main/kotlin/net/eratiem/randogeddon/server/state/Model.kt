@@ -63,8 +63,13 @@ class Player(val slot: Int, val name: String, val game: String) {
   var available: Int? = null
   /** Which of its locations those are (their IDs), as the logic counted them last. */
   var availableLocations: Set<Long> = emptySet()
-  /** Its received items and checks when the logic was last asked about it (asked again once they change). */
-  var availableAsked: Pair<Int, Int>? = null
+  /**
+   * Its received items, its checks and the keys the World Locks slot had received when the logic was last asked about
+   * it (asked again once one of them changes: a key found can open its world).
+   */
+  var availableAsked: Triple<Int, Int, Int>? = null
+  /** Why its logic's rebuild doesn't fit the seed, as the logic said when last asked; `null`: it fits. */
+  var logicMismatch: String? = null
   /** Its map, as the session's logic gave it; [mapAsked]: asked for since the logic was built (once, answer or not). */
   var map: SlotMap? = null
   var mapAsked: Boolean = false

@@ -22,12 +22,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.slf4j.LoggerFactory
-import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.createDirectories
 import kotlin.io.path.name
-import kotlin.io.path.readText
-import kotlin.io.path.writeText
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -36,6 +32,9 @@ private val logger = LoggerFactory.getLogger("net.eratiem.randogeddon.gateway.Ke
 
 /** The file that names the seed, holds the `RoomInfo` and lists the games' files; written last. */
 private const val INDEX = "room-info.json"
+
+/** The most a kept file is read of: a game's data package is a few MB at most, the index less. */
+private const val MAX_KEPT_FILE = 64L * 1024 * 1024
 
 /** A game's data package file, as [KeptRoom.keep] names them (nothing else of the index is read as a path). */
 private val GAME_FILE = Regex("game-[0-9]+\\.json")
@@ -58,10 +57,19 @@ private val answering = Semaphore(4)
  */
 class KeptRoom(private val dir: Path) {
   /**
-   * The kept `RoomInfo` (as MultiServer sent it) and where each game's data package is. Read for one client's
-   * connection.
+   * Its session's directory, which Archipelago's user writes into too: what is kept is read and written there without
+   * following a link ([SharedFolder]), under [dir]'s name.
    */
-  class Kept internal constructor(val roomInfo: JsonObject, private val games: Map<String, Path>) {
+  private val folder = SharedFolder(dir.toAbsolutePath().parent)
+  private val name = dir.name
+
+  /**
+   * The kept `RoomInfo` (as MultiServer sent it) and where each game's data package is (its name in [folder]). Read for
+   * one client's connection.
+   */
+  class Kept internal constructor(
+    val roomInfo: JsonObject, private val folder: SharedFolder, private val games: Map<String, String>,
+  ) {
     /**
      * The `RoomInfo` frame as the client gets it: asking for the slot's password, like MultiServer's own through the
      * relay ([askingForPassword]), its `time` now (MultiServer sends its clock with it).
@@ -82,7 +90,7 @@ class KeptRoom(private val dir: Path) {
     private fun answer(names: List<String>): String? {
       val answer = StringBuilder("""[{"cmd":"DataPackage","data":{"games":{""")
       for ((i, name) in names.withIndex()) {
-        val text = runCatching { games.getValue(name).readText() }.getOrNull()
+        val text = runCatching { folder.readText(games.getValue(name), MAX_KEPT_FILE) }.getOrNull()
           // Written whole from a parsed object: a file cut short doesn't end as one
           ?.takeIf { it.startsWith('{') && it.endsWith('}') } ?: return null
         if (i > 0) answer.append(',')
@@ -97,21 +105,21 @@ class KeptRoom(private val dir: Path) {
    * kept files of before, which they then replace at once (a client reading meanwhile reads the one or the other).
    */
   suspend fun keep(seed: String, roomInfo: JsonObject, games: JsonObject): Unit = withContext(Dispatchers.IO) {
-    val fresh = dir.resolveSibling("${dir.name}.new")
-    fresh.toFile().deleteRecursively()
-    fresh.createDirectories()
+    val fresh = "$name.new"
+    folder.delete(fresh)
+    folder.folder(fresh)
     val files = games.keys.withIndex().associate { (i, name) -> name to "game-$i.json" }
-    files.forEach { (name, file) -> fresh.resolve(file).writeText(games.getValue(name).toString()) }
-    fresh.resolve(INDEX).writeText(
+    files.forEach { (name, file) -> folder.writeText("$fresh/$file", games.getValue(name).toString()) }
+    folder.writeText(
+      "$fresh/$INDEX",
       buildJsonObject {
         put("seed", seed)
         put("roomInfo", roomInfo)
         putJsonObject("games") { files.forEach { (name, file) -> put(name, file) } }
       }.toString(),
     )
-    dir.toFile().deleteRecursively()
-    Files.move(fresh, dir)
-    Unit
+    folder.delete(name)
+    folder.move(fresh, name)
   }
 
   /**
@@ -124,23 +132,23 @@ class KeptRoom(private val dir: Path) {
   }
 
   private fun readIndex(seed: String): Kept? {
-    val index = runCatching { Json.parseToJsonElement(dir.resolve(INDEX).readText()) as? JsonObject }.getOrNull()
-      ?: return null
+    val index = runCatching { Json.parseToJsonElement(folder.readText("$name/$INDEX", MAX_KEPT_FILE)) as? JsonObject }
+      .getOrNull() ?: return null
     val keptFor = index.text("seed") ?: return null
     if (keptFor != seed) {
       logger.info("Dropping the room kept for {}: the session serves {} now", printable(keptFor), printable(seed))
-      runCatching { dir.toFile().deleteRecursively() }
+      runCatching { folder.delete(name) }
       return null
     }
     val roomInfo = (index["roomInfo"] as? JsonObject)?.takeIf { it.text("cmd") == "RoomInfo" } ?: return null
     val games = (index["games"] as? JsonObject ?: return null).mapValues { (_, file) ->
-      val name = (file as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(GAME_FILE::matches) ?: return null
-      dir.resolve(name)
+      val game = (file as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(GAME_FILE::matches) ?: return null
+      "$name/$game"
     }
     val roomGames = (roomInfo["games"] as? JsonArray ?: return null)
       .map { (it as? JsonPrimitive)?.content ?: return null }
     if (!games.keys.containsAll(roomGames)) return null
-    return Kept(roomInfo, games)
+    return Kept(roomInfo, folder, games)
   }
 
   /**

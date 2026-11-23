@@ -6,7 +6,8 @@ the first two keys are found after a while, the third one late (it is hinted fir
 within about DEMO_MINUTES (default 15); then the script exits, which `scripts/demo.sh loop` takes as the end of a
 round.
 
-Locked worlds are only played once their key has been found, just like the real session.
+Locked worlds are only played once their key has been found, just like the real session; one whose key isn't found
+within DEMO_MINUTES is said and left.
 
 Run inside the gateway image (it has Archipelago and aiohttp), with the session's slot passwords
 (`randogeddon slots --json <session>`) and its world that finishes early (DEMO_FINISHER):
@@ -104,6 +105,10 @@ async def watch_keys():
 
 async def play(name: str, game: str, finisher: bool):
     while name in key_of and name not in unlocked:
+        # A key that never comes (its location not reached): said, instead of waiting for ever
+        if elapsed() > END:
+            print(f"{name}: its key wasn't found within {END / 60:.0f} minutes: not played", flush=True)
+            return
         await asyncio.sleep(1)
     http, ws, recv, connected = await session(name, game)
     missing = list(connected["missing_locations"])

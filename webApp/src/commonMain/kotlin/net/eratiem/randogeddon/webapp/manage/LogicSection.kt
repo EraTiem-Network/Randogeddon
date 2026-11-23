@@ -22,9 +22,11 @@ import net.eratiem.randogeddon.shared.LogLines
 import net.eratiem.randogeddon.shared.LogicProgress
 import net.eratiem.randogeddon.shared.LogicStatus
 import net.eratiem.randogeddon.shared.LogicView
+import net.eratiem.randogeddon.shared.Summary
 import net.eratiem.randogeddon.webapp.api.load
 import net.eratiem.randogeddon.webapp.api.post
 import net.eratiem.randogeddon.webapp.app.LocalTexts
+import net.eratiem.randogeddon.webapp.dashboard.WarningBanner
 import net.eratiem.randogeddon.webapp.ui.Dot
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.Section
@@ -37,6 +39,9 @@ import net.eratiem.randogeddon.webapp.ui.rememberAction
 /** How often the section asks how its logic is; for a session without one (it can't get one), rarely. */
 private const val ASK_MS = 3_000L
 private const val ASK_NONE_MS = 60_000L
+
+/** How often it asks which slots' rebuild doesn't fit the seed (the session's whole state: seldom). */
+private const val ASK_MISMATCHES_MS = 15_000L
 
 /** How many lines of its log the page keeps. */
 private const val MAX_LINES = 20_000
@@ -76,6 +81,18 @@ fun LogicSection(id: String, administrator: Boolean) {
       delay(if (progress == null) ASK_NONE_MS else ASK_MS)
     }
   }
+  // Its slots whose rebuild doesn't fit the seed (their numbers and maps may be wrong), from its dashboard's state:
+  // each one's name and the logic's reason
+  var mismatches by remember(id) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+  val hasLogic = progress != null
+  LaunchedEffect(id, hasLogic) {
+    while (hasLogic) {
+      load("api/sessions/$id/state", Summary.serializer())?.let { s ->
+        mismatches = s.players.mapNotNull { w -> w.logicMismatch?.let { w.name to it } }
+      }
+      delay(ASK_MISMATCHES_MS)
+    }
+  }
   val now = progress ?: return
   Section(t.logicSection, subtitle = t.logicSectionSubtitle) {
     Column(Modifier.fillMaxWidth().card(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -98,6 +115,10 @@ fun LogicSection(id: String, administrator: Boolean) {
         })
       }
       rebuild.problem?.let { Txt(it, size = 12.5.sp, color = p.trap) }
+      if (mismatches.isNotEmpty()) {
+        val lines = mismatches.map { (slot, reason) -> "• $slot: $reason" }
+        WarningBanner((listOf(t.logicMismatches(mismatches.size)) + lines).joinToString("\n"))
+      }
       if (administrator && log.isNotEmpty()) SectionLog("logic", t.logicSection, LogOrder.LOGIC, log)
     }
   }

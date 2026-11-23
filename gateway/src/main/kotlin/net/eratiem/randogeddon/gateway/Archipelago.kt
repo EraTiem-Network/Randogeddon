@@ -4,8 +4,9 @@ import java.io.IOException
 import java.io.OutputStream
 import java.io.Reader
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -23,7 +24,6 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
-import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.streams.asSequence
 import kotlin.time.Duration
@@ -110,24 +110,47 @@ internal fun ProcessBuilder.withoutSecrets(): ProcessBuilder = apply { environme
 internal const val MAX_LOG_LINE = 2000
 
 /**
+ * The hash seed of every run that builds a seed's worlds (the generation, the spoiler log's later levels, the logic):
+ * Python's string hashes, and with them the order of a set of names, are the same in each, so an APWorld that walks
+ * such a set builds the same worlds every time. Not for the game servers, whose dictionaries hold what clients send.
+ */
+internal const val WORLDS_HASH_SEED = "0"
+
+/**
  * Starts one of Archipelago's processes: [command] in [home], without the gateway's secrets ([withoutSecrets]) and
  * with [extra] variables added, its errors in its output, as [user] (the image's [processUser]; `null`: the gateway's
  * own user). Its standard input is closed unless [input] (MultiServer's console, the logic's questions): after an error
  * Generate.py waits for Enter (an atexit input()), which the closed input makes an end. Its out-of-memory score is
  * raised to [oomScore] ([OOM_FIRST], a game server [OOM_GAME_SERVER]): when the container's memory is full, the kernel
- * ends it before the gateway, which then sees it end as any other end (a crash, a failed generation).
+ * ends it before the gateway, which then sees it end as any other end (a crash, a failed generation). [worlds]: it
+ * builds a seed's worlds ([WORLDS_HASH_SEED]); [memory]: its address space's bound in bytes (as its user only).
+ *
+ * Python never reads the user's own site-packages or start-up files (`PYTHONNOUSERSITE`: that user's home is its own
+ * to write, so code put there once would run in every later process), and never writes byte code (Archipelago's
+ * directory is compiled in the image, and not that user's to write). As its own user (the image) it doesn't put its
+ * script's directory first on its path either (`PYTHONSAFEPATH`): Archipelago's directory, which that user may add
+ * files to, comes after Python's own modules instead (the image's `randogeddon.pth`), so a file put there can't stand in
+ * for one of them. `-I` would be stricter, but it drops the script's directory without putting it back, and every
+ * `PYTHON…` variable, this one's hash seed among them.
  */
 internal fun startProcess(
   command: List<String>, home: Path?, extra: Map<String, String> = emptyMap(), input: Boolean = false,
-  oomScore: Int = OOM_FIRST, user: ProcessUser? = processUser,
+  oomScore: Int = OOM_FIRST, user: ProcessUser? = processUser, worlds: Boolean = false, memory: Long? = null,
 ): Process {
-  val proc = ProcessBuilder(user?.command(command, oomScore) ?: command)
+  val proc = ProcessBuilder(user?.command(command, oomScore, memory) ?: command)
     .withoutSecrets()
     .apply {
       home?.let { directory(it.toFile()) }
+      val environment = environment()
       // Its own home, not the gateway's (which it can't write)
-      user?.let { environment()["HOME"] = it.home }
-      environment().putAll(extra)
+      user?.let {
+        environment["HOME"] = it.home
+        environment["PYTHONSAFEPATH"] = "1"
+      }
+      environment["PYTHONNOUSERSITE"] = "1"
+      environment["PYTHONDONTWRITEBYTECODE"] = "1"
+      if (worlds) environment["PYTHONHASHSEED"] = WORLDS_HASH_SEED
+      environment.putAll(extra)
     }
     .redirectErrorStream(true)
     .start()
@@ -225,22 +248,44 @@ internal fun Reader.cutLines(max: Int): Sequence<String> = sequence {
 private val PROCESS_TEMP: Path = Path.of(System.getProperty("java.io.tmpdir"), "randogeddon")
 
 /**
- * A new temporary directory for one of Archipelago's processes, removed by its caller after it; its user's
- * ([processUser]) to read and write, what is made in it too (its parent it only passes through).
+ * A new temporary directory for one of Archipelago's processes, removed by its caller after it ([deleteTree]); its
+ * user's ([processUser]) to read and write, what is made in it too (its parent it only passes through). The parent
+ * must be the gateway's own directory, not a link: the system's temporary directory is everybody's to write into.
  */
 internal fun processTempDir(prefix: String): Path {
   val parent = PROCESS_TEMP.createDirectories()
   processUser?.passThrough(parent)
-  return createTempDirectory(parent, prefix).also { dir ->
-    if (processUser?.share(dir) == false) logger.warn("{} can't be given to Archipelago's user", dir)
+  val dir = createTempDirectory(parent, prefix)
+  // Its parent belongs to whoever made this one (the gateway), and is no link
+  val own = runCatching {
+    val attributes = Files.readAttributes(parent, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    attributes.isDirectory && Files.getOwner(parent, LinkOption.NOFOLLOW_LINKS) == Files.getOwner(dir, LinkOption.NOFOLLOW_LINKS)
+  }.getOrElse { it is UnsupportedOperationException }
+  if (!own) {
+    runCatching { Files.delete(dir) }
+    error("$parent isn't the gateway's own directory")
   }
+  if (processUser?.share(dir) == false) logger.warn("{} can't be given to Archipelago's user", dir)
+  return dir
 }
 
 /** What a gateway before this one left in the processes' temporary directories (a killed one removes nothing). */
 fun clearProcessTemp() {
-  runCatching { PROCESS_TEMP.toFile().deleteRecursively() }
+  runCatching { deleteTree(PROCESS_TEMP) }
     .onFailure { logger.warn("Could not empty {}: {}", PROCESS_TEMP, it.message) }
 }
+
+/** The most a script's answer file is read of (room_info.py's, list_games.py's, seed_info.py's: a few hundred KB). */
+internal const val MAX_ANSWER_FILE = 64L * 1024 * 1024
+
+/**
+ * The most a spoiler log is read of (a level-3 run's output, `spoiler.txt`): one with the paths of a multiworld of 250
+ * slots is some dozens of MB.
+ */
+internal const val MAX_SPOILER_FILE = 512L * 1024 * 1024
+
+/** The most a generated seed may be (copied from Generate.py's output): an uploaded one may unpack to 512 MB. */
+private const val MAX_GENERATED_SEED = 2L * 1024 * 1024 * 1024
 
 /** How long room_info.py may take (it reads the seed's slots and passwords). */
 private val ROOM_INFO_TIME = 2.minutes
@@ -261,14 +306,16 @@ class Launcher(
   /**
    * The slot list for the tracker and the slot passwords (room_info.py, next to serve.py) into [roomJson]: written by
    * the script into a temporary directory and by the gateway from there, so it stays the gateway's file (the tracker
-   * reads it as the same user; Archipelago's own user only reads it).
+   * reads it as the same user; Archipelago's own user only reads it). Both directories are that user's to write too:
+   * only a regular file is taken, and room.json is written anew ([SharedFolder]), never through a link put there.
    */
   fun prepare(seed: Path, roomJson: Path) {
     val work = processTempDir("room")
+    var proc: Process? = null
     try {
       val written = work.resolve("room.json")
       val command = listOf(archipelago.python, "room_info.py", seed.absolutePathString(), written.absolutePathString())
-      val proc = startProcess(command, archipelago.home(archipelago.newest))
+      proc = startProcess(command, archipelago.home(archipelago.newest))
       // A hung one would hold its game server's start, and with it every other session's
       val stopped = proc.endAfter(ROOM_INFO_TIME)
       var last = ""
@@ -276,13 +323,12 @@ class Launcher(
       val code = proc.waitFor()
       check(!stopped.get()) { "room_info.py took longer than $ROOM_INFO_TIME" }
       check(code == 0) { "room_info.py failed: $last" }
+      val room = SharedFolder(work).read(written.name, MAX_ANSWER_FILE)
       // Beside it, then in its place at once: a reader has the one before or this one, never half of it
-      val copy = roomJson.resolveSibling("${roomJson.name}.new")
-      Files.copy(written, copy, StandardCopyOption.REPLACE_EXISTING)
-      processUser?.readable(copy)
-      Files.move(copy, roomJson, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      SharedFolder(roomJson.parent).write(roomJson.name, room)
     } finally {
-      work.toFile().deleteRecursively()
+      proc?.takeIf { it.isAlive }?.endTree()
+      deleteTree(work)
     }
   }
 
@@ -291,7 +337,8 @@ class Launcher(
    * seed's name comes from [room]. Each start gets a room password of its own ([Launch.roomPassword]), as the first
    * line of its console (serve.py reads it there, never from the command line, which every process can read): only
    * the gateway and the tracker know it, so a client that reaches MultiServer's port past the gateway gets nowhere. No
-   * server password: `!admin` is off, the admin panel's console is the only one.
+   * server password: `!admin` is off, the admin panel's console is the only one. Archipelago's item cheat (`!getitem`)
+   * is off on every game server: the panel's cheats are the Session-Managers' and the support's, noted with who.
    */
   fun launch(seed: Path, room: RoomJson, port: Int): Launch {
     val setup = room.seedName()?.let { name -> runBlocking { launchOf(name) } }
@@ -302,7 +349,7 @@ class Launcher(
       addAll(listOf("--hint_cost", options.hintCost.toString(), "--location_check_points", options.locationCheckPoints.toString()))
       addAll(listOf("--release_mode", options.releaseMode, "--collect_mode", options.collectMode))
       addAll(listOf("--remaining_mode", options.remainingMode, "--countdown_mode", options.countdownMode))
-      addAll(listOf("--auto_shutdown", "0", "--logtime"))
+      addAll(listOf("--auto_shutdown", "0", "--logtime", "--disable_item_cheat"))
     }
     val environment = mapOf("AP_POINT_HINTS" to options.pointHints.toString(), "AP_AUTO_HINTS" to options.autoHints.toString())
     val password = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
@@ -367,11 +414,42 @@ internal fun sha256(file: Path): String {
 }
 
 /**
- * The first of the APWorlds a seed was generated with ([hashes]: file name to SHA-256) that is another in [release]'s
- * library now; `null`: none changed.
+ * The first of the APWorlds a seed was generated with ([hashes]: file name to SHA-256, and the bundled World Locks
+ * under [BUNDLED_WORLD_LOCKS]) that is another in [release] now; `null`: none changed. A seed of before that has no
+ * World Locks in it counts as made with the one there is.
  */
 internal fun Apworlds.changedSince(release: String, hashes: Map<String, String>): String? =
-  hashes.entries.firstOrNull { (file, hash) -> fileOf(release, file)?.let(::sha256) != hash }?.key
+  hashes.entries.firstOrNull { (file, hash) -> hashOf(release, file) != hash }?.key
+
+/**
+ * Where a seed's state keeps the World Locks APWorld the image brings (`apworlds/world_locks`, among the release's own
+ * worlds): it has no file of its own in the library, and changes with the image, under the same release.
+ */
+internal const val BUNDLED_WORLD_LOCKS = "World Locks (bundled with the gateway)"
+
+/** The bundled World Locks' folder in a release's directory. */
+private const val WORLD_LOCKS_FOLDER = "worlds/world_locks"
+
+/**
+ * A SHA-256 of [home]'s bundled World Locks: its Python files and its manifest by their paths in it (not its compiled
+ * files, which every image build makes anew, nor its docs); `null`: the release has none.
+ */
+internal fun bundledWorldLocks(home: Path): String? {
+  val folder = home.resolve(WORLD_LOCKS_FOLDER).takeIf { it.isDirectory() } ?: return null
+  val digest = MessageDigest.getInstance("SHA-256")
+  Files.walk(folder).use { paths ->
+    paths.filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+      .map { folder.relativize(it).joinToString("/") }
+      .filter { (it.endsWith(".py") || it == "archipelago.json") && "__pycache__" !in it.split('/') }
+      .sorted().toList()
+  }.forEach { name ->
+    digest.update(name.toByteArray())
+    digest.update(0)
+    digest.update(Files.readAllBytes(folder.resolve(name)))
+    digest.update(0)
+  }
+  return digest.digest().joinToString("") { "%02x".format(it) }
+}
 
 /** How many lines of a generation's output are kept, and how long after its end. */
 private const val GENERATION_LOG_LINES = 20_000
@@ -598,10 +676,8 @@ class Generator(
         stages.save(id, state.copy(stopped = "the placements differ from the seed's (an APWorld that doesn't place the same with the same seed)"))
         return
       }
-      val file = dirs.spoilerFile(id)
-      val written = file.resolveSibling("spoiler.txt.new")
-      written.writeText(text)
-      Files.move(written, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      // Beside it, then in its place at once (never through a link put there)
+      SharedFolder(dirs.dir(id)).writeText(dirs.spoilerFile(id).name, text)
       stages.save(id, state.copy(level = level))
       log.lines.add("[gateway] The spoiler log is at level $level now")
       logger.info("Spoiler log of {} at level {}", id, level)
@@ -616,6 +692,7 @@ class Generator(
   private fun runSpoiler(id: String, state: SpoilerStages.State, run: BackgroundRun, home: Path, log: GenerationLog): String? {
     val level = run.level
     val output = processTempDir("spoiler")
+    var started: Process? = null
     try {
       // Generate.py with a playthrough that doesn't give up (spoiler_run.py, next to it in the image)
       val script = SpoilerStages.SPOILER_RUN.takeIf { home.resolve(it).isRegularFile() } ?: "Generate.py"
@@ -623,7 +700,8 @@ class Generator(
         listOf("--spoiler", level.toString(), "--spoiler_only") + state.arguments
       log.lines.add("$ cd ${home.absolutePathString()}")
       log.lines.add("$ ${shown(command)}")
-      val proc = startProcess(command, home)
+      val proc = startProcess(command, home, worlds = true)
+      started = proc
       processes[stageKey(id)] = proc
       if (run.yields) proc.endTree()
       val limit = minutes.toLong() * BACKGROUND_TIME_FACTOR
@@ -640,15 +718,18 @@ class Generator(
         stages.save(id, state.copy(stopped = "it took longer than $limit minutes"))
         return null
       }
-      val spoiler = output.listDirectoryEntries("*_Spoiler.txt").firstOrNull()
+      // Its output folder is Archipelago's user's to write: only a regular file is read, never through a link
+      val outputs = SharedFolder(output)
+      val spoiler = outputs.files().keys.sorted().firstOrNull { it.endsWith("_Spoiler.txt") }
       if (spoiler == null) {
         log.lines.add("[gateway] Generate.py ended with exit code $code, without a spoiler log${killedHint(code)}")
         stages.save(id, state.copy(stopped = "Generate.py ended with exit code $code (see its log)${killedHint(code)}"))
         return null
       }
-      return spoiler.readText()
+      return outputs.readText(spoiler, MAX_SPOILER_FILE)
     } finally {
-      output.toFile().deleteRecursively()
+      started?.takeIf { it.isAlive }?.endTree()
+      deleteTree(output)
     }
   }
 
@@ -723,10 +804,16 @@ class Generator(
     }
     val release = apworlds.release(request.apVersion)
     progress[id] = GenerationProgress(GenerationStage.STARTING, 0)
-    // The APWorlds of its games, kept by their checksum: the later runs of its spoiler need the very same
+    // The APWorlds of its games, kept by their checksum: the later runs of its spoiler need the very same. With locks,
+    // the World Locks the image brings too (a later image may bring another under the same release)
     val used = release.games.filter { it.game in request.games }.mapNotNull { it.apworld }.toSet()
     val result = apworlds.holding(request.apVersion) {
-      val hashes = withContext(Dispatchers.IO) { used.associateWith { file -> apworlds.fileOf(request.apVersion, file)?.let(::sha256).orEmpty() } }
+      val hashes = withContext(Dispatchers.IO) {
+        buildMap {
+          used.forEach { file -> put(file, apworlds.fileOf(request.apVersion, file)?.let(::sha256).orEmpty()) }
+          if (request.locked.isNotEmpty()) bundledWorldLocks(home)?.let { put(BUNDLED_WORLD_LOCKS, it) }
+        }
+      }
       withContext(Dispatchers.IO) { run(id, request, home, dirs.dir(id), log, hashes) { progress[id] = it } }
     }
     // Stopped for its time or cancelled: no game is to blame
@@ -739,11 +826,21 @@ class Generator(
     onProgress: (GenerationProgress) -> Unit,
   ): GenerateResult {
     val work = processTempDir("generate")
+    var started: Process? = null
     try {
-      val players = work.resolve("players").createDirectories()
-      val output = work.resolve("output").createDirectories()
-      request.yamls.forEachIndexed { i, yaml -> players.resolve(fileName(yaml.fileName, i)).writeText(yaml.content) }
-      if (request.locked.isNotEmpty()) players.resolve("zz-world-locks.yaml").writeText(locksYaml(request.locked, request.earlyKeys))
+      // Its folder is Archipelago's user's to write too (other sessions' processes run meanwhile): each file written
+      // new, never through a link put there
+      val shared = SharedFolder(work)
+      shared.folder("players")
+      shared.folder("output")
+      val players = work.resolve("players")
+      val output = work.resolve("output")
+      // What it is generated from, by file name: written here, and kept as it is (not read back from here)
+      val yamls = buildMap {
+        request.yamls.forEachIndexed { i, yaml -> put(fileName(yaml.fileName, i), yaml.content) }
+        if (request.locked.isNotEmpty()) put("zz-world-locks.yaml", locksYaml(request.locked, request.earlyKeys))
+      }
+      yamls.forEach { (name, content) -> shared.writeText("players/$name", content) }
 
       logger.info("Generating a seed from {} YAMLs with Archipelago {}", request.yamls.size, request.apVersion)
       // A seed number of its own, kept: its spoiler log's later levels are generated with it again. The seed itself only
@@ -756,8 +853,9 @@ class Generator(
       // What ran, so it can be run again by hand
       log.lines.add("$ cd ${home.absolutePathString()}")
       log.lines.add("$ ${shown(command)}")
-      log.lines.add("[gateway] YAMLs: ${players.listDirectoryEntries().map { it.name }.sorted().joinToString()}")
-      val proc = startProcess(command, home)
+      log.lines.add("[gateway] YAMLs: ${yamls.keys.sorted().joinToString()}")
+      val proc = startProcess(command, home, worlds = true)
+      started = proc
       processes[id] = proc
       // Cancelled while it started
       if (id in cancelled) proc.endTree()
@@ -782,7 +880,8 @@ class Generator(
         log.lines.add("[gateway] Stopped: it took longer than $minutes minutes")
         return GenerateResult(log = lines.takeLast(20), stoppedAfterMinutes = minutes)
       }
-      val zip = output.listDirectoryEntries("AP_*.zip").firstOrNull()
+      // Only a regular file of its output is taken (copied, never through a link), into the session's directory
+      val zip = shared.files("output").keys.sorted().firstOrNull { it.startsWith("AP_") && it.endsWith(".zip") }
       if (zip == null) log.lines.add("[gateway] Generate.py ended with exit code $code, without a seed${killedHint(code)}")
       zip ?: return GenerateResult(
         // The error from its traceback on, not the list of every world it prints first
@@ -790,20 +889,24 @@ class Generator(
           listOfNotNull(killedHint(code).trim().ifEmpty { null })).ifEmpty { listOf("Generate.py ended without a seed") },
       )
 
-      Files.move(zip, target.createDirectories().resolve(zip.name), StandardCopyOption.REPLACE_EXISTING)
+      target.createDirectories()
+      val session = SharedFolder(target)
+      session.write(zip) { out -> shared.copyTo("output/$zip", out, MAX_GENERATED_SEED) }
       // What it was generated from, for its spoiler log's later levels (a race has none)
       if (!request.race) {
-        val kept = dirs.generationDir(id).resolve("players").createDirectories()
-        players.listDirectoryEntries().forEach { Files.copy(it, kept.resolve(it.name), StandardCopyOption.REPLACE_EXISTING) }
+        session.folder("generation/players")
+        yamls.forEach { (name, content) -> session.writeText("generation/players/$name", content) }
         stages.save(id, SpoilerStages.State(seed, request.apVersion, level = 1, apworlds = apworldHashes, arguments = settings))
       }
-      val seedName = zip.name.removePrefix("AP_").removeSuffix(".zip")
+      val seedName = zip.removePrefix("AP_").removeSuffix(".zip")
       logger.info("Generated seed {}", seedName)
       log.lines.add("[gateway] Seed $seedName")
-      return GenerateResult(seedName = seedName, seedFile = zip.name, log = lines.takeLast(10))
+      return GenerateResult(seedName = seedName, seedFile = zip, log = lines.takeLast(10))
     } finally {
       processes.remove(id)
-      work.toFile().deleteRecursively()
+      // One the gateway stopped reading (an exception from a line) runs no longer than this
+      started?.takeIf { it.isAlive }?.endTree()
+      deleteTree(work)
     }
   }
 
@@ -857,14 +960,22 @@ private val FILL_STEP = Regex("""Current fill step \(.+\) at (\d+)/(\d+) items p
  * The stage a line of Generate.py's output starts, if it starts one. The output files count themselves up, and so
  * does the fill (30 to 50 %; it only logs every 1000 items, so a small multiworld waits at its start). The playthrough
  * (66 to 97 %) says nothing until it is done: with Archipelago's spoiler level 3 (paths to every item) it can take
- * longer than all the rest.
+ * longer than all the rest. A player's YAML can put any text into a line (an option's name it repeats): numbers too
+ * large, or more done than all, give no stage of their own.
  */
 internal fun generationProgress(line: String): GenerationProgress? {
   FILL_STEP.find(line)?.destructured?.let { (placed, all) ->
-    return GenerationProgress(GenerationStage.FILLING, 30 + 20 * placed.toInt() / all.toInt().coerceAtLeast(1))
+    share(placed, all)?.let { return GenerationProgress(GenerationStage.FILLING, 30 + 20 * it / 100) }
   }
   OUTPUT_FILES.find(line)?.destructured?.let { (done, all) ->
-    return GenerationProgress(GenerationStage.OUTPUT, 58 + 8 * done.toInt() / all.toInt().coerceAtLeast(1))
+    share(done, all)?.let { return GenerationProgress(GenerationStage.OUTPUT, 58 + 8 * it / 100) }
   }
   return STAGES.firstOrNull { (marker, _) -> marker in line }?.second
+}
+
+/** [done] of [all] in percent (0 to 100); `null`: not numbers a line of Generate.py has. */
+private fun share(done: String, all: String): Int? {
+  val x = done.toLongOrNull() ?: return null
+  val y = all.toLongOrNull()?.coerceAtLeast(1) ?: return null
+  return (x.coerceAtMost(y).toDouble() * 100 / y).toInt()
 }

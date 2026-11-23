@@ -20,13 +20,19 @@ class ProcessUserTest {
   private fun linux() = assumeFalse("needs POSIX modes and /proc", System.getProperty("os.name").startsWith("Windows"))
 
   @Test
-  fun `as its own user a process starts through setpriv with nothing left, its out-of-memory score raised`() {
+  fun `as its own user a process starts through setpriv with nothing left, bounded, its out-of-memory score raised`() {
     assertEquals(
       listOf(
         "setpriv", "--reuid=archipelago", "--regid=archipelago", "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all",
-        "--no-new-privs", "--", "choom", "-n", "800", "--", "python", "serve.py", "--port", "38282",
+        "--no-new-privs", "--", "prlimit", "--nproc=3072", "--fsize=4294967296", "--", "choom", "-n", "800", "--",
+        "python", "serve.py", "--port", "38282",
       ),
       ProcessUser("archipelago").command(listOf("python", "serve.py", "--port", "38282"), OOM_GAME_SERVER),
+    )
+    // seed_info.py: its address space bounded too
+    assertEquals(
+      listOf("prlimit", "--nproc=3072", "--fsize=4294967296", "--as=1024", "--", "choom"),
+      ProcessUser("archipelago").command(listOf("python"), OOM_FIRST, memory = 1024).drop(8).take(6),
     )
     assertEquals("/home/archipelago", ProcessUser("archipelago").home)
     // The image's start names it; without (the tests, a gateway started by hand) the processes run as the gateway
@@ -42,6 +48,20 @@ class ProcessUserTest {
     proc.outputStream.bufferedWriter().apply { write("go"); newLine(); flush() }
     assertEquals(OOM_FIRST.toString(), proc.inputStream.bufferedReader().readText().trim())
     assertEquals(0, proc.waitFor())
+  }
+
+  @Test
+  fun `Python reads no user site and writes no byte code, a seed's worlds are built with one hash seed`() {
+    linux()
+    fun environment(worlds: Boolean): List<String> {
+      val proc = startProcess(listOf("sh", "-c", "env"), null, user = null, worlds = worlds)
+      return proc.inputStream.bufferedReader().readLines().also { proc.waitFor() }
+    }
+    val plain = environment(worlds = false)
+    assertTrue("PYTHONNOUSERSITE=1" in plain && "PYTHONDONTWRITEBYTECODE=1" in plain, plain.toString())
+    // Not for a game server (its dictionaries hold what clients send)
+    assertTrue(plain.none { it.startsWith("PYTHONHASHSEED=") }, plain.toString())
+    assertTrue("PYTHONHASHSEED=$WORLDS_HASH_SEED" in environment(worlds = true))
   }
 
   @Test

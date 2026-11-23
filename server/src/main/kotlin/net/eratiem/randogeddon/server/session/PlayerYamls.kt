@@ -5,9 +5,11 @@ import net.eratiem.randogeddon.shared.ApiError
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.shared.Refusal
 import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
+import com.charleskorn.kaml.YamlTaggedNode
 import net.eratiem.randogeddon.server.state.WORLD_LOCKS_GAME
 import net.eratiem.randogeddon.server.util.unsafeText
 import net.eratiem.randogeddon.shared.InspectResult
@@ -27,6 +29,20 @@ object PlayerYamls {
   /** The most files and slots one session takes (a generation is the gateway's heaviest work). */
   const val MAX_FILES = 100
   const val MAX_SLOTS = 250
+
+  /**
+   * The longest slot name Archipelago keeps as it is: Generate.py's `handle_name` cuts a name to 16 characters (code
+   * points, after stripping). A longer one would be another name in the seed than the panel's and the locks'.
+   */
+  const val MAX_NAME = 16
+
+  /**
+   * Characters of Archipelago's name placeholders: `handle_name` turns `%number%`, `%player%` and `%%`, then
+   * `{number}`, `{NUMBER}`, `{player}`, `{PLAYER}` (and `{{`, `}}`) into something else, and a lone brace fails the
+   * generation. Every `%`, `{` and `}` is refused: whatever the exact rules, a name that passes stays as
+   * written.
+   */
+  private val NAME_PLACEHOLDERS = setOf('%', '{', '}')
 
   fun inspect(files: List<UploadedYaml>): InspectResult {
     // Too many aren't even read
@@ -63,9 +79,13 @@ object PlayerYamls {
           name.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_NAME)
           // A slot's name is a part of the panel's paths (`.` and `..` would move them), and the feed shows it as one line
           name == "." || name == ".." || unsafeText(name) -> refuse(file, Problem.YAML_NAME_CHARACTERS)
+          // A name Archipelago would change is another name in the seed than the one the panel and the locks know
+          name.codePointCount(0, name.length) > MAX_NAME ->
+            refuse(file, Problem.YAML_NAME_TOO_LONG, "name" to name, "max" to MAX_NAME)
+          name.any { it in NAME_PLACEHOLDERS } -> refuse(file, Problem.YAML_NAME_PLACEHOLDER, "name" to name)
+          // The World Locks slot comes from "starts locked" in the panel, in whatever form a YAML could roll it
+          couldBeWorldLocks(map) -> refuse(file, Problem.YAML_WORLD_LOCKS, "name" to name)
           game.isNullOrEmpty() -> refuse(file, Problem.YAML_NO_GAME, "name" to name)
-          // The World Locks slot comes from "starts locked" in the panel
-          game == WORLD_LOCKS_GAME -> refuse(file, Problem.YAML_WORLD_LOCKS, "name" to name)
           else -> worlds += YamlWorld(file.fileName, name, game)
         }
       }
@@ -78,6 +98,24 @@ object PlayerYamls {
     }
     // A refused file's slots don't count
     return InspectResult(worlds.filter { it.fileName !in invalid }, problems, invalid.toList())
+  }
+
+  /**
+   * Whether [document] could be a World Locks slot in any way Archipelago 0.6.8 rolls a YAML's `game` (Generate.py's
+   * `get_choice`): the plain name, a key of a weighted map whatever its weight (0 too: refused all the same), an
+   * element of a list. Or set it afterwards: a root `triggers` or `linked_options` entry can set any root option,
+   * `game` too (they are rolled before `game` is), so one that names the game anywhere is refused as well.
+   */
+  private fun couldBeWorldLocks(document: YamlMap): Boolean =
+    listOf("game", "triggers", "linked_options").any { names(document.get<YamlNode>(it), WORLD_LOCKS_GAME) }
+
+  /** Whether [node] names [game] anywhere: a scalar, a map's key, a list's element, at any depth (case aside). */
+  private fun names(node: YamlNode?, game: String): Boolean = when (node) {
+    is YamlScalar -> node.content.trim().equals(game, ignoreCase = true)
+    is YamlMap -> node.entries.any { (key, value) -> names(key, game) || names(value, game) }
+    is YamlList -> node.items.any { names(it, game) }
+    is YamlTaggedNode -> names(node.innerNode, game)
+    else -> false
   }
 
   /** The games of [worlds] that aren't in [games] (a release's), each game of a weighted one on its own. */

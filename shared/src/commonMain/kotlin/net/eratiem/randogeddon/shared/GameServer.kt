@@ -80,9 +80,19 @@ data class LogicProgress(val status: LogicStatus, val since: Long? = null, val p
 @Serializable
 data class AvailableSlot(val slot: Int, val items: List<Long>, val checked: List<Long>)
 
-/** Tracker → gateway: `POST /internal/sessions/{id}/logic/available`; [maps]: the slots whose map it wants too. */
+/**
+ * The World Locks slot ([slot]) and the item IDs it received so far ([items]: its keys), the same for every asked slot:
+ * the logic collects them through the locks' world, so a world whose key was found is open in its rules too.
+ */
 @Serializable
-data class AvailableRequest(val slots: List<AvailableSlot>, val maps: List<Int> = emptyList())
+data class LocksFound(val slot: Int, val items: List<Long>)
+
+/**
+ * Tracker → gateway: `POST /internal/sessions/{id}/logic/available`; [maps]: the slots whose map it wants too; [locks]:
+ * the keys found (`null`: the session has no locks; a logic of before ignores it).
+ */
+@Serializable
+data class AvailableRequest(val slots: List<AvailableSlot>, val maps: List<Int> = emptyList(), val locks: LocksFound? = null)
 
 /**
  * A slot's map as its logic has it (`logic_run.py`'s `slot_map`): its regions, its start first and then as they are
@@ -99,7 +109,8 @@ data class MapRegion(val name: String, val locations: List<Long> = emptyList())
  * How many of each asked slot's unchecked locations its logic reaches (by slot; `null`: no answer for it), which they
  * are ([locations], their IDs), and the maps asked for ([maps]; none for a slot it has no answers for). [regions]:
  * which of each slot's map's regions its logic reaches now (their places in [SlotMap.regions]); a slot it doesn't
- * say that for (a logic before 0.23.2.6) isn't in it.
+ * say that for (a logic before 0.23.2.6) isn't in it. [mismatches]: of the asked slots, those whose rebuilt worlds
+ * don't fit the seed's own order (its spheres), with one line of what didn't fit; they are answered all the same.
  */
 @Serializable
 data class AvailableAnswer(
@@ -107,6 +118,7 @@ data class AvailableAnswer(
   val locations: Map<Int, List<Long>> = emptyMap(),
   val maps: Map<Int, SlotMap> = emptyMap(),
   val regions: Map<Int, List<Int>> = emptyMap(),
+  val mismatches: Map<Int, String> = emptyMap(),
 )
 
 /** `GET /api/sessions/{id}/manage/logic`: its logic; `null`: it has none. */
