@@ -4,8 +4,8 @@
 #   ./scripts/measure.sh --build [viewers] [seconds]  also a build of the three images from nothing and one without
 #                                                      changes. BuildKit's whole cache is cleared first: every
 #                                                      project's on this machine, not only this one's
-# The first screen is measured in Microsoft's Playwright image (PLAYWRIGHT_IMAGE), by its tag; its Python package is
-# installed from PyPI at each run (PLAYWRIGHT_VERSION, the image's own)
+# The first screen is measured in Microsoft's Playwright image (PLAYWRIGHT_IMAGE), by its digest; its Python package is
+# installed from PyPI at each run (PLAYWRIGHT_VERSION, the release of the image's tag)
 # Prints a Markdown report: the page's files as sent (plain, gzip, Brotli), the images and what is in them, the
 # containers' memory and CPU idle and with the viewers' live streams open, the API's answer times, and how long the
 # first screen takes in headless Chromium (a share link's dashboard, no login). Phase 18 compares each step with it.
@@ -23,8 +23,10 @@ AP_VERSION="${AP_VERSION:-$ap_default}"
 : "${AP_VERSION:?docker-compose.yml names no AP_VERSION}"
 gateway_image="randogeddon-gateway:$AP_VERSION"
 BASE=http://localhost:8000
-PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.49.1}"
-PLAYWRIGHT="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright/python:v$PLAYWRIGHT_VERSION-noble}"
+# By its digest (scripts/base-images.sh finds it here); the Python package is the release of the image's tag
+PLAYWRIGHT="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright/python:v1.49.1-noble@sha256:42e251ec3238672c931be6c3565ff279690ae072c3e22058128d0412494f686627}"
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-$(sed -nE 's/^[^@]*:v([0-9]+(\.[0-9]+)*)-[^@]*(@.*)?$/\1/p' <<<"$PLAYWRIGHT")}"
+: "${PLAYWRIGHT_VERSION:?PLAYWRIGHT_IMAGE's tag names no Playwright release (v<version>-<os>): set PLAYWRIGHT_VERSION}"
 [[ -r output/demo/admin.password ]] || { echo "No demo: ./scripts/demo.sh first"; exit 1; }
 curl -sf "$BASE/healthz" >/dev/null || { echo "The tracker isn't up at $BASE: ./scripts/demo.sh first"; exit 1; }
 
