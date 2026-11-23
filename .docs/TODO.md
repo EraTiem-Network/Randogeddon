@@ -53,7 +53,10 @@ The parts:
           for good (scan results still point at them); `BLOB_GC_ENABLED` is set on its server only, not where
           its compose file is kept; on 2026-11-22 only 0.23.2.5 and `latest` were left in it (the user hasn't
           said whether they deleted the rest)
-- [ ] 0.23.3: Randogeddon Bridge (the key, the relays, the tunnel, its page, the downloads' signing)
+- [ ] Left from 0.23.3 (the bridge's review): the page's one-time code is on the browser opener's command line
+      until the page takes it (S5: narrowed, not closed); two starts that both find a stale lock in the same
+      instant can both run (B9); not tried by hand: the bridge against a live session with a real game, its page
+      in a browser, a release's check for the signing key before it builds (first run: the next publish)
 - [ ] 0.23.4: the database (the stores, the roles, the migrations)
     - Noted by the tracker's scan: `EmailChangeStore.take` selects and then deletes (not atomic; harmless so far)
 - [ ] 0.23.5: the web app

@@ -56,7 +56,9 @@ AP_ROOT=<one Archipelago checkout per release> ./gradlew :gateway:run   # gatewa
   overrides it.
 - A new migration in `database/src/main/resources/db/migration` is also listed in its `index.txt` (a native image
   can't scan the classpath; a test checks it).
-- `./scripts/audit.sh`: the dependencies (Go, JVM, the gateway's Python) looked up in OSV (osv-scanner, in Docker);
+- `./scripts/audit.sh`: the dependencies (Go, JVM, the gateway's Python) looked up in OSV (osv-scanner, in Docker),
+  and the bridge's code and Go's standard library by govulncheck (in the bridge's build image, pinned by digest;
+  `GOVULNCHECK_VERSION`);
   before a release and when a dependency changes. `GRADLE_DEPENDENCIES=<file>` where Gradle and Docker are apart.
 - `./scripts/measure.sh [viewers] [seconds]` (WSL, the demo running): the page's sizes, the images, memory and CPU
   idle and with viewers, answer times, the first screen; `--build` times a build. Results: `MEASUREMENTS.md`.

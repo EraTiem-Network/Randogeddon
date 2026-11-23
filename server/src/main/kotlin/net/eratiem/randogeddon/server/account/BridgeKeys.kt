@@ -3,10 +3,12 @@ package net.eratiem.randogeddon.server.account
 import io.ktor.http.HttpStatusCode
 import java.lang.invoke.MethodHandles
 import java.time.Instant
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
 import net.eratiem.randogeddon.database.LoginSessionStore
 import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.util.ExpiringMap
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.shared.BridgeKey
 import net.eratiem.randogeddon.shared.BridgeKeyView
@@ -24,6 +26,9 @@ private const val ID_LENGTH = 16
 /** The most keys one account has at once. */
 const val MAX_KEYS = 10
 
+/** How often at most a key's last use is noted. */
+private val TOUCH_EVERY = 5.minutes
+
 /**
  * Keys of Randogeddon Bridge: each a login of its own kind ([LoginMethods.BRIDGE], [LOGIN_DURATION] like the others),
  * sent by the app as a bearer token and only taken on `/bridge/…` (never as the cookie). Stored as their SHA-256, like
@@ -33,15 +38,21 @@ const val MAX_KEYS = 10
 class BridgeKeys(private val users: UserStore, private val logins: LoginSessionStore) {
   /** A new key for [user], shown once; [AccountProblem] (409) once they have [MAX_KEYS]. */
   suspend fun make(user: User, now: Instant = Instant.now()): BridgeKey {
-    if (logins.logins(user.id, LoginMethods.BRIDGE, now).size >= MAX_KEYS) {
-      throw AccountProblem(HttpStatusCode.Conflict, Problem.TOO_MANY_KEYS, "max" to MAX_KEYS)
-    }
     val key = BRIDGE_KEY_PREFIX + newToken(48)
     val expires = now.plus(LOGIN_DURATION.toJavaDuration())
-    logins.create(tokenHash(key), user.id, expires, now, LoginMethods.BRIDGE)
+    // Counted and made at once: keys asked for at the same moment don't pass the limit together
+    if (!logins.createWithin(MAX_KEYS, tokenHash(key), user.id, expires, now, LoginMethods.BRIDGE)) {
+      throw AccountProblem(HttpStatusCode.Conflict, Problem.TOO_MANY_KEYS, "max" to MAX_KEYS)
+    }
     logger.info("{} made a bridge key", user.name)
     return BridgeKey(key, expires.toEpochMilli())
   }
+
+  /**
+   * The keys noted as used within [TOUCH_EVERY], by their hash: a bridge asks every few seconds, the database gets the
+   * note at most once in that time (in memory, so a restart notes each key again).
+   */
+  private val touched = ExpiringMap<String, Unit>(TOUCH_EVERY)
 
   /** The user of [key], if it is a bridge key that hasn't ended or expired; notes that it was used. */
   suspend fun userOf(key: String, now: Instant = Instant.now()): User? {
@@ -50,7 +61,7 @@ class BridgeKeys(private val users: UserStore, private val logins: LoginSessionS
     val (id, method) = logins.loginOf(hash, now) ?: return null
     if (method != LoginMethods.BRIDGE) return null
     val user = users.findActive(id)?.takeUnless { it.keptOut(now) } ?: return null
-    logins.touch(hash, now)
+    if (touched.putIfAbsent(hash, Unit, now.toEpochMilli())) logins.touch(hash, now, TOUCH_EVERY.toJavaDuration())
     return user.copy(loginMethod = method)
   }
 

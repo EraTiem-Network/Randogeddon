@@ -53,6 +53,17 @@ fun bridgeDownloads(dir: Path): BridgeDownloads {
   return BridgeDownloads(version.takeIf { files.isNotEmpty() }, files, signed = dir.resolve("SHA256SUMS.sig").isRegularFile())
 }
 
+/**
+ * The build served for the file name [asked]: the build of that name, or for one asked for by another name than it has
+ * here (without its version, or with another one: a bridge from before that updates) the build for the same system;
+ * `null`: not a build's name, or none for its system.
+ */
+fun BridgeDownloads.buildFor(asked: String): BridgeDownload? {
+  val match = BRIDGE_FILE.matchEntire(asked) ?: return null
+  return downloads.firstOrNull { it.file == asked }
+    ?: downloads.firstOrNull { it.os == match.groupValues[1] && it.arch == match.groupValues[2] }
+}
+
 /** What is served beside the builds to check them: the checksums, their signature and the key it is checked with. */
 private val CHECK_FILES = setOf("SHA256SUMS", "SHA256SUMS.sig", "signing-key.pub")
 
@@ -82,9 +93,9 @@ fun ThemeColors.css(): Map<String, String> {
 
 /**
  * Randogeddon Bridge, outside `/api` (whose cookie login doesn't take a key): `GET /downloads/bridge` (the builds, no
- * login) and `.../{file}`; with a key ([RequireBridgeKey]) `GET /bridge/info` (the version offered, the user's colours,
- * mode and language), `/bridge/me`, `/bridge/sessions`, `/bridge/sessions/{id}/connection`, and `DELETE /bridge/key`
- * (the app's logout).
+ * login) and `.../{file}`; with a key ([RequireBridgeKey]) `GET /bridge/info` (the version offered, the user's name,
+ * colours, mode and language: the bridge's regular check), `/bridge/me`, `/bridge/sessions`,
+ * `/bridge/sessions/{id}/connection`, and `DELETE /bridge/key` (the app's logout).
  */
 fun Route.bridgeRoutes(
   config: TrackerConfig,
@@ -107,13 +118,9 @@ fun Route.bridgeRoutes(
     }
     get("/{file}") {
       val asked = call.parameters["file"].orEmpty()
-      // A build asked for by another name than it has here (without its version, or with another one): the build
-      // for the same system
-      val name = BRIDGE_FILE.matchEntire(asked)?.takeIf { !config.bridgeDir.resolve(asked).isRegularFile() }?.let { match ->
-        downloads.value.downloads.firstOrNull { it.os == match.groupValues[1] && it.arch == match.groupValues[2] }?.file
-      } ?: asked
-      val file = config.bridgeDir.resolve(name)
-      if ((!BRIDGE_FILE.matches(name) && name !in CHECK_FILES) || !file.isRegularFile()) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_FILE))
+      val name = downloads.value.buildFor(asked)?.file ?: asked.takeIf { it in CHECK_FILES }
+      val file = name?.let { config.bridgeDir.resolve(it) }?.takeIf { it.isRegularFile() }
+      if (name == null || file == null) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_FILE))
       call.attachment(name)
       // The signature and the key are text; by their endings they would be something else (.pub: a Publisher file)
       if (name in CHECK_FILES) call.respondText(file.readText(), ContentType.Text.Plain) else call.respondFile(file.toFile())
@@ -129,7 +136,7 @@ fun Route.bridgeRoutes(
       call.respond(
         BridgeInfo(
           offered.version, offered.downloads, light.css(), dark.css(), ThemeMode.of(user.themeMode) ?: ThemeMode.AUTO,
-          Language.of(user.language)?.code, bridgeFont(theme, user.font, FontScope.of(user.fontScope)),
+          Language.of(user.language)?.code, bridgeFont(theme, user.font, FontScope.of(user.fontScope)), name = user.name,
         )
       )
     }

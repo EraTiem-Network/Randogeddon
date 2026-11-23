@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -77,7 +78,7 @@ func cliLogin(dir string, cfg Config, stdin io.Reader, out io.Writer) error {
 	if key == "" {
 		return errors.New("no key given")
 	}
-	me, err := newClient(cfg.Server, key, "").Me()
+	info, err := newClient(cfg.Server, key, "").Info()
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,7 @@ func cliLogin(dir string, cfg Config, stdin io.Reader, out io.Writer) error {
 	if err := cfg.save(dir); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Logged in as %s at %s\n", me.Name, cfg.Server)
+	fmt.Fprintf(out, "Logged in as %s at %s\n", info.Name, cfg.Server)
 	return nil
 }
 
@@ -192,23 +193,28 @@ func cliRelay(cfg Config, args []string, out io.Writer) error {
 	fmt.Fprintf(out, "Connect %s to localhost:%d (Ctrl+C ends it)\n", slot.Game, relay.Port)
 
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	check := time.NewTicker(15 * time.Second)
-	defer check.Stop()
+	// An ended key ends the relay, like the page's logout; checked beside the loop, so Ctrl+C never waits for it
+	gone := make(chan struct{})
+	stop := make(chan struct{})
+	defer close(stop)
+	go watch(stop, func() bool {
+		if _, err := c.Info(); keyGone(err) {
+			close(gone)
+			return false
+		}
+		return true
+	})
 	last := ""
 	for {
 		select {
 		case <-signals:
 			fmt.Fprintln(out, "Relay ended")
 			return nil
-		case <-check.C:
-			// An ended key ends the relay, like the page's logout
-			var refusal *APIError
-			if _, err := c.Me(); errors.As(err, &refusal) && refusal.KeyGone() {
-				return errors.New("the key was ended on the dashboard: randogeddon-bridge login")
-			}
+		case <-gone:
+			return errors.New("the key was ended on the dashboard: randogeddon-bridge login")
 		case <-tick.C:
 			v := relay.View()
 			now := v.State

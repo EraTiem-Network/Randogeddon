@@ -44,7 +44,7 @@ RUN --mount=type=secret,id=gradle_init,required=true,target=/run/secrets/init.gr
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
 # Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it); it is in each
 # build's file name, so a downloaded file says which version it is.
-FROM golang:1.27.4-bookworm AS bridge
+FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS bridge
 WORKDIR /src
 COPY bridge/go.mod bridge/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -64,12 +64,17 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # The builds' checksums, and their signature if this build has the key (the secret bridge_signing_key: an SSH key
 # without a passphrase; bridge/signing-key.pub is its public half, which people check the downloads against). The
 # key is only there for this step, never in a layer.
+# BRIDGE_SIGNING_KEY_ID: the key's public half (deploy.sh passes it; empty: no key). A secret is no part of the
+# build cache's key, so without it a build with the key would take this step's unsigned result from an earlier build
+# without one (or one signed with another key); with it, each key (and none) has its own cached result.
+ARG BRIDGE_SIGNING_KEY_ID=
 RUN --mount=type=secret,id=bridge_signing_key,required=false \
     cd /out && sha256sum randogeddon-bridge-* > SHA256SUMS && cp /src/signing-key.pub signing-key.pub \
  && if [ -s /run/secrets/bridge_signing_key ]; then \
       ssh-keygen -Y sign -q -f /run/secrets/bridge_signing_key -n randogeddon-bridge SHA256SUMS \
       && ssh-keygen -Y verify -q -f signing-key.pub -I bridge@randogeddon -n randogeddon-bridge -s SHA256SUMS.sig < SHA256SUMS \
       && echo "The builds' checksums are signed"; \
+    elif [ -n "$BRIDGE_SIGNING_KEY_ID" ]; then echo "BRIDGE_SIGNING_KEY_ID is set, but no bridge_signing_key came" >&2; exit 1; \
     else echo "No bridge_signing_key: the builds' checksums aren't signed"; fi
 
 # The executables link only glibc (--static-nolibc). The build stage (Oracle Linux 9, glibc 2.34) is older than

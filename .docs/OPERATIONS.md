@@ -136,7 +136,11 @@ keyring: `gpg --import` the signers' keys there), anything else as `edge`, unche
 Needed once on the PC: `~/.config/randogeddon/deploy.env` with `IMAGES` (the registry's path), `RANDOGEDDON_MAVEN` and
 `BRIDGE_REGISTRY`; `docker login` with a token that may push; an SSH alias (`DEPLOY_SSH`, default `randogeddon-live`);
 for the bridge, `~/.config/randogeddon/bridge-publish.token` (mode 0600) and the signing key
-`~/.config/randogeddon/bridge-signing-key` (keep a copy: a new key means a new `bridge/signing-key.pub`); from 1.0.0
+`~/.config/randogeddon/bridge-signing-key` (without a passphrase, the key of `bridge/signing-key.pub`; keep a copy:
+a new key means a new `bridge/signing-key.pub` and a new fingerprint in the README and the web app). A release stops
+before it builds without that key, and before it pushes unless the built bridge's checksums are signed with it
+(`scripts/publish-bridge.sh <version> <image> --check`; `ssh-keygen` needed); only a build that isn't a release may
+stay unsigned. `BRIDGE_REGISTRY` must be `https://`; from 1.0.0
 on, `gh` logged in. The server keeps the running and the previous images, WSL only what was just pushed.
 
 A rollback to before 0.21.6 needs a `minecraft` image tagged for it first

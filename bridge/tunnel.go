@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
+	"sync/atomic"
 
 	"github.com/coder/websocket"
 )
@@ -37,30 +38,26 @@ func (r *Relay) serveTunnel(ln net.Listener) {
 
 func (r *Relay) tunnel(game net.Conn) {
 	defer game.Close()
-	r.note(func() { r.open++; r.detail = "" })
-	defer r.note(func() { r.open-- })
+	if !r.enter() {
+		log.Printf("tunnel %s: refused a Minecraft connection (%d open already)", r.Slot, maxGames)
+		return
+	}
+	defer r.leave()
 	upstream, key := r.target()
 	ctx, cancel := context.WithCancel(r.closing)
 	defer cancel()
 	// Closing the relay (or either side ending) ends the Minecraft connection too
 	go func() { <-ctx.Done(); _ = game.Close() }()
-	dialCtx, dialCancel := context.WithTimeout(ctx, 20*time.Second)
-	server, _, err := websocket.Dial(dialCtx, tunnelURL(upstream, r.Slot), &websocket.DialOptions{
-		HTTPHeader: http.Header{
-			"User-Agent":               {"RandogeddonBridge/" + version},
-			"X-Randogeddon-Tunnel-Key": {key},
-		},
-	})
-	dialCancel()
+	address := tunnelURL(upstream, r.Slot)
+	server, err := dial(ctx, address, websocket.DialOptions{HTTPHeader: http.Header{"X-Randogeddon-Tunnel-Key": {key}}})
 	if err != nil {
-		r.note(func() { r.detail = "unreachable: " + err.Error() })
-		log.Printf("tunnel %s: unreachable: %v", r.Slot, err)
+		r.unreachable("tunnel", address, err)
 		return
 	}
-	server.SetReadLimit(maxMessage)
 	defer server.CloseNow()
-	r.note(func() { r.connected++ })
-	defer r.note(func() { r.connected-- })
+	// Through once the gateway sent something: a refusal (a wrong key, a locked slot) closes it before that
+	var through atomic.Bool
+	var refusal error // why the gateway's side ended
 	done := make(chan struct{}, 2)
 	// Minecraft's bytes to the gateway
 	go func() {
@@ -83,7 +80,11 @@ func (r *Relay) tunnel(game net.Conn) {
 		for {
 			_, data, err := server.Read(ctx)
 			if err != nil {
+				refusal = err
 				break
+			}
+			if through.CompareAndSwap(false, true) {
+				r.note(func() { r.connected++; r.detail = "" })
 			}
 			if _, err := game.Write(data); err != nil {
 				break
@@ -92,6 +93,34 @@ func (r *Relay) tunnel(game net.Conn) {
 		done <- struct{}{}
 	}()
 	<-done
-	cancel()
+	// Closed with a code first, cancelled after (a cancelled read would end the connection without one)
 	_ = server.Close(websocket.StatusNormalClosure, "")
+	cancel()
+	<-done
+	if through.Load() {
+		r.note(func() { r.connected-- })
+	} else {
+		r.refusedTunnel(refusal)
+	}
+}
+
+// refusedTunnel notes the gateway's refusal of a tunnel (it closes with its reason before sending anything), for the
+// page; a wrong key may be one made from a renewed password, so the slot is fetched again.
+func (r *Relay) refusedTunnel(err error) {
+	var closed websocket.CloseError
+	if !errors.As(err, &closed) {
+		return
+	}
+	switch closed.Code {
+	case websocket.StatusNormalClosure, websocket.StatusGoingAway, websocket.StatusNoStatusRcvd, websocket.StatusAbnormalClosure:
+		return
+	}
+	reason := closed.Reason
+	if reason == "" {
+		reason = fmt.Sprintf("refused (%d)", int(closed.Code))
+	}
+	r.refused("tunnel", reason)
+	if closed.Code == websocket.StatusPolicyViolation {
+		r.refreshSoon()
+	}
 }

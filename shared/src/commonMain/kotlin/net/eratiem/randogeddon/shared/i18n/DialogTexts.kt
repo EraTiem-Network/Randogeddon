@@ -102,6 +102,8 @@ interface ConnectionTexts {
   /** The buttons for the checksums' signature and the key it is checked with. */
   val signature: String
   val signingKey: String
+  /** Under the signing key's fingerprint (from the web app's own build): a download's key must have it. */
+  val fingerprintHint: String
   /** The bridge's ⓘ, in parts: what it is, what it does, how to use it, then starting it on each system. */
   val bridgeWhatTitle: String
   val bridgeWhat: String
@@ -275,6 +277,8 @@ internal object EnglishConnection : ConnectionTexts {
   override val checksums = "Checksums"
   override val signature = "Signature"
   override val signingKey = "Key"
+  override val fingerprintHint = "The fingerprint of the key that signs the bridge, built into this dashboard: check " +
+    "a download only with a key that has exactly this one, else don't trust it."
   override val bridgeWhatTitle = "What it is"
   override val bridgeWhat = "A small app for your PC, for games whose client can't connect securely (TLS). Randogeddon " +
     "only lets secure connections in."
@@ -333,6 +337,8 @@ internal object GermanConnection : ConnectionTexts {
   override val checksums = "Prüfsummen"
   override val signature = "Signatur"
   override val signingKey = "Schlüssel"
+  override val fingerprintHint = "Der Fingerabdruck des Schlüssels, der die Bridge signiert, fest in dieses Dashboard " +
+    "eingebaut: Prüfe einen Download nur mit einem Schlüssel, der genau diesen hat, sonst vertraue ihm nicht."
   override val bridgeWhatTitle = "Was sie ist"
   override val bridgeWhat = "Eine kleine App für deinen PC, für Spiele, deren Client sich nicht sicher (TLS) verbinden " +
     "kann. Randogeddon lässt nur sichere Verbindungen herein."
