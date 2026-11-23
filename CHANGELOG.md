@@ -12,6 +12,23 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.2.9: What the reviews left
+- The map's tree follows the open ways first: a region the logic reaches hangs under one it reaches where they
+  connect, so no open box stands behind a blocked one by a dashed line while an open way leads to it (the user's
+  choice; a region that opens may move to another place).
+- A copy says *Copied* only when the browser took it (it said so always; on a page without HTTPS the browser
+  refuses the clipboard).
+- A Minecraft Dig patch is read as it comes out of the seed, 4 MiB of it at most and only up to its `data.json` (it
+  was read whole); one that is cut or broken is no slot, the others stay (a broken one left the session without
+  any).
+- Whether a hosted Minecraft server's session is finished is asked once per session every 30 s (it was asked every
+  3 s for each server): a finished session's server stops within about 33 s instead of 3.
+- The tracker's four hand-made expiring maps (the logins waiting for their second factor, the started sign-ons, the
+  sign-on's seen logouts, the uploaded seeds) are one `ExpiringMap`.
+- The tracker's module has tests against PostgreSQL (`./gradlew :server:integrationTest`, Testcontainers, as the
+  database module's): the mail limit's probes, the failed invitation, the provider's sync, the logins ended when an
+  Administrator's rights change, a creation's reserved ID.
+
 ### 0.23.2.8: The spoiler log as views
 - The spoiler page's *Everything* is two views instead of text: *Settings* (the seed's own, each slot's options
   folded under its name and game, and what games wrote besides, such as prices or starting items) and *Placements*
