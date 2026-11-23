@@ -68,6 +68,7 @@ internal object EnglishProblems : ProblemTexts {
       SSO_CANCELLED -> "The login was cancelled"
       SSO_NOT_HERE -> "The login didn't start here: start it again"
       SSO_UNREACHABLE -> "The login didn't work: ${a("provider")} can't be reached"
+      NAME_OR_ADDRESS -> "Type your account's name or e-mail address (at most ${a("max")} characters)"
       ADDRESS_INVITED -> "${a("address")} is invited already (send the link again instead)"
       ADDRESS_OF -> "${a("address")} is the address of ${a("name")}"
       ADDRESS_HAS_ACCOUNT -> "That address has an account: pick them by name"
@@ -97,6 +98,10 @@ internal object EnglishProblems : ProblemTexts {
       NAME_UNWANTED -> "That name isn't allowed here: pick another one"
       PASSWORD_TOO_SHORT -> "The password needs at least ${PasswordRules.MIN_LENGTH} characters"
       PASSWORD_TOO_LONG -> "The password can have at most ${PasswordRules.MAX_LENGTH} characters"
+      PASSWORD_HAS_NAME -> "The password contains your name or e-mail address: choose a longer phrase of unrelated words, or " +
+        "let a password manager make one"
+      PASSWORD_TOO_SIMPLE -> "The password is too easy to guess (a repeat, a run of keys, or a common word with digits): " +
+        "choose a longer phrase of unrelated words, or let a password manager make one"
       MANAGED_BY_SSO -> "Your ${a("provider")} account holds this: change it there"
       BRIDGE_KEY_GONE -> "This key has ended or expired: create a new one under Your connection"
       ID_TOO_SHORT -> "The session ID needs at least ${SessionIds.MIN_LENGTH} characters"
@@ -255,6 +260,7 @@ internal object GermanProblems : ProblemTexts {
       SSO_CANCELLED -> "Die Anmeldung wurde abgebrochen"
       SSO_NOT_HERE -> "Die Anmeldung wurde nicht hier gestartet: Starte sie erneut"
       SSO_UNREACHABLE -> "Die Anmeldung hat nicht geklappt: ${a("provider")} ist nicht erreichbar"
+      NAME_OR_ADDRESS -> "Gib den Namen oder die E-Mail-Adresse deines Kontos ein (höchstens ${a("max")} Zeichen)"
       ADDRESS_INVITED -> "${a("address")} ist schon eingeladen (sende stattdessen den Link erneut)"
       ADDRESS_OF -> "${a("address")} ist die Adresse von ${a("name")}"
       ADDRESS_HAS_ACCOUNT -> "Zu dieser Adresse gibt es ein Konto: Wähle die Person über den Namen"
@@ -284,6 +290,11 @@ internal object GermanProblems : ProblemTexts {
       NAME_UNWANTED -> "Dieser Name ist hier nicht erlaubt: Wähle einen anderen"
       PASSWORD_TOO_SHORT -> "Das Passwort braucht mindestens ${PasswordRules.MIN_LENGTH} Zeichen"
       PASSWORD_TOO_LONG -> "Das Passwort darf höchstens ${PasswordRules.MAX_LENGTH} Zeichen haben"
+      PASSWORD_HAS_NAME -> "Das Passwort enthält deinen Namen oder deine E-Mail-Adresse: Wähle einen längeren Satz aus " +
+        "Wörtern, die nichts miteinander zu tun haben, oder lass einen Passwort-Manager eins erzeugen"
+      PASSWORD_TOO_SIMPLE -> "Das Passwort ist zu leicht zu erraten (eine Wiederholung, eine Tastenfolge oder ein gängiges " +
+        "Wort mit Ziffern): Wähle einen längeren Satz aus Wörtern, die nichts miteinander zu tun haben, oder lass einen " +
+        "Passwort-Manager eins erzeugen"
       MANAGED_BY_SSO -> "Das verwaltet dein ${a("provider")}-Konto: Ändere es dort"
       BRIDGE_KEY_GONE -> "Dieser Schlüssel ist beendet oder abgelaufen: Erstelle unter Deine Verbindung einen neuen"
       ID_TOO_SHORT -> "Die Session-ID braucht mindestens ${SessionIds.MIN_LENGTH} Zeichen"

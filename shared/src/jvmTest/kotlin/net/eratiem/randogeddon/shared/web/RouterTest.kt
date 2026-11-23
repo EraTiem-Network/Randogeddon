@@ -27,6 +27,8 @@ class RouterTest {
     assertEquals(Route.Settings, Route.parse("#/settings"))
     assertEquals(Route.Invite(token), Route.parse("#/invite/$token"))
     assertEquals(Route.ConfirmEmail(token), Route.parse("#/email/$token"))
+    assertEquals(Route.Reset(token), Route.parse("#/reset/$token"))
+    assertEquals(Route.Reset(token), Route.parse("#/reset/$token/"))
     assertEquals(Route.Watch(token), Route.parse("#/watch/$token"))
   }
 
@@ -36,7 +38,7 @@ class RouterTest {
       assertEquals(Route.Home, Route.parse(hash), hash)
     }
     // A link of the mails or a share link without a token, or with a broken one
-    for (kind in listOf("invite", "email", "watch")) {
+    for (kind in listOf("invite", "email", "reset", "watch")) {
       assertEquals(Route.Home, Route.parse("#/$kind"), kind)
       assertEquals(Route.Home, Route.parse("#/$kind/short"), kind)
       assertEquals(Route.Home, Route.parse("#/$kind/${token}%2E"), kind)
@@ -51,7 +53,7 @@ class RouterTest {
     val routes = listOf(
       Route.Home, Route.Dashboard("s1"), Route.Spoiler("s1", fromAdmin = false), Route.Spoiler("s1", fromAdmin = true),
       Route.Admin(null), Route.Admin(NEW_PAGE), Route.Admin("s1"), Route.Settings, Route.Invite(token),
-      Route.ConfirmEmail(token), Route.Watch(token),
+      Route.ConfirmEmail(token), Route.Reset(token), Route.Watch(token),
     )
     for (route in routes) assertEquals(route, Route.parse(route.hash), route.hash)
   }
@@ -62,6 +64,16 @@ class RouterTest {
     assertTrue(loginLink("#/login-problem"))
     assertFalse(loginLink("#/loginx"))
     assertFalse(loginLink("#/friday-chaos"))
+    // A reset link is a route of its own (the logged-in page takes its token out of the address bar)
+    assertFalse(loginLink("#/reset/$token"))
+  }
+
+  @Test
+  fun `a reset link keeps its token apart from the sessions`() {
+    // Never a session's dashboard named reset, whatever follows
+    assertEquals(Route.Home, Route.parse("#/reset"))
+    assertEquals(Route.Home, Route.parse("#/reset/a%2Fb"))
+    assertEquals("#/reset/$token", Route.Reset(token).hash)
   }
 
   private fun entry(

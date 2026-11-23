@@ -141,6 +141,10 @@ interface AccountTexts {
   val password: String
   val changePassword: String
   val passwordChanged: String
+  /** A forgotten password's link (`#/reset/<token>`) opened while logged in as [name]: it is used logged out. */
+  fun resetLoggedIn(name: String): String
+  /** The button beside [resetLoggedIn]: logs out and opens the link's form. */
+  val logOutToReset: String
   // Two-factor login
   val twoFactor: String
   val twoFactorSubtitleAdministrator: String

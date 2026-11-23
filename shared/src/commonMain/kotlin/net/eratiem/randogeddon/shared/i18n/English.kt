@@ -127,6 +127,10 @@ object English : Texts {
     override val password = "Password"
     override val changePassword = "Change password"
     override val passwordChanged = "Changed. Your other logins have ended."
+    override fun resetLoggedIn(name: String) =
+      "You're logged in as $name. This link sets a new password for an account while logged out; your own password " +
+        "you can change in Your account."
+    override val logOutToReset = "Log out and set a new password"
     override val twoFactor = "Two-factor login"
     override val twoFactorSubtitleAdministrator = "Administrators always log in with it"
     override val twoFactorSubtitle = "a code from an authenticator app after your password"

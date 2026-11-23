@@ -130,6 +130,10 @@ object German : Texts {
     override val password = "Passwort"
     override val changePassword = "Passwort ändern"
     override val passwordChanged = "Geändert. Deine anderen Anmeldungen sind beendet."
+    override fun resetLoggedIn(name: String) =
+      "Du bist als $name angemeldet. Dieser Link setzt ein neues Passwort für ein Konto, abgemeldet; dein eigenes " +
+        "Passwort änderst du unter Dein Konto."
+    override val logOutToReset = "Abmelden und neues Passwort setzen"
     override val twoFactor = "Zwei-Faktor-Anmeldung"
     override val twoFactorSubtitleAdministrator = "Administratoren melden sich immer damit an"
     override val twoFactorSubtitle = "ein Code aus einer Authenticator-App nach deinem Passwort"

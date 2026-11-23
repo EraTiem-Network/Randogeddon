@@ -7,8 +7,8 @@ const val NEW_PAGE = "+new"
  * Where the web app's page is, kept in the URL's hash so a view survives a reload and can be linked: `#/` the
  * sessions, `#/<id>` a session's dashboard, `#/<id>/spoiler` its spoiler log, `#/manage` the panel (`#/admin` before),
  * `#/manage/<id>` a session in it, `#/manage/new` a new session, `#/manage/<id>/spoiler` a spoiler log opened from it,
- * `#/settings` the user's account; `#/invite/<token>` and `#/email/<token>` are the links of the mails, `#/watch/<token>`
- * a share link (without a login). No session ID is one of these words (they are reserved).
+ * `#/settings` the user's account; `#/invite/<token>`, `#/email/<token>` and `#/reset/<token>` are the links of the
+ * mails, `#/watch/<token>` a share link (without a login). No session ID is one of these words (they are reserved).
  */
 sealed interface Route {
   /** The sessions to pick from. */
@@ -31,6 +31,9 @@ sealed interface Route {
   /** The link of the mail confirming a new e-mail address. */
   data class ConfirmEmail(val token: String) : Route
 
+  /** The link of the mail for a forgotten password; the reset form of index.html takes it without a login. */
+  data class Reset(val token: String) : Route
+
   /** A session's share link: its dashboard without a login, read-only. */
   data class Watch(val token: String) : Route
 
@@ -52,10 +55,11 @@ sealed interface Route {
         }
         parts[0] == "settings" -> Settings
         // A link of these without a token (or a broken one): the sessions' page
-        parts[0] == "invite" || parts[0] == "email" || parts[0] == "watch" -> when {
+        parts[0] in TOKEN_LINKS -> when {
           parts.size < 2 || !token(parts[1]) -> Home
           parts[0] == "invite" -> Invite(parts[1])
           parts[0] == "email" -> ConfirmEmail(parts[1])
+          parts[0] == "reset" -> Reset(parts[1])
           else -> Watch(parts[1])
         }
         // index.html's login form uses these (a CLI login link, a refused login through the provider)
@@ -72,8 +76,14 @@ sealed interface Route {
      */
     private fun sessionId(part: String): Boolean = SESSION_ID.matches(part)
 
-    /** Could be a token of the server's (an invitation, a share link, an e-mail's confirmation): base64url. */
+    /**
+     * Could be a token of the server's (an invitation, a share link, an e-mail's confirmation, a password's reset):
+     * base64url.
+     */
     private fun token(part: String): Boolean = TOKEN.matches(part)
+
+    /** The first parts of the links that carry a token in their second. */
+    private val TOKEN_LINKS = setOf("invite", "email", "reset", "watch")
 
     private val SESSION_ID = Regex("[A-Za-z0-9_-]{1,64}")
     private val TOKEN = Regex("[A-Za-z0-9_-]{16,128}")
@@ -99,5 +109,6 @@ val Route.hash: String
     Route.Settings -> "#/settings"
     is Route.Invite -> "#/invite/$token"
     is Route.ConfirmEmail -> "#/email/$token"
+    is Route.Reset -> "#/reset/$token"
     is Route.Watch -> "#/watch/$token"
   }
