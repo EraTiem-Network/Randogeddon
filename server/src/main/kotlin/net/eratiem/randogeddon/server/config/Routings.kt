@@ -21,6 +21,7 @@ import net.eratiem.randogeddon.server.account.AccountService
 import net.eratiem.randogeddon.server.account.BridgeKeys
 import net.eratiem.randogeddon.server.account.LoginAttempts
 import net.eratiem.randogeddon.server.account.LoginService
+import net.eratiem.randogeddon.server.account.PasswordResets
 import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SlotPasswords
@@ -76,10 +77,13 @@ fun Application.routings(trackerConfig: TrackerConfig) {
   val spoilerRuns by inject<SpoilerRuns>()
   val logicRuns by inject<LogicRuns>()
   val minecraftRuns by inject<MinecraftRuns>()
+  val resets by inject<PasswordResets>()
 
   routing {
-    loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure)
+    loginRoutes(logins, twoFactor, pending, sso, attempts, trackerConfig.publicUrl, trackerConfig.cookieSecure, resets.offered)
     signupRoutes(accounts, trackerConfig.cookieSecure)
+    // A forgotten password, by a mail to the account's address
+    passwordResetRoutes(resets)
     // A session by its share link, without a login
     publicWatchRoutes(shareLinks, archives, settings)
     // Randogeddon Bridge: its downloads, and with a key what the app needs

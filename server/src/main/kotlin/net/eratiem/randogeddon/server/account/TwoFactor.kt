@@ -34,6 +34,12 @@ class TwoFactor(
   /** What is stored of a recovery code: keyed with the server's key (41 bits are guessed at once from a plain hash). */
   private fun codeHash(code: String): String = box.mac("recovery codes", RecoveryCodes.normalize(code))
 
+  /**
+   * A keyed hash of [text] under the server's key (`TOTP_KEY`, or the key file in the state directory), with a key of
+   * its own for [purpose] ([SecretBox.mac]): the same each time, and nobody without the key can work it out.
+   */
+  fun mac(purpose: String, text: String): String = box.mac(purpose, text)
+
   /** A new secret for [user]; it counts once [enable] confirms it. Refused while two-factor login is on. */
   suspend fun setUp(user: User): TotpSetup {
     // With single sign-on, an Administrator's second factor is the provider's

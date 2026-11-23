@@ -87,6 +87,7 @@ class IntegrityTest {
       // Nothing of the accounts, the people of a session, the cheats, the snapshots; no finishing, no new passwords
       assertFailsWith<Exception> { UserStore(gw).active() }
       assertFailsWith<Exception> { LoginSessionStore(gw).userOf("token") }
+      assertFailsWith<Exception> { PasswordResetStore(gw).find("token") }
       assertFailsWith<Exception> { SessionSetupStore(gw).of("seed-busy") }
       assertFailsWith<Exception> { CheatLogStore(gw).of("seed-busy") }
       assertFailsWith<Exception> { SessionSnapshotStore(gw).of("busy-otter") }

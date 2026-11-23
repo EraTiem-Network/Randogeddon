@@ -22,8 +22,8 @@ object SessionIds {
 
   /** Words the API and the dashboard's links use themselves. */
   private val RESERVED = setOf(
-    "admin", "api", "email", "inspect", "invite", "login", "login-problem", "manage", "new", "sessions", "settings",
-    "watch", "www",
+    "admin", "api", "email", "inspect", "invite", "login", "login-problem", "manage", "new", "reset", "sessions",
+    "settings", "watch", "www",
   )
 
   fun valid(id: String): Boolean = ID.matches(id) && "--" !in id && id !in RESERVED

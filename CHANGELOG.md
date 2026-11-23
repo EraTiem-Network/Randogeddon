@@ -12,6 +12,23 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.9: A forgotten password
+Schema 30 (a table for the reset links).
+
+New:
+- **Forgot your password?** on the login page (where a mail server is set): type your name or address, see the
+  account's address partly hidden (`m•••@p•••.me`) and type it in full; a mail with a link goes there. The link
+  works 15 minutes and once; its page sets the new password. Every login of the account ends, a second mail tells
+  of the change, and two-factor login stays.
+- Nothing there tells whether an account exists: an unknown name gets a made-up hidden address, and the answer
+  after typing the address is always the same. At most 3 mails an account an hour.
+- A new password that is obvious is refused (at the sign-up, the password change and the reset): the account's
+  name or address in it, a repeated character or pattern, a run of digits, letters or keys, a common word with
+  only digits or symbols around it. Its length stays the rule (12 or more); no kinds of characters are required,
+  and a phrase of several words passes. Existing passwords stay as they are.
+- Every password field has an eye that shows what was typed (hidden again when the form is sent).
+- A link opened in the same tab while the login page shows (an invitation, a login link, a reset link) is followed.
+
 ### 0.23.8: What the review left
 The points the seven parts of the review left open, gone through with the user: these were built, the rest is
 tried on the live server, planned for Phase 24 or accepted as it is (`.docs/DONE.md`, `.docs/TODO.md`).

@@ -49,10 +49,11 @@ data class CodeRequest(val code: String, val pending: String? = null)
 
 /**
  * `GET /api/login/options`, before the login: [singleSignOn] names the provider Administrators log in through (the
- * login form's button, to `GET /api/login/oidc`); `null`: none.
+ * login form's button, to `GET /api/login/oidc`); `null`: none. [passwordReset]: a forgotten password can be reset by
+ * mail (a mail server is set), so the form shows its link.
  */
 @Serializable
-data class LoginOptions(val singleSignOn: String? = null)
+data class LoginOptions(val singleSignOn: String? = null, val passwordReset: Boolean = false)
 
 /** `POST /api/login/link`: a one-time login link of the host's CLI (`randogeddon admins --login`). */
 @Serializable
@@ -76,3 +77,36 @@ data class RecoveryCodeList(val codes: List<String>)
 /** `POST /api/login`. */
 @Serializable
 data class LoginRequest(val username: String, val password: String)
+
+/**
+ * `POST /api/login/forgot`, the first step of a forgotten password: the account's name or e-mail address, at most
+ * [MAX_LENGTH] characters.
+ */
+@Serializable
+data class ForgotRequest(val account: String) {
+  companion object {
+    const val MAX_LENGTH = EmailAddresses.MAX_LENGTH
+  }
+}
+
+/**
+ * The answer to [ForgotRequest]: the account's address partly hidden (`m•••@p•••.me`), for every name or address,
+ * one without an account too (made up then, the same each time): it never tells whether there is an account.
+ */
+@Serializable
+data class ForgotHint(val address: String)
+
+/**
+ * `POST /api/login/forgot/send`: the account as in [ForgotRequest], and its whole address as the person types it. If
+ * it is the account's, a reset link goes there; the answer is the same either way (204).
+ */
+@Serializable
+data class ForgotSendRequest(val account: String, val email: String)
+
+/** `GET /api/login/reset/{token}`: the name of the account whose password the link resets, to greet them. */
+@Serializable
+data class ResetView(val name: String)
+
+/** `POST /api/login/reset`: the reset link's token and the new password. Doesn't log in; every login ends. */
+@Serializable
+data class ResetRequest(val token: String, val password: String)

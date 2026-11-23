@@ -36,15 +36,21 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
+- [ ] Left from 0.23.9: a two-factor login begun with the old password in the five minutes before a reset can
+      still be finished with its code; the limit's message for the forgotten-password page reads "too many wrong
+      attempts for this account"; not tried: the mails through a real mail server, the page with two-factor on
+      (unit-tested), the reset link opened while logged in, German on the new pages
 - [ ] Left from 0.23.8: not seen on screen (built and unit-tested; the demo has no slot whose logic doesn't
       fit and runs on plain http): Enter and Escape in a confirmation, a tip on keyboard focus, polling paused
       in a hidden tab, the warning without its reason for a player, the old cookie's login ended; the deploy
       putting back a folder it had already moved (only a move that fails outright could be forced)
 - [ ] To try on the live server and with real clients (nothing to build; from the parts' "not tried" lists):
-    - [ ] At the switch to 0.23.7 or later: the rewritten deploy over SSH (the upload, `sudo`, the systemd
-          units, the real images' checks); the database's container made anew on its data; hosted Minecraft on
-          its new image and user, with `MINECRAFT_TOKEN`; whether its join and leave lines are recognised (if
-          not, a server sleeps while people play)
+    - [x] The switch to 0.23.8 on 2026-11-23 (from 0.23.4): the rewritten deploy over SSH went through (the
+          upload, `sudo`, the systemd units, the real images' checks); the database's container made anew on its
+          data (18.7, 48 MB of its 1 GB); the minecraft folder moved; the roles' limits; no error line in any log
+    - [x] Hosted Minecraft on live (2026-11-23, the user joined and left the session's Minecraft Dig): started by
+          the join through the tunnel, its server as its own user (uid 1200), the join and the leave recognised
+          (the player listed, then gone), checks sent while playing
     - [ ] With real game clients: `!getitem` refused; the bridge against a live session and its page in a
           browser; a client taking a `RoomUpdate` right before `Connected` (after a session's options changed
           while it slept); a broken save through the panel; a mail's time in the account's zone

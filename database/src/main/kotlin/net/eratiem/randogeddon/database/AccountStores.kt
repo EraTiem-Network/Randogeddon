@@ -245,6 +245,8 @@ class UserStore(private val db: RandogeddonDatabase) {
       // What the provider said was about the address before
       it[emailVerifiedByProvider] = null
     }
+    // A reset link went to the address before: it doesn't set the password of an account that isn't at it any more
+    PasswordResetsTable.deleteWhere { userId eq id }
     Unit
   }
 
@@ -300,7 +302,7 @@ class UserStore(private val db: RandogeddonDatabase) {
 
   /**
    * Deletes the account: its name, password, e-mail address, settings and link to Authentik go, its logins,
-   * invitations, pending addresses and login links too. The row stays (marked deleted) while a session names it (as a
+   * invitations, pending addresses, login links and password reset links too. The row stays (marked deleted) while a session names it (as a
    * player, in a role, as its creator), so the sessions keep its UUID, with the name it had in each of them; one no
    * session ever named goes for good. The name is free again.
    */
@@ -335,6 +337,7 @@ class UserStore(private val db: RandogeddonDatabase) {
     InvitationsTable.deleteWhere { userId eq id }
     EmailChangesTable.deleteWhere { userId eq id }
     LoginLinksTable.deleteWhere { userId eq id }
+    PasswordResetsTable.deleteWhere { userId eq id }
     val named = SessionWorldsTable.select(SessionWorldsTable.userId).where { SessionWorldsTable.userId eq id }.limit(1).any() ||
       SessionRolesTable.select(SessionRolesTable.userId).where { SessionRolesTable.userId eq id }.limit(1).any() ||
       SessionsTable.select(SessionsTable.id).where { SessionsTable.createdBy eq id }.limit(1).any()
@@ -805,6 +808,55 @@ class LoginLinkStore(private val db: RandogeddonDatabase) {
     // The delete decides: of two uses at once, only one removes it
     val used = LoginLinksTable.deleteWhere { (LoginLinksTable.tokenHash eq tokenHash) and LoginLinksTable.usedAt.isNull() }
     row[LoginLinksTable.userId].takeIf { used == 1 }
+  }
+}
+
+/**
+ * The links of a forgotten password, by the SHA-256 of their token: one per account (a new one replaces it), working
+ * until it runs out, and once: using it sets the password and takes it away.
+ */
+class PasswordResetStore(private val db: RandogeddonDatabase) {
+  suspend fun create(tokenHash: String, userId: Uuid, expiresAt: Instant, now: Instant = Instant.now()) = db.query {
+    // One at a time per user (and at most one row: V30's unique index); the older link stops working
+    lockUser(userId)
+    PasswordResetsTable.deleteWhere { PasswordResetsTable.userId eq userId }
+    PasswordResetsTable.insert {
+      it[PasswordResetsTable.tokenHash] = tokenHash
+      it[PasswordResetsTable.userId] = userId
+      it[createdAt] = now
+      it[PasswordResetsTable.expiresAt] = expiresAt
+    }
+    Unit
+  }
+
+  /** The account of the link [tokenHash] while it works; `null`: no such link (used, replaced) or it ran out. */
+  suspend fun find(tokenHash: String, now: Instant = Instant.now()): Uuid? = db.query {
+    PasswordResetsTable.selectAll()
+      .where { (PasswordResetsTable.tokenHash eq tokenHash) and (PasswordResetsTable.expiresAt greater now) }
+      .singleOrNull()?.get(PasswordResetsTable.userId)
+  }
+
+  /**
+   * Uses the link [tokenHash]: its account (signed up, not deleted) gets [passwordHash] as its password and every login
+   * of it ends, in one transaction, and the link is gone. The account; `null` if the link didn't work (none, ran out,
+   * used a moment before: of two uses at once, the one whose delete removed it gets it) or the account is gone.
+   */
+  suspend fun use(tokenHash: String, passwordHash: String, now: Instant = Instant.now()): Uuid? = db.query {
+    val userId = PasswordResetsTable.selectAll()
+      .where { (PasswordResetsTable.tokenHash eq tokenHash) and (PasswordResetsTable.expiresAt greater now) }
+      .singleOrNull()?.get(PasswordResetsTable.userId) ?: return@query null
+    if (PasswordResetsTable.deleteWhere { PasswordResetsTable.tokenHash eq tokenHash } != 1) return@query null
+    val set = UsersTable.update({
+      (UsersTable.id eq userId) and UsersTable.deletedAt.isNull() and UsersTable.signedUpAt.isNotNull()
+    }) { it[UsersTable.passwordHash] = passwordHash } > 0
+    if (!set) return@query null
+    LoginSessionsTable.deleteWhere { LoginSessionsTable.userId eq userId }
+    userId
+  }
+
+  /** Removes the links that ran out. How many. */
+  suspend fun deleteExpired(now: Instant = Instant.now()): Int = db.query {
+    PasswordResetsTable.deleteWhere { expiresAt less now }
   }
 }
 

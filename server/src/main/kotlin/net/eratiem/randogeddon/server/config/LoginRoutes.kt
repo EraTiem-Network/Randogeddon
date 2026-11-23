@@ -102,7 +102,8 @@ internal fun problemCookie(text: String, secure: Boolean) = Cookie(
  * `POST /api/login/setup` and `.../setup/confirm`; `POST /api/logout`. With single sign-on: `GET /api/login/options`
  * (whether the login form shows its button), `GET /api/login/oidc` (to the provider) and `.../callback` (back from it),
  * `POST /api/login/oidc/deleted` and `.../updated` (its webhooks: a person was deleted or changed there) and `POST /api/login/link` (a CLI login
- * link). `GET /api/me` ([meRoute]) is in the protected routes.
+ * link). `GET /api/me` ([meRoute]) is in the protected routes. [passwordReset]: the form offers to reset a forgotten
+ * password ([passwordResetRoutes]).
  */
 fun Route.loginRoutes(
   logins: LoginService,
@@ -112,13 +113,16 @@ fun Route.loginRoutes(
   attempts: LoginAttempts,
   publicUrl: String,
   secure: Boolean = true,
+  passwordReset: Boolean = false,
 ) {
   suspend fun RoutingContext.loggedIn(user: User, method: String = LoginMethods.PASSWORD, providerSession: String? = null) {
     call.response.cookies.append(sessionCookie(logins.start(user, method, providerSession), loginDuration(method).inWholeSeconds, secure))
   }
   // A rate limit of their own; outside it (or the login's) they would be under /api's login check
   rateLimit(SSO_RATE_LIMIT) {
-    get("/api/login/options") { call.respond(LoginOptions(singleSignOn = sso.name.takeIf { sso.enabled })) }
+    get("/api/login/options") {
+      call.respond(LoginOptions(singleSignOn = sso.name.takeIf { sso.enabled }, passwordReset = passwordReset))
+    }
     get("/api/login/oidc") {
       if (!sso.enabled) return@get call.refuse(HttpStatusCode.NotFound, Refusal(Problem.NO_SSO))
       val (state, url) = try {

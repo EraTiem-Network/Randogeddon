@@ -21,6 +21,12 @@ interface MailTexts {
   /** An Administrator deleted the account. */
   val removedSubject: String
   fun removed(name: String, reason: String?): String
+  /** A link that sets a new password (a forgotten one): it works once, [validMinutes] long, until [until]. */
+  val passwordResetSubject: String
+  fun passwordReset(name: String, link: String, validMinutes: Int, until: String): String
+  /** The password was set anew with such a link, [at] then; every login ended. */
+  val passwordChangedSubject: String
+  fun passwordChanged(name: String, at: String): String
 }
 
 internal object EnglishMails : MailTexts {
@@ -97,6 +103,30 @@ internal object EnglishMails : MailTexts {
     |
     |an Administrator has deleted your Randogeddon account (login, e-mail address, settings). Your sessions stay, with
     |your name in them.${if (reason.isNullOrBlank()) "" else "\n|\n|The reason given: $reason"}
+    |""".trimMargin()
+
+  override val passwordResetSubject = "A new password for your Randogeddon account"
+  override fun passwordReset(name: String, link: String, validMinutes: Int, until: String) = """
+    |Hi $name,
+    |
+    |someone asked to reset the password of your Randogeddon account. To choose a new one, open this link:
+    |
+    |$link
+    |
+    |The link works once, for $validMinutes minutes (until $until). Your two-factor login stays as it is.
+    |
+    |If you didn't ask for this, you can ignore this mail: your password stays as it is.
+    |""".trimMargin()
+
+  override val passwordChangedSubject = "The password of your Randogeddon account was changed"
+  override fun passwordChanged(name: String, at: String) = """
+    |Hi $name,
+    |
+    |the password of your Randogeddon account was set anew with a link from a mail to this address ($at). Every
+    |login of your account has ended (Randogeddon Bridge's too).
+    |
+    |If that was you, there is nothing to do. If not, someone can read your mail: secure your mailbox, then reset
+    |your password again from the login page.
     |""".trimMargin()
 }
 
@@ -175,5 +205,30 @@ internal object GermanMails : MailTexts {
     |
     |ein Administrator hat dein Randogeddon-Konto gelöscht (Anmeldung, E-Mail-Adresse, Einstellungen). Deine Sessions
     |bleiben, mit deinem Namen darin.${if (reason.isNullOrBlank()) "" else "\n|\n|Der angegebene Grund: $reason"}
+    |""".trimMargin()
+
+  override val passwordResetSubject = "Ein neues Passwort für dein Randogeddon-Konto"
+  override fun passwordReset(name: String, link: String, validMinutes: Int, until: String) = """
+    |Hallo $name,
+    |
+    |jemand möchte das Passwort deines Randogeddon-Kontos zurücksetzen. Um ein neues zu wählen, öffne diesen Link:
+    |
+    |$link
+    |
+    |Der Link funktioniert einmal, $validMinutes Minuten lang (bis $until). Deine Zwei-Faktor-Anmeldung bleibt, wie sie
+    |ist.
+    |
+    |Wenn du das nicht angefordert hast, kannst du diese Mail ignorieren: Dein Passwort bleibt, wie es ist.
+    |""".trimMargin()
+
+  override val passwordChangedSubject = "Das Passwort deines Randogeddon-Kontos wurde geändert"
+  override fun passwordChanged(name: String, at: String) = """
+    |Hallo $name,
+    |
+    |das Passwort deines Randogeddon-Kontos wurde mit einem Link aus einer Mail an diese Adresse neu gesetzt ($at).
+    |Jede Anmeldung deines Kontos ist beendet (auch die von Randogeddon Bridge).
+    |
+    |Wenn du das warst, ist nichts zu tun. Wenn nicht, kann jemand deine Mails lesen: Sichere dein Postfach und setze
+    |dein Passwort danach erneut über die Anmeldeseite zurück.
     |""".trimMargin()
 }

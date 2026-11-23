@@ -217,9 +217,11 @@ private fun TrackerApp() {
   LaunchedEffect(route, loadedSessions, me) {
     val list = loadedSessions ?: return@LaunchedEffect
     if (me == null) return@LaunchedEffect
-    // A login link or an invitation opened while logged in: out of the address bar and the history, where it would
-    // still work, unused, for whoever comes next (the invitation's note stays: the route is kept, only the URL changes)
-    if (loginLink(Platform.hash()) || route is Route.Invite) Platform.setHash(Route.Home.hash, replace = true)
+    // A login link, an invitation or a reset link opened while logged in: out of the address bar and the history, where
+    // it would still work, unused, for whoever comes next (the note stays: the route is kept, only the URL changes)
+    if (loginLink(Platform.hash()) || route is Route.Invite || route is Route.Reset) {
+      Platform.setHash(Route.Home.hash, replace = true)
+    }
     when (val r = route) {
       Route.Home -> {
         val target = homeTarget(list, arriving = !arrived)
@@ -334,6 +336,27 @@ private fun TrackerApp() {
           Selectable(Modifier.padding(vertical = 8.dp)) { Txt(t.frame.loggedInAs(user.name), color = p.muted) }
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallButton(t.common.logOut, logOut)
+            SmallButton(toSessions, { go(Route.Home) })
+          }
+          return@PageFrame
+        }
+        is Route.Reset -> {
+          // A new password is set logged out (index.html's form); this browser is someone's already. Logging out from
+          // here goes on with the link: it is back in the address bar only until that form takes it out again
+          Selectable(Modifier.padding(vertical = 8.dp)) { Txt(t.account.resetLoggedIn(user.name), color = p.muted) }
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SmallButton(t.account.logOutToReset, {
+              leaving.run {
+                Platform.setHash(r.hash, replace = true)
+                if (repository.logout()) {
+                  go(Route.Home, replace = true)
+                  null
+                } else {
+                  Platform.setHash(Route.Home.hash, replace = true)
+                  t.frame.notLoggedOut
+                }
+              }
+            })
             SmallButton(toSessions, { go(Route.Home) })
           }
           return@PageFrame

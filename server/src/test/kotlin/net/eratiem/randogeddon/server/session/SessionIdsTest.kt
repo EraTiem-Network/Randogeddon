@@ -46,6 +46,8 @@ class SessionIdsTest {
       assertEquals(false, net.eratiem.randogeddon.server.account.UnwantedWords.hit(id), id)
     }
     assertEquals(Refusal.of(Problem.ID_RESERVED, "id" to "inspect"), SessionIds.problem("inspect"))
+    // The reset page's link (#/reset/<token>)
+    assertEquals(Refusal.of(Problem.ID_RESERVED, "id" to "reset"), SessionIds.problem("reset"))
     // A seed from before gets an ID that passes too
     assertTrue(SessionIds.valid(legacySessionId("23018521088033805910")))
   }

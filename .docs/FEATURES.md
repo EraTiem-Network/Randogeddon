@@ -130,10 +130,23 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 ## Logins and roles
 
 - **Accounts** belong to people: invited by e-mail (7 days); a name of 3–32 characters (letters, digits, `_`; not
-  reserved like *Admin* or *Hosted*; no unwanted words); a password of 12+ characters (Argon2id); an auto-deletion
-  period. Logins last 30 days; logins are limited (5 sign-ups a minute per address, 10 wrong passwords or codes in
+  reserved like *Admin* or *Hosted*; no unwanted words); a password of 12+ characters (Argon2id) that isn't
+  obvious (below); an auto-deletion period. Every password field has an eye that shows what was typed. Logins last 30 days; logins are limited (5 sign-ups a minute per address, 10 wrong passwords or codes in
   10 minutes per account, the password change and the two-factor settings included); 10 mails in 10 minutes, 40 a
   day per account (a refused invitation or address change counts too).
+- **A new password** (at the sign-up, the settings' change, a reset) needs its length, 12 to 256 characters, and no
+  kinds of characters. Refused, whatever its case: the account's name or the part of its address before the `@`
+  inside it (from 4 characters on); one character or a pattern of up to 4 repeated throughout; a run along the
+  digits, the alphabet or a keyboard's rows (QWERTY, QWERTZ), either way; one common word (a list of 111, with the
+  usual letter swaps undone) with only digits, symbols or itself around it. A phrase of several words passes, also
+  with a common word among them. Existing passwords are not looked at.
+- **A forgotten password** (the login page, where a mail server is set): the name or address is typed, the
+  account's address is shown partly hidden (`m•••@p•••.me`) and has to be typed in full; only then a mail goes
+  there, with a link that works 15 minutes and once (3 mails an account an hour, 10 tries a network address). The
+  link's page sets the new password; every login of the account ends (bridge keys too), a second mail tells of the
+  change, and two-factor login stays. Nothing tells whether an account exists: an unknown name gets a made-up
+  hidden address (the same each time), and the answer after the address is always the same. Not for accounts that
+  log in through single sign-on only, kept-out ones, or invitations not yet taken.
 - **Two-factor login** (TOTP, 10 recovery codes). Secrets encrypted with `TOTP_KEY`.
 - **Administrators** come from Authentik (only a login through it acts as one). Without Authentik there are none,
   unless `ADMIN_PASSWORD_LOGIN` is set (local testing, the demo): then by password and two-factor.

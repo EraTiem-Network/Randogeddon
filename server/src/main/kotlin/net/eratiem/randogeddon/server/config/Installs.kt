@@ -24,6 +24,7 @@ import net.eratiem.randogeddon.database.GatewayRole
 import net.eratiem.randogeddon.database.InvitationStore
 import net.eratiem.randogeddon.database.LoginLinkStore
 import net.eratiem.randogeddon.database.LoginSessionStore
+import net.eratiem.randogeddon.database.PasswordResetStore
 import net.eratiem.randogeddon.database.RandogeddonDatabase
 import net.eratiem.randogeddon.database.SessionEventStore
 import net.eratiem.randogeddon.database.SessionSnapshotStore
@@ -39,6 +40,7 @@ import net.eratiem.randogeddon.database.UserStore
 import net.eratiem.randogeddon.server.RandogeddonTracker
 import net.eratiem.randogeddon.server.account.AccountCleanup
 import net.eratiem.randogeddon.server.account.LoginService
+import net.eratiem.randogeddon.server.account.PasswordResets
 import net.eratiem.randogeddon.server.account.SlotPasswords
 import net.eratiem.randogeddon.server.admin.SessionAdmin
 import net.eratiem.randogeddon.server.admin.SessionLifecycle
@@ -97,6 +99,7 @@ fun Application.installs(trackerConfig: TrackerConfig) {
       single { AppSettingsStore(get()) }
       single { ShareLinkStore(get()) }
       single { LoginLinkStore(get()) }
+      single { PasswordResetStore(get()) }
     })
     withConfiguration<RandogeddonTracker>()
   }
@@ -156,6 +159,9 @@ fun Application.installs(trackerConfig: TrackerConfig) {
   slotPasswords.watch(this)
   val logins by inject<LoginService>()
   logins.cleanUp(this)
+  // The password reset links that ran out
+  val passwordResets by inject<PasswordResets>()
+  passwordResets.cleanUp(this)
   // Warns and deletes the accounts whose auto-deletion is due
   val accountCleanup by inject<AccountCleanup>()
   accountCleanup.watch(this)
