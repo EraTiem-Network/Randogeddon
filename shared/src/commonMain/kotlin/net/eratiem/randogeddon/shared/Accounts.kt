@@ -165,6 +165,17 @@ data class LanguageRequest(val language: Language? = null)
 @Serializable
 data class ThemeRequest(val theme: Theme? = null, val mode: ThemeMode? = null)
 
+/**
+ * `PUT /api/account/time-zone`: the account's time zone, an IANA name such as `Europe/Berlin` (the browser's); the
+ * mails give their times in it. At most [MAX_LENGTH] characters.
+ */
+@Serializable
+data class TimeZoneRequest(val zone: String) {
+  companion object {
+    const val MAX_LENGTH = 64
+  }
+}
+
 /** `PUT /api/account/font`: [font] as [FontChoice] has it (`null`: the theme's), and where it shows. */
 @Serializable
 data class FontRequest(val font: String? = null, val scope: FontScope = FontScope.AUTO)
