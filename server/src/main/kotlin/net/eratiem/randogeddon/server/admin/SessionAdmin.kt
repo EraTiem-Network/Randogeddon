@@ -40,6 +40,7 @@ import net.eratiem.randogeddon.server.session.Spoilers
 import net.eratiem.randogeddon.server.session.completed
 import net.eratiem.randogeddon.server.session.deletesAt
 import net.eratiem.randogeddon.server.session.reopenUntil
+import net.eratiem.randogeddon.server.util.ExpiringMap
 import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.server.util.secureRandom
 import net.eratiem.randogeddon.shared.AdminOverview
@@ -88,7 +89,7 @@ class SessionProblem(val status: HttpStatusCode, val refusal: Refusal) : Excepti
 private const val CREATION_KEPT = 60 * 60_000L
 
 /** As long as the gateway keeps an uploaded seed for its session; the zip's 64 MB as base64. */
-private const val SEED_KEPT = 60 * 60_000L
+private val SEED_KEPT = 1.hours
 private const val MAX_SEED_BASE64 = 64 * 1024 * 1024 / 3 * 4 + 4
 
 /** A creation was cancelled: the gateway ended its generation. */
@@ -256,11 +257,14 @@ class SessionAdmin(
     })
   }
 
-  /** An uploaded seed waiting for its session: who uploaded it, what the gateway found in it, since when. */
-  private class WaitingSeed(val by: Uuid, val info: SeedInfo, val since: Long)
+  /** An uploaded seed waiting for its session: who uploaded it, what the gateway found in it. */
+  private class WaitingSeed(val by: Uuid, val info: SeedInfo)
 
-  /** The uploaded seeds by the gateway's token; it keeps them as long ([SEED_KEPT]). */
-  private val seeds = ConcurrentHashMap<String, WaitingSeed>()
+  /**
+   * The uploaded seeds by the gateway's token; it keeps them as long ([SEED_KEPT]). Read whatever their age: the
+   * gateway says whether it still has one.
+   */
+  private val seeds = ExpiringMap<String, WaitingSeed>(SEED_KEPT)
 
   /**
    * A seed generated elsewhere, for a new session of this Administrator: the gateway checks the zip and its
@@ -274,16 +278,14 @@ class SessionAdmin(
       runCatching { gameServer.dropSeed(info.token) }
       throw SessionProblem(HttpStatusCode.Conflict, Problem.SEED_IN_USE)
     }
-    val now = System.currentTimeMillis()
-    seeds.entries.removeIf { now - it.value.since > SEED_KEPT }
-    seeds[info.token] = WaitingSeed(user.id, info, now)
+    seeds.put(info.token, WaitingSeed(user.id, info))
     logger.info("{} uploaded seed {} ({}, {} slots)", user.name, info.seedName, upload.fileName.take(80), info.slots.size)
     return info
   }
 
   /** The Administrator took an uploaded seed out of the form again: the gateway needn't keep it. */
   suspend fun dropSeed(token: String, user: User) {
-    val seed = seeds[token]?.takeIf { it.by == user.id } ?: return
+    val seed = seeds.peek(token)?.takeIf { it.by == user.id } ?: return
     seeds.remove(token)
     runCatching { gameServer.dropSeed(seed.info.token) }
   }
@@ -439,7 +441,7 @@ class SessionAdmin(
     // A seed generated elsewhere (uploaded before, by this Administrator) instead of YAMLs: its slots as they are
     val uploaded = request.seed?.let { token ->
       if (!creator.administrator) throw SessionProblem(HttpStatusCode.Forbidden, Problem.ONLY_ADMINISTRATORS_SEED)
-      seeds[token]?.takeIf { it.by == creator.id }?.info ?: throw SessionProblem(HttpStatusCode.Gone, Problem.SEED_GONE)
+      seeds.peek(token)?.takeIf { it.by == creator.id }?.info ?: throw SessionProblem(HttpStatusCode.Gone, Problem.SEED_GONE)
     }
     val found = if (uploaded != null) uploaded.slots.map { YamlWorld(id, it.name, it.game) } else {
       val inspected = inspect(InspectRequest(request.yamls, request.apVersion))
