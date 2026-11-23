@@ -31,6 +31,17 @@ internal suspend fun <T> load(path: String, serializer: KSerializer<T>): T? =
   Platform.request("GET", path)?.takeIf { it.status == 200 }
     ?.let { runCatching { ApiJson.decodeFromString(serializer, it.body) }.getOrNull() }
 
+/**
+ * [this] as one segment of a request's path: every byte but ASCII letters, digits, `-`, `_` and `~` percent-encoded,
+ * so `/`, `?`, `#` and `%` can't change the path. A segment of dots alone (`.`, `..`) is resolved by the browser even
+ * encoded (`%2E%2E` counts as `..`): where a name can be that, the caller refuses it instead of sending it.
+ */
+internal fun String.pathSegment(): String = encodeToByteArray().joinToString("") { b ->
+  val c = b.toInt() and 0xFF
+  if (c < 128 && (c.toChar().isLetterOrDigit() || c.toChar() in "-_~")) c.toChar().toString()
+  else "%" + c.toString(16).uppercase().padStart(2, '0')
+}
+
 internal suspend fun <T> call(method: String, path: String, body: String?, decode: (String) -> T): Answer<T> {
   val t = texts(Languages.current)
   val result = Platform.request(method, path, body) ?: return Answer.Failed(t.common.serverUnreachable)

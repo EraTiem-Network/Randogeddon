@@ -71,7 +71,8 @@ window.randogeddonTexts = (function () {
     current = supported(code) || current;
     document.documentElement.lang = current;
     // The server words its answers in it too (the forms' messages, the login's way back from Authentik)
-    document.cookie = "ap-language=" + current + "; path=/; max-age=31536000; SameSite=Lax";
+    document.cookie = "ap-language=" + current + "; path=/; max-age=31536000; SameSite=Lax" +
+      (location.protocol === "https:" ? "; Secure" : "");
     document.querySelectorAll("[data-t]").forEach(function (element) { element.textContent = t(element.dataset.t); });
     document.querySelectorAll("#login .languages a").forEach(function (link) {
       if (link.dataset.language === current) link.setAttribute("aria-current", "true");
@@ -91,6 +92,13 @@ window.randogeddonTexts = (function () {
   };
 })();
 randogeddonTexts.apply();
+// A browser zoom or another screen's scaling needs nothing here: Compose (1.13) draws at the new pixel density by
+// itself, without a reload that would lose what is going on. But Ctrl and the mouse wheel (a trackpad's pinch sends
+// the same) would reach Compose, which scrolls with it and keeps the browser from zooming: it stops here, before
+// the app's canvas sees it, and the browser zooms.
+window.addEventListener("wheel", function (event) {
+  if (event.ctrlKey) event.stopImmediatePropagation();
+}, { capture: true, passive: true });
 // Kotlin/Wasm needs WasmGC: Chrome/Edge 119+, Firefox 120+, Safari 18.2+ (iOS 18.2+)
 (function () {
   var ok = typeof WebAssembly === "object" && WebAssembly.validate(new Uint8Array([
@@ -121,13 +129,6 @@ window.randogeddonLogin = (function () {
   var pending = null;
   var done = null;
   var token = null;
-  // A browser zoom or another screen's scaling needs nothing here: Compose (1.13) draws at the new pixel density by
-  // itself, without a reload that would lose what is going on. But Ctrl and the mouse wheel (a trackpad's pinch sends
-  // the same) would reach Compose, which scrolls with it and keeps the browser from zooming: it stops here, before
-  // the app's canvas sees it, and the browser zooms.
-  window.addEventListener("wheel", function (event) {
-    if (event.ctrlKey) event.stopImmediatePropagation();
-  }, { capture: true, passive: true });
 
   function open(name, text) {
     Object.keys(forms).forEach(function (key) { forms[key].hidden = key !== name; });
@@ -195,7 +196,11 @@ window.randogeddonLogin = (function () {
     var form = forms.setup;
     fetch("api/login/setup", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pending: pending }) }).then(function (r) {
-      if (!r.ok) return r.json().then(function (e) { open("login", e.message); });
+      // An answer without the server's JSON (a proxy's error page): its status at least
+      if (!r.ok) {
+        return r.json().then(function (e) { open("login", e.message); },
+          function () { open("login", r.status === 429 ? t("tooMany") : t("failed", r.status)); });
+      }
       return r.json().then(function (setup) {
         // The server's SVG of the QR code (nothing else in it)
         form.querySelector(".qr").innerHTML = setup.svg;
@@ -203,7 +208,7 @@ window.randogeddonLogin = (function () {
         form.code.value = "";
         open("setup");
         form.code.focus();
-      });
+      }, function () { open("login", t("didntWork")); });
     }, function () { open("login", t("unreachable")); });
   }
   forms.setup.addEventListener("submit", function (event) {
@@ -222,10 +227,13 @@ window.randogeddonLogin = (function () {
       open("codes");
     });
   });
+  // Without HTTPS there is no clipboard (navigator.clipboard is missing): the codes stay to be copied by hand
   forms.codes.querySelector("button.copy").addEventListener("click", function () {
-    navigator.clipboard.writeText(forms.codes.dataset.codes).then(function () {
-      forms.codes.querySelector(".message").textContent = t("copied");
-    }, function () {});
+    try {
+      navigator.clipboard.writeText(forms.codes.dataset.codes).then(function () {
+        forms.codes.querySelector(".message").textContent = t("copied");
+      }, function () {});
+    } catch (e) { /* nothing to copy to */ }
   });
   forms.codes.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -265,7 +273,12 @@ window.randogeddonLogin = (function () {
   function showSignup(invitation) {
     var form = forms.signup;
     token = invitation;
-    fetch("api/invitations/" + encodeURIComponent(invitation)).then(function (r) { return r.json(); }).then(function (info) {
+    // An answer without the server's JSON (too many attempts, a proxy's error page) says so, not "unreachable"
+    fetch("api/invitations/" + encodeURIComponent(invitation)).then(function (r) {
+      return r.json().catch(function () {
+        return { valid: false, problem: r.status === 429 ? t("tooMany") : t("failed", r.status) };
+      });
+    }).then(function (info) {
       if (!info.valid) {
         token = null;
         leaveInvitation();
@@ -315,16 +328,23 @@ window.randogeddonLogin = (function () {
   return {
     show: function (text, onLoggedIn) {
       done = function (ok) { if (ok) onLoggedIn(); };
+      // A token that isn't one (a broken % escape) goes nowhere: the plain login instead
+      function decoded(part) { try { return decodeURIComponent(part); } catch (e) { return null; } }
       var invitation = /^#\/invite\/([^/]+)/.exec(location.hash);
-      if (invitation) { showSignup(decodeURIComponent(invitation[1])); return; }
+      var invited = invitation && decoded(invitation[1]);
+      if (invited) { showSignup(invited); return; }
       var link = /^#\/login\/([^/]+)/.exec(location.hash);
-      if (link) { useLink(decodeURIComponent(link[1])); return; }
+      var linked = link && decoded(link[1]);
+      if (linked) { useLink(linked); return; }
+      if (invitation || link) leaveInvitation();
       // Back from the provider without a login: why
-      // Its text comes in a cookie the server set, never from the link (which could carry anyone's words)
+      // Its text comes in a cookie the server set, never from the link (which could carry anyone's words). Over HTTPS
+      // its name has the __Host- prefix (no other host can set it); the plain name is the local demo's
       if (/^#\/login-problem/.test(location.hash)) {
         leaveInvitation();
-        var problem = /(?:^|; )randogeddon_login_problem=([^;]*)/.exec(document.cookie);
+        var problem = /(?:^|; )(?:__Host-)?randogeddon_login_problem=([^;]*)/.exec(document.cookie);
         document.cookie = "randogeddon_login_problem=; Max-Age=0; path=/";
+        if (location.protocol === "https:") document.cookie = "__Host-randogeddon_login_problem=; Max-Age=0; path=/; secure";
         if (problem) { try { text = decodeURIComponent(problem[1].replace(/\+/g, " ")); } catch (e) { /* not ours */ } }
       }
       open("login", text);

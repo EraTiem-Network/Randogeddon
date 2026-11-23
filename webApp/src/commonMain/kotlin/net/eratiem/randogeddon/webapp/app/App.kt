@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.eratiem.randogeddon.shared.ApiJson
+import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.Theme
 import net.eratiem.randogeddon.shared.ThemeMode
@@ -72,15 +73,18 @@ import net.eratiem.randogeddon.webapp.dashboard.WatchApp
 import net.eratiem.randogeddon.webapp.dashboard.WithLogic
 import net.eratiem.randogeddon.webapp.dashboard.feedWidth
 import net.eratiem.randogeddon.webapp.dashboard.showHints
+import net.eratiem.randogeddon.webapp.dashboard.slotChanges
 import net.eratiem.randogeddon.webapp.manage.AdminView
 import net.eratiem.randogeddon.webapp.manage.WatchersSection
 import net.eratiem.randogeddon.webapp.ui.LocalPalette
 import net.eratiem.randogeddon.webapp.ui.NARROW
 import net.eratiem.randogeddon.webapp.ui.PageFrame
 import net.eratiem.randogeddon.webapp.ui.RandogeddonTheme
+import net.eratiem.randogeddon.webapp.ui.Selectable
 import net.eratiem.randogeddon.webapp.ui.SmallButton
 import net.eratiem.randogeddon.webapp.ui.Themes
 import net.eratiem.randogeddon.webapp.ui.Txt
+import net.eratiem.randogeddon.webapp.ui.rememberAction
 import net.eratiem.randogeddon.webapp.ui.rememberNow
 import net.eratiem.randogeddon.webapp.ui.scrolling
 
@@ -165,12 +169,17 @@ private fun TrackerApp() {
     route = to
     Platform.setHash(to.hash, replace)
   }
+  // The first route after the page loaded or the user logged in has been taken (see [homeTarget])
+  var arrived by remember { mutableStateOf(false) }
   LaunchedEffect(me) {
     if (me == null) {
       detailSlot = null
       detailPerson = null
+      arrived = false
     }
   }
+  // Logging out: once at a time; a logout that didn't reach the server says so (the login stays valid)
+  val leaving = rememberAction()
   // Logged in: the account's language (or, without a choice, the browser's)
   LaunchedEffect(me?.name, me?.language) { me?.let { Languages.apply(it.language) } }
   // Logged in: the account's theme; an account without one yet takes what this browser had (the old light/dark too)
@@ -200,19 +209,23 @@ private fun TrackerApp() {
   val adminOpen = route is Route.Admin || (route as? Route.Spoiler)?.fromAdmin == true
   // The admin panel may have created, finished or deleted one
   LaunchedEffect(adminOpen) { if (me != null) repository.refreshSessions() }
-  // The route picks the dashboard's session; the sessions' page opens the user's only running one by itself. The
-  // admin panel and a spoiler log leave the dashboard's session as it is (back returns to it)
+  // The route picks the dashboard's session; the sessions' page may open one by itself ([homeTarget]). The admin panel
+  // and a spoiler log leave the dashboard's session as it is (back returns to it)
   LaunchedEffect(route, loadedSessions, me) {
     val list = loadedSessions ?: return@LaunchedEffect
     if (me == null) return@LaunchedEffect
+    // A login link or an invitation opened while logged in: out of the address bar and the history, where it would
+    // still work, unused, for whoever comes next (the invitation's note stays: the route is kept, only the URL changes)
+    if (loginLink(Platform.hash()) || route is Route.Invite) Platform.setHash(Route.Home.hash, replace = true)
     when (val r = route) {
       Route.Home -> {
-        val mine = list.filter { it.mySlots.isNotEmpty() && it.status.running }
-        if (mine.size == 1) go(Route.Dashboard(mine.single().id), replace = true) else repository.select(null)
+        val target = homeTarget(list, arriving = !arrived)
+        if (target != null) go(Route.Dashboard(target), replace = true) else repository.select(null)
       }
       is Route.Dashboard -> repository.select(r.id.takeIf { id -> list.any { it.id == id } })
       else -> {}
     }
+    arrived = true
   }
 
   val feedVisible = FeedSettings.visible
@@ -229,10 +242,9 @@ private fun TrackerApp() {
       val s = summary
       val user = me ?: run {
         // Before the login is known: either the login form of index.html covers the page, or the server is away
-        if (unreachable) Txt(
-          t.frame.cantReachServer, color = LocalPalette.current.muted,
-          modifier = Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally),
-        )
+        if (unreachable) Selectable(Modifier.padding(top = 120.dp).align(Alignment.CenterHorizontally)) {
+          Txt(t.frame.cantReachServer, color = LocalPalette.current.muted)
+        }
         return@PageFrame
       }
       val r = route
@@ -242,40 +254,58 @@ private fun TrackerApp() {
       val keepsSession = adminOpen || r == Route.Settings
       val shown = dashboard ?: (r as? Route.Spoiler)?.id ?: selected.takeIf { keepsSession }
       val switchable = sessions.filter { it.myRole != null || it.id == shown }
-      Headline(onHome = { go(Route.Home) })
+      // Where "back to the sessions" goes: for someone with one session, that one ([homeTarget])
+      val toSessions = if (sessions.count { it.myRole != null } == 1) t.common.yourSession else t.common.allYourSessions
+      // Logged out: the next login starts at the sessions' page, not where this user was
+      val logOut = {
+        leaving.run {
+          if (repository.logout()) {
+            go(Route.Home, replace = true)
+            null
+          } else t.frame.notLoggedOut
+        }
+      }
+      Selectable { Headline(onHome = { go(Route.Home) }) }
       // Without a session of their own: where a new one starts (for who may create one)
       val newSessionHint = r == Route.Home && loadedSessions != null && switchable.isEmpty() && user.createsSessions
-      Hero(
-        s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
-        sessions = switchable, shown = shown,
-        onSession = { go(Route.Dashboard(it)) },
-        onAllSessions = { go(Route.Home) },
-        // Light, dark, automatic: for the account (and this browser)
-        onToggleTheme = {
-          val next = Themes.mode.next
-          Themes.apply(Themes.theme, next)
-          scope.launch { saveTheme(Themes.theme, next) }
-        },
-        feedVisible = feedVisible,
-        // Only where there is a feed: a session's dashboard, once the session is there
-        onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
-        onLogout = { scope.launch { repository.logout() } },
-        onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
-        settingsOpen = r == Route.Settings,
-        onAdmin = {
-          // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
-          val theirs = selected?.takeIf { id ->
-            user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
-          }
-          go(if (adminOpen) back(selected) else Route.Admin(theirs))
-        },
-        adminOpen = adminOpen,
-        newSessionHint = newSessionHint,
-        stacked = narrow,
-      )
+      Selectable {
+        Hero(
+          s.takeIf { dashboard != null || r is Route.Spoiler || keepsSession }, streamOpen,
+          sessions = switchable, shown = shown,
+          onSession = { go(Route.Dashboard(it)) },
+          onAllSessions = { go(Route.Home) },
+          // Light, dark, automatic: for the account (and this browser)
+          onToggleTheme = {
+            val next = Themes.mode.next
+            Themes.apply(Themes.theme, next)
+            scope.launch { saveTheme(Themes.theme, next) }
+          },
+          feedVisible = feedVisible,
+          // Only where there is a feed: a session's dashboard, once the session is there
+          onToggleFeed = { setFeedVisible(!feedVisible) }.takeIf { dashboard != null && s != null },
+          onLogout = logOut,
+          onSettings = { go(if (r == Route.Settings) back(selected) else Route.Settings) },
+          settingsOpen = r == Route.Settings,
+          onAdmin = {
+            // The session shown, if the panel has it: the user manages or supports it (an Administrator: any)
+            val theirs = selected?.takeIf { id ->
+              user.administrator || id in user.manages || sessions.any { it.id == id && it.myRole == SessionRole.SUPPORT }
+            }
+            go(if (adminOpen) back(selected) else Route.Admin(theirs))
+          },
+          adminOpen = adminOpen,
+          newSessionHint = newSessionHint,
+          stacked = narrow,
+        )
+      }
+      leaving.problem?.let { Selectable { Banner(it) } }
       when (r) {
         is Route.Spoiler -> {
-          SpoilerView(r.id, onBack = { go(if (r.fromAdmin) Route.Admin(r.id) else Route.Dashboard(r.id)) })
+          SpoilerView(
+            r.id, onBack = { go(if (r.fromAdmin) Route.Admin(r.id) else Route.Dashboard(r.id)) },
+            // A running session's log asks first (not known yet: nothing is asked for; unknown to the list: as running)
+            running = loadedSessions?.let { list -> list.firstOrNull { it.id == r.id }?.finishedAt == null },
+          )
           return@PageFrame
         }
         is Route.Admin -> {
@@ -298,10 +328,10 @@ private fun TrackerApp() {
         is Route.Watch -> return@PageFrame
         is Route.Invite -> {
           // Signing up happens logged out (index.html's form); this browser is someone's already
-          Txt(t.frame.loggedInAs(user.name), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
+          Selectable(Modifier.padding(vertical = 8.dp)) { Txt(t.frame.loggedInAs(user.name), color = p.muted) }
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SmallButton(t.common.logOut, { scope.launch { repository.logout() } })
-            SmallButton(t.common.allYourSessions, { go(Route.Home) })
+            SmallButton(t.common.logOut, logOut)
+            SmallButton(toSessions, { go(Route.Home) })
           }
           return@PageFrame
         }
@@ -312,83 +342,92 @@ private fun TrackerApp() {
           return@PageFrame
         }
         is Route.Dashboard -> if (loadedSessions != null && sessions.none { it.id == r.id }) {
-          Txt(t.frame.noSuchSession(r.id), color = p.muted, modifier = Modifier.padding(vertical = 8.dp))
-          SmallButton(t.common.allYourSessions, { go(Route.Home) })
+          Selectable(Modifier.padding(vertical = 8.dp)) { Txt(t.frame.noSuchSession(r.id), color = p.muted) }
+          SmallButton(toSessions, { go(Route.Home) })
           return@PageFrame
         }
       }
       if (s == null || selected == null) return@PageFrame
-      val entry = sessions.firstOrNull { it.id == selected }
-      val mine = entry?.mySlots?.isNotEmpty() == true
-      val role = entry?.myRole
-      val error = s.error
-      if (s.serverAsleep && s.finishedAt == null) Banner(t.dashboard.serverAsleep)
-      else if (!s.connected && error != null && s.finishedAt == null) Banner(t.problems.trackerError(s.errorRefused, error))
-      // A Session-Manager is timed out, suspended or gone: who to turn to instead
-      if (s.managerUnavailable) Banner(t.dashboard.managerUnavailable)
-      FinishBanner(
-        s, user.administrator || role == SessionRole.MANAGER,
-        onFinishNow = { scope.launch { post("api/sessions/$selected/manage/finish") } },
-        onCancel = { scope.launch { post("api/sessions/$selected/manage/finish/cancel") } },
-        onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
-      )
-      val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
-      if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
-        // The tiles and the connection share a row and its height
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
-          Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
-          ConnectionSection(
-            user.name, connection, selected.orEmpty(), files, mine, role, s,
-            Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
-            twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
+      // Per session: its filters, a shown password and the like don't carry over to the next one
+      key(selected) {
+        val entry = sessions.firstOrNull { it.id == selected }
+        val mine = entry?.mySlots?.isNotEmpty() == true
+        val role = entry?.myRole
+        val error = s.error
+        if (s.serverAsleep && s.finishedAt == null) Selectable { Banner(t.dashboard.serverAsleep) }
+        else if (!s.connected && error != null && s.finishedAt == null) Selectable { Banner(t.problems.trackerError(s.errorRefused, error)) }
+        // A Session-Manager is timed out, suspended or gone: who to turn to instead
+        if (s.managerUnavailable) Selectable { Banner(t.dashboard.managerUnavailable) }
+        // Finishing now or cancelling it: once at a time, a refusal shown below
+        val finishing = rememberAction()
+        // Only while it shows something: an empty selection would still take its gap in the page
+        if (s.finishesAt != null || s.finishedAt != null) Selectable {
+          FinishBanner(
+            s, user.administrator || role == SessionRole.MANAGER,
+            onFinishNow = { finishing.run { post("api/sessions/$selected/manage/finish") } },
+            onCancel = { finishing.run { post("api/sessions/$selected/manage/finish/cancel") } },
+            onSpoiler = { selected?.let { go(Route.Spoiler(it, fromAdmin = false)) } },
           )
         }
-      } else {
-        ConnectionSection(
-          user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
-          twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
-        )
-        Stats(s, now, contentWidth)
+        finishing.problem?.let { Selectable { Banner(it) } }
+        val connectionWidth = if (mine && BridgeFold.open) CONNECTION_WIDE else CONNECTION_NARROW
+        if (wide && contentWidth - connectionWidth - GAP >= STATS_BESIDE) {
+          // The tiles and the connection share a row and its height
+          Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(GAP)) {
+            Stats(s, now, contentWidth - connectionWidth - GAP, Modifier.weight(1f).fillMaxHeight(), fillHeight = true)
+            ConnectionSection(
+              user.name, connection, selected.orEmpty(), files, mine, role, s,
+              Modifier.width(connectionWidth).fillMaxHeight(), fillHeight = true,
+              twoColumns = connectionWidth >= CONNECTION_TWO_COLUMNS,
+            )
+          }
+        } else {
+          ConnectionSection(
+            user.name, connection, selected.orEmpty(), files, mine, role, s, Modifier.fillMaxWidth(),
+            twoColumns = contentWidth >= CONNECTION_TWO_COLUMNS,
+          )
+          Stats(s, now, contentWidth)
+        }
+        val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
+          // Its place is only offered where it can be beside the players
+          Feed(
+            s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
+            onHide = { setFeedVisible(false) }, onPin = FeedSettings::pin,
+          )
+        }
+        // Pinned, the feed is a window over the page (below, with the other views'), not in the dashboard's layout
+        val docked = feedVisible && !FeedSettings.pinned
+        val side = wide && docked && feedPosition != FeedPosition.BELOW
+        if (side) {
+          // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
+          SideBySide(
+            sideFirst = feedPosition == FeedPosition.LEFT,
+            sideWidth = feedWidth(contentWidth),
+            main = {
+              Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
+                WithLogic(s) { People(s, now, contentWidth - feedWidth(contentWidth) - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
+                if (showHints(s)) Hints(s, compact = false)
+              }
+            },
+            side = { feed(Modifier.fillMaxSize(), true) },
+          )
+        } else {
+          // Narrow screens: left/right means right after the players, "below" at the very end
+          WithLogic(s) { People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
+          if (docked && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+          if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
+          if (docked && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
+        }
+        // Players add watchers (support helps in the panel)
+        val id = selected
+        if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
       }
-      val feed: @Composable (Modifier, Boolean) -> Unit = { modifier, fillHeight ->
-        // Its place is only offered where it can be beside the players
-        Feed(
-          s, modifier, feedPosition, fillHeight, onPosition = if (wide) ::setFeedPosition else null,
-          onHide = { setFeedVisible(false) }, onPin = FeedSettings::pin,
-        )
-      }
-      // Pinned, the feed is a window over the page (below, with the other views'), not in the dashboard's layout
-      val docked = feedVisible && !FeedSettings.pinned
-      val side = wide && docked && feedPosition != FeedPosition.BELOW
-      if (side) {
-        // The feed beside players and hints, exactly as tall as they are together; its list scrolls inside
-        SideBySide(
-          sideFirst = feedPosition == FeedPosition.LEFT,
-          sideWidth = feedWidth(contentWidth),
-          main = {
-            Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
-              WithLogic(s) { People(s, now, contentWidth - feedWidth(contentWidth) - GAP, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
-              if (showHints(s)) Hints(s, compact = false)
-            }
-          },
-          side = { feed(Modifier.fillMaxSize(), true) },
-        )
-      } else {
-        // Narrow screens: left/right means right after the players, "below" at the very end
-        WithLogic(s) { People(s, now, contentWidth, onOpen = { detailSlot = it }, onOpenPerson = { detailPerson = it }) }
-        if (docked && feedPosition != FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
-        if (showHints(s)) Hints(s, compact = contentWidth < 700.dp)
-        if (docked && feedPosition == FeedPosition.BELOW) feed(Modifier.fillMaxWidth(), false)
-      }
-      // Players add watchers (support helps in the panel)
-      val id = selected
-      if (role == SessionRole.PLAYER && id != null) key(id) { WatchersSection(id) }
     }
     // The pinned feed: over the page, on the dashboard (unless the feed is hidden there) and the views beside it
     val feedOf = summary
     val feedView = route is Route.Admin || route is Route.Spoiler || route == Route.Settings || (route is Route.Dashboard && feedVisible)
     if (me != null && feedOf != null && FeedSettings.pinned && feedView) {
-      FloatingFeed(feedOf, onUnpin = { FeedSettings.pin(false) })
+      key(selected) { FloatingFeed(feedOf, onUnpin = { FeedSettings.pin(false) }) }
     }
     detailPerson?.let { name ->
       summary?.let { s ->
@@ -396,7 +435,7 @@ private fun TrackerApp() {
       }
     }
     detailSlot?.let { slot ->
-      WithLogic(summary) { PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null }) }
+      WithLogic(summary) { PlayerDialog(slot, summary?.version ?: 0, repository, onClose = { detailSlot = null }, changed = summary?.slotChanges(slot)) }
     }
   }
 }
@@ -408,3 +447,15 @@ internal suspend fun saveTheme(theme: Theme, mode: ThemeMode) {
 
 /** Where back from the admin panel goes: the dashboard's session, or the sessions' page without one. */
 private fun back(selected: String?): Route = selected?.let { Route.Dashboard(it) } ?: Route.Home
+
+/**
+ * The session the sessions' page opens by itself, of [sessions] (the ones the user sees): the user's only one, always
+ * (there is nothing to pick, and the top card has no switch then); [arriving] (the first page after loading it or the
+ * login), their only running one with a slot of theirs. `null`: none, the page lists them. Asked for on purpose (the
+ * name on top, *All sessions*), the list shows for whoever has more than one.
+ */
+internal fun homeTarget(sessions: List<SessionEntry>, arriving: Boolean): String? {
+  sessions.singleOrNull { it.myRole != null }?.let { return it.id }
+  if (!arriving) return null
+  return sessions.filter { it.mySlots.isNotEmpty() && it.status.running }.singleOrNull()?.id
+}
