@@ -77,8 +77,8 @@ class TwoFactor(
   suspend fun check(user: User, code: String, now: Instant = Instant.now()): Boolean {
     val state = store.of(user.id)?.takeIf { it.enabledAt != null } ?: return false
     if (RecoveryCodes.looksLike(code)) {
-      // A code from before the keyed hash is still taken (its plain hash), until it is used or the codes are replaced
-      val used = store.useCode(user.id, codeHash(code), now) || store.useCode(user.id, RecoveryCodes.hash(code), now)
+      // Only the keyed hash: the codes of before (a plain hash, guessed from a dump) are gone (V29) and never taken
+      val used = store.useCode(user.id, codeHash(code), now)
       if (used) logger.info("{} used a recovery code ({} left)", user.name, store.codesLeft(user.id))
       return used
     }

@@ -186,9 +186,10 @@ class TrackerService(
   }
 
   /**
-   * Replays every event of the session, in its order (from the baseline's end on), then reads the new ones about
-   * once a second. Slots not known yet (no `room.json` at the start: the game server hadn't run) are taken from it as
-   * soon as it is there, before an event needs them.
+   * Replays the session's events in their order from the baseline's end on (the state kept with its last live
+   * snapshot, so only what came after it), in batches of a bounded size, then reads the new ones about once a second.
+   * Slots not known yet (no `room.json` at the start: the game server hadn't run) are taken from it as soon as it is
+   * there, before an event needs them.
    */
   private suspend fun follow(events: SessionEventStore) {
     while (true) {
@@ -202,7 +203,8 @@ class TrackerService(
       val next = runCatching { events.after(sessionId, read { serverCursor }) }
         .onFailure { logger.warn("Could not read {}'s events: {}", sessionId, it.message) }.getOrDefault(emptyList())
       if (next.isNotEmpty()) update { next.forEach { onServerEvent(it.id, it.atMs, it.kind, it.packet) } }
-      if (next.size < 1000) delay(1.seconds)
+      // A batch may end before its 1,000 (its bytes): the next is read at once until none is left
+      if (next.isEmpty()) delay(1.seconds)
     }
   }
 

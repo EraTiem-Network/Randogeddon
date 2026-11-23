@@ -566,6 +566,32 @@ class SessionStateTest {
   }
 
   @Test
+  fun `a state kept while running comes back whole, and only the events after it count`() {
+    val s = makeState()
+    s.onServerEvent(1, 1_000, "packet", """{"cmd":"PrintJSON","type":"Join","team":0,"slot":1,"tags":["AP"]}""")
+    s.onServerEvent(2, 2_000, "packet", """{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"Alice","cause":"fell"}}""")
+    s.onServerEvent(3, 3_000, "packet", """{"cmd":"PrintJSON","type":"ItemSend","receiving":2,"item":${item(100, 11, 1, 1)}}""")
+    val kept = s.keptJson()
+
+    val t = makeState()
+    t.loadSaved(kept)
+    t.applySaved()
+    // Alice is still connected (no event said she left), her death and check are known
+    assertEquals(1, t.players[1]!!.online)
+    assertEquals(1_000L to null, t.players[1]!!.sessions.single().let { it.start to it.end })
+    assertEquals(1, t.players[1]!!.deaths)
+    assertEquals(3_000L, t.players[1]!!.lastCheckAt)
+    assertEquals(3L, t.serverCursor)
+    // The events up to it aren't taken twice; the ones after it are
+    t.onServerEvent(2, 2_000, "packet", """{"cmd":"Bounced","tags":["DeathLink"],"data":{"source":"Alice","cause":"fell"}}""")
+    assertEquals(1, t.players[1]!!.deaths)
+    t.onServerEvent(4, 4_000, "packet", """{"cmd":"PrintJSON","type":"Part","team":0,"slot":1}""")
+    assertEquals(0, t.players[1]!!.online)
+    assertEquals(1_000L to 4_000L, t.players[1]!!.sessions.single().let { it.start to it.end })
+    assertEquals(s.events.map { it.type } + EventType.PART, t.events.map { it.type })
+  }
+
+  @Test
   fun `sessions split by a tracker restart are merged`() {
     var clock = 0L
     val s = makeState { clock }

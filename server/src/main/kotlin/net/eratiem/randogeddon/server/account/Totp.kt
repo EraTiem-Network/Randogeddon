@@ -96,7 +96,7 @@ object Base32 {
 
 /**
  * One-time codes for a lost authenticator: 10 of `xxxx-xxxx` (about 41 bits each), shown once, stored as a keyed hash
- * ([SecretBox.mac]; [hash] is how codes from before were stored, still taken until they are used or replaced).
+ * ([SecretBox.mac]; the plain SHA-256 of before is no longer taken, and V29 deleted those codes).
  */
 object RecoveryCodes {
   const val COUNT = 10
@@ -110,8 +110,6 @@ object RecoveryCodes {
 
   /** How a code typed in is compared: lower case, without spaces or dashes. */
   fun normalize(code: String): String = code.lowercase().filter { it in ALPHABET }
-
-  fun hash(code: String): String = tokenHash(normalize(code))
 
   /** Looks like a recovery code (not a TOTP code). */
   fun looksLike(code: String): Boolean = normalize(code).length == 8

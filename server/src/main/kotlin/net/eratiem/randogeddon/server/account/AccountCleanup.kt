@@ -103,7 +103,8 @@ class AccountCleanup(
       CleanupStep.WARN -> {
         val due = deletesAt(activity.copy(warnedAt = now), now) ?: return
         val language = Language.of(user.language) ?: Language.DEFAULT
-        val date = (if (language.numericDates) NUMERIC_DATE else DATE).format(due)
+        // The day in their time zone (UTC without one)
+        val date = (if (language.numericDates) NUMERIC_DATE else DATE).withZone(zoneOf(user.timeZone)).format(due)
         val mail = Mails.deletionWarning(user.email ?: return, user.name ?: "", date, "${config.publicUrl}/#/settings", texts(language).mails)
         try {
           mailer.send(mail)

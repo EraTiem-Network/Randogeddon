@@ -153,12 +153,13 @@ class SessionLifecycle(
       throw SessionProblem(HttpStatusCode.Conflict, Problem.TOO_OLD_TO_REOPEN, "id" to id, "days" to REOPEN_WINDOW.inWholeDays)
     }
     gameServers.check(id)
+    // Unfinished and its archive live again, in one transaction
     finishes.reopen(session.seedName)
     try {
       gameServer.control(id, "start")
     } catch (e: Exception) {
-      // No game server free after all (or no gateway): it stays finished
-      finishes.finish(session.seedName, session.finish?.finishedBy, finishedAt)
+      // No game server free after all (or no gateway): it stays finished, with its archive
+      finishes.finish(session.seedName, session.finish?.finishedBy, finishedAt, archive = archives.read(id)?.let(archives::encode))
       throw e
     }
     archives.forget(id)
@@ -186,8 +187,10 @@ class SessionLifecycle(
       finishedAt = ms, finishesAt = null, sessionTimeMs = time, sessionRunningSince = null,
     )
     val details = session.details().map { d -> d.copy(sessions = d.sessions.map { if (it.end == null) it.copy(end = ms) else it }) }
-    archives.write(session.id, ArchivedSession(summary, details, by))
-    finishes.finish(session.seedName, by, now)
+    val archived = ArchivedSession(summary, details, by)
+    // The archive and the finish in one transaction: a stop in between leaves neither half
+    finishes.finish(session.seedName, by, now, archive = archives.encode(archived))
+    archives.remember(session.id, archived)
     session.disconnect()
     runCatching { gameServer.control(session.id, "stop") }.onFailure { logger.warn("Could not stop the game server of {}: {}", session.id, it.message) }
     runCatching { cancelInvitations(session) }.onFailure { logger.warn("Could not cancel the invitations of {}: {}", session.id, it.message) }

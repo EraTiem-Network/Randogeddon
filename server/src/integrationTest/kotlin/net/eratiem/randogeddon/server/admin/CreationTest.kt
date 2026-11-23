@@ -21,6 +21,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -102,6 +103,23 @@ class CreationTest {
     assertEquals("manager", setup.roles[ann.id]?.role)
     assertEquals(ann.id, setup.createdBy)
     assertEquals(Problem.ID_TAKEN, taken("brave-otter"))
+  }
+
+  @Test
+  fun `a seed that became another session meanwhile is refused, and that session stays as it is`() = runBlocking<Unit> {
+    val ann = tracker.user("Ann", administrator = true)
+    // The same uploaded seed twice (two tabs): both pass the upload's check before either is a session
+    tracker.gateway.results["first-otter"] = GenerateResult(seedName = "same-seed")
+    tracker.gateway.results["second-otter"] = GenerateResult(seedName = "same-seed")
+    tracker.admin.create(request("first-otter", ann), ann)
+    assertEquals(CreationState.DONE, ended("first-otter", ann).state)
+    tracker.admin.create(request("second-otter", ann), ann)
+    val second = ended("second-otter", ann)
+    assertEquals(CreationState.FAILED, second.state)
+    assertEquals(Problem.SEED_IN_USE, second.error?.code)
+    assertEquals("same-seed", tracker.sessionStore.byId("first-otter")?.seedName)
+    assertNull(tracker.sessionStore.byId("second-otter"))
+    assertEquals(setOf(ann.id), tracker.setups.of("same-seed")!!.members.keys)
   }
 
   @Test

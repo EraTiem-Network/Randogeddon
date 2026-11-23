@@ -109,13 +109,17 @@ class LiveSession(
 
   /**
    * Keeps what its dashboard shows now in the database, for while its tracker isn't connected; only once the tracker
-   * has been (else it knows less than what is kept), and not over its archive.
+   * has been (else it knows less than what is kept), and not over its archive. With it the state its events made, up to
+   * the last one heard: the tracker's next start replays only the events after it.
    */
   suspend fun keep() {
     val store = snapshots ?: return
     if (finished || !tracker.connectedOnce) return
     val snapshot = ArchivedSession(build(), details())
-    runCatching { store.saveLive(id, System.currentTimeMillis(), ApiJson.encodeToString(ArchivedSession.serializer(), snapshot)) }
+    val (state, until) = tracker.read { keptJson() to serverCursor }
+    runCatching {
+      store.saveLive(id, System.currentTimeMillis(), ApiJson.encodeToString(ArchivedSession.serializer(), snapshot), state, until)
+    }
       .onSuccess { kept = snapshot }
       .onFailure { logger.warn("Could not keep {}'s dashboard: {}", id, it.message) }
   }

@@ -36,6 +36,8 @@ import net.eratiem.randogeddon.shared.EmailAddresses
 import net.eratiem.randogeddon.shared.InvitationInfo
 import net.eratiem.randogeddon.shared.PasswordRules
 import net.eratiem.randogeddon.shared.SignupRequest
+import net.eratiem.randogeddon.shared.TimeZoneRequest
+import java.time.ZoneId
 import net.eratiem.randogeddon.shared.UserNames
 import net.eratiem.randogeddon.shared.i18n.Language
 import org.koin.core.annotation.Single
@@ -313,6 +315,17 @@ class AccountService(
   /** The theme and mode [user] sees the app in; `null`: the default theme, automatic. */
   suspend fun setTheme(user: User, theme: Theme?, mode: ThemeMode?) = users.setTheme(user.id, theme?.code, mode?.code)
 
+  /**
+   * The time zone [user]'s mails give their times in: an IANA name (`Europe/Berlin`, the browser's), at most
+   * [TimeZoneRequest.MAX_LENGTH] characters, one this Java knows; refused (400) otherwise.
+   */
+  suspend fun setTimeZone(user: User, zone: String) {
+    val name = zone.trim()
+    val known = name.length in 1..TimeZoneRequest.MAX_LENGTH && runCatching { ZoneId.of(name) }.isSuccess
+    if (!known) throw AccountProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_TIME_ZONE)
+    users.setTimeZone(user.id, name)
+  }
+
   /** The font [user] reads the app in ([FontChoice]; `null`: the theme's), and where it shows. */
   suspend fun setFont(user: User, font: String?, scope: FontScope) {
     if (!FontChoice.valid(font)) throw AccountProblem(HttpStatusCode.BadRequest, Problem.NO_SUCH_FONT)
@@ -396,7 +409,7 @@ class AccountService(
     slots.renewOnlyTheirs(id)
     sessions.refresh()
     logger.info("{} {} {}{}", by.name, if (until != null) "timed out (until $until)" else "suspended", account.name, reason?.let { ": $it" } ?: "")
-    tell(account) { to, name, texts -> Mails.keptOut(to, name, until?.let(UNTIL::format), reason, texts) }
+    tell(account) { to, name, texts -> Mails.keptOut(to, name, until?.let { timeFor(it, account.timeZone) }, reason, texts) }
   }
 
   /** Lets the account [id] in again before its time (or after a suspension), by the Administrator [by]. */
