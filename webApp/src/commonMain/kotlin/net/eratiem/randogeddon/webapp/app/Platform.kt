@@ -60,7 +60,7 @@ expect object Platform {
   fun pickFiles(accept: String, binary: Boolean = false, onPicked: (String) -> Unit)
 
   /** Puts [text] on the clipboard. */
-  fun copy(text: String)
+  fun copy(text: String, onDone: (Boolean) -> Unit = {})
 
   /** Opens [url] in a new tab. */
   fun openLink(url: String)

@@ -20,19 +20,24 @@ import kotlin.time.Duration.Companion.milliseconds
 /** How long a copy's button says that it copied. */
 private val COPIED_SHOWN = 1500.milliseconds
 
-/** A copy that says so: [copied] for a moment after each [copy] (nothing else tells that the clipboard changed). */
+/**
+ * A copy that says so: [copied] for a moment after each [copy] that the browser took (nothing else tells that the
+ * clipboard changed; one it refuses, as on a page without HTTPS, says nothing).
+ */
 internal class Copying(private val scope: CoroutineScope) {
   var copied by mutableStateOf(false)
     private set
   private var back: Job? = null
 
   fun copy(text: String) {
-    Platform.copy(text)
-    copied = true
-    back?.cancel()
-    back = scope.launch {
-      delay(COPIED_SHOWN)
-      copied = false
+    Platform.copy(text) { taken ->
+      if (!taken) return@copy
+      copied = true
+      back?.cancel()
+      back = scope.launch {
+        delay(COPIED_SHOWN)
+        copied = false
+      }
     }
   }
 }
