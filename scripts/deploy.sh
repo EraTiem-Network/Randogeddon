@@ -10,7 +10,8 @@
 #   ./scripts/deploy.sh --rollback  back to the tag before (the code only: a migration that ran needs the dump, see
 #                                   .docs/OPERATIONS.md, restoring)
 # A release also publishes Randogeddon Bridge's builds (scripts/publish-bridge.sh: Artifact Keeper, and from 1.0.0 on a
-# GitHub release).
+# GitHub release). Its builds are signed: without the signing key (BRIDGE_SIGNING_KEY) a release isn't built, and one
+# whose image doesn't bring a signature that checks out against bridge/signing-key.pub isn't pushed.
 #
 # The server holds only what runs (.docs/OPERATIONS.md, "The live server"); this script copies its compose files and the backup
 # script there. Needs: `docker login` to the registry (a token that may push), the Gradle init script for the build, and
@@ -130,13 +131,30 @@ if [[ -n "$build" ]]; then
 echo "== Building $tag"
 export COMPOSE_FILE=docker-compose.yml BUILDX_BAKE_ENTITLEMENTS_FS=0 BRIDGE_VERSION="$version"
 # The bridge's checksums are signed with this machine's key, if it has one (ssh-keygen -t ed25519 -N "" -f <file>;
-# its public half is bridge/signing-key.pub)
+# its public half is bridge/signing-key.pub); a release's must be
 signing_key="${BRIDGE_SIGNING_KEY:-$HOME/.config/randogeddon/bridge-signing-key}"
-if [[ -r "$signing_key" ]]; then export BRIDGE_SIGNING_KEY="$signing_key"; else echo "No $signing_key: the bridge's checksums won't be signed"; fi
+# The key's public half (no secret; empty: no key): the build's signing step is cached by it (kotlin.Dockerfile)
+signing_key_id=""
+if [[ -r "$signing_key" ]]; then
+  export BRIDGE_SIGNING_KEY="$signing_key"
+  signing_key_id="$(ssh-keygen -y -P "" -f "$signing_key" 2>/dev/null | cut -d' ' -f2 || true)"
+else
+  echo "No $signing_key: the bridge's checksums won't be signed"
+fi
+if [[ "$moving" == latest ]]; then
+  public_key="$(awk '{ sub(/\r$/, ""); for (i = 1; i < NF; i++) if ($i ~ /^ssh-/) { print $(i + 1); exit } }' bridge/signing-key.pub)"
+  if [[ -z "$signing_key_id" || "$signing_key_id" != "$public_key" ]]; then
+    echo "A release's bridge builds are signed: $signing_key is missing, has a passphrase or isn't the key of bridge/signing-key.pub; not building v$version"
+    exit 1
+  fi
+fi
 # One after the other: each native-image compile takes several GB at its peak
-POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build tracker
+POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build --build-arg BRIDGE_SIGNING_KEY_ID="$signing_key_id" tracker
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build gateway
 POSTGRES_PASSWORD=build INTERNAL_TOKEN=build docker compose build minecraft
+# A release's bridge goes out signed: its builds in the new image checked against bridge/signing-key.pub before
+# anything is pushed
+[[ "$moving" != latest ]] || ./scripts/publish-bridge.sh "$version" randogeddon-tracker:latest --check
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$tag"
 docker tag "randogeddon-gateway:$AP_VERSION" "$IMAGES/gateway:$gateway_tag"
 docker tag randogeddon-tracker:latest "$IMAGES/tracker:$moving"

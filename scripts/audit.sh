@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Looks the project's dependencies up in the OSV database of known vulnerabilities (osv-scanner, in Docker):
-#   - the bridge's Go modules (bridge/go.mod),
+#   - the bridge's Go modules (bridge/go.mod), and with govulncheck its code with them and Go's standard library,
 #   - the tracker's and the gateway's JVM libraries (their runtime classpaths, written out by Gradle),
 #   - Archipelago's Python requirements in the gateway image, if one is built here.
 # Run it before each phase's release and when a dependency changes: ./scripts/audit.sh
@@ -21,6 +21,17 @@ scan() { # <what> <args for osv-scanner, paths under /scan>
 # Go: the module file as it is
 mkdir -p "$work/bridge" && cp bridge/go.mod bridge/go.sum "$work/bridge/"
 scan "Randogeddon Bridge (Go)" --lockfile=/scan/bridge/go.mod
+# And govulncheck (Go's own database) in the image the bridge is built with: also the toolchain's standard library
+# (net/http, crypto/tls), at the exact version that builds it, and only what the code calls
+go_image="$(sed -n 's/^FROM \(golang:[^ ]*\) AS bridge.*/\1/p' kotlin.Dockerfile)"
+echo "== Randogeddon Bridge (Go, govulncheck in ${go_image:-no golang image})"
+if [ -n "$go_image" ]; then
+  cp -r bridge/. "$work/bridge/"
+  docker run --rm -v "$work/bridge:/src:ro" -w /src "$go_image" \
+    go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION:-latest}" ./... || found=1
+else
+  echo "   kotlin.Dockerfile has no 'FROM golang:... AS bridge'" && found=1
+fi
 
 # JVM: every library on the runtime classpaths, as a CycloneDX-less plain list osv-scanner reads (a pom.xml)
 # (GRADLE_DEPENDENCIES: that list from elsewhere, where Gradle runs but Docker doesn't)
