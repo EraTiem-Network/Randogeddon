@@ -117,8 +117,10 @@ private fun HintList(s: Summary, hints: List<HintView>, compact: Boolean) {
         { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) },
         {
           Column {
-            Txt(h.locationName, size = 13.sp)
-            if (h.entrance.isNotEmpty()) Txt(h.entrance, size = 12.sp, color = p.muted)
+            // Only the slot: no location, no entrance
+            if (h.slotOnly) Txt(fill(d.hintSomewhere, "finder" to h.finderName), size = 13.sp, color = p.muted)
+            else Txt(h.locationName, size = 13.sp)
+            if (h.entrance.isNotEmpty() && !h.slotOnly) Txt(h.entrance, size = 12.sp, color = p.muted)
           }
         },
         { Txt(h.finderName, size = 13.sp, weight = FontWeight.SemiBold) },
@@ -160,7 +162,11 @@ private fun CompactHint(h: HintView) {
       }, size = 13.sp, modifier = Modifier.weight(1f))
       HintStatus(h)
     }
-    Txt(fill(d.hintWhere, "location" to h.locationName, "finder" to h.finderName), size = 12.sp, color = p.muted)
+    Txt(
+      if (h.slotOnly) fill(d.hintSomewhere, "finder" to h.finderName)
+      else fill(d.hintWhere, "location" to h.locationName, "finder" to h.finderName),
+      size = 12.sp, color = p.muted,
+    )
   }
 }
 

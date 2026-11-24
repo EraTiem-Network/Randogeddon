@@ -171,7 +171,12 @@ fun PersonDialog(
                     Column(Modifier.weight(1f)) { ItemText(h.itemName, h.itemFlags, key = h.itemName.startsWith("Key to ")) }
                     HintStatus(h)
                   }
-                  Txt(fill(t.dialogs.hintWhereFor, "location" to h.locationName, "finder" to h.finderName, "receiver" to h.receiverName), size = 12.sp, color = p.muted)
+                  Txt(
+                    // Only the slot: no location
+                    if (h.slotOnly) fill(t.dashboard.hintSomewhereFor, "finder" to h.finderName, "receiver" to h.receiverName)
+                    else fill(t.dialogs.hintWhereFor, "location" to h.locationName, "finder" to h.finderName, "receiver" to h.receiverName),
+                    size = 12.sp, color = p.muted,
+                  )
                 }
                 Divider()
               }
