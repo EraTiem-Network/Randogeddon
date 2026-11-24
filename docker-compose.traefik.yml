@@ -1,5 +1,7 @@
 # Overlay for the server: route the gateway (game clients) and the tracker (dashboard) through an existing Traefik.
 # Game servers: wss://<session-id>.${BASE_DOMAIN}:443  (players enter "<session-id>.${BASE_DOMAIN}:443" in their client)
+#               and, for web pages that connect as a client, on Archipelago's own port 38281 where Traefik has an
+#               entry point for it (TRAEFIK_AP_ENTRYPOINTS, see .docs/OPERATIONS.md)
 # Dashboard:    https://${BASE_DOMAIN}
 # One router for every session: the gateway relays each client by its host name to that session's MultiServer. Its
 # wildcard certificate needs a cert resolver with the DNS challenge (TRAEFIK_DNS_CERTRESOLVER, see .docs/OPERATIONS.md).
@@ -21,7 +23,8 @@ services:
       # Every <session-id>.<BASE_DOMAIN> (Traefik v3 syntax; $$ is a $ for compose; \Q…\E takes the domain as it is,
       # its dots included). The gateway checks the ID itself.
       traefik.http.routers.randogeddon-ap.rule: HostRegexp(`^[a-z0-9-]+\.\Q${BASE_DOMAIN:?set BASE_DOMAIN in .env (the dashboard's domain)}\E$$`)
-      traefik.http.routers.randogeddon-ap.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      # The game servers' entry points, comma-separated: the dashboard's, and one on 38281 where there is one
+      traefik.http.routers.randogeddon-ap.entrypoints: ${TRAEFIK_AP_ENTRYPOINTS:-${TRAEFIK_ENTRYPOINT:-websecure}}
       traefik.http.routers.randogeddon-ap.tls: "true"
       traefik.http.routers.randogeddon-ap.tls.certresolver: ${TRAEFIK_DNS_CERTRESOLVER:-letsencrypt-dns}
       traefik.http.routers.randogeddon-ap.tls.domains[0].main: "*.${BASE_DOMAIN:?set BASE_DOMAIN in .env (the dashboard's domain)}"

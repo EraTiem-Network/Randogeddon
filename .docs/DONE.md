@@ -1628,3 +1628,43 @@ games' real map images moved to Later.*
       one for an account, a wrong address (the same answer after 1.3 s, no mail), the right one in capitals (the
       mail), the link's page, three obvious passwords refused each with its sentence, a phrase accepted, the
       second mail, the link gone afterwards, the new password logging in
+- [x] Web pages that connect as a client can't reach a session (0.23.10; reported on 2026-11-24 with the Skyward Sword HD
+      tracker page): their library (archipelago.js) replaces the port of `wss://{session}.{domain}:443` with 38281,
+      because a browser's URL drops a default port; a plain `ws://` is blocked on an `https://` page, and the bridge
+      refuses web pages (an `Origin` header) on purpose. Decided on 2026-11-24, as 0.23.10: the session host names on a second
+      TLS port, 38281 (a Traefik entry point, the firewall, the router's entry points; `TRAEFIK_AP_ENTRYPOINTS`
+      for the labels' overlay). On the live host since 2026-11-24 (Traefik restarted on the user's word); the user
+      connected the page to a real slot
+- [x] The bridge doesn't offer a session to someone of its support (or a watcher) who also plays a slot in it
+      (0.23.10; reported on 2026-11-24: someone with support and one slot): it went by the part alone. For 0.23.10: also
+      offered to whoever has slots of their own.
+    - Found from the page's script (its library's `connect`) and, for the bridge, from the live database and
+      Traefik's access log (the session list fetched, never a connection); made by the main session (a label,
+      a line of the bridge's rule, the docs)
+    - Tried: compose's rendering of the label with and without `TRAEFIK_AP_ENTRYPOINTS`; on live from outside,
+      38281 with the wildcard certificate and the same answer as 443 for an unknown session, the dashboard not
+      on it; the bridge's tests (three new cases). Not tried: the new bridge with a support's slot on live
+- [x] Left from 0.23.9, fixed on the user's word (0.23.10; 2026-11-24): a new password (by a reset link or in the
+      settings) ends the logins begun with the old one that wait for their code; the forgotten-password page's
+      limit per network address answers "too many mails in a short time" instead of "too many wrong attempts
+      for this account"
+    - Tried: the tracker's unit tests (a new one: only that account's pending logins go) and the reset's
+      database-backed ones (a pending login gone after the reset, someone else's kept; the limit's problem)
+- [x] Cheats, an item's hint: an option whether it names only the slot the item is on or its location too; only
+      the slot unless chosen otherwise (0.23.10; asked for on 2026-11-23). For 0.23.10 (the user on 2026-11-24), decided:
+      a toggle in the cheat panel beside the item, only the slot by default, the browser remembering it; only the
+      slot is a server message in every client's chat, a feed line and a row in the hint log without a location
+      (Archipelago's hints always name one); the copy it named is remembered (the next names another); a full
+      hint for it later updates the row; its location never leaves the tracker before that.
+    - Built by two Opus subagents (the tracker and the shared types; the web app). No schema change: the copy is
+      kept in the cheat's own session event. The toggle is a picker of two, as the copy picker beside it (the
+      web app has no switch). A hint with the location takes a slot-hinted copy first. The server's chat line is
+      left out of the feed (the hint line says it). Without the placements there is no choice (as before)
+    - Left: the cheat log doesn't tell the two kinds apart; a later change of a slot's alias brings the chat
+      line back into the feed; two such hints at the very same moment could name the same copy
+    - Tried: the unit tests (new ones for the pick, the row, the upgrade, the replay, the feed); in the demo by
+      its API: the row without a location, the item gone from the only-the-slot list and refused then, the
+      upgrade to one ordinary row, the chat line in the game server's log and not in the feed, a location's
+      name nowhere in the state, the cheat view or the logs before the upgrade, the rows there after a tracker
+      restart; in a browser: the picker in the cheat panel and the feed's line. Not seen: the hint log's row on
+      screen, the person's panel, German, a phone's width, a real game client's chat

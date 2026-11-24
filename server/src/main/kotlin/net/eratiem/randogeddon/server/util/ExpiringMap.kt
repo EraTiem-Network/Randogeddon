@@ -37,6 +37,11 @@ class ExpiringMap<K : Any, V : Any>(
   /** Removes [key]'s entry; its value if it hadn't expired, else `null`. */
   fun remove(key: K, now: Long = clock()): V? = entries.remove(key)?.takeIf { it.expiresAt > now }?.value
 
+  /** Removes every entry whose value [matches]. */
+  fun removeIf(matches: (V) -> Boolean) {
+    entries.values.removeIf { matches(it.value) }
+  }
+
   /** How many entries there are, expired ones not dropped yet too. */
   internal val size: Int get() = entries.size
 

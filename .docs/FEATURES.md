@@ -103,7 +103,11 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   *Logs* as tabs (the game server's, the spoiler run's; the logic's and the Minecraft servers' for Administrators),
   each only for whoever may read it.
 - **Cheats:** give an item, check a location (from the slot, or to it: another world's location holding its item),
-  release, collect, free hints (only with *Cheat hints*; one place, a copy neither checked nor hinted). For a locked
+  release, collect, free hints (only with *Cheat hints*; one place, a copy neither checked nor hinted). An item's
+  hint names *only the slot* whose world holds it (the default; a picker, kept by the browser) or *slot and
+  location*: only the slot is the tracker's own (a server message in every client's chat, a feed line and a row in
+  the hint log without a location; the copy is remembered, its location never sent out), and a hint with the
+  location, which takes such a copy first, turns that row into the full one. For a locked
   slot: *Unlock* (its key's location checked in its world; the lock says the server did) and *Hint its key's
   location*. Every cheat is logged with who did it and shown in the feed. Support has items, checks and hints, and
   sees the spoiler log's run (restarting it is the Session-Managers').
@@ -143,8 +147,8 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 - **A forgotten password** (the login page, where a mail server is set): the name or address is typed, the
   account's address is shown partly hidden (`m•••@p•••.me`) and has to be typed in full; only then a mail goes
   there, with a link that works 15 minutes and once (3 mails an account an hour, 10 tries a network address). The
-  link's page sets the new password; every login of the account ends (bridge keys too), a second mail tells of the
-  change, and two-factor login stays. Nothing tells whether an account exists: an unknown name gets a made-up
+  link's page sets the new password; every login of the account ends (bridge keys too, and one waiting for its
+  two-factor code), a second mail tells of the change, and two-factor login stays. Nothing tells whether an account exists: an unknown name gets a made-up
   hidden address (the same each time), and the answer after the address is always the same. Not for accounts that
   log in through single sign-on only, kept-out ones, or invitations not yet taken.
 - **Two-factor login** (TOTP, 10 recovery codes). Secrets encrypted with `TOTP_KEY`.
@@ -164,6 +168,10 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
   live streams per address as the Administrators set (*Users*, default 20; empty: no limit).
 
 ## Randogeddon Bridge
+
+A web page that connects as a client (a tracker built on archipelago.js) takes the session's host name without a
+port: it then uses 38281, where the server answers with TLS too (`.docs/OPERATIONS.md`). The bridge is not for
+web pages.
 
 For game clients without TLS: the game connects to `localhost:<port>`, the bridge passes it on over `wss://` with
 the slot's password. Logged in with a key (*Your connection*, 30 days), it offers the user's slots and, to

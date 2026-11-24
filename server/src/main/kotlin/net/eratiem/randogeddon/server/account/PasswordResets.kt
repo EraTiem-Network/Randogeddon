@@ -107,6 +107,7 @@ class PasswordResets(
   private val twoFactor: TwoFactor,
   private val mailer: Mailer,
   private val config: TrackerConfig,
+  private val pending: PendingLogins,
 ) {
   /** Whether it is offered: a mail server is set (the login form shows the link then). */
   val offered: Boolean get() = config.mail.host.isNotBlank()
@@ -140,14 +141,15 @@ class PasswordResets(
 
   /**
    * The second step: [email], typed for [account] (as [hint] took it), from the network address [client]. Counted per
-   * network address ([ADDRESS_TRIES] an hour, [AccountProblem] 429 past it: that doesn't depend on the account);
+   * network address ([ADDRESS_TRIES] an hour, [AccountProblem] 429 past it, as too many mails: that doesn't depend on
+   * the account, and nobody typed anything wrong);
    * otherwise the work ([send]) runs on its own and this answers after [ANSWER_AFTER], whatever it comes to.
    * [language]: the request's, for the mail of an account that hasn't chosen one.
    */
   suspend fun ask(account: String, email: String, client: String, language: Language, now: Long = System.currentTimeMillis()) {
     synchronized(addressTries) {
       if (addressTries.of(client, now) >= ADDRESS_TRIES) {
-        throw AccountProblem(HttpStatusCode.TooManyRequests, Problem.TOO_MANY_ATTEMPTS)
+        throw AccountProblem(HttpStatusCode.TooManyRequests, Problem.TOO_MANY_MAILS)
       }
       addressTries.add(client, now)
     }
@@ -215,14 +217,15 @@ class PasswordResets(
 
   /**
    * Sets [password] as the password of the link [token]'s account (the sign-up's rules: [AccountProblem] 400, and the
-   * link still works). The link is used, every login of the account ends (its bridge keys too), two-factor login stays,
-   * and a mail tells the account's address. It doesn't log in. [AccountProblem] (404) for a link that doesn't work.
+   * link still works). The link is used, every login of the account ends (its bridge keys too, and the ones begun with
+   * the old password that wait for their code), two-factor login stays, and a mail tells the account's address. It doesn't log in. [AccountProblem] (404) for a link that doesn't work.
    */
   suspend fun reset(token: String, password: String, now: Instant = Instant.now()) {
     val user = linked(token, now)
     PasswordRules.problem(password, user.name, user.email)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     val hash = withContext(Dispatchers.Default) { PasswordHasher.hash(password) }
     resets.use(tokenHash(token), hash, now) ?: throw gone()
+    pending.forget(user.id)
     logger.info("{} set a new password with a reset link: every login of the account ended", user.name)
     val to = user.email ?: return
     try {

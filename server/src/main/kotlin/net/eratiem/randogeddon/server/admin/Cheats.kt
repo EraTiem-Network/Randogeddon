@@ -16,6 +16,8 @@ import net.eratiem.randogeddon.server.util.logger
 import net.eratiem.randogeddon.server.util.secureRandom
 import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.server.session.stepLocation
+import net.eratiem.randogeddon.server.state.SlotHint
+import net.eratiem.randogeddon.shared.HintDetail
 import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.shared.CheatLogEntry
 import net.eratiem.randogeddon.shared.CheatNames
@@ -64,9 +66,10 @@ internal fun cheatCommand(action: CheatAction, slot: String, value: String?): St
 
 /**
  * One copy of [item] for the slot [slot] to hint: a placement of it whose location is neither checked ([checked]) nor
- * hinted ([hinted]) in its world; `null` when none is left. Archipelago's `/hint` would name every copy. [pick]: by
- * chance, or the first in [playthrough] (its steps' locations in order, as world to location); a copy the
- * playthrough doesn't have comes after those, in the spoiler log's order.
+ * hinted ([hinted]) in its world; `null` when none is left. Archipelago's `/hint` would name every copy. The copies at
+ * [first] (by world) come first, if one of them is left (a hint with its location names a copy hinted by its slot
+ * alone first). [pick]: by chance, or the first in [playthrough] (its steps' locations in order, as world to
+ * location); a copy the playthrough doesn't have comes after those, in the spoiler log's order.
  */
 internal fun pickHint(
   placed: List<Placement>,
@@ -77,12 +80,18 @@ internal fun pickHint(
   random: Random,
   pick: HintPick = HintPick.RANDOM,
   playthrough: List<Pair<String, String>> = emptyList(),
+  first: Map<String, Set<String>> = emptyMap(),
 ): Placement? {
-  val copies = unhinted(placed, slot, checked, hinted).filter { it.item == item }
+  val left = unhinted(placed, slot, checked, hinted).filter { it.item == item }
+  val copies = left.filter { it.location in first[it.finder].orEmpty() }.ifEmpty { left }
   if (pick == HintPick.RANDOM) return copies.randomOrNull(random)
   val order = playthrough.withIndex().associate { (n, step) -> step to n }
   return copies.minByOrNull { order[it.finder to it.location] ?: Int.MAX_VALUE }
 }
+
+/** The locations of [a] and of [b], by world. */
+internal fun both(a: Map<String, Set<String>>, b: Map<String, Set<String>>): Map<String, Set<String>> =
+  (a.keys + b.keys).associateWith { a[it].orEmpty() + b[it].orEmpty() }
 
 /** The placements of the slot's items that are neither checked nor hinted yet. */
 internal fun unhinted(placed: List<Placement>, slot: String, checked: Map<String, Set<String>>, hinted: Map<String, Set<String>>) =
@@ -107,7 +116,8 @@ internal fun cheatText(admin: String, action: CheatAction, slot: String, value: 
 /**
  * Cheats from the admin panel: items, checks, release and collect, and free hints if the session allows them. They
  * go to the session's server console; every one is logged with the admin's name and shown in its live feed. A hint
- * names one place: a location not hinted yet, or one copy of an item that is neither checked nor hinted.
+ * names one place: a location not hinted yet, or one copy of an item that is neither checked nor hinted (with its
+ * location, or only the world it is in: [itemHint]).
  */
 @Single
 class Cheats(
@@ -178,7 +188,8 @@ class Cheats(
 
   /**
    * Runs [command] on [session]'s console and records it as [action] on [slot] with [shown] by [admin] ([byRole]): in
-   * the log (for the slot [about], if it is said), its cheat log and its live feed. Refused when no server runs.
+   * the log (for the slot [about], if it is said), its cheat log and its live feed; an item hint of only the slot with
+   * the copy it named ([slotHint], whose location none of these has). Refused when no server runs.
    */
   private suspend fun carryOut(
     session: LiveSession,
@@ -189,11 +200,12 @@ class Cheats(
     admin: String,
     byRole: String,
     about: String? = null,
+    slotHint: SlotHint? = null,
   ) {
     if (!gameServer.command(session.id, command)) throw SessionProblem(HttpStatusCode.Conflict, Problem.SERVER_NOT_RUNNING)
     logger.info("{} cheated in {}{}: {}", admin, session.id, about?.let { " for $it" }.orEmpty(), command)
     log.add(session.seedName, CheatEntry(Instant.now(), admin, action.name, slot, shown, byRole))
-    session.tracker.cheat(cheatText(admin, action, slot, shown, byRole), action, admin, byRole, slot, shown)
+    session.tracker.cheat(cheatText(admin, action, slot, shown, byRole), action, admin, byRole, slot, shown, slotHint)
   }
 
   /**
@@ -213,9 +225,13 @@ class Cheats(
     val incoming = placed.filter { it.receiver == slot && it.finder != slot && it.location in open[it.finder].orEmpty() }
       .map { IncomingCheck(it.location, it.finder, it.item) }
       .sortedWith(compareBy({ it.item.lowercase() }, { it.world.lowercase() }, { it.location.lowercase() }))
-    // An item is hinted while a copy of it is neither checked nor hinted
-    val hintItems = unhinted(placed, slot, checked, hinted).map { it.item }.distinct().sortedBy { it.lowercase() }
-    return names.copy(incoming = incoming, placementsKnown = true, hintItems = hintItems)
+    // An item is hinted while a copy of it is neither checked nor hinted; by its slot alone while one isn't that either
+    fun items(hinted: Map<String, Set<String>>) =
+      unhinted(placed, slot, checked, hinted).map { it.item }.distinct().sortedBy { it.lowercase() }
+    val slotHinted = session.tracker.read { slotHintedLocations() }
+    return names.copy(
+      incoming = incoming, placementsKnown = true, hintItems = items(hinted), slotHintItems = items(both(hinted, slotHinted)),
+    )
   }
 
   /** The seed's placements from its spoiler log; empty without them (or without a log). */
@@ -264,30 +280,52 @@ class Cheats(
     if (request.action == CheatAction.HINT_LOCATION && value in tracker.read { hintedLocations() }[request.slot].orEmpty()) {
       throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_HINTED, "value" to value!!, "slot" to request.slot)
     }
-    val command = if (request.action == CheatAction.HINT) itemHint(session, request.slot, value!!, request.pick) else cheatCommand(request.action, request.slot, value)
+    if (request.action == CheatAction.HINT) {
+      val (command, slotHint) = itemHint(session, request.slot, value!!, request.pick, request.detail)
+      carryOut(session, command, request.action, request.slot, value, admin, byRole, slotHint = slotHint)
+      return
+    }
+    val command = cheatCommand(request.action, request.slot, value)
     carryOut(session, command, request.action, request.slot, value.takeIf { request.action in NEEDS_VALUE }, admin, byRole)
   }
 
   /**
-   * The command of a hint for [item] of [slot]: one copy of it ([pick]), neither checked nor hinted, by its location
-   * (`/hint_location` in the world that holds it); Archipelago's own `/hint`, which names every copy, only without
-   * the spoiler log's placements.
+   * The command of a hint for [item] of [slot], with the copy it hints by its slot alone if it does: one copy of it
+   * ([pick]), neither checked nor hinted. With its location ([HintDetail.LOCATION]): Archipelago's hint of that
+   * location (`/hint_location` in the world that holds it), a copy hinted by its slot alone first (the hint names its
+   * location now, its row becomes Archipelago's). Only the slot ([HintDetail.SLOT]): a copy not hinted by its slot
+   * alone either, and a server message for every client's chat (`SessionState.chatLineOf`); the copy is recorded
+   * with the cheat. Without the spoiler log's placements the tracker can't know where a copy is: Archipelago's own `/hint`, which
+   * names every copy with its location, whichever [detail] is asked for (the page offers neither choice then).
    */
-  private suspend fun itemHint(session: LiveSession, slot: String, item: String, pick: HintPick): String {
+  private suspend fun itemHint(
+    session: LiveSession,
+    slot: String,
+    item: String,
+    pick: HintPick,
+    detail: HintDetail,
+  ): Pair<String, SlotHint?> {
     val placed = placed(session)
-    if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item)
+    if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item) to null
     // The next copy is the playthrough's: not before the spoiler log has it (the page doesn't offer it until then)
     if (pick == HintPick.NEXT && !session.playthroughReady) throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
     val checked = session.tracker.read { checkedLocations() }
     val hinted = session.tracker.read { hintedLocations() }
+    val slotHinted = session.tracker.read { slotHintedLocations() }
     // The playthrough's steps in order, sphere by sphere (world to location)
     val playthrough = if (pick != HintPick.NEXT) emptyList() else runCatching {
       spoilers.of(session.id, session.seedName)?.spoiler?.spheres.orEmpty()
         .flatMap { sphere -> sphere.entries.mapNotNull { stepLocation(it)?.let { (location, world) -> world to location } } }
     }.getOrDefault(emptyList())
-    val copy = pickHint(placed, slot, item, checked, hinted, random, pick, playthrough)
-      ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_UNHINTED_COPY, "value" to item, "slot" to slot)
-    return cheatCommand(CheatAction.HINT_LOCATION, copy.finder, copy.location)
+    val copy = when (detail) {
+      HintDetail.LOCATION -> pickHint(placed, slot, item, checked, hinted, random, pick, playthrough, first = slotHinted)
+      HintDetail.SLOT -> pickHint(placed, slot, item, checked, both(hinted, slotHinted), random, pick, playthrough)
+    } ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_UNHINTED_COPY, "value" to item, "slot" to slot)
+    if (detail == HintDetail.LOCATION) return cheatCommand(CheatAction.HINT_LOCATION, copy.finder, copy.location) to null
+    val (slotHint, line) = session.tracker.read {
+      slotHintOf(copy.receiver, copy.finder, copy.item, copy.location)?.let { it to chatLineOf(it) }
+    } ?: throw SessionProblem(HttpStatusCode.Conflict, Problem.NO_UNHINTED_COPY, "value" to item, "slot" to slot)
+    return line to slotHint
   }
 
   /** Which copy a hint names. */

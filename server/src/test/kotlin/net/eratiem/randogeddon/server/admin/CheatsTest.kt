@@ -7,12 +7,15 @@ import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.shared.Problem
 import net.eratiem.randogeddon.server.session.Placement
+import net.eratiem.randogeddon.server.state.slotHintLine
 import java.nio.file.Path
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CheatsTest {
   @Test
@@ -96,6 +99,44 @@ class CheatsTest {
     assertEquals("Crossroads", next(mapOf("Carol-SM" to setOf("Lake"), "Bob-LttP" to setOf("Tower"))))
     // Without a playthrough: the spoiler log's order
     assertEquals("Crossroads", pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), emptyMap(), Random(1), HintPick.NEXT)?.location)
+  }
+
+  @Test
+  fun `a hint of only the slot names a copy not hinted by its slot either, a hint with its location such a copy first`() {
+    val placed = listOf(
+      Placement("Crossroads", "Alice-HK", "Progressive Sword", "Bob-LttP"),
+      Placement("Tower", "Bob-LttP", "Progressive Sword", "Bob-LttP"),
+      Placement("Lake", "Carol-SM", "Progressive Sword", "Bob-LttP"),
+    )
+    val slotHinted = mapOf("Carol-SM" to setOf("Lake"))
+    // Only the slot: never Lake again, and nothing once every copy is hinted one way or the other
+    repeat(20) { n ->
+      val copy = pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), both(emptyMap(), slotHinted), Random(n))
+      assertNotEquals("Lake", copy?.location)
+    }
+    val hinted = mapOf("Alice-HK" to setOf("Crossroads"), "Bob-LttP" to setOf("Tower"))
+    assertNull(pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), both(hinted, slotHinted), Random(1)))
+    assertEquals(mapOf("Alice-HK" to setOf("Crossroads"), "Bob-LttP" to setOf("Tower"), "Carol-SM" to setOf("Lake")), both(hinted, slotHinted))
+    // With its location: the copy hinted by its slot first, by chance and as the next
+    repeat(20) { n ->
+      assertEquals("Lake", pickHint(placed, "Bob-LttP", "Progressive Sword", emptyMap(), emptyMap(), Random(n), first = slotHinted)?.location)
+    }
+    val playthrough = listOf("Bob-LttP" to "Tower", "Alice-HK" to "Crossroads", "Carol-SM" to "Lake")
+    val two = slotHinted + ("Alice-HK" to setOf("Crossroads"))
+    fun next(checked: Map<String, Set<String>>) =
+      pickHint(placed, "Bob-LttP", "Progressive Sword", checked, emptyMap(), Random(1), HintPick.NEXT, playthrough, first = two)?.location
+    // Of those two the playthrough's first, not Tower before them
+    assertEquals("Crossroads", next(emptyMap()))
+    // None of them left: the others
+    assertEquals("Tower", next(mapOf("Alice-HK" to setOf("Crossroads"), "Carol-SM" to setOf("Lake"))))
+  }
+
+  @Test
+  fun `the server message of a hint of only the slot is one line and never a command`() {
+    assertEquals("Hint: Alice-HK's Mantis Claw is somewhere in Bob-LttP's world.", slotHintLine("Alice-HK", "Mantis Claw", "Bob-LttP"))
+    val line = slotHintLine("/release Ann\n", "Dash\r\n/collect Bob", "Bob\u0000")
+    assertEquals("Hint: /release Ann's Dash/collect Bob is somewhere in Bob's world.", line)
+    assertTrue(line.startsWith("Hint: ") && line.none { it.isISOControl() })
   }
 
   @Test

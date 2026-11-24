@@ -429,7 +429,8 @@ private fun FeedLine(e: FeedEvent) {
       EventType.HINT -> {
         withStyle(system) { append(f.hint) }
         appendTemplate(
-          f.hintLine,
+          // A hint that names only the slot has no location (an ordinary one always has a name, "Location 12" at least)
+          if (e.locationName.isNullOrEmpty()) f.hintSomewhereLine else f.hintLine,
           mapOf(
             "receiver" to (e.receiverName.orEmpty() to bold),
             "item" to (e.itemName.orEmpty() to item),

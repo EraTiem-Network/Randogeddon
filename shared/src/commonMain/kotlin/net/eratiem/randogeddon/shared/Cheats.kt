@@ -52,7 +52,21 @@ data class CheatRequest(
   val from: String? = null,
   /** An item hint: which of its copies it names. */
   val pick: HintPick = HintPick.RANDOM,
+  /** An item hint: whether it names only the slot whose world holds the copy, or its location there too. */
+  val detail: HintDetail = HintDetail.SLOT,
 )
+
+/** What an item hint names: only the slot whose world holds the item, or its location there too. */
+@Serializable
+enum class HintDetail {
+  /**
+   * The tracker's own hint, not Archipelago's: a server message to every client's chat, a feed line and a row of the
+   * hints without the location. Only with the spoiler log's placements (Archipelago's `/hint` without them).
+   */
+  @SerialName("slot") SLOT,
+  /** Archipelago's hint (`/hint_location` in the world that holds the copy). */
+  @SerialName("location") LOCATION,
+}
 
 /** Which copy of an item a hint names: one by chance, or the one the playthrough needs first. */
 @Serializable
@@ -91,7 +105,8 @@ data class CheatView(
  * the locations of other worlds, not checked yet, that hold one of the slot's items (from the spoiler log's
  * placements; [placementsKnown] `false` without them). For hints: [hintLocations], its open locations not hinted yet;
  * [hintItems], with the placements known, the items of which a copy for the slot is neither checked nor hinted yet
- * (a hint names one of them).
+ * (a hint with its location, [HintDetail.LOCATION], names one of them); [slotHintItems] likewise, but no copy hinted
+ * by its slot alone either (a hint of only the slot, [HintDetail.SLOT]).
  */
 @Serializable
 data class CheatNames(
@@ -101,6 +116,7 @@ data class CheatNames(
   val placementsKnown: Boolean = false,
   val hintLocations: List<String> = emptyList(),
   val hintItems: List<String> = emptyList(),
+  val slotHintItems: List<String> = emptyList(),
 )
 
 /** A location of [world], not checked yet, that holds [item] for the slot asked about. */

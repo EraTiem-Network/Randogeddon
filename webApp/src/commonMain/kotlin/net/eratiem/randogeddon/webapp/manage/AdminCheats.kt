@@ -27,6 +27,7 @@ import net.eratiem.randogeddon.shared.CheatNames
 import net.eratiem.randogeddon.shared.CheatRequest
 import net.eratiem.randogeddon.shared.CheatView
 import net.eratiem.randogeddon.shared.GameServerState
+import net.eratiem.randogeddon.shared.HintDetail
 import net.eratiem.randogeddon.shared.HintPick
 import net.eratiem.randogeddon.shared.LOCK_CHEATS
 import net.eratiem.randogeddon.webapp.api.AdminCache
@@ -56,6 +57,9 @@ private val CONTROL_HEIGHT = 34.dp
 
 /** Which copy an item hint names, remembered in this browser. */
 private const val HINT_PICK_KEY = "ap-hint-pick"
+
+/** What an item hint names (only the slot, or its location too), remembered in this browser. */
+private const val HINT_DETAIL_KEY = "ap-hint-detail"
 
 private val WITH_ITEM = setOf(CheatAction.ITEM, CheatAction.HINT)
 private val HINTS = setOf(CheatAction.HINT, CheatAction.HINT_LOCATION)
@@ -100,6 +104,16 @@ fun CheatSection(
   // Why the list couldn't be loaded (apart from the last cheat's outcome, which it doesn't replace)
   var loadProblem by remember { mutableStateOf<String?>(null) }
   var hintPick by remember { mutableStateOf(HintPick.entries.firstOrNull { it.name == Platform.loadSetting(HINT_PICK_KEY) } ?: HintPick.RANDOM) }
+  // Only the slot unless chosen otherwise
+  var hintDetail by remember {
+    mutableStateOf(HintDetail.entries.firstOrNull { it.name == Platform.loadSetting(HINT_DETAIL_KEY) } ?: HintDetail.SLOT)
+  }
+  // An item hint that names only the slot: with the placements known (without them the toggle isn't shown, and the
+  // hint is Archipelago's, which names the location)
+  fun slotOnly(n: CheatNames?) =
+    action == CheatAction.HINT && n?.placementsKnown == true && hintDetail == HintDetail.SLOT
+  // The items to hint: for only the slot, those with a copy neither checked, hinted nor slot-hinted
+  fun hintItems(n: CheatNames?) = if (slotOnly(n)) n?.slotHintItems else n?.hintItems
   var busy by remember { mutableStateOf(false) }
   // The spoiler log of a running session, asked once more
   var askingSpoiler by remember { mutableStateOf(false) }
@@ -138,7 +152,7 @@ fun CheatSection(
         if (answer.value.incoming.none { it.location == value && it.world == from }) { value = null; from = null }
       } else if (action in WITH_LOCATION && value != null && value !in answer.value.locations) value = null
       else if (action == CheatAction.HINT_LOCATION && value != null && value !in answer.value.hintLocations) value = null
-      else if (action == CheatAction.HINT && value != null && value !in answer.value.hintItems) value = null
+      else if (action == CheatAction.HINT && value != null && value !in hintItems(answer.value).orEmpty()) value = null
     }
   }
 
@@ -180,7 +194,7 @@ fun CheatSection(
           val incoming = toSlot && action == CheatAction.LOCATION
           // A hint names one place: only locations not hinted yet, and items with a copy neither checked nor hinted
           val choices = when (action) {
-            CheatAction.HINT -> names?.hintItems
+            CheatAction.HINT -> hintItems(names)
             CheatAction.HINT_LOCATION -> names?.hintLocations
             in WITH_ITEM -> names?.items
             in WITH_LOCATION -> names?.locations
@@ -219,6 +233,26 @@ fun CheatSection(
               )
             }
           }
+          // An item hint: only the slot, or its location too (with the placements known), remembered in this browser
+          val detail: @Composable (Modifier) -> Unit = { modifier ->
+            val meanings = listOf(
+              t.cheats.onlySlot to t.cheats.onlySlotMeaning, t.cheats.slotAndLocation to t.cheats.slotAndLocationMeaning,
+            )
+            Tip(t.cheats.detailTip, options = meanings) {
+              Select(
+                listOf(HintDetail.SLOT to t.cheats.onlySlot, HintDetail.LOCATION to t.cheats.slotAndLocation), hintDetail,
+                {
+                  hintDetail = it
+                  Platform.saveSetting(HINT_DETAIL_KEY, it.name)
+                  // An item not in the other list isn't picked any more
+                  if (value != null && hintItems(names)?.contains(value) == false) value = null
+                },
+                modifier, minHeight = CONTROL_HEIGHT,
+              )
+            }
+          }
+          val picksDetail = action == CheatAction.HINT && names?.placementsKnown == true
+          val slotOnlyHint = slotOnly(names)
           val picksCopy = action == CheatAction.HINT && names?.placementsKnown == true && playthrough
           val needsValue = action in WITH_ITEM || action in WITH_LOCATION
           val which: @Composable (Modifier) -> Unit = { modifier ->
@@ -256,10 +290,17 @@ fun CheatSection(
               outcome = null
               scope.launch {
                 val world = from.takeIf { incoming }
-                val body = ApiJson.encodeToString(CheatRequest.serializer(), CheatRequest(action, slot!!, value, world, if (playthrough) hintPick else HintPick.RANDOM))
+                // The toggle as shown; without it (no placements) the hint is Archipelago's, with the location
+                val request = CheatRequest(
+                  action, slot!!, value, world, if (playthrough) hintPick else HintPick.RANDOM,
+                  detail = if (slotOnlyHint) HintDetail.SLOT else HintDetail.LOCATION,
+                )
+                val body = ApiJson.encodeToString(CheatRequest.serializer(), request)
                 outcome = when (val answer = call("POST", path, body) { }) {
+                  // Only the slot: said without a location
+                  is Answer.Ok -> if (slotOnlyHint) true to t.cheats.doneSlotOnly(slot.orEmpty(), value.orEmpty())
                   // A key's location as the log says it: "Location (in World)"
-                  is Answer.Ok -> true to t.cheats.done(
+                  else true to t.cheats.done(
                     action, world ?: slot.orEmpty(),
                     if (action in LOCK_CHEATS) lock?.keyLocation?.let { at -> lock.keyWorld?.let { t.cheats.locationIn(at, it) } ?: at } else value,
                   )
@@ -276,6 +317,7 @@ fun CheatSection(
               Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.fillMaxWidth())
                 if (action == CheatAction.LOCATION) direction(Modifier.fillMaxWidth())
+                if (picksDetail) detail(Modifier.fillMaxWidth())
                 if (picksCopy) copy(Modifier.fillMaxWidth())
                 forSlot(Modifier.fillMaxWidth())
                 if (needsValue) which(Modifier.fillMaxWidth())
@@ -286,6 +328,7 @@ fun CheatSection(
               Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 what(Modifier.width(170.dp))
                 if (action == CheatAction.LOCATION) direction(Modifier.width(140.dp))
+                if (picksDetail) detail(Modifier)
                 if (picksCopy) copy(Modifier)
                 forSlot(Modifier.width(200.dp))
                 if (needsValue) which(Modifier.weight(1f)) else Spacer(Modifier.weight(1f))

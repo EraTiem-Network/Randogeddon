@@ -40,6 +40,13 @@ docker compose build     # BuildKit (docker buildx); the native images need abou
   (e.g. a systemd drop-in with `EnvironmentFile=`, mode 600).
 - **With Traefik's labels:** `COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml`; check `TRAEFIK_NETWORK`,
   `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`, `TRAEFIK_DNS_CERTRESOLVER`.
+- **A second port for web pages, 38281:** a tracker or client that is a web page (built on archipelago.js) can't
+  reach port 443: a browser's URL drops the default port of `wss://`, and the library then fills in Archipelago's
+  own, 38281. So the game servers' router also listens there, with the same certificate: an entry point in
+  Traefik's static configuration (`archipelago: {address: ":38281"}`, with `websecure`'s timeouts), the port open
+  in the firewall, and the entry point on the router (`TRAEFIK_AP_ENTRYPOINTS=websecure,archipelago`, or in the
+  file below). Such a page then takes `<session-id>.randogeddon.eratiem.net` without a port. Everything else
+  stays on 443, which the dashboard keeps showing.
 - **With the file provider** (Traefik on a host, Randogeddon in a VM): `docker-compose.proxy.yml` publishes 38281 and
   8000; the routers:
 
@@ -48,7 +55,7 @@ http:
   routers:
     randogeddon-ap:                     # every session's game server: the gateway (WebSocket)
       rule: "HostRegexp(`^[a-z0-9-]+[.]randogeddon[.]eratiem[.]net$`)"   # [.]: no escaping in YAML's quotes
-      entryPoints: [websecure]
+      entryPoints: [websecure, archipelago]   # archipelago: 38281, for web pages (above)
       service: randogeddon-ap           # http://<vm>:38281
       middlewares: [randogeddon-ap-rate]
       tls: &randogeddon-tls

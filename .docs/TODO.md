@@ -36,10 +36,8 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
-- [ ] Left from 0.23.9: a two-factor login begun with the old password in the five minutes before a reset can
-      still be finished with its code; the limit's message for the forgotten-password page reads "too many wrong
-      attempts for this account"; not tried: the mails through a real mail server, the page with two-factor on
-      (unit-tested), the reset link opened while logged in, German on the new pages
+- [ ] Left from 0.23.9, not tried: the page with two-factor on (unit-tested), the reset link opened while logged
+      in, German on the new pages (the mails through the live mail server went out: the user, 2026-11-24)
 - [ ] Left from 0.23.8: not seen on screen (built and unit-tested; the demo has no slot whose logic doesn't
       fit and runs on plain http): Enter and Escape in a confirmation, a tip on keyboard focus, polling paused
       in a hidden tab, the warning without its reason for a player, the old cookie's login ended; the deploy
@@ -53,7 +51,8 @@ The parts:
           (the player listed, then gone), checks sent while playing
     - [ ] With real game clients: `!getitem` refused; the bridge against a live session and its page in a
           browser; a client taking a `RoomUpdate` right before `Connected` (after a session's options changed
-          while it slept); a broken save through the panel; a mail's time in the account's zone
+          while it slept); a broken save through the panel; a mail's time in the account's zone;
+          the bridge of 0.23.10 offering the session to someone of its support who plays a slot
     - [ ] In a real browser: the map's full screen; the file pickers (their folders, their messages); a
           person's panel on a share-link page; someone with one session; Enter in the forms; a text selection
           kept in its panel; Space on a focused button; the page on a phone and its keyboard's Go key; the
@@ -90,8 +89,6 @@ The parts:
       in the Overview's panel of the items transported too (asked for on 2026-11-23; can be one pull request)
 - [ ] The spoiler page's *Everything*: whether a check is checked (asked for on 2026-11-23; the placements carry a
       mark since 0.23.2.8: to look at with the user what is missing), and for a World Key which slot it opens
-- [ ] Cheats, an item's hint: an option whether it names only the slot the item is on or its location too; only
-      the slot unless chosen otherwise (asked for on 2026-11-23)
 - [ ] Hosted Minecraft Dig (reported on 2026-11-23): a connected Minecraft Dig server doesn't seem to keep its
       session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
       should shut down after a number of minutes without players that an Administrator sets, 5 by default

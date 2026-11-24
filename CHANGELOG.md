@@ -12,6 +12,29 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.10: Web pages that connect as a client
+No schema change. Needs an entry point on 38281 in Traefik and the port open (`.docs/OPERATIONS.md`); without them
+nothing changes.
+
+New:
+- A tracker or client that is a web page (built on archipelago.js, as the Skyward Sword HD tracker) reaches a
+  session: enter `<session-id>.randogeddon.eratiem.net` without a port. Such pages can't use port 443 (the
+  browser drops it from the address and the library fills in 38281), so the game servers now also answer on
+  38281, with the same certificate and the same limits. `TRAEFIK_AP_ENTRYPOINTS` for the labels' overlay.
+- Cheats, *Hint an item*: a picker beside the item, *Only the slot* (the default) or *Slot and location*; your
+  browser remembers it. Only the slot tells every client's chat that the item is somewhere in that slot's world,
+  and the dashboard shows it in the feed and the hint log without a location. The next such hint for the item
+  names another copy; one with the location later turns the row into the full hint. *Slot and location* is
+  Archipelago's hint, as before. (Where the spoiler log's placements aren't known there is no choice.)
+
+Fixed:
+- Randogeddon Bridge offers a session to someone of its support, or a watcher, who also plays a slot in it. It
+  went by their part alone and showed them no session.
+- A new password (by a reset link or in the settings) also ends a login that was begun with the old one and
+  waits for its two-factor code.
+- The forgotten-password page says "too many mails in a short time" at its limit, not "too many wrong attempts
+  for this account".
+
 ### 0.23.9: A forgotten password
 Schema 30 (a table for the reset links).
 

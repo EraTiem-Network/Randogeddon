@@ -119,9 +119,14 @@ private data class SavedState(
   val totalDeaths: Int = 0,
   val totalTrapLinks: Int = 0,
   val unlockedByServer: Set<String> = emptySet(),
+  /** The copies hinted by their slot alone (in the tracker's own baseline only, never shown). */
+  val slotHints: List<SlotHint> = emptyList(),
 )
 
-/** A cheat's feed line as it is kept among the game server's events (written by the tracker, kind `cheat`). */
+/**
+ * A cheat's feed line as it is kept among the game server's events (written by the tracker, kind `cheat`). [slotHint]:
+ * the copy an item hint of only the slot named (since 0.23.10).
+ */
 @Serializable
 data class CheatLine(
   val message: String,
@@ -130,7 +135,26 @@ data class CheatLine(
   val role: String? = null,
   val slot: String? = null,
   val value: String? = null,
+  val slotHint: SlotHint? = null,
 )
+
+/**
+ * A copy of an item hinted by its slot alone (the admin panel's [net.eratiem.randogeddon.shared.HintDetail.SLOT]):
+ * [item] of [receiver] at [location] of [finder] (slots and IDs). Its location is the tracker's alone: kept among the
+ * session's events and in its baseline, never in what is shown (see [SessionState.renderHints]).
+ */
+@Serializable
+data class SlotHint(val receiver: Int, val finder: Int, val item: Long, val location: Long)
+
+/**
+ * The server message of an item hint of only the slot, for every client's chat: MultiServer's console says a line
+ * that is no command to everyone (`[Server]: …`, a `ServerChat`). It starts with fixed text, so it is never a command
+ * whatever the names are, and is one line (without control characters).
+ */
+fun slotHintLine(receiver: String, item: String, finder: String): String {
+  fun text(name: String) = name.filterNot { it.isISOControl() }
+  return "Hint: ${text(receiver)}'s ${text(item)} is somewhere in ${text(finder)}'s world."
+}
 
 /**
  * The aggregated session, fed with the packets of the Archipelago network protocol.
@@ -160,6 +184,11 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   private val groups = mutableMapOf<Int, Group>()
   val events: ArrayDeque<FeedEvent> = ArrayDeque()
   private val hints = linkedMapOf<HintKey, Hint>()
+  /**
+   * The copies hinted by their slot alone, by where they are; one of [hints] for the same place is the same hint with
+   * its location (it took the row over).
+   */
+  private val slotHints = linkedMapOf<HintKey, SlotHint>()
   private val itemNames = mutableMapOf<String, Map<Long, String>>()
   private val locationNames = mutableMapOf<String, Map<Long, String>>()
   private var eventSeq = 0L
@@ -197,6 +226,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     groups.clear()
     events.clear()
     hints.clear()
+    slotHints.clear()
     itemNames.clear()
     locationNames.clear()
     locks.clear()
@@ -464,7 +494,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
           }
         }
         SessionEventStore.CHEAT -> runCatching { ApiJson.decodeFromString(CheatLine.serializer(), payload) }.getOrNull()?.let {
-          onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at)
+          onCheat(it.message, it.action, it.by, it.role, it.slot, it.value, at, it.slotHint)
         }
       }
     } catch (e: Exception) {
@@ -607,7 +637,11 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     touch()
   }
 
-  /** An admin cheated from the admin panel: a feed line saying who and what ([message], e.g. "Alice gave …"). */
+  /**
+   * An admin cheated from the admin panel: a feed line saying who and what ([message], e.g. "Alice gave …"). An item
+   * hint of only the slot also names the copy it hinted ([slotHint]): a row of the hints from then on, without its
+   * location. The feed line never has the location: its value is the item.
+   */
   fun onCheat(
     message: String,
     action: CheatAction? = null,
@@ -616,6 +650,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     slot: String? = null,
     value: String? = null,
     now: Long = clock(),
+    slotHint: SlotHint? = null,
   ) {
     feed(
       event(now, EventType.CHEAT, message = message, cheat = true).copy(
@@ -623,6 +658,28 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       )
     )
     if (slot != null && (action == CheatAction.UNLOCK || action == CheatAction.KEY_LOCATION)) unlockedByServer += slot
+    slotHint?.let {
+      // Its hint line, as Archipelago's hints have one: without a location (no ID, no name)
+      feed(event(now, EventType.HINT, finder = it.finder, receiver = it.receiver, item = it.item, flags = slotHintFlags(it)))
+      onSlotHint(it)
+    }
+    touch()
+  }
+
+  /** Progression or not, as scouting says (the item is named anyway); a hint of only the slot has no other flags. */
+  private fun slotHintFlags(h: SlotHint): Int =
+    if (progressionPlacements[h.finder]?.get(h.location) == h.receiver) ItemFlags.PROGRESSION else 0
+
+  /**
+   * The server message of [hint] for every client's chat ([slotHintLine]): the names as the chat has them (the
+   * worlds' aliases, the item in its receiver's game).
+   */
+  fun chatLineOf(hint: SlotHint): String =
+    slotHintLine(playerName(hint.receiver), itemName(hint.item, hint.receiver), playerName(hint.finder))
+
+  /** [hint]'s copy is hinted by its slot alone (once: its cheat's event read back later changes nothing). */
+  fun onSlotHint(hint: SlotHint) {
+    slotHints.putIfAbsent(HintKey(hint.finder, hint.location), hint)
     touch()
   }
 
@@ -675,6 +732,28 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
   fun hintedLocations(): Map<String, Set<String>> = hints.keys
     .groupBy({ players[it.findingPlayer]?.name }, { locationName(it.location, it.findingPlayer) })
     .mapNotNull { (world, locations) -> world?.let { it to locations.toSet() } }.toMap()
+
+  /**
+   * Each world's locations whose copy was hinted by its slot alone, by its name (the tracker's own: for picking the
+   * next copy, never shown).
+   */
+  fun slotHintedLocations(): Map<String, Set<String>> = slotHints.keys
+    .groupBy({ players[it.findingPlayer]?.name }, { locationName(it.location, it.findingPlayer) })
+    .mapNotNull { (world, locations) -> world?.let { it to locations.toSet() } }.toMap()
+
+  /**
+   * The copy of [item] for [receiver] at [location] of [finder] (slot names, as the spoiler log has them) by slots and
+   * IDs, for a hint of only its slot; `null` when one of them isn't known (the location among the finder's own, the
+   * item among the receiver's game's).
+   */
+  fun slotHintOf(receiver: String, finder: String, item: String, location: String): SlotHint? {
+    val to = players.values.firstOrNull { it.name == receiver && it.game != WORLD_LOCKS_GAME } ?: return null
+    val from = players.values.firstOrNull { it.name == finder && it.game != WORLD_LOCKS_GAME } ?: return null
+    val at = (from.missing + from.checked).firstOrNull { locationName(it, from.slot) == location } ?: return null
+    val id = listOfNotNull(gameOf(to.slot), "Archipelago")
+      .firstNotNullOfOrNull { game -> itemNames[game]?.entries?.firstOrNull { it.value == item }?.key } ?: return null
+    return SlotHint(to.slot, from.slot, id, at)
+  }
 
   /** Each world's checked locations, by its name (World Locks' slots left out). */
   fun checkedLocations(): Map<String, Set<String>> = players.values.filter { it.game != WORLD_LOCKS_GAME }
@@ -825,7 +904,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       ),
       people = people(list, people),
       players = list,
-      events = events.toList().takeLast(maxEvents).map(::render),
+      events = shownEvents().takeLast(maxEvents).map(::render),
       hints = renderHints(),
     )
   }
@@ -881,6 +960,18 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     )
   }
 
+  /**
+   * The feed as it is shown: without the server's chat line of a hint of only the slot (MultiServer says it to
+   * everyone; the feed has its hint line already). Left out when shown, whichever of the two was kept first; a console
+   * line of the very same text goes with it.
+   */
+  private fun shownEvents(): List<FeedEvent> {
+    if (slotHints.isEmpty()) return events.toList()
+    // As the feed keeps a chat line ([chatLine])
+    val lines = slotHints.values.mapTo(mutableSetOf()) { playerText(chatLineOf(it), MAX_CHAT) }
+    return events.filterNot { it.type == EventType.CHAT && it.slot == 0 && it.message in lines }
+  }
+
   fun render(e: FeedEvent): FeedEvent {
     val receiver = e.receiver ?: 0
     return when (e.type) {
@@ -905,7 +996,9 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
         val finder = e.finder ?: 0
         e.copy(
           finderName = playerName(finder), receiverName = playerName(receiver),
-          itemName = displayItemName(e.item ?: 0, receiver), locationName = locationName(e.location ?: 0, finder),
+          itemName = displayItemName(e.item ?: 0, receiver),
+          // A hint of only the slot has no location: no name either (not "Location 0")
+          locationName = e.location?.let { locationName(it, finder) },
         )
       }
 
@@ -913,7 +1006,11 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     }
   }
 
-  fun renderHints(): List<HintView> = hints.values.map { h ->
+  /**
+   * The hints: Archipelago's, and the copies hinted by their slot alone that no hint of Archipelago's names yet (one
+   * row each, without the location: [HintView.slotOnly]; found once that location is checked).
+   */
+  fun renderHints(): List<HintView> = (hints.values.map { h ->
     HintView(
       receivingPlayer = h.receivingPlayer,
       findingPlayer = h.findingPlayer,
@@ -931,7 +1028,22 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       itemName = displayItemName(h.item, h.receivingPlayer),
       locationName = locationName(h.location, h.findingPlayer),
     )
-  }.sortedWith(compareBy<HintView> { it.found }.thenBy { it.receiverName }.thenBy { it.itemName })
+  } + slotHints.filterKeys { it !in hints }.values.map { h ->
+    HintView(
+      receivingPlayer = h.receiver,
+      findingPlayer = h.finder,
+      // Never its location, in no form
+      location = 0,
+      item = h.item,
+      found = players[h.finder]?.checked?.contains(h.location) == true,
+      itemFlags = slotHintFlags(h),
+      finderName = playerName(h.finder),
+      receiverName = playerName(h.receiver),
+      itemName = displayItemName(h.item, h.receiver),
+      locationName = "",
+      slotOnly = true,
+    )
+  }).sortedWith(compareBy<HintView> { it.found }.thenBy { it.receiverName }.thenBy { it.itemName })
 
   // ------------------------------------------------------------------------------------------------------ baseline
 
@@ -966,6 +1078,7 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
       totalDeaths = deaths,
       totalTrapLinks = trapLinks,
       unlockedByServer = unlockedByServer.toSet(),
+      slotHints = slotHints.values.toList(),
     )
   }
 
@@ -1010,6 +1123,11 @@ class SessionState(private val clock: () -> Long = System::currentTimeMillis) {
     deaths += data.totalDeaths
     trapLinks += data.totalTrapLinks
     unlockedByServer += data.unlockedByServer
+    // Before the ones heard since, in their order
+    val since = slotHints.toMap()
+    slotHints.clear()
+    data.slotHints.forEach { slotHints[HintKey(it.finder, it.location)] = it }
+    since.forEach { (key, hint) -> slotHints.putIfAbsent(key, hint) }
     // The history file had no release times: its feed has them (its last 500 events)
     data.events.filter { it.type == EventType.RELEASE }.forEach { e ->
       e.slot?.let { players[it] }?.let { p -> p.releasedAt = minOf(e.ts, p.releasedAt ?: e.ts) }
