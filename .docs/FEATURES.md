@@ -165,6 +165,10 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 
 ## Randogeddon Bridge
 
+A web page that connects as a client (a tracker built on archipelago.js) takes the session's host name without a
+port: it then uses 38281, where the server answers with TLS too (`.docs/OPERATIONS.md`). The bridge is not for
+web pages.
+
 For game clients without TLS: the game connects to `localhost:<port>`, the bridge passes it on over `wss://` with
 the slot's password. Logged in with a key (*Your connection*, 30 days), it offers the user's slots and, to
 Session-Managers, the hosted ones; never a locked one. Command line: `login`, `slots`, `relay -session -slot

@@ -1628,3 +1628,19 @@ games' real map images moved to Later.*
       one for an account, a wrong address (the same answer after 1.3 s, no mail), the right one in capitals (the
       mail), the link's page, three obvious passwords refused each with its sentence, a phrase accepted, the
       second mail, the link gone afterwards, the new password logging in
+- [x] Web pages that connect as a client can't reach a session (0.23.10; reported on 2026-11-24 with the Skyward Sword HD
+      tracker page): their library (archipelago.js) replaces the port of `wss://{session}.{domain}:443` with 38281,
+      because a browser's URL drops a default port; a plain `ws://` is blocked on an `https://` page, and the bridge
+      refuses web pages (an `Origin` header) on purpose. Decided on 2026-11-24, as 0.23.10: the session host names on a second
+      TLS port, 38281 (a Traefik entry point, the firewall, the router's entry points; `TRAEFIK_AP_ENTRYPOINTS`
+      for the labels' overlay). On the live host since 2026-11-24 (Traefik restarted on the user's word); the user
+      connected the page to a real slot
+- [x] The bridge doesn't offer a session to someone of its support (or a watcher) who also plays a slot in it
+      (0.23.10; reported on 2026-11-24: someone with support and one slot): it went by the part alone. For 0.23.10: also
+      offered to whoever has slots of their own.
+    - Found from the page's script (its library's `connect`) and, for the bridge, from the live database and
+      Traefik's access log (the session list fetched, never a connection); made by the main session (a label,
+      a line of the bridge's rule, the docs)
+    - Tried: compose's rendering of the label with and without `TRAEFIK_AP_ENTRYPOINTS`; on live from outside,
+      38281 with the wildcard certificate and the same answer as 443 for an unknown session, the dashboard not
+      on it; the bridge's tests (three new cases). Not tried: the new bridge with a support's slot on live

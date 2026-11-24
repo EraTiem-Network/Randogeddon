@@ -53,7 +53,8 @@ The parts:
           (the player listed, then gone), checks sent while playing
     - [ ] With real game clients: `!getitem` refused; the bridge against a live session and its page in a
           browser; a client taking a `RoomUpdate` right before `Connected` (after a session's options changed
-          while it slept); a broken save through the panel; a mail's time in the account's zone
+          while it slept); a broken save through the panel; a mail's time in the account's zone;
+          the bridge of 0.23.10 offering the session to someone of its support who plays a slot
     - [ ] In a real browser: the map's full screen; the file pickers (their folders, their messages); a
           person's panel on a share-link page; someone with one session; Enter in the forms; a text selection
           kept in its panel; Space on a focused button; the page on a phone and its keyboard's Go key; the

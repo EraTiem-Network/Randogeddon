@@ -12,6 +12,20 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.10: Web pages that connect as a client
+No schema change. Needs an entry point on 38281 in Traefik and the port open (`.docs/OPERATIONS.md`); without them
+nothing changes.
+
+New:
+- A tracker or client that is a web page (built on archipelago.js, as the Skyward Sword HD tracker) reaches a
+  session: enter `<session-id>.randogeddon.eratiem.net` without a port. Such pages can't use port 443 (the
+  browser drops it from the address and the library fills in 38281), so the game servers now also answer on
+  38281, with the same certificate and the same limits. `TRAEFIK_AP_ENTRYPOINTS` for the labels' overlay.
+
+Fixed:
+- Randogeddon Bridge offers a session to someone of its support, or a watcher, who also plays a slot in it. It
+  went by their part alone and showed them no session.
+
 ### 0.23.9: A forgotten password
 Schema 30 (a table for the reset links).
 
