@@ -9,6 +9,7 @@ import net.eratiem.randogeddon.server.session.withoutLogicReasons
 import net.eratiem.randogeddon.shared.ApiJson
 import net.eratiem.randogeddon.shared.ArchivedSession
 import net.eratiem.randogeddon.shared.AvailableAnswer
+import net.eratiem.randogeddon.shared.CheatAction
 import net.eratiem.randogeddon.shared.EventType
 import net.eratiem.randogeddon.shared.LocksFound
 import net.eratiem.randogeddon.shared.MapRegion
@@ -466,6 +467,106 @@ class SessionStateTest {
     val h = s.renderHints().single()
     assertTrue(h.found)
     assertEquals(listOf("Key", "Door", "Bobby"), listOf(h.itemName, h.locationName, h.finderName))
+  }
+
+  @Test
+  fun `a hint of only the slot is a row without its location, found when checked, until a hint of Archipelago's names it`() {
+    val s = makeState()
+    val slotHint = s.slotHintOf("Alice", "Bob", "Key", "Door")!!
+    assertEquals(SlotHint(1, 2, 101, 21), slotHint)
+    assertEquals(null, s.slotHintOf("Alice", "Bob", "Key", "Nowhere"))
+    s.onCheat("Ada hinted Key for Alice", CheatAction.HINT, "Ada", "administrator", "Alice", "Key", now = 5, slotHint = slotHint)
+    // Its event read back changes nothing
+    s.onSlotHint(slotHint)
+    val row = s.renderHints().single()
+    assertTrue(row.slotOnly)
+    assertEquals(listOf<Any>(0L, "", ""), listOf(row.location, row.locationName, row.entrance))
+    assertEquals(listOf("Key", "Bobby", "Alice"), listOf(row.itemName, row.finderName, row.receiverName))
+    assertFalse(row.found)
+    // Hinted by its slot alone: for the next hint of only the slot, not for one with its location
+    assertEquals(mapOf("Bob" to setOf("Door")), s.slotHintedLocations())
+    assertEquals(emptyMap(), s.hintedLocations())
+
+    // Nothing sent out has its location: the hints, the feed's hint line (the cheat line names the item), the archive
+    val summary = s.summary("t", null)
+    val line = summary.events.single { it.type == EventType.HINT }
+    assertEquals(listOf("Alice", "Key", "Bobby"), listOf(line.receiverName, line.itemName, line.finderName))
+    assertEquals(null, line.location)
+    assertEquals(null, line.locationName)
+    assertEquals("Key", summary.events.single { it.type == EventType.CHEAT }.cheatValue)
+    val sent = ApiJson.encodeToString(ArchivedSession.serializer(), ArchivedSession(summary, emptyList()))
+    assertFalse("Door" in sent)
+    assertFalse("21" in sent.substringAfter("\"hints\""))
+
+    // Found once its location is checked
+    s.onRoomUpdate(2, json("""{"cmd":"RoomUpdate","checked_locations":[21]}"""))
+    assertTrue(s.renderHints().single().found)
+
+    // A hint of Archipelago's for it (a full hint, a player's, a game's): the same row, with its location
+    s.onSetReply("_read_hints_0_1", element(
+      """[{"receiving_player":1,"finding_player":2,"location":21,"item":101,"found":true,
+           "entrance":"","item_flags":1,"status":40,"class":"Hint"}]"""
+    ))
+    val upgraded = s.renderHints().single()
+    assertFalse(upgraded.slotOnly)
+    assertEquals(listOf<Any>(21L, "Door", true), listOf(upgraded.location, upgraded.locationName, upgraded.found))
+  }
+
+  @Test
+  fun `a hint of only the slot comes back after a restart, from its event and from the state kept`() {
+    val line = CheatLine("Ada hinted Key for Alice", CheatAction.HINT, "Ada", "administrator", "Alice", "Key", SlotHint(1, 2, 101, 21))
+    val payload = ApiJson.encodeToString(CheatLine.serializer(), line)
+    val s = makeState()
+    s.onServerEvent(1, 1_000, "cheat", payload)
+    val rows = s.renderHints()
+    assertTrue(rows.single().slotOnly)
+    assertEquals(listOf(EventType.CHEAT, EventType.HINT), s.events.map { it.type })
+
+    // Its event replayed
+    val t = makeState()
+    t.onServerEvent(1, 1_000, "cheat", payload)
+    assertEquals(rows, t.renderHints())
+
+    // The state kept with the live snapshot, its event not taken twice
+    val u = makeState()
+    u.loadSaved(s.keptJson())
+    u.applySaved()
+    u.onServerEvent(1, 1_000, "cheat", payload)
+    assertEquals(rows, u.renderHints())
+    assertEquals(mapOf("Bob" to setOf("Door")), u.slotHintedLocations())
+    assertEquals(listOf(EventType.CHEAT, EventType.HINT), u.events.map { it.type })
+  }
+
+  @Test
+  fun `the server's chat line of a hint of only the slot isn't shown, whichever event came first, other server lines are`() {
+    val line = CheatLine("Ada hinted Key for Alice", CheatAction.HINT, "Ada", "administrator", "Alice", "Key", SlotHint(1, 2, 101, 21))
+    val cheat = ApiJson.encodeToString(CheatLine.serializer(), line)
+    // What MultiServer says to everyone, as the gateway keeps it
+    fun serverChat(message: String) = """{"cmd":"PrintJSON","type":"ServerChat","data":[{"text":"[Server]: $message"}],"message":"$message"}"""
+    val said = "Hint: Alice's Key is somewhere in Bobby's world."
+    fun shown(s: SessionState) = s.summary("t", null).events.map { it.type to it.message }
+    val chatFirst = makeState().apply {
+      onServerEvent(1, 1_000, "packet", serverChat(said))
+      onServerEvent(2, 2_000, "cheat", cheat)
+      onServerEvent(3, 3_000, "packet", serverChat("Restart in 5 minutes"))
+    }
+    val cheatFirst = makeState().apply {
+      onServerEvent(1, 1_000, "cheat", cheat)
+      onServerEvent(2, 2_000, "packet", serverChat(said))
+      onServerEvent(3, 3_000, "packet", serverChat("Restart in 5 minutes"))
+    }
+    assertEquals(said, chatFirst.chatLineOf(line.slotHint!!))
+    for (s in listOf(chatFirst, cheatFirst)) {
+      assertEquals(
+        listOf(EventType.CHEAT to "Ada hinted Key for Alice", EventType.HINT to null, EventType.CHAT to "Restart in 5 minutes"),
+        shown(s),
+      )
+      // Kept, only not shown
+      assertEquals(4, s.events.size)
+    }
+    // A player's chat line of the same text stays
+    cheatFirst.onPrintJson(json("""{"type":"Chat","team":0,"slot":1,"message":"$said"}"""))
+    assertEquals(EventType.CHAT to said, shown(cheatFirst).last())
   }
 
   @Test

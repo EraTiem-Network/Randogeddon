@@ -34,6 +34,7 @@ import net.eratiem.randogeddon.server.session.Room
 import net.eratiem.randogeddon.server.state.CheatLine
 import net.eratiem.randogeddon.server.state.LINK_TAGS
 import net.eratiem.randogeddon.server.state.SessionState
+import net.eratiem.randogeddon.server.state.SlotHint
 import net.eratiem.randogeddon.server.util.array
 import net.eratiem.randogeddon.server.util.int
 import net.eratiem.randogeddon.server.util.longs
@@ -231,16 +232,30 @@ class TrackerService(
   }
 
   /**
-   * A cheat for the live feed: [message] in English, and its parts. Kept among the session's events (and taken from
-   * there, as every event); without them, or if that fails, straight into the feed.
+   * A cheat for the live feed: [message] in English, and its parts; for an item hint of only the slot, the copy it
+   * named ([slotHint]). Kept among the session's events (and taken from there, as every event); without them, or if
+   * that fails, straight into the feed. Kept the moment it happens: a hint of only the slot is a hint from then on,
+   * also after a restart.
    */
-  suspend fun cheat(message: String, action: CheatAction, by: String, role: String, slot: String, value: String?) {
+  suspend fun cheat(
+    message: String,
+    action: CheatAction,
+    by: String,
+    role: String,
+    slot: String,
+    value: String?,
+    slotHint: SlotHint? = null,
+  ) {
     val store = events
     val written = store != null && runCatching {
       store.append(sessionId, System.currentTimeMillis(), SessionEventStore.CHEAT,
-        ApiJson.encodeToString(CheatLine.serializer(), CheatLine(message, action, by, role, slot, value)))
+        ApiJson.encodeToString(CheatLine.serializer(), CheatLine(message, action, by, role, slot, value, slotHint)))
     }.onFailure { logger.warn("Could not keep {}'s cheat: {}", sessionId, it.message) }.isSuccess
-    if (!written) update { onCheat(message, action, by, role, slot, value) }
+    when {
+      !written -> update { onCheat(message, action, by, role, slot, value, slotHint = slotHint) }
+      // Hinted at once, not only once its event is read back: the next hint of only the slot names another copy
+      slotHint != null -> update { onSlotHint(slotHint) }
+    }
   }
 
   private fun error(detail: String, refused: Boolean) {
