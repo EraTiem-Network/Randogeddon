@@ -21,6 +21,11 @@ New:
   session: enter `<session-id>.randogeddon.eratiem.net` without a port. Such pages can't use port 443 (the
   browser drops it from the address and the library fills in 38281), so the game servers now also answer on
   38281, with the same certificate and the same limits. `TRAEFIK_AP_ENTRYPOINTS` for the labels' overlay.
+- Cheats, *Hint an item*: a picker beside the item, *Only the slot* (the default) or *Slot and location*; your
+  browser remembers it. Only the slot tells every client's chat that the item is somewhere in that slot's world,
+  and the dashboard shows it in the feed and the hint log without a location. The next such hint for the item
+  names another copy; one with the location later turns the row into the full hint. *Slot and location* is
+  Archipelago's hint, as before. (Where the spoiler log's placements aren't known there is no choice.)
 
 Fixed:
 - Randogeddon Bridge offers a session to someone of its support, or a watcher, who also plays a slot in it. It

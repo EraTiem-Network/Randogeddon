@@ -103,7 +103,11 @@ In the Management panel (the gear button), *New session*; whoever creates it is 
   *Logs* as tabs (the game server's, the spoiler run's; the logic's and the Minecraft servers' for Administrators),
   each only for whoever may read it.
 - **Cheats:** give an item, check a location (from the slot, or to it: another world's location holding its item),
-  release, collect, free hints (only with *Cheat hints*; one place, a copy neither checked nor hinted). For a locked
+  release, collect, free hints (only with *Cheat hints*; one place, a copy neither checked nor hinted). An item's
+  hint names *only the slot* whose world holds it (the default; a picker, kept by the browser) or *slot and
+  location*: only the slot is the tracker's own (a server message in every client's chat, a feed line and a row in
+  the hint log without a location; the copy is remembered, its location never sent out), and a hint with the
+  location, which takes such a copy first, turns that row into the full one. For a locked
   slot: *Unlock* (its key's location checked in its world; the lock says the server did) and *Hint its key's
   location*. Every cheat is logged with who did it and shown in the feed. Support has items, checks and hints, and
   sees the spoiler log's run (restarting it is the Session-Managers').

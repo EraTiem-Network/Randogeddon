@@ -89,8 +89,6 @@ The parts:
       in the Overview's panel of the items transported too (asked for on 2026-11-23; can be one pull request)
 - [ ] The spoiler page's *Everything*: whether a check is checked (asked for on 2026-11-23; the placements carry a
       mark since 0.23.2.8: to look at with the user what is missing), and for a World Key which slot it opens
-- [ ] Cheats, an item's hint: an option whether it names only the slot the item is on or its location too; only
-      the slot unless chosen otherwise (asked for on 2026-11-23)
 - [ ] Hosted Minecraft Dig (reported on 2026-11-23): a connected Minecraft Dig server doesn't seem to keep its
       session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
       should shut down after a number of minutes without players that an Administrator sets, 5 by default

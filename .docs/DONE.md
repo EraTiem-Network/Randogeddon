@@ -1650,3 +1650,21 @@ games' real map images moved to Later.*
       for this account"
     - Tried: the tracker's unit tests (a new one: only that account's pending logins go) and the reset's
       database-backed ones (a pending login gone after the reset, someone else's kept; the limit's problem)
+- [x] Cheats, an item's hint: an option whether it names only the slot the item is on or its location too; only
+      the slot unless chosen otherwise (0.23.10; asked for on 2026-11-23). For 0.23.10 (the user on 2026-11-24), decided:
+      a toggle in the cheat panel beside the item, only the slot by default, the browser remembering it; only the
+      slot is a server message in every client's chat, a feed line and a row in the hint log without a location
+      (Archipelago's hints always name one); the copy it named is remembered (the next names another); a full
+      hint for it later updates the row; its location never leaves the tracker before that.
+    - Built by two Opus subagents (the tracker and the shared types; the web app). No schema change: the copy is
+      kept in the cheat's own session event. The toggle is a picker of two, as the copy picker beside it (the
+      web app has no switch). A hint with the location takes a slot-hinted copy first. The server's chat line is
+      left out of the feed (the hint line says it). Without the placements there is no choice (as before)
+    - Left: the cheat log doesn't tell the two kinds apart; a later change of a slot's alias brings the chat
+      line back into the feed; two such hints at the very same moment could name the same copy
+    - Tried: the unit tests (new ones for the pick, the row, the upgrade, the replay, the feed); in the demo by
+      its API: the row without a location, the item gone from the only-the-slot list and refused then, the
+      upgrade to one ordinary row, the chat line in the game server's log and not in the feed, a location's
+      name nowhere in the state, the cheat view or the logs before the upgrade, the rows there after a tracker
+      restart; in a browser: the picker in the cheat panel and the feed's line. Not seen: the hint log's row on
+      screen, the person's panel, German, a phone's width, a real game client's chat
