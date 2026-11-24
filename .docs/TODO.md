@@ -36,10 +36,8 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
-- [ ] Left from 0.23.9: a two-factor login begun with the old password in the five minutes before a reset can
-      still be finished with its code; the limit's message for the forgotten-password page reads "too many wrong
-      attempts for this account"; not tried: the mails through a real mail server, the page with two-factor on
-      (unit-tested), the reset link opened while logged in, German on the new pages
+- [ ] Left from 0.23.9, not tried: the page with two-factor on (unit-tested), the reset link opened while logged
+      in, German on the new pages (the mails through the live mail server went out: the user, 2026-11-24)
 - [ ] Left from 0.23.8: not seen on screen (built and unit-tested; the demo has no slot whose logic doesn't
       fit and runs on plain http): Enter and Escape in a confirmation, a tip on keyboard focus, polling paused
       in a hidden tab, the warning without its reason for a player, the old cookie's login ended; the deploy

@@ -143,8 +143,8 @@ refused. Replacing asks first. An APWorld of another release can be tried (*unte
 - **A forgotten password** (the login page, where a mail server is set): the name or address is typed, the
   account's address is shown partly hidden (`m•••@p•••.me`) and has to be typed in full; only then a mail goes
   there, with a link that works 15 minutes and once (3 mails an account an hour, 10 tries a network address). The
-  link's page sets the new password; every login of the account ends (bridge keys too), a second mail tells of the
-  change, and two-factor login stays. Nothing tells whether an account exists: an unknown name gets a made-up
+  link's page sets the new password; every login of the account ends (bridge keys too, and one waiting for its
+  two-factor code), a second mail tells of the change, and two-factor login stays. Nothing tells whether an account exists: an unknown name gets a made-up
   hidden address (the same each time), and the answer after the address is always the same. Not for accounts that
   log in through single sign-on only, kept-out ones, or invitations not yet taken.
 - **Two-factor login** (TOTP, 10 recovery codes). Secrets encrypted with `TOTP_KEY`.

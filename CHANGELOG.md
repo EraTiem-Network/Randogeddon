@@ -25,6 +25,10 @@ New:
 Fixed:
 - Randogeddon Bridge offers a session to someone of its support, or a watcher, who also plays a slot in it. It
   went by their part alone and showed them no session.
+- A new password (by a reset link or in the settings) also ends a login that was begun with the old one and
+  waits for its two-factor code.
+- The forgotten-password page says "too many mails in a short time" at its limit, not "too many wrong attempts
+  for this account".
 
 ### 0.23.9: A forgotten password
 Schema 30 (a table for the reset links).

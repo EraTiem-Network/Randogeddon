@@ -1644,3 +1644,9 @@ games' real map images moved to Later.*
     - Tried: compose's rendering of the label with and without `TRAEFIK_AP_ENTRYPOINTS`; on live from outside,
       38281 with the wildcard certificate and the same answer as 443 for an unknown session, the dashboard not
       on it; the bridge's tests (three new cases). Not tried: the new bridge with a support's slot on live
+- [x] Left from 0.23.9, fixed on the user's word (0.23.10; 2026-11-24): a new password (by a reset link or in the
+      settings) ends the logins begun with the old one that wait for their code; the forgotten-password page's
+      limit per network address answers "too many mails in a short time" instead of "too many wrong attempts
+      for this account"
+    - Tried: the tracker's unit tests (a new one: only that account's pending logins go) and the reset's
+      database-backed ones (a pending login gone after the reset, someone else's kept; the limit's problem)
