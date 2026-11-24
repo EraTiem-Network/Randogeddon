@@ -16,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -71,6 +72,9 @@ class PasswordResetsTest {
     val later = Instant.now().plus(1, ChronoUnit.DAYS)
     tracker.loginStore.create("browser", mia.id, later)
     tracker.loginStore.create("bridge-key", mia.id, later, method = LoginMethods.BRIDGE)
+    // A login begun with the old password that waits for its code, and someone else's
+    val waiting = tracker.pending.create(mia.id)
+    val others = tracker.pending.create(tracker.user("Noa").id)
     // Another address: nothing goes out
     assertFalse(send("Mia", "mia@example.com"))
     assertEquals(emptyList(), tracker.mailer.sent)
@@ -95,6 +99,8 @@ class PasswordResetsTest {
     assertTrue(after.twoFactor)
     assertNull(tracker.loginStore.userOf("browser"))
     assertNull(tracker.loginStore.userOf("bridge-key"))
+    assertNull(tracker.pending.userOf(waiting))
+    assertNotNull(tracker.pending.userOf(others))
     // The address is told
     assertEquals(listOf("mia@example.org", "mia@example.org"), tracker.mailer.sent.map { it.to })
     assertEquals(texts(Language.DEFAULT).mails.passwordChangedSubject, tracker.mailer.sent.last().subject)
@@ -146,7 +152,7 @@ class PasswordResetsTest {
     // Without a mail server the link would go to the log: none is made
     val unset = PasswordResets(
       tracker.users, tracker.passwordResets, tracker.logins, tracker.twoFactor, tracker.mailer,
-      tracker.config.copy(mail = tracker.config.mail.copy(host = "")),
+      tracker.config.copy(mail = tracker.config.mail.copy(host = "")), tracker.pending,
     )
     assertFalse(unset.offered)
     tracker.user("Pia", email = "pia@example.org")
@@ -185,7 +191,7 @@ class PasswordResetsTest {
       tracker.resets.ask("Sam", "sam@example.org", "203.0.113.7", Language.DEFAULT, t0 + 100)
     }
     assertEquals(HttpStatusCode.TooManyRequests, limited.status)
-    assertEquals(Problem.TOO_MANY_ATTEMPTS, limited.refusal.problem)
+    assertEquals(Problem.TOO_MANY_MAILS, limited.refusal.problem)
     // Another network address isn't held up
     tracker.resets.ask("Nobody", "nobody@example.org", "198.51.100.1", Language.DEFAULT, t0 + 100)
   }

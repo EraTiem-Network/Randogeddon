@@ -147,6 +147,11 @@ class PendingLogins {
     pending.remove(tokenHash(token))
   }
 
+  /** Every pending login of [userId] is gone: its password is another one now, the one they were begun with is over. */
+  fun forget(userId: Uuid) {
+    pending.removeIf { it.userId == userId }
+  }
+
   private companion object {
     val VALID = 5.minutes
     const val MAX_WRONG_CODES = 5

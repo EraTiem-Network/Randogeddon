@@ -89,6 +89,7 @@ class AccountService(
   private val mailLimits: MailLimits,
   private val setups: SessionSetupStore,
   private val slots: SlotRenewal,
+  private val pending: PendingLogins,
 ) {
   /**
    * Invites [email] by [by]; [suggestedName] is prefilled on the sign-up page. The mail goes out before this returns.
@@ -256,13 +257,17 @@ class AccountService(
     logger.info("{} is called {} now", user.name, clean)
   }
 
-  /** A new password after the current one; every login ends, this one gets a new token (for the cookie). */
+  /**
+   * A new password after the current one; every login ends (the ones waiting for their code too), this one gets a new
+   * token (for the cookie).
+   */
   suspend fun changePassword(user: User, current: String, password: String): String {
     config.requireOwn(user)
     val valid = withContext(Dispatchers.Default) { PasswordHasher.verify(current, user.passwordHash) }
     if (!valid) throw AccountProblem(HttpStatusCode.Forbidden, Problem.WRONG_PASSWORD)
     PasswordRules.problem(password, user.name, user.email)?.let { throw AccountProblem(HttpStatusCode.BadRequest, it) }
     users.setPassword(user.id, withContext(Dispatchers.Default) { PasswordHasher.hash(password) })
+    pending.forget(user.id)
     logger.info("{} has a new password", user.name)
     return logins.start(user)
   }

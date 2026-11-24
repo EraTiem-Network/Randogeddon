@@ -34,6 +34,7 @@ import net.eratiem.randogeddon.server.account.Mail
 import net.eratiem.randogeddon.server.account.MailLimits
 import net.eratiem.randogeddon.server.account.Mailer
 import net.eratiem.randogeddon.server.account.PasswordResets
+import net.eratiem.randogeddon.server.account.PendingLogins
 import net.eratiem.randogeddon.server.account.SingleSignOn
 import net.eratiem.randogeddon.server.account.SlotRenewal
 import net.eratiem.randogeddon.server.account.TwoFactor
@@ -112,11 +113,12 @@ class TrackerHarness(oidc: OidcConfig? = null, adminPasswordLogin: Boolean = fal
   val logins = LoginService(users, loginStore, list, config)
   val twoFactor = TwoFactor(twoFactorStore, config, loginStore)
   val mailLimits = MailLimits()
+  val pending = PendingLogins()
   val accounts = AccountService(
-    users, invitations, emailChanges, twoFactor, logins, mailer, sessions, config, mailLimits, setups, NoRenewals,
+    users, invitations, emailChanges, twoFactor, logins, mailer, sessions, config, mailLimits, setups, NoRenewals, pending,
   )
   val passwordResets = PasswordResetStore(db)
-  val resets = PasswordResets(users, passwordResets, logins, twoFactor, mailer, config)
+  val resets = PasswordResets(users, passwordResets, logins, twoFactor, mailer, config, pending)
   val singleSignOn by lazy { SingleSignOn(config, users, LoginLinkStore(db), accounts, loginStore, NoRenewals) }
   val admin by lazy {
     SessionAdmin(

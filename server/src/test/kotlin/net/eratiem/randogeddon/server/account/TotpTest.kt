@@ -105,6 +105,20 @@ class TotpTest {
   }
 
   @Test
+  fun `a new password forgets the pending logins of its account only`() {
+    val pending = PendingLogins()
+    val user = Uuid.random()
+    val other = Uuid.random()
+    val first = pending.create(user, now = 0)
+    val second = pending.create(user, now = 0)
+    val others = pending.create(other, now = 0)
+    pending.forget(user)
+    assertNull(pending.userOf(first, now = 1))
+    assertNull(pending.userOf(second, now = 1))
+    assertEquals(other, pending.userOf(others, now = 1))
+  }
+
+  @Test
   fun `a keyed hash needs the key, and differs by purpose`() {
     val box = SecretBox(ByteArray(32) { it.toByte() })
     val hash = box.mac("recovery codes", "abcdefgh")
