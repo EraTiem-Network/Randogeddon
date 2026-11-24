@@ -71,6 +71,10 @@ func TestOfferedSessions(t *testing.T) {
 		{Session{MyRole: "manager", Status: "finishing"}, true},
 		{Session{MyRole: "watcher"}, false},
 		{Session{MyRole: "support"}, false},
+		// Support or a watcher with slots of their own plays too
+		{Session{MySlots: []string{"A"}, MyRole: "support"}, true},
+		{Session{MySlots: []string{"A"}, MyRole: "watcher"}, true},
+		{Session{MySlots: []string{"A"}, MyRole: "support", Status: "paused"}, false},
 		{Session{}, false}, // a key never acts as an Administrator: no session without a part
 		{Session{MyRole: "manager", Status: "paused"}, false},
 	}

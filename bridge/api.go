@@ -105,9 +105,11 @@ type Session struct {
 }
 
 // Offered is whether the bridge offers the session: it runs, and the user plays in it or manages it (MySlots holds
-// only their own slots, not the ones open to all or hosted). Its connection's slot list then says what can be opened.
+// only their own slots, not the ones open to all or hosted). Someone of its support or a watcher who also has slots
+// of their own plays in it too: their part names the role, not the slots. Its connection's slot list then says what
+// can be opened.
 func (s Session) Offered() bool {
-	return s.Running() && (s.MyRole == "player" || s.MyRole == "manager")
+	return s.Running() && (s.MyRole == "player" || s.MyRole == "manager" || len(s.MySlots) > 0)
 }
 
 // Running is whether game clients can play the session now.
