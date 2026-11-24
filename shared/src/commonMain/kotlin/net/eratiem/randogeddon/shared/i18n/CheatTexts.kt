@@ -30,6 +30,12 @@ interface CheatTexts {
   val randomCopy: String
   val nextCopy: String
   val copyTip: String
+  /** What an item hint names: only the slot whose world holds the item, or its location there too; with what each means. */
+  val onlySlot: String
+  val slotAndLocation: String
+  val detailTip: String
+  val onlySlotMeaning: String
+  val slotAndLocationMeaning: String
   /** A location of another world for the picker: `Mantis Claw · Crossroads (in Bob-SM64)`. */
   fun incoming(item: String, location: String, world: String): String
   val noIncoming: String
@@ -42,6 +48,8 @@ interface CheatTexts {
   val keyUnknown: String
   /** After it was sent: `Done: gave Mantis Claw to Alice-HK`. */
   fun done(action: CheatAction, slot: String, value: String?): String
+  /** After an item hint that names only the slot was sent: `Done: hinted Mantis Claw for Alice-HK, without its location`. */
+  fun doneSlotOnly(slot: String, item: String): String
   fun logTitle(support: Boolean): String
   /** A cheat in the session's list: `18:21 · Bob: gave Mantis Claw to Alice-HK`. */
   fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?): String
@@ -102,6 +110,12 @@ internal object EnglishCheats : CheatTexts {
   override val nextCopy = "Next in playthrough"
   override val copyTip = "Which copy of the item the hint names (of those neither checked nor hinted): one by chance, " +
     "or the one the playthrough names first."
+  override val onlySlot = "Only the slot"
+  override val slotAndLocation = "Slot and location"
+  override val detailTip = "What the hint tells: in whose world the item is, or its location there too."
+  override val onlySlotMeaning = "Every connected client's chat gets: the item is somewhere in that slot's world. The " +
+    "dashboard shows it without a location. A later hint with the location turns it into a full hint."
+  override val slotAndLocationMeaning = "Archipelago's hint: the slot and the location there, for the two players."
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "None of its items is left in other worlds"
   override val noPlacements = "The spoiler log doesn't say where items are"
@@ -121,6 +135,7 @@ internal object EnglishCheats : CheatTexts {
     CheatAction.UNLOCK -> if (value != null) "unlocked $slot (its key at $value)" else "unlocked $slot"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Done: ${what(action, slot, value)}"
+  override fun doneSlotOnly(slot: String, item: String) = "Done: hinted $item for $slot, without its location"
   override fun logTitle(support: Boolean) = if (support) "Help and cheats of this session" else "Cheats of this session"
   override fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?) =
     "$time · $by: ${what(action, slot, value)}"
@@ -187,6 +202,12 @@ internal object GermanCheats : CheatTexts {
   override val nextCopy = "Nächstes im Lösungsweg"
   override val copyTip = "Welche Kopie des Items der Hinweis nennt (von denen, die weder gecheckt oder bereits darauf hingewiesen wurden)" +
     ": eine zufällige, oder die, die der Lösungsweg zuerst nennt."
+  override val onlySlot = "Nur der Slot"
+  override val slotAndLocation = "Slot und Ort"
+  override val detailTip = "Was der Hinweis verrät: in wessen Welt das Item liegt, oder auch den Ort dort."
+  override val onlySlotMeaning = "Der Chat jedes verbundenen Clients bekommt: Das Item liegt irgendwo in der Welt dieses " +
+    "Slots. Das Dashboard zeigt den Hinweis ohne Ort. Ein späterer Hinweis mit dem Ort macht daraus einen vollen Hinweis."
+  override val slotAndLocationMeaning = "Der Hinweis von Archipelago: der Slot und der Ort dort, für die beiden Spieler."
   override fun incoming(item: String, location: String, world: String) = "$item · $location (in $world)"
   override val noIncoming = "Keins seiner Items liegt noch in anderen Welten"
   override val noPlacements = "Das Spoiler-Log sagt nicht, wo die Items liegen"
@@ -206,6 +227,7 @@ internal object GermanCheats : CheatTexts {
     CheatAction.UNLOCK -> if (value != null) "$slot entsperrt (sein Schlüssel bei $value)" else "$slot entsperrt"
   }
   override fun done(action: CheatAction, slot: String, value: String?) = "Erledigt: ${what(action, slot, value)}"
+  override fun doneSlotOnly(slot: String, item: String) = "Erledigt: Hinweis auf $item für $slot, ohne seinen Ort"
   override fun logTitle(support: Boolean) = if (support) "Hilfe und Cheats dieser Session" else "Cheats dieser Session"
   override fun logLine(time: String, by: String, action: CheatAction, slot: String, value: String?) =
     "$time · $by: ${what(action, slot, value)}"

@@ -125,6 +125,10 @@ interface DashboardTexts {
   val hintItem: String
   /** `{location} · in {finder}`. */
   val hintWhere: String
+  /** A hint that names only the slot, in place of its location: `somewhere in {finder}'s world`. */
+  val hintSomewhere: String
+  /** Likewise in a person's open hints: `somewhere in {finder}'s world · for {receiver}`. */
+  val hintSomewhereFor: String
   val pillFound: String
   val pillPriority: String
   val pillAvoid: String
@@ -161,6 +165,8 @@ interface FeedTexts {
   val hint: String
   /** `{receiver}'s {item} is at {location} in {finder}`. */
   val hintLine: String
+  /** A hint that names only the slot: `{receiver}'s {item} is somewhere in {finder}'s world`. */
+  val hintSomewhereLine: String
   val found: String
   /** `{player} completed their goal!` */
   val goal: String
@@ -329,6 +335,8 @@ internal object EnglishDashboard : DashboardTexts {
   override val columnInSlot = "In slot"
   override val hintItem = "{receiver}'s {item}"
   override val hintWhere = "{location} · in {finder}"
+  override val hintSomewhere = "somewhere in {finder}'s world"
+  override val hintSomewhereFor = "somewhere in {finder}'s world · for {receiver}"
   override val pillFound = "found"
   override val pillPriority = "priority"
   override val pillAvoid = "avoid"
@@ -455,6 +463,8 @@ internal object GermanDashboard : DashboardTexts {
   override val columnInSlot = "In Slot"
   override val hintItem = "{item} von {receiver}"
   override val hintWhere = "{location} · in {finder}"
+  override val hintSomewhere = "irgendwo in der Welt von {finder}"
+  override val hintSomewhereFor = "irgendwo in der Welt von {finder} · für {receiver}"
   override val pillFound = "gefunden"
   override val pillPriority = "Priorität"
   override val pillAvoid = "vermeiden"
@@ -483,6 +493,7 @@ internal object EnglishFeed : FeedTexts {
   override val aSlot = "a slot"
   override val hint = "Hint: "
   override val hintLine = "{receiver}'s {item} is at {location} in {finder}"
+  override val hintSomewhereLine = "{receiver}'s {item} is somewhere in {finder}'s world"
   override val found = " (found)"
   override val goal = "{player} completed their goal!"
   override val released = "{player} released their remaining items"
@@ -528,6 +539,7 @@ internal object GermanFeed : FeedTexts {
   override val aSlot = "ein Slot"
   override val hint = "Hinweis: "
   override val hintLine = "{item} von {receiver} liegt bei {location} in {finder}"
+  override val hintSomewhereLine = "{item} von {receiver} liegt irgendwo in der Welt von {finder}"
   override val found = " (gefunden)"
   override val goal = "{player} hat das Ziel erreicht!"
   override val released = "{player} hat die restlichen Items freigegeben"

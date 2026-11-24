@@ -320,6 +320,11 @@ data class FeedEvent(
   val locationName: String? = null,
 )
 
+/**
+ * One hint. [slotOnly]: a hint of the admin panel that names only the world the item is in ([HintDetail.SLOT]): no
+ * [location] (0), [locationName] or [entrance] (empty); [found] once that copy's location is checked. A hint of
+ * Archipelago's for the same copy later makes it an ordinary one.
+ */
 @Serializable
 data class HintView(
   val receivingPlayer: Int,
@@ -334,6 +339,7 @@ data class HintView(
   val receiverName: String,
   val itemName: String,
   val locationName: String,
+  val slotOnly: Boolean = false,
 )
 
 /** `GET /api/player/{slot}`: what one player received and what is left in their world. */
