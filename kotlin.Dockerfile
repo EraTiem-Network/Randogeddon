@@ -104,7 +104,7 @@ COPY --from=build /src/gradle/verification-metadata.xml /
 # Randogeddon Bridge: tested, then built for Windows, Linux and macOS (plain Go, no CGO, so every target builds here);
 # Windows without a console window. BRIDGE_VERSION is the project's version (deploy.sh passes it); it is in each
 # build's file name, so a downloaded file says which version it is.
-FROM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS bridge
+FROM golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34 AS bridge
 WORKDIR /src
 COPY bridge/go.mod bridge/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -139,14 +139,14 @@ RUN --mount=type=secret,id=bridge_signing_key,required=false \
 
 # The executables link only glibc (--static-nolibc). The build stage (Oracle Linux 9, glibc 2.34) is older than
 # Debian 12 (glibc 2.36), and glibc is backwards compatible.
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS runtime
 RUN useradd --uid 1000 --home /app --no-create-home randogeddon && mkdir -p /app && chown randogeddon /app
 WORKDIR /app
 
 # The web app's files compressed once, at their best (Brotli 11, gzip 9), next to each file as .br and .gz: the
 # tracker sends those as they are (Routings.kt, preCompressed) instead of compressing every request. Only what is
 # worth it: text and wasm of 1 KB and more; images and woff2 are compressed already.
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS web
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS web
 RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/webApp/build/dist/wasmJs/productionExecutable /web
 RUN find /web -type f -size +1k \( -name '*.wasm' -o -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' \
@@ -177,7 +177,7 @@ CMD ["/app/randogeddon"]
 # native gateway runs on it too.
 # Archipelago installed with what its install needs (git, compilers for the speedups and the worlds' packages); the
 # stage below takes only the result, without them (they were 350 MB of the gateway image)
-FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS archipelago-build
+FROM python:3.12-slim-bookworm@sha256:44cf1793efa7c7a476bb0f2cff81443f4a072c90c1cb127e2924933daa3e8c64 AS archipelago-build
 ARG AP_VERSION=0.6.8
 # The commit the release's tag stands for: a tag can be moved, the commit can't (empty: not checked)
 ARG AP_COMMIT=54803be064fc7e80c4628777ed0b46a9390f255f
@@ -229,7 +229,7 @@ RUN newer="/tmp/requirements/requirements-${AP_VERSION}.newer.lock" \
  && rm -rf /tmp/requirements
 
 # Archipelago as it runs: the installed packages and its directory, and the one system library it needs (libtk8.6)
-FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS archipelago
+FROM python:3.12-slim-bookworm@sha256:44cf1793efa7c7a476bb0f2cff81443f4a072c90c1cb127e2924933daa3e8c64 AS archipelago
 ARG AP_VERSION=0.6.8
 ENV PYTHONUNBUFFERED=1 \
     AP_HOME=/opt/archipelago/${AP_VERSION}
