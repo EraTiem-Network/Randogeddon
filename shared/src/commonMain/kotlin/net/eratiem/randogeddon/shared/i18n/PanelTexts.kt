@@ -10,6 +10,8 @@ interface PanelTexts {
   val gameServer: String
   val gatewayUnreachable: String
   fun status(status: GameServerStatus): String
+  /** In place of [status]'s failed one: it stays stopped because its save can't be read (`GameServerState.saveUnreadable`). */
+  val saveUnreadable: String
   fun up(duration: String): String
   fun seedFile(name: String): String
   val runByGateway: String
@@ -52,6 +54,7 @@ internal object EnglishPanel : PanelTexts {
     GameServerStatus.STOPPED -> "stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
+  override val saveUnreadable = "stopped (its save can't be read)"
   override fun up(duration: String) = "up $duration"
   override fun seedFile(name: String) = "seed file $name"
   override val runByGateway = "MultiServer, run by the gateway"
@@ -97,6 +100,7 @@ internal object GermanPanel : PanelTexts {
     GameServerStatus.STOPPED -> "gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }
+  override val saveUnreadable = "gestoppt (sein Spielstand ist nicht lesbar)"
   override fun up(duration: String) = "läuft seit $duration"
   override fun seedFile(name: String) = "Seed-Datei $name"
   override val runByGateway = "MultiServer, vom Gateway betrieben"

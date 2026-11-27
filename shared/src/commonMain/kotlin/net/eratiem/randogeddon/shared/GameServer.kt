@@ -14,7 +14,10 @@ enum class GameServerStatus {
   @SerialName("stopped") STOPPED,
   /** Ended on its own; the gateway starts it again after a pause. */
   @SerialName("crashed") CRASHED,
-  /** Ended on its own again and again, each soon after its start: stays stopped until started again. */
+  /**
+   * Ended on its own again and again, each soon after its start, or once because its save can't be read
+   * ([GameServerState.saveUnreadable]): stays stopped until started again.
+   */
   @SerialName("failed") FAILED,
   /** Stopped while nobody played (or not started since the gateway's start): starts when a player connects. */
   @SerialName("idle") IDLE,
@@ -27,10 +30,30 @@ data class GameServerState(
   val seed: String? = null,
   /** Epoch milliseconds of the current start, while starting or running. */
   val since: Long? = null,
+  /**
+   * The exit code of its last end on its own (a crash, or one that gave up); kept across starts, until it ends on its
+   * own again.
+   */
   val lastExitCode: Int? = null,
-  /** Restarts after crashes since the last start by an admin. */
+  /**
+   * Restarts after crashes since the last start by an admin: the starts the gateway made by itself (the end it gives up
+   * after, [GameServerStatus.FAILED], isn't followed by one).
+   */
   val restarts: Int = 0,
 )
+
+/**
+ * The exit code of `archipelago/serve.py` when the save can't be read: it keeps the save (and a copy) and ends, its last
+ * line says why. It ends so for no other reason (Python's own codes are 1 and 2), and the gateway doesn't start it again.
+ */
+const val SAVE_UNREADABLE_EXIT = 3
+
+/**
+ * It stays stopped because its save can't be read ([SAVE_UNREADABLE_EXIT]), at the first start: not a server that
+ * crashed again and again.
+ */
+val GameServerState.saveUnreadable: Boolean
+  get() = status == GameServerStatus.FAILED && lastExitCode == SAVE_UNREADABLE_EXIT
 
 /** One line of the game server's output; [n] counts up from 1 over the gateway's lifetime. */
 @Serializable
