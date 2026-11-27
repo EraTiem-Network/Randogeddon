@@ -12,9 +12,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.eratiem.randogeddon.shared.AdminOverview
+import net.eratiem.randogeddon.shared.GameServerState
 import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.i18n.Texts
 import net.eratiem.randogeddon.shared.i18n.decimal
+import net.eratiem.randogeddon.shared.saveUnreadable
 import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.app.LocalTexts
 import net.eratiem.randogeddon.webapp.app.date
@@ -61,7 +63,16 @@ fun AdminSwitch(overview: AdminOverview?, page: String?, onPage: (String) -> Uni
 internal fun switchDetails(t: Texts, session: SessionEntry): String = listOfNotNull(
   t.sessions.status(session.status),
   "${t.decimal(session.percent)}%",
-  session.server?.status?.let { t.sessionAdmin.server(it) },
+  session.server?.let { if (it.saveUnreadable) t.sessionAdmin.serverSaveUnreadable else t.sessionAdmin.server(it.status) },
   session.online.takeIf { it > 0 }?.let { t.sessions.online(it) },
   session.finishedAt?.let { t.sessions.finishedOn(t.date(it)) },
 ).joinToString(" · ")
+
+/**
+ * [overview] with session [id]'s game server as [server] has it (its stream, as the game server's block shows it);
+ * unchanged without one. The list's state is up to half a minute behind (the tracker asks the gateway every 10 s, the
+ * panel asks the tracker every 15 s): a start that ends at once read "starting" above a block that said it stopped.
+ */
+internal fun withServer(overview: AdminOverview?, id: String?, server: GameServerState?): AdminOverview? =
+  if (overview == null || id == null || server == null) overview
+  else overview.copy(sessions = overview.sessions.map { if (it.id == id) it.copy(server = server) else it })

@@ -42,6 +42,7 @@ import net.eratiem.randogeddon.shared.SessionEntry
 import net.eratiem.randogeddon.shared.SessionRole
 import net.eratiem.randogeddon.shared.i18n.decimal
 import net.eratiem.randogeddon.shared.i18n.duration
+import net.eratiem.randogeddon.shared.saveUnreadable
 import net.eratiem.randogeddon.shared.web.running
 import net.eratiem.randogeddon.webapp.api.AdminCache
 import net.eratiem.randogeddon.webapp.api.Answer
@@ -115,6 +116,9 @@ fun AdminView(
     overview == null -> null
     else -> all.firstOrNull { it.status.running }?.id
   }
+  // The picked session's game server as its stream has it, above (the switch, the head line) as in its block below
+  val live = page?.takeIf { it != NEW_PAGE }?.let { cache.repository(it).state.collectAsState().value }
+  val shown = withServer(overview, page, live)
 
   Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -130,7 +134,7 @@ fun AdminView(
         .border(1.dp, p.accent.copy(alpha = 0.3f), frame).padding(14.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      AdminSwitch(overview, page, onPage = onPage)
+      AdminSwitch(shown, page, onPage = onPage)
       when (page) {
         null -> if (overview != null) Txt(LocalTexts.current.sessionAdmin.nothingRunning, size = 13.sp, color = p.muted)
         // The new session's page once the list has it: before, its ID reads as a session that's gone, and the page
@@ -142,7 +146,7 @@ fun AdminView(
           if (entry != null && supportOnly(entry, administrator)) {
             SupportedSession(entry, cache, onSpoiler = onSpoiler, onDashboard = onDashboard)
           } else {
-            SelectedSession(page, overview, cache, now, administrator, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
+            SelectedSession(page, shown, cache, now, administrator, onChanged = { load() }, onSpoiler = onSpoiler, onDashboard = onDashboard)
           }
         }
       }
@@ -228,7 +232,7 @@ private fun SelectedSession(
   SessionSection(
     id, overview, cache, administrator, onChanged = { control.problem = null; onChanged() }, onSpoiler = onSpoiler, onDashboard = onDashboard,
     server = {
-      // Failed (ended again and again): its own last line says why, e.g. a save it can't read
+      // Failed (ended again and again, or once for a save it can't read): its own last line says why
       val lastLine = if (server?.status != GameServerStatus.FAILED) null
       else repository.log.lastOrNull { !it.text.startsWith("[gateway]") }?.text
       ServerControls(
@@ -285,6 +289,7 @@ private fun ServerControls(
         when {
           problem != null -> t.panel.gatewayUnreachable
           status == null -> "…"
+          state?.saveUnreadable == true -> t.panel.saveUnreadable
           else -> t.panel.status(status)
         },
         when (status) {
