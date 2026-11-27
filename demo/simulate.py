@@ -37,6 +37,10 @@ END = float(os.environ.get("DEMO_MINUTES", "15")) * 60
 FAST_PHASE = 30          # seconds of quick checks at the start
 FAST_SHARE = 0.3         # share of a world's locations checked in the fast phase
 BREAKS = {"Bob-Timespinner": (100, 40)}  # world -> (leave after s, come back after s), for the connection log
+# A world whose key was just found may still be refused as locked for a moment (the server writes the unlock a
+# moment after this script hears of the key): its Connect is tried again this often, this many seconds apart
+LOCKED_TRIES = 8
+LOCKED_PAUSE = 2
 CHAT = ["gl hf everyone!", "who has my dash?", "that was a long dungeon", "BK for a bit, brb", "nice send!",
         "this seed is spicy", "hint me senpai", "found something shiny"]
 
@@ -52,7 +56,31 @@ def elapsed() -> float:
     return loop().time() - start
 
 
+class Refused(Exception):
+    """The server refused a Connect (ConnectionRefused), with its errors."""
+
+    def __init__(self, name: str, packet: dict):
+        super().__init__(f"{name}: {packet}")
+        self.errors = packet.get("errors", [])
+
+
 async def session(name: str, game: str, tags=("AP",)):
+    """Connects one client (see connect). A world believed unlocked that is refused as locked is tried again a few
+    times (the server hears of its key a moment after this script); every other refusal ends the script."""
+    for attempt in range(1, LOCKED_TRIES + 1):
+        try:
+            return await connect(name, game, tags)
+        except Refused as refused:
+            if "SlotLocked" not in refused.errors or name not in unlocked:
+                raise SystemExit(str(refused))
+            if attempt == LOCKED_TRIES:
+                raise SystemExit(f"{refused} (still locked {LOCKED_TRIES * LOCKED_PAUSE} s after its key was found)")
+            print(f"{name}: refused as locked just after its key was found, trying again in {LOCKED_PAUSE} s",
+                  flush=True)
+            await asyncio.sleep(LOCKED_PAUSE)
+
+
+async def connect(name: str, game: str, tags):
     """Connects one client. A background task keeps reading, which also answers the server's keep-alive pings."""
     http = aiohttp.ClientSession()
     ws = await http.ws_connect(URL, max_msg_size=0, compress=15, heartbeat=20)
@@ -73,15 +101,20 @@ async def session(name: str, game: str, tags=("AP",)):
             if packet["cmd"] == "_closed":
                 raise ConnectionError(f"{name}: connection closed")
             if packet["cmd"] == "ConnectionRefused":
-                raise SystemExit(f"{name}: {packet}")
+                raise Refused(name, packet)
             if cmd is None or packet["cmd"] == cmd:
                 return packet
 
-    room = await recv("RoomInfo")
-    await ws.send_json([{"cmd": "Connect", "password": PASSWORDS.get(name, ""), "game": game, "name": name,
-                         "uuid": f"demo-{name}", "version": room["version"], "items_handling": 0b111, "tags": list(tags),
-                         "slot_data": True}])
-    connected = await recv("Connected")
+    try:
+        room = await recv("RoomInfo")
+        await ws.send_json([{"cmd": "Connect", "password": PASSWORDS.get(name, ""), "game": game, "name": name,
+                             "uuid": f"demo-{name}", "version": room["version"], "items_handling": 0b111,
+                             "tags": list(tags), "slot_data": True}])
+        connected = await recv("Connected")
+    except Refused:
+        await ws.close()
+        await http.close()
+        raise
     return http, ws, recv, connected
 
 
