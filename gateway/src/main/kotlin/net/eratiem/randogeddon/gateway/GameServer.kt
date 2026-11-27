@@ -270,9 +270,10 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       val code = run(seed)
       // Ended because an admin stopped it: not a crash
       if (!currentCoroutineContext().isActive) return
-      // Its save can't be read (serve.py kept a copy and ended, its last line says why): starting it again wouldn't help
+      // Its save can't be read (serve.py kept a copy and ended, its last line says why): starting it again wouldn't help.
+      // Not started again: no restart to count (here or below), and its exit code (SAVE_UNREADABLE_EXIT) tells the panel
       if (saveRefused || brokenSave != null) {
-        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code, restarts = state.restarts + 1)
+        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code)
         note("Game server ended with exit code $code: its save can't be read${brokenSave?.let { " (a copy is kept as $it)" }.orEmpty()}; " +
           "it stays stopped until it is started again")
         return
@@ -282,7 +283,7 @@ class GameServer(private val config: GameServerConfig, private val scope: Corout
       if (ran > config.maxBackoff.inWholeMilliseconds * 2) backoff = config.backoff
       quickCrashes = if (ran < config.quickCrash.inWholeMilliseconds) quickCrashes + 1 else 0
       if (quickCrashes >= config.giveUpAfter) {
-        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code, restarts = state.restarts + 1)
+        state = state.copy(status = GameServerStatus.FAILED, since = null, lastExitCode = code)
         note("Game server ended with exit code $code, $quickCrashes times in a row within ${config.quickCrash} of its start; " +
           "it stays stopped until it is started again")
         return

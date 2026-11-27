@@ -12,6 +12,28 @@ The whole code reviewed and its security checked, part by part in the order of r
 review and an independent security scan, both read-only), the fixes made from their findings. A fix keeps what users
 see, the API and the schema, unless the user decided otherwise for a finding.
 
+### 0.23.11: What a browser run of the demo found
+No schema change. The last build of Phase 23.
+
+Fixed:
+- A slot opens about a second after its key is found. It was refused as still locked for up to about 15 s: the
+  tracker wrote an unlock only every 5 s and the game servers' gateway read the locks only every 10 s. Now the
+  tracker looks every second and tells the gateway right after it wrote one. A lock never opens early: if the
+  gateway isn't told, it reads the locks within 10 s as before.
+- Cheats, *Hint an item*: the list holds only the slot's real items. With the spoiler log's placements known it
+  also held the log's events (for Hollow Knight its rooms and transitions, over a thousand names), which were
+  refused when chosen.
+- A game server that didn't start because its save can't be read says so: "stopped (its save can't be read)"
+  instead of "gave up (crashed again and again)", and no restart is counted for it. A server that did give up
+  after five quick crashes shows the four restarts there were, not five.
+- The admin panel's head line and its session picker show the picked session's game server as its block does, at
+  once. They could be up to about 25 s behind.
+- The demo's simulated players try a slot again that is refused as locked right after its key was found. They
+  quit at the first unlock.
+
+Changed:
+- The base images of Debian, Go and Python raised to their current builds (their pins in `kotlin.Dockerfile`).
+
 ### 0.23.10: Web pages that connect as a client
 No schema change. Needs an entry point on 38281 in Traefik and the port open (`.docs/OPERATIONS.md`); without them
 nothing changes.

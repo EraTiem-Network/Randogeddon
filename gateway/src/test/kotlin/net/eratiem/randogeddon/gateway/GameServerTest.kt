@@ -7,6 +7,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import net.eratiem.randogeddon.shared.GameServerStatus
+import net.eratiem.randogeddon.shared.SAVE_UNREADABLE_EXIT
+import net.eratiem.randogeddon.shared.saveUnreadable
 import org.junit.Assume.assumeFalse
 import java.nio.file.Files
 import java.nio.file.Path
@@ -272,17 +274,19 @@ class GameServerTest {
     server.awaitStatus(GameServerStatus.FAILED)
     // What it did, for a failure's message (timing differs on a busy build machine)
     fun seen() = "state ${server.state}, log: " + server.log(0).lines.joinToString(" | ") { it.text }
-    assertEquals(5, server.state.restarts, seen())
+    // The 4 restarts between them: the last crash isn't followed by one
+    assertEquals(4, server.state.restarts, seen())
     assertEquals(2, server.state.lastExitCode, seen())
+    assertFalse(server.state.saveUnreadable, seen())
     assertTrue(server.log(0).lines.any { "stays stopped until it is started again" in it.text }, seen())
     // It stays so: no more starts by itself
     delay(500.milliseconds)
     assertEquals(GameServerStatus.FAILED, server.state.status, seen())
-    assertEquals(5, server.state.restarts, seen())
+    assertEquals(4, server.state.restarts, seen())
     // A start (an admin's) runs it again, with the count from the start
     server.start()
     server.awaitStatus(GameServerStatus.FAILED)
-    assertEquals(5, server.state.restarts, seen())
+    assertEquals(4, server.state.restarts, seen())
     server.stop()
     assertEquals(GameServerStatus.STOPPED, server.state.status, seen())
   }
@@ -297,9 +301,10 @@ class GameServerTest {
     val server = server(script = "broken-save.sh")
     server.start()
     server.awaitStatus(GameServerStatus.FAILED)
-    // Once, not five quick crashes
-    assertEquals(1, server.state.restarts)
-    assertEquals(3, server.state.lastExitCode)
+    // Once, not five quick crashes: never started again, and the panel tells it from one that gave up
+    assertEquals(0, server.state.restarts)
+    assertEquals(SAVE_UNREADABLE_EXIT, server.state.lastExitCode)
+    assertTrue(server.state.saveUnreadable)
     val lines = server.log(0).lines.map { it.text }
     // The panel's reason: its last line that isn't the gateway's
     assertEquals(

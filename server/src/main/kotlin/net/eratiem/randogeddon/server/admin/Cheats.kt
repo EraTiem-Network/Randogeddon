@@ -99,6 +99,17 @@ internal fun unhinted(placed: List<Placement>, slot: String, checked: Map<String
     it.receiver == slot && it.location !in checked[it.finder].orEmpty() && it.location !in hinted[it.finder].orEmpty()
   }
 
+/**
+ * The placements of [slot]'s items that a hint can name: one of [items] (its game's item names) at a location of
+ * Archipelago's, one its world has ([locations]: each world's locations, checked or not, by its name). The spoiler log
+ * places a seed's events too (Hollow Knight's rooms and transitions, say), with neither an item nor a location of
+ * Archipelago's: a hint can't name those.
+ */
+internal fun hintable(placed: List<Placement>, slot: String, items: Collection<String>, locations: Map<String, Set<String>>): List<Placement> {
+  val known = items.toSet()
+  return placed.filter { it.receiver == slot && it.item in known && it.location in locations[it.finder].orEmpty() }
+}
+
 /** For the live feed: "Alice gave Mantis Claw to Alice-HK", "Bob (support) …" for anyone but an Administrator. */
 internal fun cheatText(admin: String, action: CheatAction, slot: String, value: String?, byRole: String = "administrator"): String =
   who(admin, byRole) + " " + when (action) {
@@ -225,9 +236,11 @@ class Cheats(
     val incoming = placed.filter { it.receiver == slot && it.finder != slot && it.location in open[it.finder].orEmpty() }
       .map { IncomingCheck(it.location, it.finder, it.item) }
       .sortedWith(compareBy({ it.item.lowercase() }, { it.world.lowercase() }, { it.location.lowercase() }))
-    // An item is hinted while a copy of it is neither checked nor hinted; by its slot alone while one isn't that either
+    // An item is hinted while a copy of it is neither checked nor hinted; by its slot alone while one isn't that either.
+    // Only the slot's items at real locations ([hintable]): the log's events aren't offered
+    val mine = hintable(placed, slot, found.items, both(open, checked))
     fun items(hinted: Map<String, Set<String>>) =
-      unhinted(placed, slot, checked, hinted).map { it.item }.distinct().sortedBy { it.lowercase() }
+      unhinted(mine, slot, checked, hinted).map { it.item }.distinct().sortedBy { it.lowercase() }
     val slotHinted = session.tracker.read { slotHintedLocations() }
     return names.copy(
       incoming = incoming, placementsKnown = true, hintItems = items(hinted), slotHintItems = items(both(hinted, slotHinted)),
@@ -281,7 +294,7 @@ class Cheats(
       throw SessionProblem(HttpStatusCode.Conflict, Problem.ALREADY_HINTED, "value" to value!!, "slot" to request.slot)
     }
     if (request.action == CheatAction.HINT) {
-      val (command, slotHint) = itemHint(session, request.slot, value!!, request.pick, request.detail)
+      val (command, slotHint) = itemHint(session, request.slot, value!!, names.items, request.pick, request.detail)
       carryOut(session, command, request.action, request.slot, value, admin, byRole, slotHint = slotHint)
       return
     }
@@ -297,19 +310,22 @@ class Cheats(
    * alone either, and a server message for every client's chat (`SessionState.chatLineOf`); the copy is recorded
    * with the cheat. Without the spoiler log's placements the tracker can't know where a copy is: Archipelago's own `/hint`, which
    * names every copy with its location, whichever [detail] is asked for (the page offers neither choice then).
+   * [items]: the slot's game's item names; a copy is one of the spoiler log's placements a hint can name ([hintable]).
    */
   private suspend fun itemHint(
     session: LiveSession,
     slot: String,
     item: String,
+    items: Collection<String>,
     pick: HintPick,
     detail: HintDetail,
   ): Pair<String, SlotHint?> {
-    val placed = placed(session)
-    if (placed.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item) to null
+    val all = placed(session)
+    if (all.isEmpty()) return cheatCommand(CheatAction.HINT, slot, item) to null
     // The next copy is the playthrough's: not before the spoiler log has it (the page doesn't offer it until then)
     if (pick == HintPick.NEXT && !session.playthroughReady) throw SessionProblem(HttpStatusCode.Conflict, Problem.PLAYTHROUGH_NOT_YET)
     val checked = session.tracker.read { checkedLocations() }
+    val placed = hintable(all, slot, items, both(session.tracker.read { openLocations() }, checked))
     val hinted = session.tracker.read { hintedLocations() }
     val slotHinted = session.tracker.read { slotHintedLocations() }
     // The playthrough's steps in order, sphere by sphere (world to location)

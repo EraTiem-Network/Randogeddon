@@ -19,6 +19,8 @@ interface SessionAdminTexts {
   fun releaseMode(mode: String): String
   fun sessionsRunning(running: Int, inUse: Int, capacity: Int): String
   fun server(status: GameServerStatus): String
+  /** In place of [server]'s failed one: it stays stopped because its save can't be read (`GameServerState.saveUnreadable`). */
+  val serverSaveUnreadable: String
   val autoDeletionDisabled: String
   fun deletedAutomaticallyOn(date: String): String
   // Its players
@@ -256,6 +258,7 @@ internal object EnglishSessionAdmin : SessionAdminTexts {
     GameServerStatus.STOPPED -> "server stopped"
     GameServerStatus.NO_SEED -> "no seed"
   }
+  override val serverSaveUnreadable = "server stopped (save can't be read)"
   override val autoDeletionDisabled = "auto-deletion disabled"
   override fun deletedAutomaticallyOn(date: String) = "deleted automatically on $date"
   override val patchFiles = "Patch files"
@@ -527,6 +530,7 @@ internal object GermanSessionAdmin : SessionAdminTexts {
     GameServerStatus.STOPPED -> "Server gestoppt"
     GameServerStatus.NO_SEED -> "kein Seed"
   }
+  override val serverSaveUnreadable = "Server gestoppt (Spielstand nicht lesbar)"
   override val autoDeletionDisabled = "automatisches Löschen aus"
   override fun deletedAutomaticallyOn(date: String) = "wird am $date automatisch gelöscht"
   override val patchFiles = "Patch-Dateien"
