@@ -178,6 +178,14 @@ fun Route.internalApi(
           logger.info("{}'s slot {}: its password is new, {} connection(s) closed", id, printable(slot), closed)
           call.respond(HttpStatusCode.NoContent)
         }
+        // The tracker wrote its locked slots anew (a key was found): read at the next Connect, not up to 10 s later.
+        // Nobody is disconnected; until then, and if this call never comes, the locks are read as always
+        post("/slots/locks") {
+          val id = sessionId() ?: return@post
+          val session = sessions.get(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+          session.passwords.invalidate()
+          call.respond(HttpStatusCode.NoContent)
+        }
         // Its Minecraft Dig slots' servers: their state; started and stopped by hand; their logs (by slot)
         get("/minecraft") {
           val id = sessionId() ?: return@get

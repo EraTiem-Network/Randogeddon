@@ -52,6 +52,18 @@ class SlotPasswordCacheTest {
   }
 
   @Test
+  fun `an unlock the tracker tells of is read at the next look, not 10 s later`() = runBlocking {
+    val store = Store(passwords, locked = setOf("Alice-HK", "Bob-Yacht"))
+    val cache = cache(store, room("777"))
+    assertEquals(setOf("Alice-HK", "Bob-Yacht"), cache.locked())
+    // Alice-HK's key was found: until the gateway is told, the locks read before hold
+    store.locked = setOf("Bob-Yacht")
+    assertEquals(setOf("Alice-HK", "Bob-Yacht"), cache.locked())
+    cache.invalidate()
+    assertEquals(setOf("Bob-Yacht"), cache.locked())
+  }
+
+  @Test
   fun `passwords that aren't there yet are asked for at most every so often`() = runBlocking {
     val store = Store(emptyMap())
     val cache = cache(store, room("222"))
