@@ -26,6 +26,7 @@ import net.eratiem.randogeddon.database.User
 import net.eratiem.randogeddon.database.minecraftTunnelKey
 import net.eratiem.randogeddon.shared.MINECRAFT_DIG
 import net.eratiem.randogeddon.database.UserStore
+import net.eratiem.randogeddon.server.admin.GameServerClient
 import net.eratiem.randogeddon.server.config.TrackerConfig
 import net.eratiem.randogeddon.server.session.LiveSession
 import net.eratiem.randogeddon.server.session.LiveSessions
@@ -245,7 +246,11 @@ internal class RoomFiles {
  * for the host's hints from there). The gateway checks them; players see their own on the dashboard.
  */
 @Single
-class SlotPasswords(private val store: SlotPasswordStore, private val sessions: LiveSessions) {
+class SlotPasswords(
+  private val store: SlotPasswordStore,
+  private val sessions: LiveSessions,
+  private val gameServer: GameServerClient,
+) {
   /** Slot name -> password of [session]'s seed, creating missing ones; empty while its room.json isn't there. */
   suspend fun current(session: LiveSession): Map<String, String> {
     val room = room(session) ?: return emptyMap()
@@ -291,35 +296,75 @@ class SlotPasswords(private val store: SlotPasswordStore, private val sessions: 
   /** The locks as the gateway last got them, by seed: written again only when they change. */
   private val synced = mutableMapOf<String, Set<String>>()
 
+  /** Each session's [LiveSession.version] when its locks were last in step: looked at again once it changed. */
+  private val syncedAt = mutableMapOf<String, Long>()
+
+  /** [syncLocks] for [session], only when something of it changed since its locks were last in step. */
+  private suspend fun syncLocksIfChanged(session: LiveSession, seed: String) {
+    if (session.finished) return
+    val version = runCatching { session.version() }.getOrNull() ?: return
+    if (syncedAt[session.id] == version) return
+    if (syncLocks(session, seed)) syncedAt[session.id] = version
+  }
+
   /**
    * Keeps the gateway's locks in step with [session]'s summary: a slot opens once its key has turned up. Only once the
    * summary knows the locks (the tracker has read World Locks' slot data: until then no slot has lock info, and the
-   * locks of the session's creation stay); a session without locks needs nothing, a finished one stays as it is.
+   * locks of the session's creation stay); a session without locks needs nothing. Once written, the gateway is told
+   * to read them at once ([writeLocks]). Whether they are in step (`false`: to be tried again).
    */
-  private suspend fun syncLocks(session: LiveSession, seed: String) {
-    if (session.finished) return
-    val players = runCatching { session.summary().players }.getOrDefault(emptyList())
-    if (players.none { it.lock != null }) return
+  private suspend fun syncLocks(session: LiveSession, seed: String): Boolean {
+    val players = runCatching { session.summary().players }.getOrNull() ?: return false
+    if (players.none { it.lock != null }) return true
     val locked = players.filter { it.lock?.unlocked == false }.map { it.name }.toSet()
-    if (synced[seed] == locked) return
-    runCatching { store.setLocked(seed, locked) }
+    if (synced[seed] == locked) return true
+    return writeLocks(session.id, { store.setLocked(seed, locked) }, { gameServer.locksChanged(session.id) })
       .onSuccess { synced[seed] = locked; logger.info("Locked slots of {}: {}", session.id, locked.ifEmpty { setOf("none") }.joinToString()) }
       .onFailure { logger.warn("Could not write the locked slots of {}: {}", session.id, it.message) }
+      .isSuccess
   }
 
-  /** Creates the passwords as soon as a session's seed has its room.json, so the gateway knows them before a player joins. */
+  /**
+   * Creates the passwords as soon as a session's seed has its room.json, so the gateway knows them before a player
+   * joins (every [PASSWORDS_LOOK]); keeps its locks in step every [LOCKS_LOOK], so a slot opens about as soon as its
+   * key is found.
+   */
   fun watch(scope: CoroutineScope) = scope.launch {
     val ready = mutableSetOf<String>()
+    var round = 0L
+    val passwordRounds = PASSWORDS_LOOK.inWholeMilliseconds / LOCKS_LOOK.inWholeMilliseconds
     while (true) {
+      val passwordsDue = round++ % passwordRounds == 0L
       for (session in sessions.all()) {
         val seed = room(session)?.seedName ?: continue
-        syncLocks(session, seed)
-        if (seed in ready) continue
+        syncLocksIfChanged(session, seed)
+        if (seed in ready || !passwordsDue) continue
         runCatching { current(session) }
           .onSuccess { ready += seed; logger.info("Slot passwords ready for {} (seed {}, {} slots)", session.id, seed, it.size) }
           .onFailure { logger.warn("Could not create the slot passwords of {}: {}", session.id, it.message) }
       }
-      delay(5.seconds)
+      delay(LOCKS_LOOK)
     }
   }
+}
+
+/** How often the sessions' slot passwords are looked at, until each seed has them. */
+private val PASSWORDS_LOOK = 5.seconds
+
+/** How often the sessions' locks are looked at (a look costs little while nothing changed). */
+private val LOCKS_LOOK = 1.seconds
+
+/**
+ * Writes session [id]'s locked slots ([write]), then has the gateway read them anew at once ([tell]): only once they
+ * are in the database, so it can't read the ones before. A failed [tell] changes nothing but the time (the gateway
+ * reads them within 10 s as always, a lock never opens early); after a failed [write] the gateway isn't told.
+ * Whether they were written.
+ */
+internal suspend fun writeLocks(id: String, write: suspend () -> Unit, tell: suspend () -> Unit): Result<Unit> {
+  val written = runCatching { write() }
+  if (written.isSuccess) {
+    runCatching { tell() }
+      .onFailure { logger.warn("Could not tell the gateway of {}'s new locks (it reads them within 10 s): {}", id, it.message) }
+  }
+  return written
 }

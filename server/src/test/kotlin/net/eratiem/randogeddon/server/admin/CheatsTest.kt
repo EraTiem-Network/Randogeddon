@@ -83,6 +83,36 @@ class CheatsTest {
   }
 
   @Test
+  fun `a hint never names an event of the spoiler log, only a real item at a real location`() {
+    val placed = listOf(
+      // Hollow Knight's rooms and transitions: events, placed at themselves
+      Placement("Abyss_01", "Alice-HK", "Abyss_01", "Alice-HK"),
+      Placement("Abyss_01[left1]", "Alice-HK", "Abyss_01[left1]", "Alice-HK"),
+      Placement("Crossroads", "Alice-HK", "Mantis Claw", "Alice-HK"),
+      Placement("Tower", "Bob-LttP", "Mantis Claw", "Alice-HK"),
+      Placement("Lake", "Bob-LttP", "Abyss_Shriek", "Alice-HK"),
+      // A real item at an event's location, and one at a location its world doesn't have
+      Placement("Abyss_01[right1]", "Alice-HK", "Abyss_Shriek", "Alice-HK"),
+      Placement("Nowhere", "Carol-WL", "Mantis Claw", "Alice-HK"),
+      Placement("Cave", "Bob-LttP", "Bombs", "Bob-LttP"),
+    )
+    val items = listOf("Abyss_Shriek", "Mantis Claw")
+    val locations = mapOf("Alice-HK" to setOf("Crossroads", "Abyss_Shriek"), "Bob-LttP" to setOf("Tower", "Lake", "Cave"))
+    val mine = hintable(placed, "Alice-HK", items, locations)
+    assertEquals(listOf(placed[2], placed[3], placed[4]), mine)
+    // The items offered: each one a hint takes, by chance or as the next, with its location or by its slot alone
+    val offered = unhinted(mine, "Alice-HK", emptyMap(), emptyMap()).map { it.item }.distinct()
+    assertEquals(listOf("Mantis Claw", "Abyss_Shriek"), offered)
+    for (item in offered) {
+      repeat(20) { n -> assertTrue(pickHint(mine, "Alice-HK", item, emptyMap(), emptyMap(), Random(n))!!.location in locations.values.flatten()) }
+      assertTrue(pickHint(mine, "Alice-HK", item, emptyMap(), emptyMap(), Random(1), HintPick.NEXT) in mine)
+    }
+    assertNull(pickHint(mine, "Alice-HK", "Abyss_01", emptyMap(), emptyMap(), Random(1)))
+    // The event copies never come up, though their names equal a real one's
+    assertEquals(placed[4], pickHint(mine, "Alice-HK", "Abyss_Shriek", emptyMap(), emptyMap(), Random(1), HintPick.NEXT))
+  }
+
+  @Test
   fun `the next copy is the one the playthrough needs first`() {
     val placed = listOf(
       Placement("Crossroads", "Alice-HK", "Progressive Sword", "Bob-LttP"),

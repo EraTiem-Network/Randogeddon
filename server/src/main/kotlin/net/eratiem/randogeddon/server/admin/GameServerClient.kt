@@ -54,6 +54,9 @@ import kotlin.time.Duration.Companion.seconds
 
 private val VERSIONS_KEPT = 30.seconds
 
+/** How long the gateway is given to hear of changed locks ([GameServerClient.locksChanged]). */
+private const val LOCKS_TIMEOUT_MS = 5_000L
+
 /** The gateway didn't answer as expected; [status] for the admin panel (502 when it can't be reached at all). */
 class GameServerUnavailable(val status: HttpStatusCode, message: String) : Exception(message)
 
@@ -152,6 +155,15 @@ class GameServerClient(private val config: TrackerConfig) {
   /** Session [id]'s slot [slot] has a new password: the gateway reads it at once and closes the slot's connections. */
   suspend fun disconnectSlot(id: String, slot: String) {
     done { http.post("${session(id)}/slots/${slot.encodeURLPathPart()}/disconnect") { auth() } }
+  }
+
+  /**
+   * Session [id]'s locked slots were written anew: the gateway reads them at its next Connect instead of up to 10 s
+   * later (nobody is disconnected). `false`: it has no such session. Asked briefly ([LOCKS_TIMEOUT_MS]): without an
+   * answer the gateway reads them in its own time.
+   */
+  suspend fun locksChanged(id: String): Boolean = done(HttpStatusCode.NotFound) {
+    http.post("${session(id)}/slots/locks") { auth(); timeout { requestTimeoutMillis = LOCKS_TIMEOUT_MS } }
   }
 
   /** Session [id]'s Minecraft Dig slots' hosted servers. */
