@@ -1668,3 +1668,48 @@ games' real map images moved to Later.*
       name nowhere in the state, the cheat view or the logs before the upgrade, the rows there after a tracker
       restart; in a browser: the picker in the cheat panel and the feed's line. Not seen: the hint log's row on
       screen, the person's panel, German, a phone's width, a real game client's chat
+- [x] The live checklist, the user's word on 2026-11-27 (nothing built):
+    - Left from 0.23.9 (the forgotten password's page with two-factor on, the reset link opened while logged in,
+      German on the new pages): checked by the user
+    - Left from 0.23.8 (Enter and Escape in a confirmation, a tip on keyboard focus, polling paused in a hidden
+      tab, the warning without its reason for a player, the old cookie's login ended; the deploy putting back a
+      folder it had already moved): checked by the user
+    - The bridge of 0.23.10 offers the session to someone of its support who plays a slot: works on live (with
+      it, the bridge against a live session)
+    - `!getitem` refused: closed on the user's word, their own check comes later
+    - A mail's time in the account's zone: not checked, taken as working
+    - A client taking a `RoomUpdate` right before `Connected`: not checked, taken as working
+- [x] The live checklist's browser and client points, tried on 2026-11-27 in the local demo of 0.23.10 (the
+      published images) with a real Chrome driven through its extension (nothing built):
+    - The feed's page arrows and its slot filter; a person's panel, on the dashboard and on a share-link page; a
+      text selection kept in the panel while its activity list moves on; Tab showing a button's tip and Space
+      pressing it; Enter in the login, the two-factor and the bridge's key form, and in a confirmation; someone
+      with one session lands on it; the page at a phone's width
+    - The slot-only item hint (0.23.10) on screen: the picker in the cheat panel (only the slot by default), the
+      hint log's row, the feed's line and a person's open hints, all without a location, in German, also narrow
+    - A broken save through the panel: a session's save cut short on purpose; its game server stays stopped, the
+      panel gives the reason and the copy's name (`.broken-<time>`), the save is left as it was; with the
+      readable save put back it starts, and that start makes the copy of the last readable one (`.bak`)
+    - The bridge's page in a browser (the bridge run from source against the demo): the login by a key, the
+      sessions (one where the login has no slot says so), a slot opened on a local address, a test client let
+      in through it with any name and no password
+- [x] 0.23.11, the three findings of the demo's browser run (2026-11-27; the user: fix them as 0.23.11). Built by
+      three Opus subagents, each in its own files:
+    - [x] A slot just unlocked was refused (`SlotLocked`) for up to about 15 s: the tracker wrote an unlock only
+          every 5 s (`SlotPasswords.watch`) and the gateway read the locks at most every 10 s. Now the tracker
+          looks every second (only when the session changed), writes, and then tells the gateway
+          (`POST /internal/sessions/{id}/slots/locks`: the locks read anew, nobody disconnected); a failed call
+          leaves the 10 s reading, a lock never opens early. The simulator tries a `SlotLocked` again for a slot
+          whose key it saw (8 times, 2 s apart). Tried in the demo: six unlocks in two sessions, no simulated
+          player quit, one refused once (0.2 s before the write) and in at its next try
+    - [x] Cheats, the item list for a hint held the spoiler log's events (Hollow Knight: 1189 names for 249
+          items): only placements of the slot's real items at locations its world has are offered and picked
+          (`hintable`). Tried in the demo: 86 names, all of them items; a hint for an offered item taken with
+          only the slot and with the location; an event's name refused
+    - [x] A save that can't be read on the panel: its own wording, told by the exit code serve.py ends with (3;
+          no new field), in the badge, the head line and the session picker; no restart counted for an end
+          that isn't started again (a server that gave up shows 4, not 5); the head line and the picker take
+          the picked session's game server from its live state (they were up to 25 s behind, for every
+          change). Tried in the demo in Chrome, in German: the badge, the head line at once, no restart
+          counted, the reason line as before; running again with the save put back
+    - Tests: the shared, the tracker's and the gateway's unit tests (new ones for each fix), the web app compiled

@@ -36,12 +36,6 @@ How it runs (decided with the user, 2026-11-21 and 2026-11-22):
 
 The parts:
 
-- [ ] Left from 0.23.9, not tried: the page with two-factor on (unit-tested), the reset link opened while logged
-      in, German on the new pages (the mails through the live mail server went out: the user, 2026-11-24)
-- [ ] Left from 0.23.8: not seen on screen (built and unit-tested; the demo has no slot whose logic doesn't
-      fit and runs on plain http): Enter and Escape in a confirmation, a tip on keyboard focus, polling paused
-      in a hidden tab, the warning without its reason for a player, the old cookie's login ended; the deploy
-      putting back a folder it had already moved (only a move that fails outright could be forced)
 - [ ] To try on the live server and with real clients (nothing to build; from the parts' "not tried" lists):
     - [x] The switch to 0.23.8 on 2026-11-23 (from 0.23.4): the rewritten deploy over SSH went through (the
           upload, `sudo`, the systemd units, the real images' checks); the database's container made anew on its
@@ -49,18 +43,18 @@ The parts:
     - [x] Hosted Minecraft on live (2026-11-23, the user joined and left the session's Minecraft Dig): started by
           the join through the tunnel, its server as its own user (uid 1200), the join and the leave recognised
           (the player listed, then gone), checks sent while playing
-    - [ ] With real game clients: `!getitem` refused; the bridge against a live session and its page in a
-          browser; a client taking a `RoomUpdate` right before `Connected` (after a session's options changed
-          while it slept); a broken save through the panel; a mail's time in the account's zone;
-          the bridge of 0.23.10 offering the session to someone of its support who plays a slot
-    - [ ] In a real browser: the map's full screen; the file pickers (their folders, their messages); a
-          person's panel on a share-link page; someone with one session; Enter in the forms; a text selection
-          kept in its panel; Space on a focused button; the page on a phone and its keyboard's Go key; the
-          spoiler page with only its first level and an item hint while *next in playthrough* is hidden; the
-          views' page arrows and slot filters; the logic's warning on screen
+    - [ ] In a real browser, left after 2026-11-27 (the demo can't show them, or a browser driven from outside
+          can't): the map's full screen (the demo has no map); the file pickers (the system's own dialogs);
+          a phone's keyboard and its Go key; the spoiler page with only its first level and an item hint
+          while *next in playthrough* is hidden (the demo's seeds have every level); the logic's warning
+          on screen (no demo slot whose logic doesn't fit); the slot-only hint's line in a real game
+          client's chat
     - [ ] Scripts: `publish-bridge.sh`'s comparison of an existing file (a second `--publish` of one version);
           `measure.sh`; the Traefik overlay on a real Traefik; the build's refusals (a wrong hash in a lock, a
           wrong wrapper checksum)
+- [ ] 0.23.11, the last build of Phase 23 (the user on 2026-11-27: Phase 23 is closed and 0.23.11 released;
+      what was still open of it goes to Phase 24). Branch `phase/twentythree-0.23.11`: to commit, merge,
+      tag, publish; then the phase's close (`phase/twentythree` into `main`)
 - [ ] The registry (not this repository's): its hourly warning that deleted image manifests can't be removed for
       good; `BLOB_GC_ENABLED` is set on its server only, not where its compose file is kept
 - [ ] Standing chores since 0.23.7: `scripts/base-images.sh` and the audit before a phase's release;
@@ -92,6 +86,13 @@ The parts:
 - [ ] Hosted Minecraft Dig (reported on 2026-11-23): a connected Minecraft Dig server doesn't seem to keep its
       session's game server awake (players had to reconnect so that it wakes up); and a hosted Minecraft server
       should shut down after a number of minutes without players that an Administrator sets, 5 by default
+- [ ] Left from 0.23.11 (2026-11-27): about a second remains between a key found and its slot open (the
+      tracker looks once a second; one of six unlocks in the demo was refused once). Closing it means
+      writing the unlock the moment the key arrives (the tracker's session state), not at the next look
+- [ ] Found on 2026-11-27, not looked into: the spoiler page's header kept "connecting to the tracker…"
+      while the page itself was shown (seen twice in the demo of 0.23.10)
+- [ ] Not tried from 0.23.11: the save's new wording in English; a server that gives up after five
+      crashes (its count, 4)
 - [ ] The bridge's page: a copy option for the slot's name (asked for on 2026-11-23)
 - [ ] The dashboard's players (asked for on 2026-11-23):
     - [ ] Sorting by: the player's name, the slot's name, progression of the player, progression of the slot,
